@@ -21,6 +21,3 @@ export const retryDatasetSync = mutation({
     });
   },
 });
-
-// retryExperimentSync removed — experiment sync is now handled natively
-// by evaluate() inside runLangSmithExperiment(). No separate sync step needed.

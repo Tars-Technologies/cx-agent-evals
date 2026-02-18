@@ -12,11 +12,6 @@ import {
   DocumentId,
   PositionAwareChunkId,
   OpenAIEmbedder,
-  uploadDataset,
-  QueryId,
-  QueryText,
-  type GroundTruth,
-  type CharacterSpan,
   type PositionAwareChunk,
   type ExperimentResult,
 } from "rag-evaluation-system";
@@ -96,55 +91,14 @@ export const runExperiment = internalAction({
           progress: { current: 1, total: 4, message: "Syncing dataset to LangSmith..." },
         });
 
-        const questions = await ctx.runQuery(
-          internal.questions.byDatasetInternal,
-          { datasetId: args.datasetId },
-        );
+        await ctx.runAction(internal.langsmithSync.syncDataset, {
+          datasetId: args.datasetId,
+        });
 
-        if (questions.length > 0) {
-          const groundTruth: GroundTruth[] = questions.map(
-            (q: any, i: number) => ({
-              query: {
-                id: QueryId(q.queryId || `q_${i}`),
-                text: QueryText(q.queryText),
-                metadata: {
-                  sourceDoc: q.sourceDocId,
-                  ...(q.metadata ?? {}),
-                },
-              },
-              relevantSpans: (q.relevantSpans ?? []).map(
-                (s: any) =>
-                  ({
-                    docId: DocumentId(s.docId),
-                    start: s.start,
-                    end: s.end,
-                    text: s.text,
-                  }) as CharacterSpan,
-              ),
-            }),
-          );
-
-          const result = await uploadDataset(groundTruth, {
-            datasetName: dataset.name,
-            description: `RAG evaluation dataset: ${dataset.strategy} strategy, ${questions.length} questions`,
-            metadata: {
-              strategy: dataset.strategy,
-              convexDatasetId: args.datasetId,
-            },
-          });
-
-          await ctx.runMutation(internal.datasets.updateSyncStatus, {
-            datasetId: args.datasetId,
-            langsmithDatasetId: result.datasetName,
-            langsmithUrl: result.datasetUrl,
-            langsmithSyncStatus: "synced",
-          });
-
-          // Refresh dataset to get the LangSmith name
-          dataset = await ctx.runQuery(internal.datasets.getInternal, {
-            id: args.datasetId,
-          });
-        }
+        // Refresh dataset to get the LangSmith name
+        dataset = await ctx.runQuery(internal.datasets.getInternal, {
+          id: args.datasetId,
+        });
       }
 
       // ── Step 3: Build corpus and retriever ──
@@ -221,7 +175,7 @@ export const runExperiment = internalAction({
         corpus,
         retriever,
         k: experiment.k,
-        datasetName: dataset.name,
+        datasetName: dataset.langsmithDatasetId ?? dataset.name,
         experimentPrefix: experiment.name,
         metadata: {
           experimentId: args.experimentId,

@@ -11,38 +11,23 @@ The system SHALL provide an internal action `langsmithSync.syncDataset` in `conv
 - **WHEN** `langsmithSync.syncDataset` fails due to LangSmith API error
 - **THEN** the dataset's `langsmithSyncStatus` SHALL be set to `"failed"`, but all questions and data in Convex SHALL remain intact
 
-### Requirement: Experiment sync to LangSmith action
-The system SHALL provide an internal action `langsmithSync.syncExperiment` that accepts an `experimentId`. It SHALL: (1) ensure the parent dataset is synced first (calling `syncDatasetDirect` helper if `langsmithDatasetId` is missing), (2) read experiment results, (3) for each result, create a LangSmith run via `client.createRun()` with `run_type: "chain"`, the question's query text as input, retrieved spans as output, and scores as metadata. The project name is `"<experiment-name>-<timestamp>"`. Sync failures are non-critical — errors are logged but don't fail the experiment.
-
-#### Scenario: Successful experiment sync
-- **WHEN** `langsmithSync.syncExperiment` is called for a completed experiment
-- **THEN** individual runs SHALL be pushed to LangSmith for each question result
-
-#### Scenario: Dataset synced first if needed
-- **WHEN** the parent dataset is not yet synced to LangSmith
-- **THEN** the dataset SHALL be synced first before pushing experiment results
-
 ### Requirement: Automatic sync after completion
-The system SHALL automatically schedule a LangSmith sync action when a generation job or experiment job completes. The sync SHALL be scheduled via `ctx.scheduler.runAfter(0, internal.langsmithSync.syncDataset, { datasetId })` or equivalent as the final step of the job pipeline.
+The system SHALL automatically schedule a LangSmith dataset sync action when a generation job completes. Experiment sync is no longer a separate post-completion step — it happens during experiment execution via `runLangSmithExperiment()`.
 
 #### Scenario: Sync scheduled after generation completes
 - **WHEN** a question generation job reaches `status: "completed"`
 - **THEN** a LangSmith dataset sync action SHALL be automatically scheduled
 
-#### Scenario: Sync scheduled after experiment completes
-- **WHEN** an experiment job reaches `status: "completed"`
-- **THEN** a LangSmith experiment sync action SHALL be automatically scheduled
+#### Scenario: Experiment syncs during execution
+- **WHEN** an experiment runs via `runLangSmithExperiment()`
+- **THEN** the experiment SHALL be synced to LangSmith as part of the `evaluate()` call, not as a separate post-completion action
 
 ### Requirement: Manual sync retry
-The system SHALL provide Convex mutations in `convex/langsmithRetry.ts` (a regular file, NOT `"use node"`, since mutations cannot be in `"use node"` files): `langsmithRetry.retryDatasetSync` (accepts `datasetId`) and `langsmithRetry.retryExperimentSync` (accepts `experimentId`). Each SHALL verify the resource belongs to the user's org and schedule the corresponding sync action via `ctx.scheduler.runAfter(0, ...)`.
+The system SHALL provide a Convex mutation `langsmithRetry.retryDatasetSync` in `convex/langsmithRetry.ts` (a regular file, NOT `"use node"`) that accepts a `datasetId`, verifies the dataset belongs to the user's org, and schedules `langsmithSync.syncDataset`. The `retryExperimentSync` mutation is removed since experiment sync is no longer a separate operation.
 
 #### Scenario: Retry failed dataset sync
 - **WHEN** a user calls `langsmithRetry.retryDatasetSync` for a dataset
 - **THEN** a new `langsmithSync.syncDataset` action SHALL be scheduled
-
-#### Scenario: Retry failed experiment sync
-- **WHEN** a user calls `langsmithRetry.retryExperimentSync` for an experiment
-- **THEN** a new `langsmithSync.syncExperiment` action SHALL be scheduled
 
 ### Requirement: Sync status visible in queries
 All queries that return datasets or experiments SHALL include the `langsmithSyncStatus` and `langsmithUrl` fields, allowing the frontend to show sync status and provide "View in LangSmith" links.
