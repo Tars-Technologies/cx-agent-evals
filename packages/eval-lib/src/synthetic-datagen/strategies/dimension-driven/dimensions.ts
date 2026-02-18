@@ -12,11 +12,14 @@ export const DimensionsFileSchema = z.object({
 });
 
 /**
- * Parse dimensions from raw JSON data (string or object).
- * Use this in environments without Node.js fs APIs.
+ * Parse dimensions from raw JSON data (string, object, or array).
+ * Accepts both `{ dimensions: [...] }` (file format) and a plain `[...]` array.
  */
 export function parseDimensions(data: string | unknown): Dimension[] {
   const raw = typeof data === "string" ? JSON.parse(data) : data;
+  if (Array.isArray(raw)) {
+    return z.array(DimensionSchema).min(1).parse(raw);
+  }
   const parsed = DimensionsFileSchema.parse(raw);
   return parsed.dimensions;
 }
