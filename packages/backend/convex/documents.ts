@@ -15,6 +15,7 @@ export const create = mutation({
     kbId: v.id("knowledgeBases"),
     storageId: v.id("_storage"),
     title: v.string(),
+    content: v.string(),
   },
   handler: async (ctx, args) => {
     const { orgId } = await getAuthContext(ctx);
@@ -25,17 +26,7 @@ export const create = mutation({
       throw new Error("Knowledge base not found");
     }
 
-    // Read file content from storage
-    // Note: ctx.storage.get() is only available in actions.
-    // The client should read the file and pass content directly.
-    const url = await ctx.storage.getUrl(args.storageId);
-    if (!url) {
-      throw new Error("Uploaded file not found in storage");
-    }
-    const response = await fetch(url);
-    const content = await response.text();
-
-    // Derive docId from filename
+    const content = args.content;
     const docId = args.title;
 
     return await ctx.db.insert("documents", {

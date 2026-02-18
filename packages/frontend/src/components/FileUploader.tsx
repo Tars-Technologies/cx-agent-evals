@@ -48,11 +48,15 @@ export function FileUploader({ kbId }: FileUploaderProps) {
 
         const { storageId } = await result.json();
 
+        // Read file content on the client (mutations can't use fetch())
+        const content = await file.text();
+
         // Create document record
         await createDocument({
           kbId,
           storageId: storageId as Id<"_storage">,
           title: file.name,
+          content,
         });
 
         success++;
