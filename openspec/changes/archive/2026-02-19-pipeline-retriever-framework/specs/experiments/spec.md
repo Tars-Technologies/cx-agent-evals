@@ -1,8 +1,4 @@
-## Purpose
-
-Retriever interface and baseline implementations for RAG retrieval evaluation.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Retriever interface
 The system SHALL define a `Retriever` interface with `readonly name: string`, `init(corpus: Corpus): Promise<void>`, `retrieve(query: string, k: number): Promise<PositionAwareChunk[]>`, and `cleanup(): Promise<void>`. The interface SHALL always return `PositionAwareChunk[]` for span-based evaluation. The Retriever interface SHALL be located at `retrievers/retriever.interface.ts` and re-exported from the root `index.ts`.

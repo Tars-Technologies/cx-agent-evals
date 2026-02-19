@@ -1,0 +1,117 @@
+import MiniSearch from "minisearch";
+import type { PositionAwareChunk } from "../../../types/index.js";
+
+/**
+ * Result of a BM25 search with the matching chunk and its normalized score.
+ */
+export interface ScoredChunk {
+  readonly chunk: PositionAwareChunk;
+  readonly score: number;
+}
+
+/** Default BM25+ delta parameter (frequency normalization lower bound). */
+const DEFAULT_BM25_DELTA = 0.5;
+
+/**
+ * BM25 full-text search index backed by MiniSearch.
+ *
+ * Indexes `PositionAwareChunk` documents on their `content` field and
+ * supports top-k retrieval with optional normalized relevance scores.
+ */
+export class BM25SearchIndex {
+  private readonly _k1: number;
+  private readonly _b: number;
+  private _index: MiniSearch | null = null;
+  private _chunkMap: Map<string, PositionAwareChunk> = new Map();
+
+  constructor(options?: { readonly k1?: number; readonly b?: number }) {
+    this._k1 = options?.k1 ?? 1.2;
+    this._b = options?.b ?? 0.75;
+  }
+
+  /**
+   * Build the search index from a collection of position-aware chunks.
+   * Replaces any previously built index.
+   */
+  build(chunks: readonly PositionAwareChunk[]): void {
+    this._chunkMap = new Map<string, PositionAwareChunk>();
+
+    this._index = new MiniSearch({
+      fields: ["content"],
+      storeFields: ["content"],
+      idField: "id",
+    });
+
+    const documents: Array<{ id: string; content: string }> = [];
+
+    for (const chunk of chunks) {
+      const id = chunk.id as string;
+      this._chunkMap.set(id, chunk);
+      documents.push({ id, content: chunk.content });
+    }
+
+    this._index.addAll(documents);
+  }
+
+  /**
+   * Search the index and return the top `k` matching chunks.
+   */
+  search(query: string, k: number): readonly PositionAwareChunk[] {
+    return this.searchWithScores(query, k).map(({ chunk }) => chunk);
+  }
+
+  /**
+   * Search the index and return the top `k` matching chunks with
+   * normalized scores in the range [0, 1]. The highest-scoring result
+   * always receives a score of 1.0.
+   */
+  searchWithScores(query: string, k: number): readonly ScoredChunk[] {
+    if (this._index === null) {
+      return [];
+    }
+
+    const raw = this._index.search(query, {
+      boost: { content: 1 },
+      bm25: { k: this._k1, b: this._b, d: DEFAULT_BM25_DELTA },
+    });
+
+    if (raw.length === 0) {
+      return [];
+    }
+
+    const topResults = raw.slice(0, k);
+    const maxScore = topResults[0].score;
+
+    const toScoredChunk = (
+      result: { id: string; score: number },
+      normalizer: number,
+    ): ScoredChunk | undefined => {
+      const chunk = this._chunkMap.get(result.id);
+      if (chunk === undefined) {
+        return undefined;
+      }
+      return { chunk, score: normalizer === 0 ? 0 : result.score / normalizer };
+    };
+
+    const results: ScoredChunk[] = [];
+    for (const result of topResults) {
+      const scored = toScoredChunk(
+        { id: String(result.id), score: result.score },
+        maxScore,
+      );
+      if (scored !== undefined) {
+        results.push(scored);
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Clear the index and release all stored chunks.
+   */
+  clear(): void {
+    this._index = null;
+    this._chunkMap = new Map();
+  }
+}

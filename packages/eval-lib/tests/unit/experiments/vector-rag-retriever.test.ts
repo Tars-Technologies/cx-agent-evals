@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { VectorRAGRetriever } from "../../../src/experiments/baseline-vector-rag/retriever.js";
+import { VectorRAGRetriever } from "../../../src/retrievers/baseline-vector-rag/retriever.js";
 import type { Corpus, PositionAwareChunk } from "../../../src/types/index.js";
 import type { PositionAwareChunker } from "../../../src/chunkers/chunker.interface.js";
 import type { Embedder } from "../../../src/embedders/embedder.interface.js";

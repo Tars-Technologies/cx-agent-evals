@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { runLangSmithExperiment } from "../../src/langsmith/experiment-runner.js";
-import { VectorRAGRetriever } from "../../src/experiments/baseline-vector-rag/retriever.js";
+import { VectorRAGRetriever } from "../../src/retrievers/baseline-vector-rag/retriever.js";
 import { RecursiveCharacterChunker } from "../../src/chunkers/recursive-character.js";
 import { InMemoryVectorStore } from "../../src/vector-stores/in-memory.js";
 import { createDocument, createCorpus } from "../../src/types/documents.js";

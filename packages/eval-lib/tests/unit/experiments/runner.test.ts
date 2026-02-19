@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { runLangSmithExperiment } from "../../../src/langsmith/experiment-runner.js";
-import type { Retriever } from "../../../src/experiments/retriever.interface.js";
+import type { Retriever } from "../../../src/retrievers/retriever.interface.js";
 import type { Corpus, PositionAwareChunk } from "../../../src/types/index.js";
 import { DocumentId, PositionAwareChunkId } from "../../../src/types/primitives.js";
 import { recall } from "../../../src/evaluation/metrics/recall.js";

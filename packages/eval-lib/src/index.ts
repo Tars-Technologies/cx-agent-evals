@@ -58,12 +58,55 @@ export type { ComputeMetricsOptions } from "./evaluation/index.js";
 export { recall, precision, iou, f1 } from "./evaluation/metrics/index.js";
 export { mergeOverlappingSpans, calculateOverlap, totalSpanLength } from "./evaluation/metrics/utils.js";
 
-// Experiments
-export { VectorRAGRetriever, CallbackRetriever } from "./experiments/index.js";
+// Retrievers (canonical location: src/retrievers/)
+export { VectorRAGRetriever, CallbackRetriever } from "./retrievers/index.js";
 export type {
   Retriever,
   VectorRAGRetrieverConfig,
   CallbackRetrieverConfig,
+} from "./retrievers/index.js";
+
+// Pipeline Retriever
+export {
+  PipelineRetriever,
+  computeIndexConfigHash,
+  DEFAULT_INDEX_CONFIG,
+  DEFAULT_QUERY_CONFIG,
+  DEFAULT_SEARCH_CONFIG,
+  BM25SearchIndex,
+  weightedScoreFusion,
+  reciprocalRankFusion,
+  applyThresholdFilter,
+} from "./retrievers/index.js";
+export type {
+  PipelineRetrieverDeps,
+  PipelineConfig,
+  IndexConfig,
+  QueryConfig,
+  SearchConfig,
+  DenseSearchConfig,
+  BM25SearchConfig,
+  HybridSearchConfig,
+  RefinementStepConfig,
+  ScoredChunk,
+} from "./retrievers/index.js";
+
+// Experiment Presets
+export {
+  createBaselineVectorRagRetriever,
+  BASELINE_VECTOR_RAG_CONFIG,
+  createBM25Retriever,
+  BM25_CONFIG,
+  createHybridRetriever,
+  HYBRID_CONFIG,
+  createHybridRerankedRetriever,
+  HYBRID_RERANKED_CONFIG,
+} from "./experiments/index.js";
+export type {
+  BaselineVectorRagPresetDeps,
+  BM25PresetDeps,
+  HybridPresetDeps,
+  HybridRerankedPresetDeps,
 } from "./experiments/index.js";
 
 // Synthetic Data Generation

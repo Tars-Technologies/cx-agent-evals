@@ -1,5 +1,5 @@
 import type { Corpus } from "../types/index.js";
-import type { Retriever } from "../experiments/retriever.interface.js";
+import type { Retriever } from "../retrievers/retriever.interface.js";
 import type { Metric } from "../evaluation/metrics/base.js";
 import { recall, precision, iou, f1 } from "../evaluation/metrics/index.js";
 import { positionAwareChunkToSpan } from "../types/chunks.js";
