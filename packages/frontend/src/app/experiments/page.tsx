@@ -5,48 +5,48 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/lib/convex";
 import { Id } from "@convex/_generated/dataModel";
 import { Header } from "@/components/Header";
+import { PipelineConfigModal } from "@/components/PipelineConfigModal";
+import {
+  PipelineConfigSummary,
+  ConfigurePipelineButton,
+} from "@/components/PipelineConfigSummary";
+import type { PipelineConfig, SavedPipelineConfig } from "@/lib/pipeline-types";
+import {
+  PRESET_CONFIGS,
+  PRESET_NAMES,
+  PRESET_DESCRIPTIONS,
+  isPresetUnmodified,
+} from "@/lib/pipeline-types";
+import {
+  loadSavedConfigs,
+  loadLastConfig,
+  setLastConfigName,
+  deleteConfig,
+} from "@/lib/pipeline-storage";
 
-interface RetrieverConfig {
-  chunker: {
-    type: "recursive";
-    chunkSize: number;
-    chunkOverlap: number;
-  };
-  embedder: {
-    type: "openai";
-    model: string;
-  };
-  vectorStore: {
-    type: "convex";
-  };
-  reranker?: {
-    type: "cohere";
-    model?: string;
-  };
-}
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function ExperimentsPage() {
-  // Dataset selection
+  // --- Dataset selection ---
   const datasets = useQuery(api.datasets.list);
   const [selectedDatasetId, setSelectedDatasetId] = useState<Id<"datasets"> | null>(null);
 
-  // Experiments for selected dataset (reactive)
   const experiments = useQuery(
     api.experiments.byDataset,
     selectedDatasetId ? { datasetId: selectedDatasetId } : "skip",
   );
 
-  // Selected dataset details
   const selectedDataset = useQuery(
     api.datasets.get,
     selectedDatasetId ? { id: selectedDatasetId } : "skip",
   );
 
-  // Experiment running state
+  // --- Experiment execution state ---
   const [jobId, setJobId] = useState<Id<"jobs"> | null>(null);
   const [experimentId, setExperimentId] = useState<Id<"experiments"> | null>(null);
 
-  // Job status (reactive)
   const job = useQuery(api.jobs.get, jobId ? { id: jobId } : "skip");
   const currentExperiment = useQuery(
     api.experiments.get,
@@ -55,15 +55,19 @@ export default function ExperimentsPage() {
 
   const startExperiment = useMutation(api.experiments.start);
 
-  // Retriever config
-  const [config, setConfig] = useState<RetrieverConfig>({
-    chunker: { type: "recursive", chunkSize: 512, chunkOverlap: 50 },
-    embedder: { type: "openai", model: "text-embedding-3-small" },
-    vectorStore: { type: "convex" },
-  });
+  // --- Pipeline config state ---
+  const [pipelineConfig, setPipelineConfig] = useState<PipelineConfig | null>(null);
+  const [configName, setConfigName] = useState("");
+  const [basePreset, setBasePreset] = useState("baseline-vector-rag");
   const [k, setK] = useState(5);
+  const [isModified, setIsModified] = useState(false);
+  const [savedConfigs, setSavedConfigs] = useState<Record<string, SavedPipelineConfig>>({});
+  const [showModal, setShowModal] = useState(false);
 
-  // Metrics
+  // --- Auto-start toggle ---
+  const [autoStart, setAutoStart] = useState(true);
+
+  // --- Metrics ---
   const [metrics, setMetrics] = useState({
     recall: true,
     precision: true,
@@ -71,37 +75,121 @@ export default function ExperimentsPage() {
     f1: true,
   });
 
-  // Experiment name
+  // --- Experiment name ---
   const [experimentName, setExperimentName] = useState("");
   const [nameEdited, setNameEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Generate experiment name from config
+  // --- Restore from localStorage on mount ---
   useEffect(() => {
-    if (nameEdited) return;
+    const saved = loadLastConfig();
+    const allSaved = loadSavedConfigs();
+    setSavedConfigs(allSaved);
 
-    const parts = [
-      `recursive-${config.chunker.chunkSize}-${config.chunker.chunkOverlap}`,
-      config.embedder.model.replace("text-embedding-", "").replace("-", ""),
-      `k${k}`,
-    ];
-    setExperimentName(parts.join("-"));
-  }, [config, k, nameEdited]);
+    if (saved) {
+      setPipelineConfig(saved.config);
+      setConfigName(saved.name);
+      setBasePreset(saved.basePreset);
+      setK(saved.k);
+      setIsModified(!isPresetUnmodified(saved.config, saved.k, saved.basePreset));
+    } else {
+      // Default to baseline-vector-rag
+      const preset = PRESET_CONFIGS["baseline-vector-rag"];
+      setPipelineConfig(preset);
+      setConfigName("baseline-vector-rag");
+      setBasePreset("baseline-vector-rag");
+    }
+  }, []);
 
-  // Derive status from job
-  const status = !jobId
+  // --- Auto-generate experiment name ---
+  useEffect(() => {
+    if (nameEdited || !configName) return;
+    setExperimentName(`${configName}-k${k}`);
+  }, [configName, k, nameEdited]);
+
+  // --- Derive execution status ---
+  const jobPhase = job?.phase as string | undefined;
+  const jobProgress = job?.progress as
+    | { current?: number; total?: number; message?: string }
+    | undefined;
+
+  type ExecStatus = "idle" | "indexing" | "evaluating" | "complete" | "error";
+
+  const execStatus: ExecStatus = !jobId
     ? "idle"
-    : job?.status === "completed"
-      ? "complete"
-      : job?.status === "failed"
-        ? "error"
-        : "running";
+    : job?.status === "failed"
+      ? "error"
+      : job?.status === "completed"
+        ? "complete"
+        : jobPhase === "indexing" || jobPhase === "initializing"
+          ? "indexing"
+          : "evaluating";
 
-  const phase = job?.progress?.message ?? (job?.phase ? `${job.phase}...` : "Starting...");
-  const completedScores = currentExperiment?.scores as Record<string, number> | undefined;
+  const isIndexingDone =
+    execStatus === "evaluating" || execStatus === "complete";
+  const isRunning = execStatus === "indexing" || execStatus === "evaluating";
 
-  async function handleRunExperiment() {
-    if (!selectedDatasetId || status === "running") return;
+  // Capture chunk count while indexing is in progress (before progress switches to evaluation)
+  const [indexedChunkCount, setIndexedChunkCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (jobPhase === "indexing" && jobProgress?.total) {
+      setIndexedChunkCount(jobProgress.total);
+    }
+    if (execStatus === "idle") {
+      setIndexedChunkCount(null);
+    }
+  }, [jobPhase, jobProgress, execStatus]);
+
+  const completedScores = currentExperiment?.scores as
+    | Record<string, number>
+    | undefined;
+
+  // --- Handlers ---
+
+  function handlePresetSelect(presetOrSavedName: string) {
+    if (!presetOrSavedName) return;
+
+    // Check presets first
+    const preset = PRESET_CONFIGS[presetOrSavedName];
+    if (preset) {
+      setPipelineConfig(preset);
+      setConfigName(presetOrSavedName);
+      setBasePreset(presetOrSavedName);
+      setK(5);
+      setIsModified(false);
+      setLastConfigName(presetOrSavedName);
+      return;
+    }
+
+    // Check saved configs
+    const saved = savedConfigs[presetOrSavedName];
+    if (saved) {
+      setPipelineConfig(saved.config);
+      setConfigName(saved.name);
+      setBasePreset(saved.basePreset);
+      setK(saved.k);
+      setIsModified(!isPresetUnmodified(saved.config, saved.k, saved.basePreset));
+      setLastConfigName(saved.name);
+    }
+  }
+
+  function handleModalSave(saved: SavedPipelineConfig) {
+    setPipelineConfig(saved.config);
+    setConfigName(saved.name);
+    setBasePreset(saved.basePreset);
+    setK(saved.k);
+    setIsModified(!isPresetUnmodified(saved.config, saved.k, saved.basePreset));
+    setSavedConfigs(loadSavedConfigs());
+    setShowModal(false);
+  }
+
+  function handleDeleteSaved(name: string) {
+    deleteConfig(name);
+    setSavedConfigs(loadSavedConfigs());
+  }
+
+  async function handleStartPipeline() {
+    if (!selectedDatasetId || !pipelineConfig || isRunning) return;
 
     setError(null);
 
@@ -113,7 +201,7 @@ export default function ExperimentsPage() {
       const result = await startExperiment({
         datasetId: selectedDatasetId,
         name: experimentName,
-        retrieverConfig: config,
+        retrieverConfig: { ...pipelineConfig, autoStart },
         k,
         metricNames: selectedMetrics,
       });
@@ -125,7 +213,15 @@ export default function ExperimentsPage() {
     }
   }
 
-  const canRun = selectedDatasetId && status !== "running";
+  const canRun = !!selectedDatasetId && !!pipelineConfig && !isRunning;
+
+  // --- Dropdown value ---
+  const dropdownValue = isModified ? configName : basePreset;
+
+  // --- Saved config names (excluding presets) ---
+  const savedConfigNames = Object.keys(savedConfigs).filter(
+    (name) => !PRESET_NAMES.includes(name),
+  );
 
   return (
     <div className="flex flex-col h-screen">
@@ -190,94 +286,56 @@ export default function ExperimentsPage() {
                   </div>
                 )}
 
-                {/* Chunker Config */}
-                <div className="border border-border rounded bg-bg-elevated p-3 space-y-3">
-                  <div className="text-xs text-text-dim uppercase tracking-wide">
-                    Chunker
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="flex-1">
-                      <label className="text-xs text-text-muted">Size</label>
-                      <input
-                        type="number"
-                        value={config.chunker.chunkSize}
-                        onChange={(e) =>
-                          setConfig({
-                            ...config,
-                            chunker: {
-                              ...config.chunker,
-                              chunkSize: parseInt(e.target.value) || 512,
-                            },
-                          })
-                        }
-                        className="w-full bg-bg border border-border rounded px-2 py-1 text-sm text-text focus:border-accent outline-none"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className="text-xs text-text-muted">Overlap</label>
-                      <input
-                        type="number"
-                        value={config.chunker.chunkOverlap}
-                        onChange={(e) =>
-                          setConfig({
-                            ...config,
-                            chunker: {
-                              ...config.chunker,
-                              chunkOverlap: parseInt(e.target.value) || 50,
-                            },
-                          })
-                        }
-                        className="w-full bg-bg border border-border rounded px-2 py-1 text-sm text-text focus:border-accent outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Embedder Config */}
-                <div className="border border-border rounded bg-bg-elevated p-3 space-y-3">
-                  <div className="text-xs text-text-dim uppercase tracking-wide">
-                    Embedder
+                {/* Retriever Preset Dropdown */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-text-muted uppercase tracking-wide">
+                      Retriever
+                    </label>
+                    {isModified && (
+                      <span className="text-[10px] text-text-dim">(modified)</span>
+                    )}
                   </div>
                   <select
-                    value={config.embedder.model}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        embedder: { ...config.embedder, model: e.target.value },
-                      })
-                    }
-                    className="w-full bg-bg border border-border rounded px-2 py-1 text-sm text-text focus:border-accent outline-none"
+                    value={dropdownValue}
+                    onChange={(e) => handlePresetSelect(e.target.value)}
+                    className="w-full bg-bg-elevated border border-border rounded px-3 py-2 text-sm text-text focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none"
                   >
-                    <option value="text-embedding-3-small">
-                      text-embedding-3-small
+                    <option value="" disabled>
+                      Select retriever preset...
                     </option>
-                    <option value="text-embedding-3-large">
-                      text-embedding-3-large
-                    </option>
-                    <option value="text-embedding-ada-002">
-                      text-embedding-ada-002
-                    </option>
+                    <optgroup label="Presets">
+                      {PRESET_NAMES.map((name) => (
+                        <option key={name} value={name}>
+                          {name} — {PRESET_DESCRIPTIONS[name]}
+                        </option>
+                      ))}
+                    </optgroup>
+                    {savedConfigNames.length > 0 && (
+                      <optgroup label="Saved Configurations">
+                        {savedConfigNames.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
 
-                {/* K Parameter */}
-                <div className="border border-border rounded bg-bg-elevated p-3 space-y-3">
-                  <div className="text-xs text-text-dim uppercase tracking-wide">
-                    Parameters
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <label className="text-xs text-text-muted">
-                      k (top results)
-                    </label>
-                    <input
-                      type="number"
-                      value={k}
-                      onChange={(e) => setK(parseInt(e.target.value) || 5)}
-                      min={1}
-                      max={100}
-                      className="w-20 bg-bg border border-border rounded px-2 py-1 text-sm text-text focus:border-accent outline-none"
+                {/* Pipeline Summary or Configure Button */}
+                <div className="border border-border rounded bg-bg-elevated p-3">
+                  {pipelineConfig ? (
+                    <PipelineConfigSummary
+                      config={pipelineConfig}
+                      k={k}
+                      configName={configName}
+                      isModified={isModified}
+                      onEdit={() => setShowModal(true)}
                     />
-                  </div>
+                  ) : (
+                    <ConfigurePipelineButton onClick={() => setShowModal(true)} />
+                  )}
                 </div>
 
                 {/* Metrics */}
@@ -335,126 +393,182 @@ export default function ExperimentsPage() {
           </div>
         </div>
 
-        {/* Right: Console Panel */}
+        {/* Right: Execution Panel */}
         <div className="flex-1 flex flex-col overflow-hidden bg-bg">
           <div className="p-4 space-y-4 overflow-y-auto">
-            {/* Status Panel */}
-            <div
-              className={`border rounded-lg p-4 ${
-                status === "running"
-                  ? "border-accent/30 bg-accent/5"
-                  : status === "complete"
-                    ? "border-accent/30 bg-accent/5"
-                    : status === "error"
-                      ? "border-red-500/30 bg-red-500/5"
-                      : "border-border bg-bg-elevated"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    status === "running"
-                      ? "bg-accent animate-pulse"
-                      : status === "complete"
-                        ? "bg-accent"
-                        : status === "error"
-                          ? "bg-red-500"
-                          : "bg-text-dim"
-                  }`}
-                />
-                <span
-                  className={`uppercase text-sm tracking-wide ${
-                    status === "running"
-                      ? "text-accent"
-                      : status === "complete"
-                        ? "text-accent"
-                        : status === "error"
-                          ? "text-red-500"
-                          : "text-text-dim"
-                  }`}
+            {/* Phase 1: Indexing */}
+            <PhaseCard
+              number={1}
+              label="Indexing"
+              status={
+                execStatus === "idle"
+                  ? "pending"
+                  : execStatus === "indexing"
+                    ? "running"
+                    : execStatus === "error" && !isIndexingDone
+                      ? "error"
+                      : "complete"
+              }
+              pendingText="Will chunk, embed, and store documents using your Index configuration."
+              runningText={
+                jobProgress?.message ?? (jobPhase ? `${jobPhase}...` : "Starting...")
+              }
+              completeContent={
+                <div className="space-y-1">
+                  <p className="text-text-muted text-sm">
+                    Indexing complete{indexedChunkCount ? ` · ${indexedChunkCount} chunks` : ""}
+                  </p>
+                  <a
+                    href={`https://dashboard.convex.dev`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors"
+                  >
+                    View in Convex Dashboard
+                    <ExternalLinkIcon />
+                  </a>
+                </div>
+              }
+              errorText={error || job?.error || "Indexing failed"}
+            />
+
+            {/* Connector */}
+            <div className="flex justify-center">
+              <div className="flex flex-col items-center">
+                <div className="w-px h-4 bg-border" />
+                <svg
+                  className="w-3 h-3 text-text-dim"
+                  fill="currentColor"
+                  viewBox="0 0 12 12"
                 >
-                  {status === "idle"
-                    ? "Idle"
-                    : status === "running"
-                      ? "Running"
-                      : status === "complete"
-                        ? "Complete"
-                        : "Error"}
-                </span>
+                  <path d="M6 9L2 5h8L6 9z" />
+                </svg>
               </div>
-
-              {status === "idle" && (
-                <p className="text-text-muted text-sm mt-2">
-                  Configure your experiment and click Run
-                </p>
-              )}
-
-              {status === "running" && (
-                <div className="mt-3">
-                  <p className="text-text text-sm">{experimentName}</p>
-                  <p className="text-text-muted text-sm mt-1">{phase}</p>
-                </div>
-              )}
-
-              {status === "complete" && completedScores && (
-                <div className="mt-3">
-                  <p className="text-text text-sm font-medium mb-2">
-                    {experimentName}
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(completedScores).map(([key, value]) => (
-                      <div key={key} className="bg-bg rounded p-2">
-                        <span className="text-text-dim text-xs capitalize">
-                          {key}
-                        </span>
-                        <span className="block text-accent text-lg font-medium">
-                          {(value as number).toFixed(3)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {status === "error" && (
-                <div className="mt-3">
-                  <p className="text-red-400 text-sm">
-                    {error || job?.error || "Unknown error"}
-                  </p>
-                </div>
-              )}
             </div>
 
-            {/* Run Button */}
-            <button
-              onClick={handleRunExperiment}
-              disabled={!canRun}
-              className={`w-full py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors ${
-                canRun
-                  ? "bg-accent hover:bg-accent/90 text-bg-elevated cursor-pointer"
-                  : "bg-border text-text-dim cursor-not-allowed"
-              }`}
-            >
-              {status === "running" ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-bg-elevated/30 border-t-bg-elevated rounded-full animate-spin" />
-                  Running...
-                </>
-              ) : (
-                <>
-                  <span>Run Experiment</span>
-                  <svg
-                    className="w-4 h-4"
-                    fill="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </>
-              )}
-            </button>
+            {/* Phase 2: Evaluation */}
+            <PhaseCard
+              number={2}
+              label="Evaluation"
+              status={
+                execStatus === "idle" || execStatus === "indexing"
+                  ? "pending"
+                  : execStatus === "evaluating"
+                    ? "running"
+                    : execStatus === "error" && isIndexingDone
+                      ? "error"
+                      : execStatus === "complete"
+                        ? "complete"
+                        : "pending"
+              }
+              pendingText={
+                execStatus === "indexing"
+                  ? autoStart
+                    ? "Will start automatically after indexing completes."
+                    : "Will wait for you to start after indexing completes."
+                  : "Will run retrieval + scoring against dataset using Search + Refinement stages."
+              }
+              pendingContent={
+                !autoStart && isIndexingDone ? (
+                  <div className="space-y-2">
+                    <p className="text-text-muted text-sm">Indexing complete. Ready to evaluate.</p>
+                    <button
+                      onClick={handleStartPipeline}
+                      disabled={!canRun}
+                      className="px-4 py-1.5 rounded border text-xs font-semibold uppercase tracking-wider
+                                 transition-all cursor-pointer
+                                 bg-accent/10 border-accent/30 text-accent hover:bg-accent/20
+                                 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      Run Experiment
+                    </button>
+                  </div>
+                ) : undefined
+              }
+              runningText={
+                jobProgress?.message ?? "Evaluating..."
+              }
+              completeContent={
+                completedScores ? (
+                  <div className="space-y-3">
+                    <p className="text-text text-sm font-medium">
+                      {experimentName}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {Object.entries(completedScores).map(([key, value]) => (
+                        <div key={key} className="bg-bg rounded p-2">
+                          <span className="text-text-dim text-xs capitalize">
+                            {key === "iou" ? "IoU" : key}
+                          </span>
+                          <span className="block text-accent text-lg font-medium">
+                            {(value as number).toFixed(3)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {currentExperiment?.langsmithUrl && (
+                      <a
+                        href={currentExperiment.langsmithUrl as string}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors"
+                      >
+                        View in LangSmith
+                        <ExternalLinkIcon />
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-text-muted text-sm">Experiment complete</p>
+                )
+              }
+              errorText={error || job?.error || "Evaluation failed"}
+            />
 
-            {/* Experiments List */}
+            {/* Auto-start toggle + Run button */}
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoStart}
+                  onChange={(e) => setAutoStart(e.target.checked)}
+                  className="w-4 h-4 rounded border-border bg-bg text-accent focus:ring-accent/50"
+                />
+                <span className="text-sm text-text-muted">
+                  Auto-start experiment after indexing
+                </span>
+              </label>
+
+              <button
+                onClick={handleStartPipeline}
+                disabled={!canRun}
+                className={`w-full py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors ${
+                  canRun
+                    ? "bg-accent hover:bg-accent/90 text-bg-elevated cursor-pointer"
+                    : "bg-border text-text-dim cursor-not-allowed"
+                }`}
+              >
+                {isRunning ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-bg-elevated/30 border-t-bg-elevated rounded-full animate-spin" />
+                    Running...
+                  </>
+                ) : (
+                  <>
+                    <span>Start Pipeline</span>
+                    <svg
+                      className="w-4 h-4"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Recent Experiments */}
             {selectedDatasetId && (
               <div className="border border-border rounded-lg bg-bg-elevated">
                 <div className="px-4 py-2 border-b border-border text-xs text-text-dim uppercase tracking-wider">
@@ -492,9 +606,12 @@ export default function ExperimentsPage() {
                         </div>
                         {exp.scores &&
                           typeof exp.scores === "object" &&
-                          Object.keys(exp.scores as Record<string, number>).length > 0 && (
+                          Object.keys(exp.scores as Record<string, number>)
+                            .length > 0 && (
                             <div className="flex gap-4 mt-2 text-sm">
-                              {Object.entries(exp.scores as Record<string, number>)
+                              {Object.entries(
+                                exp.scores as Record<string, number>,
+                              )
                                 .slice(0, 4)
                                 .map(([key, value]) => (
                                   <span key={key} className="text-text-muted">
@@ -514,19 +631,7 @@ export default function ExperimentsPage() {
                             className="inline-flex items-center gap-1 text-xs text-text-dim hover:text-accent mt-3 transition-colors"
                           >
                             View in LangSmith
-                            <svg
-                              className="w-3 h-3"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                              />
-                            </svg>
+                            <ExternalLinkIcon />
                           </a>
                         )}
                       </div>
@@ -538,7 +643,136 @@ export default function ExperimentsPage() {
           </div>
         </div>
       </div>
+
+      {/* Pipeline Config Modal */}
+      {showModal && pipelineConfig && (
+        <PipelineConfigModal
+          initialConfig={pipelineConfig}
+          initialK={k}
+          initialName={configName}
+          basePreset={basePreset}
+          onSave={handleModalSave}
+          onClose={() => setShowModal(false)}
+        />
+      )}
     </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// PhaseCard component
+// ---------------------------------------------------------------------------
+
+type PhaseStatus = "pending" | "running" | "complete" | "error";
+
+function PhaseCard({
+  number,
+  label,
+  status,
+  pendingText,
+  pendingContent,
+  runningText,
+  completeContent,
+  errorText,
+}: {
+  number: number;
+  label: string;
+  status: PhaseStatus;
+  pendingText: string;
+  pendingContent?: React.ReactNode;
+  runningText: string;
+  completeContent: React.ReactNode;
+  errorText: string;
+}) {
+  const borderClass =
+    status === "running"
+      ? "border-accent/30 bg-accent/5"
+      : status === "complete"
+        ? "border-accent/30 bg-accent/5"
+        : status === "error"
+          ? "border-red-500/30 bg-red-500/5"
+          : "border-border bg-bg-elevated";
+
+  const dotClass =
+    status === "running"
+      ? "bg-accent animate-pulse"
+      : status === "complete"
+        ? "bg-accent"
+        : status === "error"
+          ? "bg-red-500"
+          : "bg-text-dim";
+
+  const labelClass =
+    status === "running"
+      ? "text-accent"
+      : status === "complete"
+        ? "text-accent"
+        : status === "error"
+          ? "text-red-500"
+          : "text-text-dim";
+
+  const statusLabel =
+    status === "pending"
+      ? "Pending"
+      : status === "running"
+        ? "Running"
+        : status === "complete"
+          ? "Complete"
+          : "Error";
+
+  return (
+    <div className={`border rounded-lg p-4 ${borderClass}`}>
+      <div className="flex items-center gap-3 mb-2">
+        <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold bg-bg-surface text-text-dim border border-border">
+          {number}
+        </span>
+        <span className="text-sm text-text font-medium">Phase {number}: {label}</span>
+        <span className={`ml-auto flex items-center gap-1.5 text-xs uppercase tracking-wide ${labelClass}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
+          {statusLabel}
+        </span>
+      </div>
+
+      {status === "pending" && (
+        pendingContent ?? <p className="text-text-muted text-sm">{pendingText}</p>
+      )}
+
+      {status === "running" && (
+        <div>
+          <p className="text-text-muted text-sm">{runningText}</p>
+          <div className="mt-2 h-1 bg-bg-surface rounded-full overflow-hidden">
+            <div className="h-full bg-accent/60 rounded-full animate-pulse w-2/3" />
+          </div>
+        </div>
+      )}
+
+      {status === "complete" && completeContent}
+
+      {status === "error" && (
+        <p className="text-red-400 text-sm">{errorText}</p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
+
+function ExternalLinkIcon() {
+  return (
+    <svg
+      className="w-3 h-3"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+      />
+    </svg>
+  );
+}
