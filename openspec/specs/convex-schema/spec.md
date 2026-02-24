@@ -51,7 +51,7 @@ The system SHALL define a `questions` table with fields: `datasetId` (Id referen
 - **THEN** the query SHALL return only questions generated from that specific document
 
 ### Requirement: Experiments table
-The system SHALL define an `experiments` table with fields: `orgId` (string), `datasetId` (Id referencing `datasets`), `name` (string), `retrieverConfig` (object, chunker/embedder/vectorStore/reranker config), `k` (number, top-k retrieval count), `metricNames` (array of strings), `status` (string, one of `"pending"`, `"running"`, `"completed"`, `"failed"`), `scores` (optional object, aggregate metric scores), `langsmithExperimentId` (optional string), `langsmithUrl` (optional string), `langsmithSyncStatus` (optional string), `error` (optional string), `createdBy` (Id referencing `users`), and `createdAt` (number). The table SHALL have indexes `by_org` on `["orgId"]` and `by_dataset` on `["datasetId"]`.
+The system SHALL define an `experiments` table with fields: `orgId` (string), `datasetId` (Id referencing `datasets`), `name` (string), `retrieverConfig` (object, chunker/embedder/vectorStore/reranker config), `k` (number, top-k retrieval count), `metricNames` (array of strings), `status` (string, one of `"pending"`, `"running"`, `"completed"`, `"failed"`), `indexConfigHash` (optional string, SHA-256 hash of the IndexConfig used during the experiment's indexing phase), `scores` (optional object, aggregate metric scores), `langsmithExperimentId` (optional string), `langsmithUrl` (optional string), `langsmithSyncStatus` (optional string), `error` (optional string), `createdBy` (Id referencing `users`), and `createdAt` (number). The table SHALL have indexes `by_org` on `["orgId"]` and `by_dataset` on `["datasetId"]`.
 
 #### Scenario: List experiments for a dataset
 - **WHEN** querying `experiments` with index `by_dataset` and a valid dataset ID
@@ -83,12 +83,31 @@ The system SHALL define a `jobItems` table with fields: `jobId` (Id referencing 
 - **THEN** the results can be counted by status to compute progress (done/total)
 
 ### Requirement: Document chunks table with vector index
-The system SHALL define a `documentChunks` table with fields: `documentId` (Id referencing `documents`), `kbId` (Id referencing `knowledgeBases`), `chunkId` (string, PositionAwareChunkId), `content` (string, chunk text), `start` (number, character position in source document), `end` (number, character position in source document), `embedding` (array of float64), and `metadata` (object). The table SHALL have indexes `by_document` on `["documentId"]` and `by_kb` on `["kbId"]`. The table SHALL have a vector index `by_embedding` with `vectorField: "embedding"`, `dimensions: 1536`, and `filterFields: ["kbId"]`.
+The system SHALL define a `documentChunks` table with fields: `documentId` (Id referencing `documents`), `kbId` (Id referencing `knowledgeBases`), `indexConfigHash` (string, SHA-256 hash of the IndexConfig used to create these chunks), `chunkId` (string, PositionAwareChunkId), `content` (string, chunk text), `start` (number, character position in source document), `end` (number, character position in source document), `embedding` (optional array of float64 — null during Phase A of two-phase indexing, set during Phase B), and `metadata` (object). The table SHALL have indexes `by_document` on `["documentId"]`, `by_kb` on `["kbId"]`, `by_kb_config` on `["kbId", "indexConfigHash"]`, and `by_doc_config` on `["documentId", "indexConfigHash"]`. The table SHALL have a vector index `by_embedding` with `vectorField: "embedding"`, `dimensions: 1536`, and `filterFields: ["kbId", "indexConfigHash"]`. Chunks with no embedding set SHALL be automatically excluded from vector search results by Convex's vector index behavior.
 
-#### Scenario: Vector search within knowledge base
-- **WHEN** performing a vector search on `documentChunks` with index `by_embedding` filtered by `kbId`
-- **THEN** the query SHALL return chunks ordered by embedding similarity, scoped to the specified knowledge base
+#### Scenario: Vector search within knowledge base scoped by index config
+- **WHEN** performing a vector search on `documentChunks` with index `by_embedding` filtered by `kbId` and `indexConfigHash`
+- **THEN** the query SHALL return only chunks that have embeddings, ordered by embedding similarity, scoped to the specified knowledge base and index configuration
 
 #### Scenario: Chunks preserve character positions
 - **WHEN** a document chunk is stored
 - **THEN** the `start` and `end` fields SHALL accurately represent the character-level positions in the source document, such that `document.content.substring(chunk.start, chunk.end) === chunk.content`
+
+#### Scenario: Un-embedded chunks invisible to search
+- **WHEN** chunks are inserted without embeddings (Phase A of two-phase indexing)
+- **THEN** those chunks SHALL NOT appear in vector search results until their embeddings are patched in Phase B
+
+#### Scenario: Query chunks by document and config
+- **WHEN** querying `documentChunks` with index `by_doc_config` filtered by `documentId` and `indexConfigHash`
+- **THEN** the query SHALL return all chunks for that document under that specific index configuration
+
+### Requirement: Indexing jobs table
+The system SHALL define an `indexingJobs` table with fields: `orgId` (string), `kbId` (Id referencing `knowledgeBases`), `indexConfigHash` (string), `indexConfig` (any, serialized IndexConfig for display), `status` (string, one of `"pending"`, `"running"`, `"completed"`, `"completed_with_errors"`, `"failed"`, `"canceling"`, `"canceled"`), `totalDocs` (number), `processedDocs` (number), `failedDocs` (number), `skippedDocs` (number), `totalChunks` (number), `error` (optional string, job-level error), `failedDocDetails` (optional array of objects with `documentId` (Id referencing `documents`) and `error` (string)), `createdBy` (Id referencing `users`), `createdAt` (number, epoch ms), and `completedAt` (optional number, epoch ms). The table SHALL have indexes `by_kb_config` on `["kbId", "indexConfigHash"]`, `by_org` on `["orgId"]`, and `by_status` on `["orgId", "status"]`.
+
+#### Scenario: Query active indexing job for a KB config
+- **WHEN** querying `indexingJobs` with index `by_kb_config` filtered by `kbId` and `indexConfigHash`
+- **THEN** the query SHALL return all indexing jobs for that KB and config combination, allowing dedup checks
+
+#### Scenario: List indexing jobs by org
+- **WHEN** querying `indexingJobs` with index `by_org` filtered by `orgId`
+- **THEN** the query SHALL return all indexing jobs for that organization

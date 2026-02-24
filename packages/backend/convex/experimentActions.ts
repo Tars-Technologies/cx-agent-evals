@@ -4,9 +4,9 @@ import { internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import { indexSingleDocument } from "./ragActions";
 import {
   CallbackRetriever,
+  computeIndexConfigHash,
   createCorpusFromDocuments,
   createDocument,
   DocumentId,
@@ -55,27 +55,78 @@ export const runExperiment = internalAction({
         progress: { current: 0, total: 4, message: "Starting experiment..." },
       });
 
-      // ── Step 1: Ensure KB is indexed ──
-      const isIndexed = await ctx.runQuery(internal.rag.isIndexed, {
-        kbId: args.kbId,
+      // ── Step 0: Load experiment to get retriever config ──
+      const experiment = await ctx.runQuery(internal.experiments.getInternal, {
+        id: args.experimentId,
+      });
+      // retrieverConfig is a PipelineConfig — index settings are nested under .index
+      const retrieverConfig = experiment.retrieverConfig as Record<string, any>;
+      const indexSettings = (retrieverConfig.index ?? {}) as Record<string, any>;
+      const embeddingModel =
+        (indexSettings.embeddingModel as string) ?? "text-embedding-3-small";
+
+      // Compute index config hash for chunk namespacing
+      const indexConfig = {
+        strategy: "plain" as const,
+        chunkSize: (indexSettings.chunkSize as number) ?? 1000,
+        chunkOverlap: (indexSettings.chunkOverlap as number) ?? 200,
+        separators: indexSettings.separators as string[] | undefined,
+        embeddingModel,
+      };
+      const indexConfigHash = computeIndexConfigHash({
+        name: retrieverConfig.name ?? "experiment",
+        index: indexConfig,
       });
 
-      if (!isIndexed) {
-        const docs = await ctx.runQuery(internal.documents.listByKbInternal, {
+      // ── Step 1: Ensure KB is indexed via indexing service ──
+      const indexResult = await ctx.runMutation(
+        internal.indexing.startIndexing,
+        {
+          orgId: experiment.orgId,
           kbId: args.kbId,
+          indexConfigHash,
+          indexConfig,
+          createdBy: experiment.createdBy,
+        },
+      );
+
+      if (!indexResult.alreadyCompleted) {
+        await ctx.runMutation(internal.jobs.update, {
+          jobId: args.jobId,
+          phase: "indexing",
+          progress: { current: 0, total: 1, message: "Indexing knowledge base..." },
         });
 
-        for (let i = 0; i < docs.length; i++) {
+        // Poll until indexing job completes
+        let indexingDone = false;
+        while (!indexingDone) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const indexJob = await ctx.runQuery(
+            internal.indexing.getJobInternal,
+            { jobId: indexResult.jobId },
+          );
+          if (!indexJob) throw new Error("Indexing job disappeared");
+
           await ctx.runMutation(internal.jobs.update, {
             jobId: args.jobId,
             phase: "indexing",
             progress: {
-              current: i,
-              total: docs.length,
-              message: `Indexing document ${i + 1}/${docs.length}...`,
+              current: indexJob.processedDocs,
+              total: indexJob.totalDocs,
+              message: `Indexing ${indexJob.processedDocs}/${indexJob.totalDocs} documents...`,
             },
           });
-          await indexSingleDocument(ctx, docs[i]._id, {});
+
+          if (
+            indexJob.status === "completed" ||
+            indexJob.status === "completed_with_errors"
+          ) {
+            indexingDone = true;
+          } else if (indexJob.status === "failed") {
+            throw new Error("Indexing failed: " + (indexJob.error ?? "unknown"));
+          } else if (indexJob.status === "canceled") {
+            throw new Error("Indexing was canceled");
+          }
         }
       }
 
@@ -108,10 +159,6 @@ export const runExperiment = internalAction({
         progress: { current: 2, total: 4, message: "Running evaluation via LangSmith..." },
       });
 
-      const experiment = await ctx.runQuery(internal.experiments.getInternal, {
-        id: args.experimentId,
-      });
-
       // Load all documents to build corpus
       const docs = await ctx.runQuery(internal.documents.listByKbInternal, {
         kbId: args.kbId,
@@ -121,9 +168,6 @@ export const runExperiment = internalAction({
       );
 
       // Create embedder for query embedding
-      const retrieverConfig = experiment.retrieverConfig as Record<string, unknown>;
-      const embeddingModel =
-        (retrieverConfig.embeddingModel as string) ?? "text-embedding-3-small";
       const embedder = createEmbedder(embeddingModel);
 
       // Build query → questionId lookup for onResult callback
@@ -141,12 +185,15 @@ export const runExperiment = internalAction({
         name: "convex-vector-search",
         retrieveFn: async (query: string, topK: number) => {
           const queryEmbedding = await embedder.embedQuery(query);
+          // vectorSearch filter only supports eq and or — no AND.
+          // Filter by kbId in vector search, post-filter by indexConfigHash.
+          const vectorLimit = Math.min(topK * 4, 256);
           const searchResults = await ctx.vectorSearch(
             "documentChunks",
             "by_embedding",
             {
               vector: queryEmbedding,
-              limit: topK,
+              limit: vectorLimit,
               filter: (q: any) => q.eq("kbId", args.kbId),
             },
           );
@@ -155,7 +202,12 @@ export const runExperiment = internalAction({
             ids: searchResults.map((r: any) => r._id),
           });
 
-          return chunks.map(
+          // Post-filter by indexConfigHash and take top-K
+          const filtered = chunks
+            .filter((c: any) => c.indexConfigHash === indexConfigHash)
+            .slice(0, topK);
+
+          return filtered.map(
             (c: any): PositionAwareChunk => ({
               id: PositionAwareChunkId(c.chunkId),
               content: c.content,

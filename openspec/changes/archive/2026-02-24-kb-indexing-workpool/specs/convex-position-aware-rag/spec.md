@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Chunk storage mutations and queries
 The system SHALL provide in `convex/rag.ts` (a regular file, NOT `"use node"`):
@@ -47,7 +47,7 @@ Vector search SHALL be performed inline within Convex actions using `ctx.vectorS
 - **THEN** those un-embedded chunks SHALL NOT appear in search results
 
 ### Requirement: Position-aware chunking in indexing action
-The system SHALL provide an `indexDocument` internalAction in `convex/indexingActions.ts` (a `"use node"` file) that implements two-phase document processing. The action SHALL use eval-lib's `RecursiveCharacterChunker` for chunking and `OpenAIEmbedder` for embedding, with parameters from the `IndexConfig`.
+The system SHALL provide an `indexDocument` internalAction in `convex/indexingActions.ts` (a `"use node"` file) that implements two-phase document processing. This replaces the previous `indexSingleDocument` helper in `ragActions.ts`. The action SHALL use eval-lib's `RecursiveCharacterChunker` for chunking and `OpenAIEmbedder` for embedding, with parameters from the `IndexConfig`.
 
 #### Scenario: Document chunked with character positions
 - **WHEN** indexing a document with 5000 characters using chunk size 1000 and overlap 200
@@ -57,12 +57,12 @@ The system SHALL provide an `indexDocument` internalAction in `convex/indexingAc
 - **WHEN** a chunk is created with `start: 1000` and `end: 1500`
 - **THEN** `chunk.content` SHALL equal `document.content.substring(1000, 1500)`
 
-### Requirement: Retrieval results as CharacterSpans
-After hydration via `fetchChunksWithDocs`, the results SHALL be mapped to eval-lib's `CharacterSpan` interface: `{ docId: chunk.docId, start: chunk.start, end: chunk.end, text: chunk.content }`. Note the field rename: chunk's `content` maps to span's `text`. This enables direct use with eval-lib's metric functions.
+## REMOVED Requirements
 
-#### Scenario: Retrieved chunks used directly for metric computation
-- **WHEN** retrieval results are mapped to spans and passed to eval-lib's `recall(retrievedSpans, groundTruthSpans)`
-- **THEN** the metrics SHALL compute correctly because both use the same `CharacterSpan` structure with matching `docId` references
+### Requirement: Position-aware chunking helper
+**Reason**: Replaced by the new two-phase `indexDocument` action in `indexingActions.ts`. The old `indexSingleDocument` helper in `ragActions.ts` is no longer needed — the new action handles chunking, embedding, and storage with proper checkpointing and WorkPool integration.
+**Migration**: Use `indexingPool.enqueueAction(internal.indexingActions.indexDocument, ...)` instead of calling `indexSingleDocument()` directly.
 
-### Requirement: Optional reranking
-**NOT YET IMPLEMENTED** — The system does not currently support reranking. Vector search results are returned directly as top-k without a reranking step. This may be added in a future change.
+### Requirement: Batch document indexing via experiment pipeline
+**Reason**: Replaced by the standalone indexing service. The experiment runner SHALL delegate indexing to `startIndexing` instead of running its own batch processing loop with the custom `batchProcessor`.
+**Migration**: In `experimentActions.ts`, replace the inline for-loop indexing with a call to `internal.indexing.startIndexing` and wait for the indexing job to complete.

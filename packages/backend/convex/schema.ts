@@ -86,6 +86,7 @@ export default defineSchema({
     k: v.number(),
     metricNames: v.array(v.string()),
     status: v.string(),
+    indexConfigHash: v.optional(v.string()),
     scores: v.optional(v.any()),
     langsmithExperimentId: v.optional(v.string()),
     langsmithUrl: v.optional(v.string()),
@@ -145,18 +146,58 @@ export default defineSchema({
   documentChunks: defineTable({
     documentId: v.id("documents"),
     kbId: v.id("knowledgeBases"),
+    indexConfigHash: v.optional(v.string()),
     chunkId: v.string(),
     content: v.string(),
     start: v.number(),
     end: v.number(),
-    embedding: v.array(v.float64()),
+    embedding: v.optional(v.array(v.float64())),
     metadata: v.any(),
   })
     .index("by_document", ["documentId"])
     .index("by_kb", ["kbId"])
+    .index("by_kb_config", ["kbId", "indexConfigHash"])
+    .index("by_doc_config", ["documentId", "indexConfigHash"])
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
       dimensions: 1536,
-      filterFields: ["kbId"],
+      filterFields: ["kbId", "indexConfigHash"],
     }),
+
+  // ─── Indexing Jobs (WorkPool-based KB indexing tracking) ───
+  indexingJobs: defineTable({
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    indexConfigHash: v.string(),
+    indexConfig: v.any(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("completed_with_errors"),
+      v.literal("failed"),
+      v.literal("canceling"),
+      v.literal("canceled"),
+    ),
+    totalDocs: v.number(),
+    processedDocs: v.number(),
+    failedDocs: v.number(),
+    skippedDocs: v.number(),
+    totalChunks: v.number(),
+    error: v.optional(v.string()),
+    failedDocDetails: v.optional(
+      v.array(
+        v.object({
+          documentId: v.id("documents"),
+          error: v.string(),
+        }),
+      ),
+    ),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_kb_config", ["kbId", "indexConfigHash"])
+    .index("by_org", ["orgId"])
+    .index("by_status", ["orgId", "status"]),
 });

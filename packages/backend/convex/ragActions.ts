@@ -24,8 +24,8 @@ function createEmbedder(model?: string) {
 // ─── Index Single Document ───
 
 /**
+ * @deprecated Use indexingActions.indexDocument (WorkPool-dispatched, two-phase) instead.
  * Chunk, embed, and insert a single document into documentChunks.
- * Called per-document during the experiment indexing phase.
  */
 export async function indexSingleDocument(
   ctx: {
