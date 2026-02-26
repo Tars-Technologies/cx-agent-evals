@@ -8,12 +8,12 @@ export function ModeSelector() {
     <div className="flex flex-col min-h-screen bg-bg">
       <Header />
       <div className="flex-1 flex items-center justify-center p-8">
-      <div className="max-w-3xl w-full">
+      <div className="max-w-5xl w-full">
         <div className="text-center mb-12">
           <div className="flex items-center justify-center gap-3 mb-4">
             <div className="w-3 h-3 rounded-full bg-accent animate-pulse-dot" />
             <h1 className="text-2xl font-semibold tracking-wide text-text">
-              rag-eval
+              CX Agent Evals
             </h1>
           </div>
           <p className="text-text-muted text-sm">

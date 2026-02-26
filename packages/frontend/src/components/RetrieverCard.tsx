@@ -2,6 +2,12 @@
 
 import type { Id } from "@convex/_generated/dataModel";
 
+interface IndexingProgress {
+  totalDocs: number;
+  processedDocs: number;
+  failedDocs: number;
+}
+
 interface RetrieverCardProps {
   retriever: {
     _id: Id<"retrievers">;
@@ -12,12 +18,17 @@ interface RetrieverCardProps {
     error?: string;
     defaultK: number;
     indexConfigHash: string;
+    indexingJobId?: string;
     createdAt: number;
   };
+  indexingProgress?: IndexingProgress | null;
   isSelected: boolean;
+  isHighlighted?: boolean;
   onToggleSelect: (id: Id<"retrievers">) => void;
+  onStartIndexing: (id: Id<"retrievers">) => void;
+  onCancelIndexing: (id: Id<"retrievers">, jobId?: string) => void;
+  onDeleteIndex: (id: Id<"retrievers">) => void;
   onDelete: (id: Id<"retrievers">) => void;
-  onCleanup: (id: Id<"retrievers">) => void;
 }
 
 const STATUS_STYLES: Record<string, { dot: string; label: string; bg: string }> = {
@@ -29,19 +40,23 @@ const STATUS_STYLES: Record<string, { dot: string; label: string; bg: string }> 
 
 export function RetrieverCard({
   retriever,
+  indexingProgress,
   isSelected,
+  isHighlighted,
   onToggleSelect,
+  onStartIndexing,
+  onCancelIndexing,
+  onDeleteIndex,
   onDelete,
-  onCleanup,
 }: RetrieverCardProps) {
   const style = STATUS_STYLES[retriever.status] ?? STATUS_STYLES.configuring;
   const config = retriever.retrieverConfig as { search?: { strategy?: string }; k?: number } | null;
   const searchStrategy = config?.search?.strategy ?? "dense";
 
   return (
-    <div className={`border rounded-lg p-3 transition-colors ${style.bg} ${
+    <div className={`border rounded-lg p-3 transition-all ${style.bg} ${
       isSelected ? "ring-1 ring-accent/40" : ""
-    }`}>
+    } ${isHighlighted ? "ring-2 ring-accent animate-pulse" : ""}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           {retriever.status === "ready" && (
@@ -76,21 +91,77 @@ export function RetrieverCard({
         </div>
       )}
 
-      <div className="mt-2 flex gap-2">
-        {retriever.status === "ready" && (
-          <button
-            onClick={() => onCleanup(retriever._id)}
-            className="text-[10px] text-text-dim hover:text-text transition-colors cursor-pointer"
-          >
-            cleanup
-          </button>
+      {/* Lifecycle-aware action buttons */}
+      <div className="mt-3 flex gap-2 flex-wrap">
+        {retriever.status === "configuring" && (
+          <>
+            <button
+              onClick={() => onStartIndexing(retriever._id)}
+              className="text-[11px] px-2 py-1 rounded border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors cursor-pointer"
+            >
+              Start Indexing
+            </button>
+            <button
+              onClick={() => onDelete(retriever._id)}
+              className="text-[11px] px-2 py-1 rounded border border-border text-text-dim hover:text-red-400 hover:border-red-400/30 transition-colors cursor-pointer"
+            >
+              Delete
+            </button>
+          </>
         )}
-        <button
-          onClick={() => onDelete(retriever._id)}
-          className="text-[10px] text-text-dim hover:text-red-400 transition-colors cursor-pointer"
-        >
-          delete
-        </button>
+
+        {retriever.status === "indexing" && (
+          <>
+            <div className="flex items-center gap-1.5 text-[11px] text-accent">
+              <div className="w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+              {indexingProgress && indexingProgress.totalDocs > 0 ? (
+                <span>{indexingProgress.processedDocs}/{indexingProgress.totalDocs} docs</span>
+              ) : (
+                <span>Indexing...</span>
+              )}
+            </div>
+            <button
+              onClick={() => onCancelIndexing(retriever._id, retriever.indexingJobId)}
+              className="text-[11px] px-2 py-1 rounded border border-border text-text-dim hover:text-red-400 hover:border-red-400/30 transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+          </>
+        )}
+
+        {retriever.status === "ready" && (
+          <>
+            <button
+              onClick={() => onDeleteIndex(retriever._id)}
+              className="text-[11px] px-2 py-1 rounded border border-border text-text-dim hover:text-text transition-colors cursor-pointer"
+            >
+              Delete Index
+            </button>
+            <button
+              onClick={() => onDelete(retriever._id)}
+              className="text-[11px] px-2 py-1 rounded border border-border text-text-dim hover:text-red-400 hover:border-red-400/30 transition-colors cursor-pointer"
+            >
+              Delete Retriever
+            </button>
+          </>
+        )}
+
+        {retriever.status === "error" && (
+          <>
+            <button
+              onClick={() => onStartIndexing(retriever._id)}
+              className="text-[11px] px-2 py-1 rounded border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors cursor-pointer"
+            >
+              Retry Indexing
+            </button>
+            <button
+              onClick={() => onDelete(retriever._id)}
+              className="text-[11px] px-2 py-1 rounded border border-border text-text-dim hover:text-red-400 hover:border-red-400/30 transition-colors cursor-pointer"
+            >
+              Delete
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

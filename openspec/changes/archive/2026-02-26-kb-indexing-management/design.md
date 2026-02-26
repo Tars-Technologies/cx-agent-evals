@@ -18,9 +18,12 @@ Frontend experiments page
 New data flow:
 ```
 Frontend retrievers page
-  → retrievers.create(kbId, retrieverConfig)
+  → retrieverActions.create(kbId, retrieverConfig)
+    → retriever created with status "configuring"
+  → user clicks "Start Indexing"
+  → retrieverActions.startIndexing(retrieverId)
     → indexing.startIndexing (standalone)
-    → retriever status: "ready"
+    → retriever status: "indexing" → "ready"
 
 Frontend experiments page
   → experiments.start(retrieverId, datasetId)
@@ -68,21 +71,33 @@ Frontend experiments page
 **Alternatives considered**:
 - Keep `k` as experiment-level parameter → Allows same retriever to produce different results, which the user explicitly doesn't want.
 
-### 3. Retriever dedup by `(kbId, retrieverConfigHash)`
+### 3. Separate creation from indexing
 
-**Decision**: Prevent creating duplicate retrievers with identical configs on the same KB. Return existing retriever instead.
+**Decision**: `retrieverActions.create` only creates the retriever record with status `"configuring"`. A separate `retrieverActions.startIndexing` action triggers the actual indexing. The user explicitly clicks "Start Indexing" on the retriever card.
 
-**Rationale**: Indexing is expensive. If someone creates a retriever with an identical config, they should get the existing one. The `indexConfigHash` dedup at the chunk level already prevents double-indexing, but this prevents unnecessary retriever records too.
+**Rationale**: Separating creation from indexing gives users explicit control over when expensive indexing operations start. It also enables a clearer lifecycle: configuring → indexing → ready, with "Start Indexing" and "Cancel" actions at each stage. Previously, creation immediately triggered indexing which didn't allow reviewing the config before committing to the indexing cost.
 
-### 4. `retrieve` action for standalone retrieval
+**Lifecycle actions by status**:
+- configuring: "Start Indexing" + "Delete"
+- indexing: "Cancel" (resets to configuring)
+- ready: "Delete Index" (preserves retriever) + "Delete Retriever" (cascades to index)
+- error: "Retry Indexing" + "Delete"
 
-**Decision**: New `retrieveActions.ts` with a public action that accepts `(retrieverId, query, k?)` and returns ranked chunks. This action is used by the playground and can be used by future production consumers.
+### 4. Retriever dedup by `(kbId, retrieverConfigHash)`
+
+**Decision**: Prevent creating duplicate retrievers with identical configs on the same KB. Return existing retriever ID with `existing: true` and show feedback in the UI (message + highlighted card).
+
+**Rationale**: Indexing is expensive. If someone creates a retriever with an identical config, they should get the existing one. The `indexConfigHash` dedup at the chunk level already prevents double-indexing, but this prevents unnecessary retriever records too. The UI feedback (highlighted existing card) makes it clear what happened.
+
+### 5. `retrieve` action for standalone retrieval
+
+**Decision**: New `retrieve` action in `retrieverActions.ts` that accepts `(retrieverId, query, k?)` and returns ranked chunks. This action is used by the playground and can be used by future production consumers.
 
 **Rationale**: Currently retrieval only happens inside `runExperiment`. Extracting it into a standalone action is the key enabler for the playground and production use. The action loads the retriever's config, embeds the query, runs vector search with the appropriate filters, and returns results.
 
 **Note on search strategies**: The initial `retrieve` action will support dense search only (same as the current experiment runner's `CallbackRetriever`). BM25 and hybrid search require a BM25 index built from the full chunk set, which would need to be materialized server-side — this is a future enhancement. The vector search + `indexConfigHash` post-filtering pattern from `experimentActions.ts` lines 195-215 will be reused directly.
 
-### 5. Experiment runner simplified — no indexing orchestration
+### 6. Experiment runner simplified — no indexing orchestration
 
 **Decision**: The `runExperiment` action will load the retriever record, verify its status is "ready", and proceed directly to evaluation. It will NOT trigger or poll indexing.
 
@@ -90,11 +105,23 @@ Frontend experiments page
 
 **Migration**: `experiments.start` will accept either `retrieverId` (new path) or `retrieverConfig` (legacy path). The action checks which is provided. Old experiments with inline config continue to work — they compute `indexConfigHash` and call `startIndexing` as before.
 
-### 6. Playground with multi-retriever comparison
+### 7. Playground with multi-retriever comparison
 
 **Decision**: The playground lives within the Retrievers page (not a separate tab). Users select 1+ "ready" retrievers via checkboxes, type a query, and see results side-by-side. Frontend fires parallel `retrieve` action calls, one per selected retriever.
 
 **Rationale**: Multi-retriever comparison is the primary use case for the playground — users want to see how different configs affect results for the same query. Parallel frontend calls are simpler than a batch backend endpoint and naturally handle different latencies.
+
+### 8. Delete Retriever cascades to index cleanup
+
+**Decision**: `retrievers.remove` automatically deletes the associated indexed chunks (if not shared by another retriever) before deleting the retriever record.
+
+**Rationale**: Leaving orphaned index chunks after deleting a retriever is confusing and wastes storage. The cascade is safe because it checks for shared indexes first — if another retriever uses the same `indexConfigHash`, the chunks are preserved.
+
+### 9. App renamed to "CX Agent Evals"
+
+**Decision**: Renamed from "rag-eval" to "CX Agent Evals" in both the landing page heading and header navigation.
+
+**Rationale**: Better reflects the broader scope of the system beyond just RAG evaluation.
 
 ## Risks / Trade-offs
 

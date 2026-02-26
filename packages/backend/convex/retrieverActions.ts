@@ -30,6 +30,7 @@ function createEmbedder(model?: string) {
 /**
  * Create a retriever for a KB with a given pipeline config.
  * This is an action (not mutation) because it needs Node.js crypto for hash computation.
+ * Does NOT trigger indexing — use startIndexing separately.
  * Dedup: returns existing retriever if (kbId, retrieverConfigHash) already exists.
  */
 export const create = action({
@@ -63,41 +64,6 @@ export const create = action({
     });
     if (!user) throw new Error("User not found");
 
-    // Resolve index config for the indexing service
-    const indexSettings = (config.index ?? {}) as Record<string, unknown>;
-    const indexConfig = {
-      strategy: "plain" as const,
-      chunkSize: (indexSettings.chunkSize as number) ?? 1000,
-      chunkOverlap: (indexSettings.chunkOverlap as number) ?? 200,
-      separators: indexSettings.separators as string[] | undefined,
-      embeddingModel:
-        (indexSettings.embeddingModel as string) ?? "text-embedding-3-small",
-    };
-
-    // Trigger indexing
-    const indexResult = await ctx.runMutation(
-      internal.indexing.startIndexing,
-      {
-        orgId,
-        kbId: args.kbId,
-        indexConfigHash,
-        indexConfig,
-        createdBy: user._id,
-      },
-    );
-
-    // Determine initial status
-    const status = indexResult.alreadyCompleted ? "ready" : "indexing";
-
-    // If already completed, get chunk count
-    let chunkCount: number | undefined;
-    if (indexResult.alreadyCompleted) {
-      const job = await ctx.runQuery(internal.indexing.getJobInternal, {
-        jobId: indexResult.jobId,
-      });
-      chunkCount = job?.totalChunks;
-    }
-
     const name = config.name ?? `retriever-${retrieverConfigHash.slice(0, 8)}`;
 
     const retrieverId = await ctx.runMutation(
@@ -110,14 +76,93 @@ export const create = action({
         indexConfigHash,
         retrieverConfigHash,
         defaultK: k,
-        indexingJobId: indexResult.jobId,
-        status,
-        chunkCount,
+        status: "configuring",
         createdBy: user._id,
       },
     );
 
     return { retrieverId, existing: false };
+  },
+});
+
+// ─── Start Indexing ───
+
+/**
+ * Start indexing for a retriever. Triggers the indexing pipeline and updates
+ * the retriever status to "indexing" (or "ready" if already indexed).
+ */
+export const startIndexing = action({
+  args: {
+    retrieverId: v.id("retrievers"),
+  },
+  handler: async (ctx, args): Promise<{ status: string }> => {
+    const { orgId, userId } = await getAuthContext(ctx);
+
+    const retriever = await ctx.runQuery(internal.retrievers.getInternal, {
+      id: args.retrieverId,
+    });
+
+    if (retriever.orgId !== orgId) {
+      throw new Error("Retriever not found");
+    }
+
+    if (retriever.status !== "configuring" && retriever.status !== "error") {
+      throw new Error(`Cannot start indexing: retriever is ${retriever.status}`);
+    }
+
+    const config = retriever.retrieverConfig as PipelineConfig & { k?: number };
+
+    // Resolve index config for the indexing service
+    const indexSettings = (config.index ?? {}) as Record<string, unknown>;
+    const indexConfig = {
+      strategy: "plain" as const,
+      chunkSize: (indexSettings.chunkSize as number) ?? 1000,
+      chunkOverlap: (indexSettings.chunkOverlap as number) ?? 200,
+      separators: indexSettings.separators as string[] | undefined,
+      embeddingModel:
+        (indexSettings.embeddingModel as string) ?? "text-embedding-3-small",
+    };
+
+    // Look up user record
+    const user = await ctx.runQuery(internal.users.getByClerkId, {
+      clerkId: userId,
+    });
+    if (!user) throw new Error("User not found");
+
+    // Trigger indexing
+    const indexResult = await ctx.runMutation(
+      internal.indexing.startIndexing,
+      {
+        orgId,
+        kbId: retriever.kbId,
+        indexConfigHash: retriever.indexConfigHash,
+        indexConfig,
+        createdBy: user._id,
+      },
+    );
+
+    // Determine status
+    let status: string;
+    let chunkCount: number | undefined;
+
+    if (indexResult.alreadyCompleted) {
+      const job = await ctx.runQuery(internal.indexing.getJobInternal, {
+        jobId: indexResult.jobId,
+      });
+      chunkCount = job?.totalChunks;
+      status = "ready";
+    } else {
+      status = "indexing";
+    }
+
+    await ctx.runMutation(internal.retrievers.updateIndexingStatus, {
+      retrieverId: args.retrieverId,
+      indexingJobId: indexResult.jobId,
+      status,
+      chunkCount,
+    });
+
+    return { status };
   },
 });
 

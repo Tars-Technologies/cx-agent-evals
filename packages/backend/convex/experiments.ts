@@ -109,15 +109,21 @@ export const getInternal = internalQuery({
 export const updateStatus = internalMutation({
   args: {
     experimentId: v.id("experiments"),
-    status: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
     scores: v.optional(v.any()),
     error: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const patch: Record<string, unknown> = { status: args.status };
-    if (args.scores !== undefined) patch.scores = args.scores;
-    if (args.error !== undefined) patch.error = args.error;
-    await ctx.db.patch(args.experimentId, patch);
+    await ctx.db.patch(args.experimentId, {
+      status: args.status,
+      ...(args.scores !== undefined ? { scores: args.scores } : {}),
+      ...(args.error !== undefined ? { error: args.error } : {}),
+    });
   },
 });
 

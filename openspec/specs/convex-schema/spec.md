@@ -1,4 +1,4 @@
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Org-scoped Convex schema definition
 The system SHALL define a Convex schema with the following tables, all scoped by `orgId` where applicable: `users`, `knowledgeBases`, `documents`, `datasets`, `questions`, `experiments`, `experimentResults`, `jobs`, `jobItems`, `documentChunks`. All table definitions SHALL use Convex's `defineTable` with `v` validators. The schema SHALL be defined in a single `schema.ts` file within the `convex/` directory. A shared `spanValidator` (`v.object({ docId: v.string(), start: v.number(), end: v.number(), text: v.string() })`) SHALL be used for CharacterSpan-shaped fields in both `questions.relevantSpans` and `experimentResults.retrievedSpans`.
@@ -51,11 +51,19 @@ The system SHALL define a `questions` table with fields: `datasetId` (Id referen
 - **THEN** the query SHALL return only questions generated from that specific document
 
 ### Requirement: Experiments table
-The system SHALL define an `experiments` table with fields: `orgId` (string), `datasetId` (Id referencing `datasets`), `name` (string), `retrieverConfig` (object, chunker/embedder/vectorStore/reranker config), `k` (number, top-k retrieval count), `metricNames` (array of strings), `status` (string, one of `"pending"`, `"running"`, `"completed"`, `"failed"`), `indexConfigHash` (optional string, SHA-256 hash of the IndexConfig used during the experiment's indexing phase), `scores` (optional object, aggregate metric scores), `langsmithExperimentId` (optional string), `langsmithUrl` (optional string), `langsmithSyncStatus` (optional string), `error` (optional string), `createdBy` (Id referencing `users`), and `createdAt` (number). The table SHALL have indexes `by_org` on `["orgId"]` and `by_dataset` on `["datasetId"]`.
+The system SHALL define an `experiments` table with fields: `orgId` (string), `datasetId` (Id referencing `datasets`), `name` (string), `retrieverId` (optional Id referencing `retrievers`, used by new experiment flow), `retrieverConfig` (optional object, retained for legacy experiments), `k` (optional number, retained for legacy experiments), `metricNames` (array of strings), `status` (string, one of `"pending"`, `"running"`, `"completed"`, `"failed"`), `indexConfigHash` (optional string), `scores` (optional object), `langsmithExperimentId` (optional string), `langsmithUrl` (optional string), `langsmithSyncStatus` (optional string), `error` (optional string), `createdBy` (Id referencing `users`), and `createdAt` (number). The table SHALL have indexes `by_org` on `["orgId"]`, `by_dataset` on `["datasetId"]`, and a new index `by_retriever` on `["retrieverId"]`.
 
 #### Scenario: List experiments for a dataset
 - **WHEN** querying `experiments` with index `by_dataset` and a valid dataset ID
 - **THEN** the query SHALL return all experiments for that dataset
+
+#### Scenario: List experiments for a retriever
+- **WHEN** querying `experiments` with index `by_retriever` and a valid retriever ID
+- **THEN** the query SHALL return all experiments that used that retriever
+
+#### Scenario: Legacy experiment without retrieverId
+- **WHEN** querying an experiment created before this change
+- **THEN** the experiment SHALL have `retrieverConfig` and `k` fields set, with `retrieverId` being undefined
 
 ### Requirement: Experiment results table
 The system SHALL define an `experimentResults` table with fields: `experimentId` (Id referencing `experiments`), `questionId` (Id referencing `questions`), `retrievedSpans` (array of objects, each with `docId`, `start`, `end`, `text`), `scores` (object, per-question metric scores), and `metadata` (object). The table SHALL have an index `by_experiment` on `["experimentId"]`.
@@ -111,3 +119,18 @@ The system SHALL define an `indexingJobs` table with fields: `orgId` (string), `
 #### Scenario: List indexing jobs by org
 - **WHEN** querying `indexingJobs` with index `by_org` filtered by `orgId`
 - **THEN** the query SHALL return all indexing jobs for that organization
+
+### Requirement: Retrievers table
+The system SHALL define a `retrievers` table with fields: `orgId` (string), `kbId` (Id referencing `knowledgeBases`), `name` (string, user-visible retriever name), `retrieverConfig` (v.any(), full pipeline config including index, query, search, refinement, and k), `indexConfigHash` (string, SHA-256 hash of the index stage config), `retrieverConfigHash` (string, SHA-256 hash of the full retriever config including k), `defaultK` (number, top-k for retrieval), `indexingJobId` (optional Id referencing `indexingJobs`), `status` (string, one of `"configuring"`, `"indexing"`, `"ready"`, `"error"`), `chunkCount` (optional number, populated when indexing completes), `error` (optional string), `createdBy` (Id referencing `users`), and `createdAt` (number). The table SHALL have indexes `by_org` on `["orgId"]`, `by_kb` on `["kbId"]`, and `by_kb_config_hash` on `["kbId", "retrieverConfigHash"]`.
+
+#### Scenario: Query retrievers for a KB
+- **WHEN** querying `retrievers` with index `by_kb` filtered by `kbId`
+- **THEN** the query SHALL return all retrievers for that knowledge base
+
+#### Scenario: Dedup check by KB and config hash
+- **WHEN** querying `retrievers` with index `by_kb_config_hash` filtered by `kbId` and `retrieverConfigHash`
+- **THEN** the query SHALL return at most one retriever, enabling duplicate detection
+
+#### Scenario: List retrievers by org
+- **WHEN** querying `retrievers` with index `by_org` filtered by `orgId`
+- **THEN** the query SHALL return all retrievers for that organization

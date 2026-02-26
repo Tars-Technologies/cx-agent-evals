@@ -16,7 +16,7 @@ export function Header({ mode, onReset }: HeaderProps) {
           <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
             <div className="w-2 h-2 rounded-full bg-accent animate-pulse-dot" />
             <h1 className="text-sm font-semibold tracking-wide text-text">
-              rag-eval
+              CX Agent Evals
             </h1>
           </Link>
           {mode && (

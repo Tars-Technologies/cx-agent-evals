@@ -111,7 +111,12 @@ export default defineSchema({
     retrieverConfig: v.optional(v.any()),
     k: v.optional(v.number()),
     metricNames: v.array(v.string()),
-    status: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
     indexConfigHash: v.optional(v.string()),
     scores: v.optional(v.any()),
     langsmithExperimentId: v.optional(v.string()),

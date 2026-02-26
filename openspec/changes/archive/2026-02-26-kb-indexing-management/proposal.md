@@ -8,7 +8,7 @@ The current system tightly couples KB indexing with experiment execution — ind
 - **New Retrievers page** (`/retrievers`) in the frontend for creating, managing, and testing retrievers independently of experiments
 - **Retriever playground** within the Retrievers page — query one or more "ready" retrievers side-by-side and compare results
 - **New `retrieve` action** in the backend — standalone retrieval endpoint usable by the playground, experiments, and future production consumers
-- **New backend CRUD** for retrievers — create (triggers indexing), list, delete, cleanup
+- **New backend CRUD** for retrievers — create (configuring state), start indexing (separate action), list, delete (cascades to index), delete index, cancel indexing
 - **Simplified Experiments page** — select an existing "ready" retriever + dataset instead of configuring pipeline inline; no more indexing phase card
 - **`k` moves into retriever config** — becomes part of the pipeline config and affects `retrieverConfigHash`, ensuring consistent behavior per retriever
 - Retriever dedup by `(kbId, retrieverConfigHash)` — prevents duplicate retrievers with identical configs
@@ -17,7 +17,7 @@ The current system tightly couples KB indexing with experiment execution — ind
 ## Capabilities
 
 ### New Capabilities
-- `retriever-management`: CRUD operations for retriever entities — create (with indexing), list by KB, delete, cleanup indexed data. Backend table, mutations, queries.
+- `retriever-management`: CRUD operations for retriever entities — create (configuring state), start indexing (separate action), list by KB, delete (cascades to index), delete index, cancel indexing, reset after cancel. Backend table, mutations, queries, actions.
 - `retriever-playground`: Frontend UI for querying one or more ready retrievers side-by-side on a KB, comparing ranked results with scores and latency.
 - `retrieve-action`: Standalone backend action that takes a retriever ID + query and returns ranked chunks — the production-ready retrieval endpoint.
 - `retrievers-ui`: Frontend Retrievers page — KB selection, pipeline config, retriever list with status/progress, and integrated playground.
@@ -30,7 +30,7 @@ The current system tightly couples KB indexing with experiment execution — ind
 
 ## Impact
 
-- **Backend (Convex)**: New `retrievers` table + schema migration. New files: `retrievers.ts` (CRUD), `retrieveActions.ts` (retrieve action). Modified: `experiments.ts`, `experimentActions.ts`, `schema.ts`.
+- **Backend (Convex)**: New `retrievers` table + schema migration. New files: `retrievers.ts` (CRUD mutations/queries), `retrieverActions.ts` (create, startIndexing, retrieve actions — "use node" file). Modified: `experiments.ts`, `experimentActions.ts`, `schema.ts`.
 - **Frontend**: New route `/retrievers` with new page + components (`RetrieverCard`, `RetrieverPlayground`, `RetrieverSelector`). Modified: `ModeSelector.tsx`, experiments page (major simplification), `pipeline-types.ts` (k into config), `Header.tsx`.
 - **Existing data**: No breaking migration — existing experiments keep inline `retrieverConfig`; new experiments use `retrieverId`. Existing `documentChunks` and `indexingJobs` tables are unchanged.
 - **API surface**: New public Convex mutations/queries for retriever CRUD. New action for retrieval. Existing experiment API gets optional `retrieverId` field.

@@ -1,8 +1,4 @@
-## Purpose
-
-Landing page with mode selection cards for choosing between "Generate Questions", "Retrievers", and "Run Experiments" flows.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Mode selector landing page
 The system SHALL provide a landing page titled "CX Agent Evals" with three large selectable cards: "Generate Questions", "Retrievers", and "Run Experiments". Each card SHALL have a title, brief description, and navigate to the appropriate page on click. The grid SHALL use a three-column layout on medium+ screens with a `max-w-5xl` container for comfortable card width.
@@ -24,7 +20,7 @@ The system SHALL provide a landing page titled "CX Agent Evals" with three large
 - **THEN** the app SHALL navigate to `/experiments`
 
 ### Requirement: Mode card descriptions
-The "Generate Questions" card SHALL display description: "Create synthetic evaluation datasets with ground truth spans for RAG retrieval testing". The "Retrievers" card SHALL display description: "Configure, index, and test retrieval pipelines against your knowledge bases". The "Run Experiments" card SHALL display description: "Run retrieval experiments on LangSmith datasets and compare results across configurations". Each card SHALL also display a step-by-step flow hint (e.g., "Select KB -> Configure & index -> Test & compare").
+The "Generate Questions" card SHALL display description: "Create synthetic evaluation datasets with ground truth spans for RAG retrieval testing". The "Retrievers" card SHALL display description: "Configure, index, and test retrieval pipelines against your knowledge bases". The "Run Experiments" card SHALL display description: "Run retrieval experiments on LangSmith datasets and compare results across configurations". Each card SHALL also display a step-by-step flow hint (e.g., "Select KB → Configure & index → Test & compare").
 
 #### Scenario: Cards show descriptions
 - **WHEN** viewing the landing page

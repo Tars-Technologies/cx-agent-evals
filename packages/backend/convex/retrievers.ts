@@ -80,7 +80,7 @@ export const insertRetriever = internalMutation({
     indexConfigHash: v.string(),
     retrieverConfigHash: v.string(),
     defaultK: v.number(),
-    indexingJobId: v.id("indexingJobs"),
+    indexingJobId: v.optional(v.id("indexingJobs")),
     status: v.string(),
     chunkCount: v.optional(v.number()),
     createdBy: v.id("users"),
@@ -99,6 +99,26 @@ export const insertRetriever = internalMutation({
       chunkCount: args.chunkCount,
       createdBy: args.createdBy,
       createdAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Update retriever with indexing job info. Called from startIndexing action.
+ */
+export const updateIndexingStatus = internalMutation({
+  args: {
+    retrieverId: v.id("retrievers"),
+    indexingJobId: v.id("indexingJobs"),
+    status: v.string(),
+    chunkCount: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.retrieverId, {
+      indexingJobId: args.indexingJobId,
+      status: args.status as "configuring" | "indexing" | "ready" | "error",
+      chunkCount: args.chunkCount,
+      error: undefined,
     });
   },
 });
@@ -135,12 +155,43 @@ export const remove = mutation({
       throw new Error("Retriever not found");
     }
 
+    // Cascade: delete index if it exists and no other retriever shares it
+    if (retriever.indexingJobId && (retriever.status === "ready" || retriever.status === "indexing")) {
+      const allForKb = await ctx.db
+        .query("retrievers")
+        .withIndex("by_kb", (q) => q.eq("kbId", retriever.kbId))
+        .collect();
+
+      const sharingChunks = allForKb.filter(
+        (r) =>
+          r._id !== args.id &&
+          r.indexConfigHash === retriever.indexConfigHash,
+      );
+
+      // Only cleanup if no other retriever shares this index
+      if (sharingChunks.length === 0) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.indexingActions.cleanupAction,
+          {
+            kbId: retriever.kbId,
+            indexConfigHash: retriever.indexConfigHash,
+            jobId: retriever.indexingJobId,
+          },
+        );
+      }
+    }
+
     await ctx.db.delete(args.id);
     return { deleted: true };
   },
 });
 
-export const cleanup = mutation({
+/**
+ * Reset retriever status after indexing is canceled.
+ * Called from frontend after indexing.cancelIndexing completes.
+ */
+export const resetAfterCancel = mutation({
   args: { id: v.id("retrievers") },
   handler: async (ctx, args) => {
     const { orgId } = await getAuthContext(ctx);
@@ -148,6 +199,35 @@ export const cleanup = mutation({
     const retriever = await ctx.db.get(args.id);
     if (!retriever || retriever.orgId !== orgId) {
       throw new Error("Retriever not found");
+    }
+
+    await ctx.db.patch(args.id, {
+      status: "configuring",
+      indexingJobId: undefined,
+      chunkCount: undefined,
+      error: undefined,
+    });
+
+    return { reset: true };
+  },
+});
+
+/**
+ * Delete only the index (chunks) for a retriever, resetting it to "configuring".
+ * Preserves the retriever record itself.
+ */
+export const deleteIndex = mutation({
+  args: { id: v.id("retrievers") },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+
+    const retriever = await ctx.db.get(args.id);
+    if (!retriever || retriever.orgId !== orgId) {
+      throw new Error("Retriever not found");
+    }
+
+    if (retriever.status !== "ready" && retriever.status !== "error") {
+      throw new Error(`Cannot delete index: retriever is ${retriever.status}`);
     }
 
     // Check if another retriever shares the same (kbId, indexConfigHash)
@@ -164,22 +244,22 @@ export const cleanup = mutation({
 
     if (sharingChunks.length > 0) {
       throw new Error(
-        `Cannot cleanup: ${sharingChunks.length} other retriever(s) share the same index config. Delete them first or clean up their indexes separately.`,
+        `Cannot delete index: ${sharingChunks.length} other retriever(s) share the same index. Delete them first.`,
       );
     }
 
-    // Delegate chunk deletion to the existing cleanup action
-    await ctx.scheduler.runAfter(
-      0,
-      internal.indexingActions.cleanupAction,
-      {
-        kbId: retriever.kbId,
-        indexConfigHash: retriever.indexConfigHash,
-        jobId: retriever.indexingJobId,
-      },
-    );
+    if (retriever.indexingJobId) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.indexingActions.cleanupAction,
+        {
+          kbId: retriever.kbId,
+          indexConfigHash: retriever.indexConfigHash,
+          jobId: retriever.indexingJobId,
+        },
+      );
+    }
 
-    // Reset retriever status
     await ctx.db.patch(args.id, {
       status: "configuring",
       chunkCount: undefined,
@@ -187,7 +267,7 @@ export const cleanup = mutation({
       error: undefined,
     });
 
-    return { cleanupScheduled: true };
+    return { deleted: true };
   },
 });
 
@@ -213,11 +293,8 @@ export const syncStatusFromIndexingJob = internalMutation({
         status: "error",
         error: job.error ?? "Indexing failed",
       });
-    } else if (job.status === "canceled") {
-      await ctx.db.patch(args.retrieverId, {
-        status: "error",
-        error: "Indexing was canceled",
-      });
     }
+    // Note: "canceled" status is intentionally not handled here.
+    // resetAfterCancel owns the cancel path to avoid race conditions.
   },
 });

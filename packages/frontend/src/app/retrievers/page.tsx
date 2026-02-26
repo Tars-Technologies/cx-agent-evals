@@ -28,6 +28,55 @@ import {
 } from "@/lib/pipeline-storage";
 
 // ---------------------------------------------------------------------------
+// Wrapper: queries indexing job progress for "indexing" retrievers
+// ---------------------------------------------------------------------------
+
+function RetrieverCardWithProgress({
+  retriever,
+  isSelected,
+  isHighlighted,
+  onToggleSelect,
+  onStartIndexing,
+  onCancelIndexing,
+  onDeleteIndex,
+  onDelete,
+}: {
+  retriever: any;
+  isSelected: boolean;
+  isHighlighted: boolean;
+  onToggleSelect: (id: Id<"retrievers">) => void;
+  onStartIndexing: (id: Id<"retrievers">) => void;
+  onCancelIndexing: (id: Id<"retrievers">, jobId?: string) => void;
+  onDeleteIndex: (id: Id<"retrievers">) => void;
+  onDelete: (id: Id<"retrievers">) => void;
+}) {
+  const job = useQuery(
+    api.indexing.getJob,
+    retriever.status === "indexing" && retriever.indexingJobId
+      ? { jobId: retriever.indexingJobId }
+      : "skip",
+  );
+
+  const indexingProgress = job
+    ? { totalDocs: job.totalDocs, processedDocs: job.processedDocs, failedDocs: job.failedDocs }
+    : null;
+
+  return (
+    <RetrieverCard
+      retriever={retriever}
+      indexingProgress={indexingProgress}
+      isSelected={isSelected}
+      isHighlighted={isHighlighted}
+      onToggleSelect={onToggleSelect}
+      onStartIndexing={onStartIndexing}
+      onCancelIndexing={onCancelIndexing}
+      onDeleteIndex={onDeleteIndex}
+      onDelete={onDelete}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -49,14 +98,19 @@ export default function RetrieversPage() {
     selectedKbId ? { kbId: selectedKbId } : "skip",
   );
 
-  // --- Actions ---
+  // --- Actions & Mutations ---
   const createRetriever = useAction(api.retrieverActions.create);
+  const startIndexingAction = useAction(api.retrieverActions.startIndexing);
   const removeRetriever = useMutation(api.retrievers.remove);
-  const cleanupRetriever = useMutation(api.retrievers.cleanup);
+  const deleteIndexMutation = useMutation(api.retrievers.deleteIndex);
+  const resetAfterCancelMutation = useMutation(api.retrievers.resetAfterCancel);
+  const cancelIndexingMutation = useMutation(api.indexing.cancelIndexing);
 
-  // --- Creating state ---
+  // --- UI state ---
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [dupMessage, setDupMessage] = useState<string | null>(null);
+  const [highlightedId, setHighlightedId] = useState<Id<"retrievers"> | null>(null);
 
   // --- Selected retrievers for playground ---
   const [selectedRetrieverIds, setSelectedRetrieverIds] = useState<Set<Id<"retrievers">>>(
@@ -84,6 +138,13 @@ export default function RetrieversPage() {
       setBasePreset("baseline-vector-rag");
     }
   }, []);
+
+  // Clear highlight after a delay
+  useEffect(() => {
+    if (!highlightedId) return;
+    const timer = setTimeout(() => setHighlightedId(null), 3000);
+    return () => clearTimeout(timer);
+  }, [highlightedId]);
 
   // --- Handlers ---
 
@@ -127,17 +188,51 @@ export default function RetrieversPage() {
 
     setIsCreating(true);
     setCreateError(null);
+    setDupMessage(null);
+    setHighlightedId(null);
 
     try {
       const configToSend = { ...pipelineConfig, name: configName };
-      await createRetriever({
+      const result = await createRetriever({
         kbId: selectedKbId,
         retrieverConfig: configToSend,
       });
+
+      if (result.existing) {
+        setDupMessage("A retriever with this configuration already exists.");
+        setHighlightedId(result.retrieverId);
+      }
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create retriever");
     } finally {
       setIsCreating(false);
+    }
+  }
+
+  async function handleStartIndexing(id: Id<"retrievers">) {
+    try {
+      await startIndexingAction({ retrieverId: id });
+    } catch (err) {
+      console.error("Failed to start indexing:", err);
+    }
+  }
+
+  async function handleCancelIndexing(id: Id<"retrievers">, jobId?: string) {
+    try {
+      if (jobId) {
+        await cancelIndexingMutation({ jobId: jobId as Id<"indexingJobs"> });
+      }
+      await resetAfterCancelMutation({ id });
+    } catch (err) {
+      console.error("Failed to cancel indexing:", err);
+    }
+  }
+
+  async function handleDeleteIndex(id: Id<"retrievers">) {
+    try {
+      await deleteIndexMutation({ id });
+    } catch (err) {
+      console.error("Failed to delete index:", err);
     }
   }
 
@@ -151,14 +246,6 @@ export default function RetrieversPage() {
       });
     } catch (err) {
       console.error("Failed to delete retriever:", err);
-    }
-  }
-
-  async function handleCleanup(id: Id<"retrievers">) {
-    try {
-      await cleanupRetriever({ id });
-    } catch (err) {
-      console.error("Failed to cleanup retriever:", err);
     }
   }
 
@@ -264,10 +351,17 @@ export default function RetrieversPage() {
                   )}
                 </div>
 
-                {/* Create Retriever Button */}
+                {/* Feedback messages */}
                 {createError && (
                   <div className="text-xs text-red-400">{createError}</div>
                 )}
+                {dupMessage && (
+                  <div className="text-xs text-accent border border-accent/20 bg-accent/5 rounded px-3 py-2">
+                    {dupMessage}
+                  </div>
+                )}
+
+                {/* Create Retriever Button */}
                 <button
                   onClick={handleCreateRetriever}
                   disabled={!canCreate}
@@ -316,13 +410,16 @@ export default function RetrieversPage() {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                     {retrievers.map((r) => (
-                      <RetrieverCard
+                      <RetrieverCardWithProgress
                         key={r._id}
                         retriever={r as any}
                         isSelected={selectedRetrieverIds.has(r._id)}
+                        isHighlighted={highlightedId === r._id}
                         onToggleSelect={handleToggleSelect}
+                        onStartIndexing={handleStartIndexing}
+                        onCancelIndexing={handleCancelIndexing}
+                        onDeleteIndex={handleDeleteIndex}
                         onDelete={handleDelete}
-                        onCleanup={handleCleanup}
                       />
                     ))}
                   </div>
