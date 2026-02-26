@@ -241,6 +241,26 @@ export const onDocumentIndexed = internalMutation({
       status,
       ...(completedAt !== undefined ? { completedAt } : {}),
     });
+
+    // If job just completed, sync any retrievers that reference this indexing job
+    if (isComplete) {
+      const retrievers = await ctx.db
+        .query("retrievers")
+        .withIndex("by_kb", (q) => q.eq("kbId", job.kbId))
+        .collect();
+
+      for (const retriever of retrievers) {
+        if (
+          retriever.indexingJobId === context.jobId &&
+          retriever.status === "indexing"
+        ) {
+          await ctx.runMutation(
+            internal.retrievers.syncStatusFromIndexingJob,
+            { retrieverId: retriever._id },
+          );
+        }
+      }
+    }
   },
 });
 

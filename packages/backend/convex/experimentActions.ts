@@ -55,77 +55,101 @@ export const runExperiment = internalAction({
         progress: { current: 0, total: 4, message: "Starting experiment..." },
       });
 
-      // ── Step 0: Load experiment to get retriever config ──
+      // ── Step 0: Load experiment and resolve retriever config ──
       const experiment = await ctx.runQuery(internal.experiments.getInternal, {
         id: args.experimentId,
       });
-      // retrieverConfig is a PipelineConfig — index settings are nested under .index
-      const retrieverConfig = experiment.retrieverConfig as Record<string, any>;
-      const indexSettings = (retrieverConfig.index ?? {}) as Record<string, any>;
-      const embeddingModel =
-        (indexSettings.embeddingModel as string) ?? "text-embedding-3-small";
 
-      // Compute index config hash for chunk namespacing
-      const indexConfig = {
-        strategy: "plain" as const,
-        chunkSize: (indexSettings.chunkSize as number) ?? 1000,
-        chunkOverlap: (indexSettings.chunkOverlap as number) ?? 200,
-        separators: indexSettings.separators as string[] | undefined,
-        embeddingModel,
-      };
-      const indexConfigHash = computeIndexConfigHash({
-        name: retrieverConfig.name ?? "experiment",
-        index: indexConfig,
-      });
+      let indexConfigHash: string;
+      let embeddingModel: string;
+      let experimentK: number;
 
-      // ── Step 1: Ensure KB is indexed via indexing service ──
-      const indexResult = await ctx.runMutation(
-        internal.indexing.startIndexing,
-        {
-          orgId: experiment.orgId,
-          kbId: args.kbId,
-          indexConfigHash,
-          indexConfig,
-          createdBy: experiment.createdBy,
-        },
-      );
+      if (experiment.retrieverId) {
+        // ── New path: load config from retrievers table, skip indexing ──
+        const retriever = await ctx.runQuery(internal.retrievers.getInternal, {
+          id: experiment.retrieverId,
+        });
+        if (retriever.status !== "ready") {
+          throw new Error(
+            `Retriever is not ready (status: ${retriever.status}). Index the KB first.`,
+          );
+        }
 
-      if (!indexResult.alreadyCompleted) {
-        await ctx.runMutation(internal.jobs.update, {
-          jobId: args.jobId,
-          phase: "indexing",
-          progress: { current: 0, total: 1, message: "Indexing knowledge base..." },
+        indexConfigHash = retriever.indexConfigHash;
+        experimentK = retriever.defaultK;
+
+        const retConfig = retriever.retrieverConfig as Record<string, any>;
+        const idxSettings = (retConfig.index ?? {}) as Record<string, any>;
+        embeddingModel =
+          (idxSettings.embeddingModel as string) ?? "text-embedding-3-small";
+      } else {
+        // ── Legacy path: inline retrieverConfig, trigger indexing ──
+        const retrieverConfig = experiment.retrieverConfig as Record<string, any>;
+        const indexSettings = (retrieverConfig.index ?? {}) as Record<string, any>;
+        embeddingModel =
+          (indexSettings.embeddingModel as string) ?? "text-embedding-3-small";
+        experimentK = (experiment.k as number) ?? 5;
+
+        const indexConfig = {
+          strategy: "plain" as const,
+          chunkSize: (indexSettings.chunkSize as number) ?? 1000,
+          chunkOverlap: (indexSettings.chunkOverlap as number) ?? 200,
+          separators: indexSettings.separators as string[] | undefined,
+          embeddingModel,
+        };
+        indexConfigHash = computeIndexConfigHash({
+          name: retrieverConfig.name ?? "experiment",
+          index: indexConfig,
         });
 
-        // Poll until indexing job completes
-        let indexingDone = false;
-        while (!indexingDone) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          const indexJob = await ctx.runQuery(
-            internal.indexing.getJobInternal,
-            { jobId: indexResult.jobId },
-          );
-          if (!indexJob) throw new Error("Indexing job disappeared");
+        // Ensure KB is indexed via indexing service
+        const indexResult = await ctx.runMutation(
+          internal.indexing.startIndexing,
+          {
+            orgId: experiment.orgId,
+            kbId: args.kbId,
+            indexConfigHash,
+            indexConfig,
+            createdBy: experiment.createdBy,
+          },
+        );
 
+        if (!indexResult.alreadyCompleted) {
           await ctx.runMutation(internal.jobs.update, {
             jobId: args.jobId,
             phase: "indexing",
-            progress: {
-              current: indexJob.processedDocs,
-              total: indexJob.totalDocs,
-              message: `Indexing ${indexJob.processedDocs}/${indexJob.totalDocs} documents...`,
-            },
+            progress: { current: 0, total: 1, message: "Indexing knowledge base..." },
           });
 
-          if (
-            indexJob.status === "completed" ||
-            indexJob.status === "completed_with_errors"
-          ) {
-            indexingDone = true;
-          } else if (indexJob.status === "failed") {
-            throw new Error("Indexing failed: " + (indexJob.error ?? "unknown"));
-          } else if (indexJob.status === "canceled") {
-            throw new Error("Indexing was canceled");
+          let indexingDone = false;
+          while (!indexingDone) {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            const indexJob = await ctx.runQuery(
+              internal.indexing.getJobInternal,
+              { jobId: indexResult.jobId },
+            );
+            if (!indexJob) throw new Error("Indexing job disappeared");
+
+            await ctx.runMutation(internal.jobs.update, {
+              jobId: args.jobId,
+              phase: "indexing",
+              progress: {
+                current: indexJob.processedDocs,
+                total: indexJob.totalDocs,
+                message: `Indexing ${indexJob.processedDocs}/${indexJob.totalDocs} documents...`,
+              },
+            });
+
+            if (
+              indexJob.status === "completed" ||
+              indexJob.status === "completed_with_errors"
+            ) {
+              indexingDone = true;
+            } else if (indexJob.status === "failed") {
+              throw new Error("Indexing failed: " + (indexJob.error ?? "unknown"));
+            } else if (indexJob.status === "canceled") {
+              throw new Error("Indexing was canceled");
+            }
           }
         }
       }
@@ -226,7 +250,7 @@ export const runExperiment = internalAction({
       await runLangSmithExperiment({
         corpus,
         retriever,
-        k: experiment.k,
+        k: experimentK,
         datasetName: dataset.langsmithDatasetId ?? dataset.name,
         experimentPrefix: experiment.name,
         metadata: {

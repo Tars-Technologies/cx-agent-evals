@@ -5,33 +5,36 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/lib/convex";
 import { Id } from "@convex/_generated/dataModel";
 import { Header } from "@/components/Header";
-import { PipelineConfigModal } from "@/components/PipelineConfigModal";
-import {
-  PipelineConfigSummary,
-  ConfigurePipelineButton,
-} from "@/components/PipelineConfigSummary";
-import type { PipelineConfig, SavedPipelineConfig } from "@/lib/pipeline-types";
-import {
-  PRESET_CONFIGS,
-  PRESET_NAMES,
-  PRESET_DESCRIPTIONS,
-  isPresetUnmodified,
-} from "@/lib/pipeline-types";
-import {
-  loadSavedConfigs,
-  loadLastConfig,
-  setLastConfigName,
-  deleteConfig,
-} from "@/lib/pipeline-storage";
 
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export default function ExperimentsPage() {
-  // --- Dataset selection ---
+  // --- Retriever selection ---
+  const readyRetrievers = useQuery(api.retrievers.byOrg, { status: "ready" });
+  const [selectedRetrieverId, setSelectedRetrieverId] = useState<Id<"retrievers"> | null>(null);
+
+  const selectedRetriever = readyRetrievers?.find((r) => r._id === selectedRetrieverId) ?? null;
+
+  // --- Dataset selection (filtered by retriever's KB when possible) ---
   const datasets = useQuery(api.datasets.list);
   const [selectedDatasetId, setSelectedDatasetId] = useState<Id<"datasets"> | null>(null);
+
+  // Filter datasets to same KB as selected retriever
+  const filteredDatasets = datasets?.filter((ds) => {
+    if (!selectedRetriever) return true;
+    return ds.kbId === selectedRetriever.kbId;
+  });
+
+  // Clear dataset if it no longer matches the selected retriever's KB
+  useEffect(() => {
+    if (!selectedRetriever || !selectedDatasetId || !datasets) return;
+    const ds = datasets.find((d) => d._id === selectedDatasetId);
+    if (ds && ds.kbId !== selectedRetriever.kbId) {
+      setSelectedDatasetId(null);
+    }
+  }, [selectedRetriever, selectedDatasetId, datasets]);
 
   const experiments = useQuery(
     api.experiments.byDataset,
@@ -55,18 +58,6 @@ export default function ExperimentsPage() {
 
   const startExperiment = useMutation(api.experiments.start);
 
-  // --- Pipeline config state ---
-  const [pipelineConfig, setPipelineConfig] = useState<PipelineConfig | null>(null);
-  const [configName, setConfigName] = useState("");
-  const [basePreset, setBasePreset] = useState("baseline-vector-rag");
-  const [k, setK] = useState(5);
-  const [isModified, setIsModified] = useState(false);
-  const [savedConfigs, setSavedConfigs] = useState<Record<string, SavedPipelineConfig>>({});
-  const [showModal, setShowModal] = useState(false);
-
-  // --- Auto-start toggle ---
-  const [autoStart, setAutoStart] = useState(true);
-
   // --- Metrics ---
   const [metrics, setMetrics] = useState({
     recall: true,
@@ -80,40 +71,21 @@ export default function ExperimentsPage() {
   const [nameEdited, setNameEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // --- Restore from localStorage on mount ---
+  // --- Auto-generate experiment name from retriever + dataset ---
   useEffect(() => {
-    const saved = loadLastConfig();
-    const allSaved = loadSavedConfigs();
-    setSavedConfigs(allSaved);
-
-    if (saved) {
-      setPipelineConfig(saved.config);
-      setConfigName(saved.name);
-      setBasePreset(saved.basePreset);
-      setK(saved.k);
-      setIsModified(!isPresetUnmodified(saved.config, saved.k, saved.basePreset));
-    } else {
-      // Default to baseline-vector-rag
-      const preset = PRESET_CONFIGS["baseline-vector-rag"];
-      setPipelineConfig(preset);
-      setConfigName("baseline-vector-rag");
-      setBasePreset("baseline-vector-rag");
-    }
-  }, []);
-
-  // --- Auto-generate experiment name ---
-  useEffect(() => {
-    if (nameEdited || !configName) return;
-    setExperimentName(`${configName}-k${k}`);
-  }, [configName, k, nameEdited]);
+    if (nameEdited) return;
+    const parts: string[] = [];
+    if (selectedRetriever) parts.push(selectedRetriever.name);
+    if (selectedDataset) parts.push(selectedDataset.name);
+    setExperimentName(parts.length > 0 ? parts.join("-") : "");
+  }, [selectedRetriever, selectedDataset, nameEdited]);
 
   // --- Derive execution status ---
-  const jobPhase = job?.phase as string | undefined;
   const jobProgress = job?.progress as
     | { current?: number; total?: number; message?: string }
     | undefined;
 
-  type ExecStatus = "idle" | "indexing" | "evaluating" | "complete" | "error";
+  type ExecStatus = "idle" | "evaluating" | "complete" | "error";
 
   const execStatus: ExecStatus = !jobId
     ? "idle"
@@ -121,24 +93,9 @@ export default function ExperimentsPage() {
       ? "error"
       : job?.status === "completed"
         ? "complete"
-        : jobPhase === "indexing" || jobPhase === "initializing"
-          ? "indexing"
-          : "evaluating";
+        : "evaluating";
 
-  const isIndexingDone =
-    execStatus === "evaluating" || execStatus === "complete";
-  const isRunning = execStatus === "indexing" || execStatus === "evaluating";
-
-  // Capture chunk count while indexing is in progress (before progress switches to evaluation)
-  const [indexedChunkCount, setIndexedChunkCount] = useState<number | null>(null);
-  useEffect(() => {
-    if (jobPhase === "indexing" && jobProgress?.total) {
-      setIndexedChunkCount(jobProgress.total);
-    }
-    if (execStatus === "idle") {
-      setIndexedChunkCount(null);
-    }
-  }, [jobPhase, jobProgress, execStatus]);
+  const isRunning = execStatus === "evaluating";
 
   const completedScores = currentExperiment?.scores as
     | Record<string, number>
@@ -146,50 +103,8 @@ export default function ExperimentsPage() {
 
   // --- Handlers ---
 
-  function handlePresetSelect(presetOrSavedName: string) {
-    if (!presetOrSavedName) return;
-
-    // Check presets first
-    const preset = PRESET_CONFIGS[presetOrSavedName];
-    if (preset) {
-      setPipelineConfig(preset);
-      setConfigName(presetOrSavedName);
-      setBasePreset(presetOrSavedName);
-      setK(5);
-      setIsModified(false);
-      setLastConfigName(presetOrSavedName);
-      return;
-    }
-
-    // Check saved configs
-    const saved = savedConfigs[presetOrSavedName];
-    if (saved) {
-      setPipelineConfig(saved.config);
-      setConfigName(saved.name);
-      setBasePreset(saved.basePreset);
-      setK(saved.k);
-      setIsModified(!isPresetUnmodified(saved.config, saved.k, saved.basePreset));
-      setLastConfigName(saved.name);
-    }
-  }
-
-  function handleModalSave(saved: SavedPipelineConfig) {
-    setPipelineConfig(saved.config);
-    setConfigName(saved.name);
-    setBasePreset(saved.basePreset);
-    setK(saved.k);
-    setIsModified(!isPresetUnmodified(saved.config, saved.k, saved.basePreset));
-    setSavedConfigs(loadSavedConfigs());
-    setShowModal(false);
-  }
-
-  function handleDeleteSaved(name: string) {
-    deleteConfig(name);
-    setSavedConfigs(loadSavedConfigs());
-  }
-
-  async function handleStartPipeline() {
-    if (!selectedDatasetId || !pipelineConfig || isRunning) return;
+  async function handleStartExperiment() {
+    if (!selectedDatasetId || !selectedRetrieverId || isRunning) return;
 
     setError(null);
 
@@ -201,8 +116,7 @@ export default function ExperimentsPage() {
       const result = await startExperiment({
         datasetId: selectedDatasetId,
         name: experimentName,
-        retrieverConfig: { ...pipelineConfig, autoStart },
-        k,
+        retrieverId: selectedRetrieverId,
         metricNames: selectedMetrics,
       });
 
@@ -213,15 +127,7 @@ export default function ExperimentsPage() {
     }
   }
 
-  const canRun = !!selectedDatasetId && !!pipelineConfig && !isRunning;
-
-  // --- Dropdown value ---
-  const dropdownValue = isModified ? configName : basePreset;
-
-  // --- Saved config names (excluding presets) ---
-  const savedConfigNames = Object.keys(savedConfigs).filter(
-    (name) => !PRESET_NAMES.includes(name),
-  );
+  const canRun = !!selectedDatasetId && !!selectedRetrieverId && !isRunning;
 
   return (
     <div className="flex flex-col h-screen">
@@ -236,6 +142,58 @@ export default function ExperimentsPage() {
                 Configuration
               </div>
               <div className="p-4 space-y-4">
+                {/* Retriever Selector */}
+                <div className="space-y-2">
+                  <label className="text-xs text-text-muted uppercase tracking-wide">
+                    Retriever
+                  </label>
+                  {readyRetrievers === undefined ? (
+                    <div className="flex items-center gap-2 text-text-dim text-sm">
+                      <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                      Loading retrievers...
+                    </div>
+                  ) : readyRetrievers.length === 0 ? (
+                    <div className="text-sm text-text-dim">
+                      No ready retrievers.{" "}
+                      <a href="/retrievers" className="text-accent hover:text-accent/80 transition-colors">
+                        Create one
+                      </a>
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedRetrieverId ?? ""}
+                      onChange={(e) => {
+                        setSelectedRetrieverId(
+                          e.target.value ? (e.target.value as Id<"retrievers">) : null,
+                        );
+                      }}
+                      className="w-full bg-bg-elevated border border-border rounded px-3 py-2 text-sm text-text focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none"
+                    >
+                      <option value="">Select a retriever...</option>
+                      {readyRetrievers.map((r) => (
+                        <option key={r._id} value={r._id}>
+                          {r.name} ({r.chunkCount ?? "?"} chunks, k={r.defaultK})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Retriever Info */}
+                {selectedRetriever && (
+                  <div className="border border-border rounded bg-bg-elevated p-3 space-y-1 text-[11px]">
+                    <div className="text-text-dim uppercase tracking-wide text-[10px]">
+                      Retriever Info
+                    </div>
+                    <div className="text-text-muted">
+                      Chunks: {selectedRetriever.chunkCount ?? "?"}
+                    </div>
+                    <div className="text-text-muted">
+                      k: {selectedRetriever.defaultK}
+                    </div>
+                  </div>
+                )}
+
                 {/* Dataset Picker */}
                 <div className="space-y-2">
                   <label className="text-xs text-text-muted uppercase tracking-wide">
@@ -257,12 +215,17 @@ export default function ExperimentsPage() {
                       className="w-full bg-bg-elevated border border-border rounded px-3 py-2 text-sm text-text focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none"
                     >
                       <option value="">Select a dataset...</option>
-                      {datasets.map((ds) => (
+                      {(filteredDatasets ?? []).map((ds) => (
                         <option key={ds._id} value={ds._id}>
                           {ds.name} ({ds.questionCount} questions)
                         </option>
                       ))}
                     </select>
+                  )}
+                  {selectedRetriever && filteredDatasets && filteredDatasets.length === 0 && (
+                    <div className="text-[11px] text-text-dim">
+                      No datasets found for this retriever&apos;s KB.
+                    </div>
                   )}
                 </div>
 
@@ -285,58 +248,6 @@ export default function ExperimentsPage() {
                     )}
                   </div>
                 )}
-
-                {/* Retriever Preset Dropdown */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-text-muted uppercase tracking-wide">
-                      Retriever
-                    </label>
-                    {isModified && (
-                      <span className="text-[10px] text-text-dim">(modified)</span>
-                    )}
-                  </div>
-                  <select
-                    value={dropdownValue}
-                    onChange={(e) => handlePresetSelect(e.target.value)}
-                    className="w-full bg-bg-elevated border border-border rounded px-3 py-2 text-sm text-text focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none"
-                  >
-                    <option value="" disabled>
-                      Select retriever preset...
-                    </option>
-                    <optgroup label="Presets">
-                      {PRESET_NAMES.map((name) => (
-                        <option key={name} value={name}>
-                          {name} — {PRESET_DESCRIPTIONS[name]}
-                        </option>
-                      ))}
-                    </optgroup>
-                    {savedConfigNames.length > 0 && (
-                      <optgroup label="Saved Configurations">
-                        {savedConfigNames.map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </select>
-                </div>
-
-                {/* Pipeline Summary or Configure Button */}
-                <div className="border border-border rounded bg-bg-elevated p-3">
-                  {pipelineConfig ? (
-                    <PipelineConfigSummary
-                      config={pipelineConfig}
-                      k={k}
-                      configName={configName}
-                      isModified={isModified}
-                      onEdit={() => setShowModal(true)}
-                    />
-                  ) : (
-                    <ConfigurePipelineButton onClick={() => setShowModal(true)} />
-                  )}
-                </div>
 
                 {/* Metrics */}
                 <div className="border border-border rounded bg-bg-elevated p-3 space-y-3">
@@ -385,7 +296,7 @@ export default function ExperimentsPage() {
                     className="w-full bg-bg border border-border rounded px-2 py-1 text-sm text-text focus:border-accent outline-none"
                   />
                   <div className="text-xs text-text-dim">
-                    {nameEdited ? "Custom name" : "Auto-generated from config"}
+                    {nameEdited ? "Custom name" : "Auto-generated from retriever + dataset"}
                   </div>
                 </div>
               </div>
@@ -396,95 +307,19 @@ export default function ExperimentsPage() {
         {/* Right: Execution Panel */}
         <div className="flex-1 flex flex-col overflow-hidden bg-bg">
           <div className="p-4 space-y-4 overflow-y-auto">
-            {/* Phase 1: Indexing */}
+            {/* Evaluation Phase Card */}
             <PhaseCard
-              number={1}
-              label="Indexing"
+              label="Evaluation"
               status={
                 execStatus === "idle"
                   ? "pending"
-                  : execStatus === "indexing"
+                  : execStatus === "evaluating"
                     ? "running"
-                    : execStatus === "error" && !isIndexingDone
+                    : execStatus === "error"
                       ? "error"
                       : "complete"
               }
-              pendingText="Will chunk, embed, and store documents using your Index configuration."
-              runningText={
-                jobProgress?.message ?? (jobPhase ? `${jobPhase}...` : "Starting...")
-              }
-              completeContent={
-                <div className="space-y-1">
-                  <p className="text-text-muted text-sm">
-                    Indexing complete{indexedChunkCount ? ` · ${indexedChunkCount} chunks` : ""}
-                  </p>
-                  <a
-                    href={`https://dashboard.convex.dev`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors"
-                  >
-                    View in Convex Dashboard
-                    <ExternalLinkIcon />
-                  </a>
-                </div>
-              }
-              errorText={error || job?.error || "Indexing failed"}
-            />
-
-            {/* Connector */}
-            <div className="flex justify-center">
-              <div className="flex flex-col items-center">
-                <div className="w-px h-4 bg-border" />
-                <svg
-                  className="w-3 h-3 text-text-dim"
-                  fill="currentColor"
-                  viewBox="0 0 12 12"
-                >
-                  <path d="M6 9L2 5h8L6 9z" />
-                </svg>
-              </div>
-            </div>
-
-            {/* Phase 2: Evaluation */}
-            <PhaseCard
-              number={2}
-              label="Evaluation"
-              status={
-                execStatus === "idle" || execStatus === "indexing"
-                  ? "pending"
-                  : execStatus === "evaluating"
-                    ? "running"
-                    : execStatus === "error" && isIndexingDone
-                      ? "error"
-                      : execStatus === "complete"
-                        ? "complete"
-                        : "pending"
-              }
-              pendingText={
-                execStatus === "indexing"
-                  ? autoStart
-                    ? "Will start automatically after indexing completes."
-                    : "Will wait for you to start after indexing completes."
-                  : "Will run retrieval + scoring against dataset using Search + Refinement stages."
-              }
-              pendingContent={
-                !autoStart && isIndexingDone ? (
-                  <div className="space-y-2">
-                    <p className="text-text-muted text-sm">Indexing complete. Ready to evaluate.</p>
-                    <button
-                      onClick={handleStartPipeline}
-                      disabled={!canRun}
-                      className="px-4 py-1.5 rounded border text-xs font-semibold uppercase tracking-wider
-                                 transition-all cursor-pointer
-                                 bg-accent/10 border-accent/30 text-accent hover:bg-accent/20
-                                 disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      Run Experiment
-                    </button>
-                  </div>
-                ) : undefined
-              }
+              pendingText="Select a retriever and dataset, then run the experiment."
               runningText={
                 jobProgress?.message ?? "Evaluating..."
               }
@@ -525,48 +360,34 @@ export default function ExperimentsPage() {
               errorText={error || job?.error || "Evaluation failed"}
             />
 
-            {/* Auto-start toggle + Run button */}
-            <div className="space-y-3">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoStart}
-                  onChange={(e) => setAutoStart(e.target.checked)}
-                  className="w-4 h-4 rounded border-border bg-bg text-accent focus:ring-accent/50"
-                />
-                <span className="text-sm text-text-muted">
-                  Auto-start experiment after indexing
-                </span>
-              </label>
-
-              <button
-                onClick={handleStartPipeline}
-                disabled={!canRun}
-                className={`w-full py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors ${
-                  canRun
-                    ? "bg-accent hover:bg-accent/90 text-bg-elevated cursor-pointer"
-                    : "bg-border text-text-dim cursor-not-allowed"
-                }`}
-              >
-                {isRunning ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-bg-elevated/30 border-t-bg-elevated rounded-full animate-spin" />
-                    Running...
-                  </>
-                ) : (
-                  <>
-                    <span>Start Pipeline</span>
-                    <svg
-                      className="w-4 h-4"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </>
-                )}
-              </button>
-            </div>
+            {/* Run button */}
+            <button
+              onClick={handleStartExperiment}
+              disabled={!canRun}
+              className={`w-full py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors ${
+                canRun
+                  ? "bg-accent hover:bg-accent/90 text-bg-elevated cursor-pointer"
+                  : "bg-border text-text-dim cursor-not-allowed"
+              }`}
+            >
+              {isRunning ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-bg-elevated/30 border-t-bg-elevated rounded-full animate-spin" />
+                  Running...
+                </>
+              ) : (
+                <>
+                  <span>Run Experiment</span>
+                  <svg
+                    className="w-4 h-4"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </>
+              )}
+            </button>
 
             {/* Recent Experiments */}
             {selectedDatasetId && (
@@ -643,18 +464,6 @@ export default function ExperimentsPage() {
           </div>
         </div>
       </div>
-
-      {/* Pipeline Config Modal */}
-      {showModal && pipelineConfig && (
-        <PipelineConfigModal
-          initialConfig={pipelineConfig}
-          initialK={k}
-          initialName={configName}
-          basePreset={basePreset}
-          onSave={handleModalSave}
-          onClose={() => setShowModal(false)}
-        />
-      )}
     </div>
   );
 }
@@ -666,20 +475,16 @@ export default function ExperimentsPage() {
 type PhaseStatus = "pending" | "running" | "complete" | "error";
 
 function PhaseCard({
-  number,
   label,
   status,
   pendingText,
-  pendingContent,
   runningText,
   completeContent,
   errorText,
 }: {
-  number: number;
   label: string;
   status: PhaseStatus;
   pendingText: string;
-  pendingContent?: React.ReactNode;
   runningText: string;
   completeContent: React.ReactNode;
   errorText: string;
@@ -723,10 +528,7 @@ function PhaseCard({
   return (
     <div className={`border rounded-lg p-4 ${borderClass}`}>
       <div className="flex items-center gap-3 mb-2">
-        <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold bg-bg-surface text-text-dim border border-border">
-          {number}
-        </span>
-        <span className="text-sm text-text font-medium">Phase {number}: {label}</span>
+        <span className="text-sm text-text font-medium">{label}</span>
         <span className={`ml-auto flex items-center gap-1.5 text-xs uppercase tracking-wide ${labelClass}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
           {statusLabel}
@@ -734,7 +536,7 @@ function PhaseCard({
       </div>
 
       {status === "pending" && (
-        pendingContent ?? <p className="text-text-muted text-sm">{pendingText}</p>
+        <p className="text-text-muted text-sm">{pendingText}</p>
       )}
 
       {status === "running" && (

@@ -77,15 +77,46 @@ export default defineSchema({
     .index("by_dataset", ["datasetId"])
     .index("by_source_doc", ["datasetId", "sourceDocId"]),
 
+  // ─── Retrievers (pipeline-configured retrievers on a KB) ───
+  retrievers: defineTable({
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    name: v.string(),
+    retrieverConfig: v.any(),
+    indexConfigHash: v.string(),
+    retrieverConfigHash: v.string(),
+    defaultK: v.number(),
+    indexingJobId: v.optional(v.id("indexingJobs")),
+    status: v.union(
+      v.literal("configuring"),
+      v.literal("indexing"),
+      v.literal("ready"),
+      v.literal("error"),
+    ),
+    chunkCount: v.optional(v.number()),
+    error: v.optional(v.string()),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_kb", ["kbId"])
+    .index("by_kb_config_hash", ["kbId", "retrieverConfigHash"]),
+
   // ─── Experiments (evaluation runs against a dataset) ───
   experiments: defineTable({
     orgId: v.string(),
     datasetId: v.id("datasets"),
     name: v.string(),
-    retrieverConfig: v.any(),
-    k: v.number(),
+    retrieverId: v.optional(v.id("retrievers")),
+    retrieverConfig: v.optional(v.any()),
+    k: v.optional(v.number()),
     metricNames: v.array(v.string()),
-    status: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
     indexConfigHash: v.optional(v.string()),
     scores: v.optional(v.any()),
     langsmithExperimentId: v.optional(v.string()),
@@ -96,7 +127,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_org", ["orgId"])
-    .index("by_dataset", ["datasetId"]),
+    .index("by_dataset", ["datasetId"])
+    .index("by_retriever", ["retrieverId"]),
 
   // ─── Experiment Results (per-question evaluation results) ───
   experimentResults: defineTable({

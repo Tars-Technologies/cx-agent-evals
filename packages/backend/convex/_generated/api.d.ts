@@ -30,6 +30,8 @@ import type * as lib_llm from "../lib/llm.js";
 import type * as questions from "../questions.js";
 import type * as rag from "../rag.js";
 import type * as ragActions from "../ragActions.js";
+import type * as retrieverActions from "../retrieverActions.js";
+import type * as retrievers from "../retrievers.js";
 import type * as testing from "../testing.js";
 import type * as users from "../users.js";
 
@@ -62,6 +64,8 @@ declare const fullApi: ApiFromModules<{
   questions: typeof questions;
   rag: typeof rag;
   ragActions: typeof ragActions;
+  retrieverActions: typeof retrieverActions;
+  retrievers: typeof retrievers;
   testing: typeof testing;
   users: typeof users;
 }>;

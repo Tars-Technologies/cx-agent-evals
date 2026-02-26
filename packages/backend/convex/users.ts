@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
@@ -28,6 +28,19 @@ export const getOrCreate = mutation({
       name: identity.name ?? "",
       createdAt: Date.now(),
     });
+  },
+});
+
+/**
+ * Internal query: look up user by Clerk ID (for use in actions).
+ */
+export const getByClerkId = internalQuery({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .unique();
   },
 });
 

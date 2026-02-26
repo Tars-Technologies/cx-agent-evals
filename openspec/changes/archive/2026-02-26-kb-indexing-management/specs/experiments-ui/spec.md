@@ -1,8 +1,4 @@
-## Purpose
-
-Frontend page and components for configuring and running pipeline-based retrieval experiments with two-phase execution (indexing + evaluation) and real-time progress streaming.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Experiments page layout
 The system SHALL provide an experiments page at `/experiments` with a two-column layout: a fixed-width configuration panel (left) and a flexible execution panel (right). The page SHALL use the existing dark theme with JetBrains Mono font and emerald accent color.
@@ -32,13 +28,6 @@ The system SHALL provide a dataset picker dropdown that fetches datasets from Co
 #### Scenario: Dataset selection shows info
 - **WHEN** user selects a dataset
 - **THEN** the UI SHALL display the dataset strategy, question count, and LangSmith sync status
-
-### Requirement: Metrics selection
-The system SHALL provide checkboxes for selecting evaluation metrics: recall, precision, IoU, and F1. All metrics SHALL be selected by default.
-
-#### Scenario: Toggle metrics
-- **WHEN** user unchecks a metric
-- **THEN** that metric SHALL be excluded from the experiment configuration
 
 ### Requirement: Experiment name input
 The system SHALL provide an experiment name input that auto-generates from the retriever name and dataset name (e.g., `hybrid-reranked-dim-driven-50q`). The user SHALL be able to edit the name manually.
@@ -77,27 +66,8 @@ The system SHALL display real-time experiment progress using a single-phase eval
 - **WHEN** an experiment is running
 - **THEN** the UI SHALL show only the evaluation phase progress, not an indexing phase
 
-### Requirement: Experiment completion display
-The system SHALL display experiment results upon completion, showing: aggregate metric scores in a 2x2 grid (formatted to 3 decimal places), a "View in LangSmith" link, and add the experiment to the recent experiments list.
+## REMOVED Requirements
 
-#### Scenario: Scores displayed on completion
-- **WHEN** an experiment completes successfully
-- **THEN** the UI SHALL display the aggregate scores for each selected metric in a 2x2 grid
-
-#### Scenario: LangSmith link provided
-- **WHEN** an experiment completes
-- **THEN** the UI SHALL show a "View in LangSmith ->" link that opens the experiment in a new tab
-
-### Requirement: Recent experiments list
-The system SHALL display a list of recent experiments for the selected dataset, fetched from Convex via reactive queries. Each experiment card SHALL show the experiment name, status badge, key metric scores, and a "View in LangSmith" link.
-
-#### Scenario: Experiments list loads on dataset selection
-- **WHEN** user selects a dataset
-- **THEN** the recent experiments list SHALL fetch and display experiments for that dataset
-
-### Requirement: Error handling
-The system SHALL display error states for: failed experiment runs and backend errors. Errors SHALL be shown in the relevant phase card with a descriptive message.
-
-#### Scenario: Experiment run fails
-- **WHEN** an experiment fails during execution
-- **THEN** the relevant phase card SHALL display the error message in red
+### Requirement: Run experiment button
+**Reason**: Replaced by new "Run Experiment" button that sends `retrieverId` instead of inline `retrieverConfig` with `autoStart` flag.
+**Migration**: The new run button is defined above under MODIFIED Requirements.
