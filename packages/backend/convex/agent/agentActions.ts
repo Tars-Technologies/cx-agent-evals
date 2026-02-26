@@ -44,7 +44,11 @@ export const streamResponse = internalAction({
       if (!kb) continue;
 
       // Create a tool name from KB name (sanitize for use as identifier)
-      const toolName = `search_${kb.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+      let toolName = `search_${kb.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+      let suffix = 2;
+      while (tools[toolName]) {
+        toolName = `search_${kb.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${suffix++}`;
+      }
 
       tools[toolName] = createKBRetrieverTool({
         kbId: kbConfig.kbId,

@@ -246,7 +246,7 @@ function MessageList({ threadId }: { threadId: string }) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [results]);
+  }, [results.length]);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -274,31 +274,68 @@ function MessageList({ threadId }: { threadId: string }) {
 // ─── Message Bubble ───
 
 function MessageBubble({ message }: { message: any }) {
+  if (message.role === "system") return null;
+
   const isUser = message.role === "user";
+  const parts = message.parts ?? [];
 
-  // Skip rendering assistant tool-call-only messages (no text)
-  if (message.role === "assistant" && message.toolCalls?.length > 0 && !message.text) {
-    return null;
-  }
+  // Extract text and tool parts from the message
+  const textParts = parts.filter((p: any) => p.type === "text");
+  const toolParts = parts.filter(
+    (p: any) => p.type?.startsWith("tool-") || p.type === "tool-invocation",
+  );
 
-  // Render tool results as collapsible source cards
-  if (message.role === "tool") {
-    return <SourceSection content={message.text ?? ""} />;
+  const textContent = textParts.map((p: any) => p.text ?? "").join("").trim();
+
+  // Fallback: if no parts, use message.text directly (handles simpler message shapes)
+  const displayText = textContent || message.text || "";
+
+  // If the message is only tool calls with no text, render just the sources
+  if (!displayText && toolParts.length > 0) {
+    return (
+      <div className="space-y-1">
+        {toolParts.map((part: any, i: number) =>
+          part.toolOutput || part.output || part.result ? (
+            <SourceSection
+              key={i}
+              content={String(part.toolOutput ?? part.output ?? part.result ?? "")}
+            />
+          ) : null,
+        )}
+      </div>
+    );
   }
 
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[75%] px-3 py-2 rounded-lg text-xs leading-relaxed whitespace-pre-wrap ${
-          isUser
-            ? "bg-accent/15 text-accent"
-            : "bg-bg-elevated text-text border border-border/50"
-        }`}
-      >
-        {message.text || (
-          <span className="text-text-dim italic animate-pulse">Thinking...</span>
-        )}
-      </div>
+    <div className="space-y-2">
+      {displayText && (
+        <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+          <div
+            className={`max-w-[75%] px-3 py-2 rounded-lg text-xs leading-relaxed whitespace-pre-wrap ${
+              isUser
+                ? "bg-accent/15 text-accent"
+                : "bg-bg-elevated text-text border border-border/50"
+            }`}
+          >
+            {displayText}
+          </div>
+        </div>
+      )}
+      {!displayText && !isUser && (
+        <div className="flex justify-start">
+          <div className="max-w-[75%] px-3 py-2 rounded-lg text-xs bg-bg-elevated border border-border/50">
+            <span className="text-text-dim italic animate-pulse">Thinking...</span>
+          </div>
+        </div>
+      )}
+      {toolParts.map((part: any, i: number) =>
+        part.toolOutput || part.output || part.result ? (
+          <SourceSection
+            key={i}
+            content={String(part.toolOutput ?? part.output ?? part.result ?? "")}
+          />
+        ) : null,
+      )}
     </div>
   );
 }

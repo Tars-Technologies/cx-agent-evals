@@ -56,7 +56,16 @@ export const sendMessage = mutation({
     content: v.string(),
   },
   handler: async (ctx, args) => {
-    await getAuthContext(ctx); // Verify auth
+    const { orgId } = await getAuthContext(ctx);
+
+    // Verify thread belongs to this org
+    const config = await ctx.db
+      .query("agentThreadConfigs")
+      .withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
+      .unique();
+    if (!config || config.orgId !== orgId) {
+      throw new Error("Thread not found");
+    }
 
     const { messageId } = await saveMessage(ctx, components.agent, {
       threadId: args.threadId,
@@ -84,7 +93,17 @@ export const listMessages = query({
     streamArgs: vStreamArgs,
   },
   handler: async (ctx, args) => {
-    await getAuthContext(ctx); // Verify auth
+    const { orgId } = await getAuthContext(ctx);
+
+    // Verify thread belongs to this org
+    const config = await ctx.db
+      .query("agentThreadConfigs")
+      .withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
+      .unique();
+    if (!config || config.orgId !== orgId) {
+      throw new Error("Thread not found");
+    }
+
     const streams = await syncStreams(ctx, components.agent, {
       threadId: args.threadId,
       streamArgs: args.streamArgs,
@@ -113,12 +132,16 @@ export const listThreads = query({
 export const getThreadConfig = query({
   args: { threadId: v.string() },
   handler: async (ctx, args) => {
-    await getAuthContext(ctx);
+    const { orgId } = await getAuthContext(ctx);
 
-    return await ctx.db
+    const config = await ctx.db
       .query("agentThreadConfigs")
       .withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
       .unique();
+    if (!config || config.orgId !== orgId) {
+      throw new Error("Thread not found");
+    }
+    return config;
   },
 });
 
