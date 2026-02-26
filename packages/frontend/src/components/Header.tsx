@@ -4,7 +4,7 @@ import Link from "next/link";
 import { OrganizationSwitcher, UserButton } from "@clerk/nextjs";
 
 interface HeaderProps {
-  mode?: "generate" | "experiments";
+  mode?: "generate" | "experiments" | "agent";
   onReset?: () => void;
 }
 
@@ -42,6 +42,16 @@ export function Header({ mode, onReset }: HeaderProps) {
                   }`}
                 >
                   Experiments
+                </Link>
+                <Link
+                  href="/agent"
+                  className={`px-3 py-1 text-xs rounded transition-colors ${
+                    mode === "agent"
+                      ? "bg-bg-elevated text-accent"
+                      : "text-text-muted hover:text-text"
+                  }`}
+                >
+                  Agent
                 </Link>
               </div>
             </>
