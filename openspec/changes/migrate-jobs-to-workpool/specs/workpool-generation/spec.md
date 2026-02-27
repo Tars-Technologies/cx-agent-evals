@@ -1,0 +1,85 @@
+## ADDED Requirements
+
+### Requirement: Generation WorkPool instance
+The system SHALL create a `Workpool` instance backed by `components.generationPool` with `maxParallelism: 10`, `retryActionsByDefault: true`, and `defaultRetryBehavior: { maxAttempts: 5, initialBackoffMs: 2000, base: 2 }`.
+
+#### Scenario: Pool is available
+- **WHEN** the Convex backend is deployed
+- **THEN** the `generationPool` component SHALL be available via `components.generationPool`
+
+### Requirement: Start generation mutation
+The system SHALL provide a `startGeneration` mutation that creates a `generationJobs` record with `status: "running"` and `phase: "generating"`, then enqueues work items into the `generationPool`. For "simple" strategy, it SHALL enqueue one action per document. For "dimension-driven" and "real-world-grounded" strategies, it SHALL enqueue a single action for the entire corpus. Each enqueued item SHALL specify `onComplete: onQuestionGenerated` with context containing the `jobId`.
+
+#### Scenario: Simple strategy enqueues per-document
+- **WHEN** a user starts generation with "simple" strategy on a KB with 10 documents
+- **THEN** the system SHALL create a `generationJobs` record with `totalItems: 10` and enqueue 10 actions into the pool
+
+#### Scenario: Dimension-driven strategy enqueues single item
+- **WHEN** a user starts generation with "dimension-driven" strategy
+- **THEN** the system SHALL create a `generationJobs` record with `totalItems: 1` and enqueue 1 action into the pool
+
+#### Scenario: Dedup running generation
+- **WHEN** a generation job is already running for the same dataset
+- **THEN** the mutation SHALL return the existing job ID without creating a new one
+
+### Requirement: Per-document generation action
+The system SHALL provide a `generateForDocument` action that receives a single document ID, loads the document, runs `SimpleStrategy.generate()`, and inserts the resulting questions via `questions.insertBatch`. The action SHALL return `{ questionsGenerated: number }`.
+
+#### Scenario: Generate questions for one document
+- **WHEN** the action runs for a document
+- **THEN** it SHALL generate questions using SimpleStrategy and insert them into the questions table with `relevantSpans: []`
+
+### Requirement: Whole-corpus generation action
+The system SHALL provide `generateDimensionDriven` and `generateRealWorldGrounded` actions that load the full corpus from the KB, run the respective strategy, and insert all resulting questions. Each action SHALL return `{ questionsGenerated: number }`.
+
+#### Scenario: Dimension-driven generates for full corpus
+- **WHEN** the action runs
+- **THEN** it SHALL run `DimensionDrivenStrategy.generate()` on the full corpus and insert all questions
+
+#### Scenario: Real-world-grounded generates for full corpus
+- **WHEN** the action runs
+- **THEN** it SHALL run `RealWorldGroundedStrategy.generate()` on the full corpus and insert all questions
+
+### Requirement: Phase 1 completion callback (onQuestionGenerated)
+The system SHALL provide an `onQuestionGenerated` mutation as the WorkPool `onComplete` callback for Phase 1. It SHALL increment progress counters on the `generationJobs` record. When all Phase 1 items have completed (processedItems + failedItems + skippedItems >= totalItems), it SHALL transition the job to Phase 2 by: updating `phase` to `"ground-truth"`, querying all generated questions for the dataset, setting `totalItems` to the question count, resetting `processedItems`/`failedItems`/`skippedItems` to 0, and enqueueing one `assignGroundTruthForQuestion` action per question into the same pool with `onComplete: onGroundTruthAssigned`.
+
+#### Scenario: Partial completion
+- **WHEN** 3 of 10 generation items have completed
+- **THEN** the callback SHALL update `processedItems` to 3 and NOT trigger Phase 2
+
+#### Scenario: All Phase 1 items complete triggers Phase 2
+- **WHEN** the last generation item completes (10 of 10)
+- **THEN** the callback SHALL transition to Phase 2, query all questions, and enqueue GT actions
+
+#### Scenario: Failed items counted
+- **WHEN** a generation item fails after all retries
+- **THEN** the callback SHALL increment `failedItems` and the item's error SHALL be recorded in `failedItemDetails`
+
+### Requirement: Per-question ground truth action
+The system SHALL provide an `assignGroundTruthForQuestion` action that receives a question ID, loads the question and corpus, runs `GroundTruthAssigner.assign()`, and updates the question's `relevantSpans` via `questions.updateSpans`. The action SHALL return `{ spansFound: number }`.
+
+#### Scenario: Ground truth found
+- **WHEN** the action runs and the LLM identifies relevant spans
+- **THEN** it SHALL update the question with the character spans
+
+#### Scenario: No ground truth found
+- **WHEN** the action runs and the LLM finds no relevant spans
+- **THEN** the question SHALL retain empty `relevantSpans`
+
+### Requirement: Phase 2 completion callback (onGroundTruthAssigned)
+The system SHALL provide an `onGroundTruthAssigned` mutation as the WorkPool `onComplete` callback for Phase 2. It SHALL increment progress counters. When all Phase 2 items complete, it SHALL finalize the job by: updating `datasets.questionCount`, setting `generationJobs.status` to `"completed"` (or `"completed_with_errors"` if any items failed), setting `completedAt`, and scheduling a fire-and-forget LangSmith sync.
+
+#### Scenario: All GT items complete with no failures
+- **WHEN** all ground truth items complete successfully
+- **THEN** the job status SHALL be set to `"completed"` and dataset `questionCount` SHALL be updated
+
+#### Scenario: Some GT items failed
+- **WHEN** some ground truth items failed after retries
+- **THEN** the job status SHALL be set to `"completed_with_errors"`
+
+### Requirement: Cancel generation
+The system SHALL provide a `cancelGeneration` mutation that sets the job status to `"canceling"` and calls `pool.cancelAll(ctx)`. Pending pool items SHALL be canceled; in-flight items SHALL complete normally. The job SHALL transition to `"canceled"` when all in-flight items finish.
+
+#### Scenario: Cancel mid-generation
+- **WHEN** a user cancels during Phase 1 with 5/10 items processed
+- **THEN** pending items SHALL be canceled, in-flight items SHALL finish, and the job SHALL eventually reach `"canceled"` status

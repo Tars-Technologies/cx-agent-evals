@@ -19,7 +19,7 @@ export default function GeneratePage() {
 
   // Generation tracking
   const [datasetId, setDatasetId] = useState<Id<"datasets"> | null>(null);
-  const [jobId, setJobId] = useState<Id<"jobs"> | null>(null);
+  const [jobId, setJobId] = useState<Id<"generationJobs"> | null>(null);
 
   // Questions from Convex (reactive)
   const questionsData = useQuery(
@@ -34,12 +34,12 @@ export default function GeneratePage() {
   );
 
   // Job status (reactive — updates as generation progresses)
-  const job = useQuery(api.jobs.get, jobId ? { id: jobId } : "skip");
+  const job = useQuery(api.generation.getJob, jobId ? { jobId } : "skip");
 
   // Dataset info
   const dataset = useQuery(api.datasets.get, datasetId ? { id: datasetId } : "skip");
 
-  const startGeneration = useMutation(api.generation.start);
+  const startGeneration = useMutation(api.generation.startGeneration);
 
   // UI state
   const [selectedQuestion, setSelectedQuestion] = useState<number | null>(null);
@@ -205,9 +205,13 @@ export default function GeneratePage() {
       }
     : null;
 
-  // Phase status from job progress
-  const phaseStatus = job?.progress?.message ?? (job?.phase ? `${job.phase}...` : null);
-  const totalDone = job?.status === "completed" ? (questions.length || null) : null;
+  // Phase status from generation job
+  const phaseStatus = job?.phase
+    ? `${job.phase}... (${job.processedItems}/${job.totalItems})`
+    : null;
+  const totalDone = job?.status === "completed" || job?.status === "completed_with_errors"
+    ? (questions.length || null)
+    : null;
 
   const hasDocuments = (documentsData ?? []).length > 0;
   const hasQuestions = questions.length > 0;

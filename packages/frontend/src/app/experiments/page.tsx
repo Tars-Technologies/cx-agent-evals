@@ -47,10 +47,8 @@ export default function ExperimentsPage() {
   );
 
   // --- Experiment execution state ---
-  const [jobId, setJobId] = useState<Id<"jobs"> | null>(null);
   const [experimentId, setExperimentId] = useState<Id<"experiments"> | null>(null);
 
-  const job = useQuery(api.jobs.get, jobId ? { id: jobId } : "skip");
   const currentExperiment = useQuery(
     api.experiments.get,
     experimentId ? { id: experimentId } : "skip",
@@ -80,22 +78,28 @@ export default function ExperimentsPage() {
     setExperimentName(parts.length > 0 ? parts.join("-") : "");
   }, [selectedRetriever, selectedDataset, nameEdited]);
 
-  // --- Derive execution status ---
-  const jobProgress = job?.progress as
-    | { current?: number; total?: number; message?: string }
-    | undefined;
-
+  // --- Derive execution status from experiment record ---
   type ExecStatus = "idle" | "evaluating" | "complete" | "error";
 
-  const execStatus: ExecStatus = !jobId
+  const execStatus: ExecStatus = !experimentId
     ? "idle"
-    : job?.status === "failed"
+    : currentExperiment?.status === "failed"
       ? "error"
-      : job?.status === "completed"
+      : currentExperiment?.status === "completed" || currentExperiment?.status === "completed_with_errors"
         ? "complete"
-        : "evaluating";
+        : currentExperiment?.status === "canceled"
+          ? "complete"
+          : "evaluating";
 
   const isRunning = execStatus === "evaluating";
+
+  const experimentProgress = currentExperiment
+    ? {
+        phase: currentExperiment.phase as string | undefined,
+        processed: (currentExperiment.processedQuestions as number) ?? 0,
+        total: (currentExperiment.totalQuestions as number) ?? 0,
+      }
+    : undefined;
 
   const completedScores = currentExperiment?.scores as
     | Record<string, number>
@@ -120,7 +124,6 @@ export default function ExperimentsPage() {
         metricNames: selectedMetrics,
       });
 
-      setJobId(result.jobId);
       setExperimentId(result.experimentId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start experiment");
@@ -321,7 +324,9 @@ export default function ExperimentsPage() {
               }
               pendingText="Select a retriever and dataset, then run the experiment."
               runningText={
-                jobProgress?.message ?? "Evaluating..."
+                experimentProgress?.phase
+                  ? `${experimentProgress.phase}... (${experimentProgress.processed}/${experimentProgress.total})`
+                  : "Evaluating..."
               }
               completeContent={
                 completedScores ? (
@@ -357,7 +362,7 @@ export default function ExperimentsPage() {
                   <p className="text-text-muted text-sm">Experiment complete</p>
                 )
               }
-              errorText={error || job?.error || "Evaluation failed"}
+              errorText={error || (currentExperiment?.error as string) || "Evaluation failed"}
             />
 
             {/* Run button */}

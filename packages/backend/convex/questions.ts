@@ -89,6 +89,25 @@ export const getInternal = internalQuery({
   },
 });
 
+/**
+ * Batch-update langsmithExampleId on questions after dataset sync.
+ */
+export const updateLangsmithExampleIds = internalMutation({
+  args: {
+    updates: v.array(
+      v.object({
+        questionId: v.id("questions"),
+        langsmithExampleId: v.string(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    for (const { questionId, langsmithExampleId } of args.updates) {
+      await ctx.db.patch(questionId, { langsmithExampleId });
+    }
+  },
+});
+
 export const updateSpans = internalMutation({
   args: {
     questionId: v.id("questions"),
