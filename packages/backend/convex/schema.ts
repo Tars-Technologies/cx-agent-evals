@@ -72,6 +72,7 @@ export default defineSchema({
     queryText: v.string(),
     sourceDocId: v.string(),
     relevantSpans: v.array(spanValidator),
+    langsmithExampleId: v.optional(v.string()),
     metadata: v.any(),
   })
     .index("by_dataset", ["datasetId"])
@@ -102,6 +103,51 @@ export default defineSchema({
     .index("by_kb", ["kbId"])
     .index("by_kb_config_hash", ["kbId", "retrieverConfigHash"]),
 
+  // ─── Generation Jobs (WorkPool-based question generation tracking) ───
+  generationJobs: defineTable({
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    datasetId: v.id("datasets"),
+    strategy: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("completed_with_errors"),
+      v.literal("failed"),
+      v.literal("canceling"),
+      v.literal("canceled"),
+    ),
+    phase: v.string(),
+    totalItems: v.number(),
+    processedItems: v.number(),
+    failedItems: v.number(),
+    skippedItems: v.number(),
+    error: v.optional(v.string()),
+    failedItemDetails: v.optional(
+      v.array(
+        v.object({
+          itemKey: v.string(),
+          error: v.string(),
+        }),
+      ),
+    ),
+    workIds: v.optional(v.array(v.string())),
+    phase1Stats: v.optional(
+      v.object({
+        processedItems: v.number(),
+        failedItems: v.number(),
+        skippedItems: v.number(),
+      }),
+    ),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_dataset", ["datasetId"])
+    .index("by_org", ["orgId"])
+    .index("by_status", ["orgId", "status"]),
+
   // ─── Experiments (evaluation runs against a dataset) ───
   experiments: defineTable({
     orgId: v.string(),
@@ -115,8 +161,17 @@ export default defineSchema({
       v.literal("pending"),
       v.literal("running"),
       v.literal("completed"),
+      v.literal("completed_with_errors"),
       v.literal("failed"),
+      v.literal("canceling"),
+      v.literal("canceled"),
     ),
+    phase: v.optional(v.string()),
+    totalQuestions: v.optional(v.number()),
+    processedQuestions: v.optional(v.number()),
+    failedQuestions: v.optional(v.number()),
+    skippedQuestions: v.optional(v.number()),
+    workIds: v.optional(v.array(v.string())),
     indexConfigHash: v.optional(v.string()),
     scores: v.optional(v.any()),
     langsmithExperimentId: v.optional(v.string()),
@@ -125,6 +180,7 @@ export default defineSchema({
     error: v.optional(v.string()),
     createdBy: v.id("users"),
     createdAt: v.number(),
+    completedAt: v.optional(v.number()),
   })
     .index("by_org", ["orgId"])
     .index("by_dataset", ["datasetId"])
@@ -138,41 +194,6 @@ export default defineSchema({
     scores: v.any(),
     metadata: v.any(),
   }).index("by_experiment", ["experimentId"]),
-
-  // ─── Jobs (long-running task tracking) ───
-  jobs: defineTable({
-    orgId: v.string(),
-    type: v.string(),
-    status: v.string(),
-    phase: v.optional(v.string()),
-    progress: v.optional(
-      v.object({
-        current: v.number(),
-        total: v.number(),
-        message: v.optional(v.string()),
-      }),
-    ),
-    result: v.optional(v.any()),
-    error: v.optional(v.string()),
-    retryCount: v.number(),
-    maxRetries: v.number(),
-    intermediateState: v.optional(v.any()),
-    createdBy: v.id("users"),
-    createdAt: v.number(),
-  }).index("by_org_status", ["orgId", "status"]),
-
-  // ─── Job Items (per-item tracking within a job phase) ───
-  jobItems: defineTable({
-    jobId: v.id("jobs"),
-    phase: v.string(),
-    itemKey: v.string(),
-    status: v.string(),
-    result: v.optional(v.any()),
-    error: v.optional(v.string()),
-    processedAt: v.optional(v.number()),
-  })
-    .index("by_job_phase", ["jobId", "phase"])
-    .index("by_job_phase_status", ["jobId", "phase", "status"]),
 
   // ─── Document Chunks (position-aware, with vector embeddings) ───
   documentChunks: defineTable({

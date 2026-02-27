@@ -4,7 +4,6 @@ import { internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import { processBatch } from "./lib/batchProcessor";
 import { createLLMClient } from "./lib/llm";
 import {
   SimpleStrategy,
@@ -38,324 +37,172 @@ async function loadCorpusFromKb(
   };
 }
 
-/**
- * Insert GeneratedQuery[] into the questions table.
- */
-async function insertGeneratedQuestions(
-  ctx: { runMutation: (ref: any, args: any) => Promise<any> },
-  datasetId: Id<"datasets">,
-  queries: Array<{
-    query: string;
-    targetDocId: string;
-    metadata: Record<string, string>;
-  }>,
-  prefix: string,
-) {
-  if (queries.length === 0) return;
+// ─── Per-Document Generation (Simple Strategy) ───
 
-  // Insert in batches of 100 to avoid oversized mutations
-  const BATCH_SIZE = 100;
-  for (let i = 0; i < queries.length; i += BATCH_SIZE) {
-    const batch = queries.slice(i, i + BATCH_SIZE);
-    await ctx.runMutation(internal.questions.insertBatch, {
-      datasetId,
-      questions: batch.map((q, idx) => ({
-        queryId: `${prefix}_q${i + idx}`,
-        queryText: q.query,
-        sourceDocId: q.targetDocId,
-        relevantSpans: [],
-        metadata: q.metadata,
-      })),
-    });
-  }
-}
-
-// ─── Simple Strategy ───
-
-/**
- * Simple strategy: generate questions for each document individually.
- * Phase: "generate-questions" — one job item per document.
- */
-export const simpleGenerate = internalAction({
+export const generateForDocument = internalAction({
   args: {
-    jobId: v.id("jobs"),
     datasetId: v.id("datasets"),
-    kbId: v.id("knowledgeBases"),
+    documentId: v.id("documents"),
+    strategyConfig: v.any(),
   },
   handler: async (ctx, args) => {
-    // Initialize phase items on first run
-    const progress = await ctx.runQuery(internal.jobItems.getProgress, {
-      jobId: args.jobId,
-      phase: "generate-questions",
-    });
-
-    if (progress.total === 0) {
-      const docs = await ctx.runQuery(internal.documents.listByKbInternal, {
-        kbId: args.kbId,
-      });
-      await ctx.runMutation(internal.jobItems.initPhase, {
-        jobId: args.jobId,
-        phase: "generate-questions",
-        items: docs.map((d: any) => ({ itemKey: d._id })),
-      });
-    }
-
-    const dataset = await ctx.runQuery(internal.datasets.getInternal, {
-      id: args.datasetId,
-    });
-    const config = dataset.strategyConfig as Record<string, unknown>;
+    const config = args.strategyConfig as Record<string, unknown>;
     const queriesPerDoc = (config.queriesPerDoc as number) ?? 5;
     const model = getModel(config);
     const llmClient = createLLMClient();
 
-    await processBatch(ctx, {
-      jobId: args.jobId,
-      phase: "generate-questions",
-      batchSize: 30,
-      processItem: async (item) => {
-        const docId = item.itemKey as Id<"documents">;
-        const doc = await ctx.runQuery(internal.documents.getInternal, {
-          id: docId,
+    const doc = await ctx.runQuery(internal.documents.getInternal, {
+      id: args.documentId,
+    });
+
+    const corpus = createCorpusFromDocuments([
+      { id: doc.docId, content: doc.content },
+    ]);
+
+    const strategy = new SimpleStrategy({ queriesPerDoc });
+    const queries = await strategy.generate({ corpus, llmClient, model });
+
+    if (queries.length > 0) {
+      const BATCH_SIZE = 100;
+      for (let i = 0; i < queries.length; i += BATCH_SIZE) {
+        const batch = queries.slice(i, i + BATCH_SIZE);
+        await ctx.runMutation(internal.questions.insertBatch, {
+          datasetId: args.datasetId,
+          questions: batch.map((q, idx) => ({
+            queryId: `${doc.docId}_q${i + idx}`,
+            queryText: q.query,
+            sourceDocId: q.targetDocId,
+            relevantSpans: [],
+            metadata: q.metadata,
+          })),
         });
+      }
+    }
 
-        const corpus = createCorpusFromDocuments([
-          { id: doc.docId, content: doc.content },
-        ]);
-
-        const strategy = new SimpleStrategy({ queriesPerDoc });
-        const queries = await strategy.generate({ corpus, llmClient, model });
-
-        if (queries.length > 0) {
-          await ctx.runMutation(internal.questions.insertBatch, {
-            datasetId: args.datasetId,
-            questions: queries.map((q, i) => ({
-              queryId: `${doc.docId}_q${i}`,
-              queryText: q.query,
-              sourceDocId: q.targetDocId,
-              relevantSpans: [],
-              metadata: q.metadata,
-            })),
-          });
-        }
-
-        return { questionsGenerated: queries.length };
-      },
-      phaseMessage: "Generating questions",
-      continuationAction: internal.generationActions.simpleGenerate,
-      continuationArgs: { datasetId: args.datasetId, kbId: args.kbId },
-      nextPhaseAction: internal.generationActions.assignGroundTruth,
-      nextPhaseArgs: { datasetId: args.datasetId, kbId: args.kbId },
-    });
+    return { questionsGenerated: queries.length };
   },
 });
 
-// ─── Dimension-Driven Strategy ───
+// ─── Whole-Corpus Generation (Dimension-Driven) ───
 
-/**
- * Dimension-driven strategy: runs the full multi-phase pipeline in one action.
- * For KBs with < ~50 docs, this completes within the 10-min timeout.
- * For larger KBs, decomposed phased actions would be needed.
- */
-export const dimensionDrivenGenerate = internalAction({
+export const generateDimensionDriven = internalAction({
   args: {
-    jobId: v.id("jobs"),
     datasetId: v.id("datasets"),
     kbId: v.id("knowledgeBases"),
+    strategyConfig: v.any(),
   },
   handler: async (ctx, args) => {
-    await ctx.runMutation(internal.jobs.update, {
-      jobId: args.jobId,
-      status: "running",
-      phase: "generate-questions",
+    const config = args.strategyConfig as Record<string, unknown>;
+    const model = getModel(config);
+    const llmClient = createLLMClient();
+
+    const { corpus } = await loadCorpusFromKb(ctx, args.kbId);
+
+    const dimensions = parseDimensions(config.dimensions);
+    const totalQuestions = (config.totalQuestions as number) ?? 50;
+
+    const strategy = new DimensionDrivenStrategy({
+      dimensions,
+      totalQuestions,
     });
 
-    try {
-      const dataset = await ctx.runQuery(internal.datasets.getInternal, {
-        id: args.datasetId,
-      });
-      const config = dataset.strategyConfig as Record<string, unknown>;
-      const model = getModel(config);
-      const llmClient = createLLMClient();
+    const queries = await strategy.generate({ corpus, llmClient, model });
 
-      const { corpus } = await loadCorpusFromKb(ctx, args.kbId);
-
-      const dimensions = parseDimensions(config.dimensions);
-      const totalQuestions = (config.totalQuestions as number) ?? 50;
-
-      const strategy = new DimensionDrivenStrategy({
-        dimensions,
-        totalQuestions,
-        onProgress: (event) => {
-          // Fire-and-forget progress update (don't await to avoid slowing pipeline)
-          void ctx.runMutation(internal.jobs.update, {
-            jobId: args.jobId,
-            progress: {
-              current: 0,
-              total: 1,
-              message: `${event.phase}...`,
-            },
-          });
-        },
-      });
-
-      const queries = await strategy.generate({ corpus, llmClient, model });
-
-      await insertGeneratedQuestions(
-        ctx,
-        args.datasetId,
-        queries,
-        "dd",
-      );
-
-      // Schedule ground truth phase
-      await ctx.scheduler.runAfter(
-        0,
-        internal.generationActions.assignGroundTruth,
-        {
-          jobId: args.jobId,
+    if (queries.length > 0) {
+      const BATCH_SIZE = 100;
+      for (let i = 0; i < queries.length; i += BATCH_SIZE) {
+        const batch = queries.slice(i, i + BATCH_SIZE);
+        await ctx.runMutation(internal.questions.insertBatch, {
           datasetId: args.datasetId,
-          kbId: args.kbId,
-        },
-      );
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
-      await ctx.runMutation(internal.jobs.update, {
-        jobId: args.jobId,
-        status: "failed",
-        error: message,
-      });
+          questions: batch.map((q, idx) => ({
+            queryId: `dd_q${i + idx}`,
+            queryText: q.query,
+            sourceDocId: q.targetDocId,
+            relevantSpans: [],
+            metadata: q.metadata,
+          })),
+        });
+      }
     }
+
+    return { questionsGenerated: queries.length };
   },
 });
 
-// ─── Real-World-Grounded Strategy ───
+// ─── Whole-Corpus Generation (Real-World-Grounded) ───
 
-/**
- * Real-world-grounded strategy: embedding, matching, and few-shot generation.
- * Runs the full pipeline in one action.
- */
-export const realWorldGroundedGenerate = internalAction({
+export const generateRealWorldGrounded = internalAction({
   args: {
-    jobId: v.id("jobs"),
     datasetId: v.id("datasets"),
     kbId: v.id("knowledgeBases"),
+    strategyConfig: v.any(),
   },
   handler: async (ctx, args) => {
-    await ctx.runMutation(internal.jobs.update, {
-      jobId: args.jobId,
-      status: "running",
-      phase: "generate-questions",
+    const config = args.strategyConfig as Record<string, unknown>;
+    const model = getModel(config);
+    const llmClient = createLLMClient();
+
+    const { corpus } = await loadCorpusFromKb(ctx, args.kbId);
+
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+    const embedder = new OpenAIEmbedder({
+      model: (config.embeddingModel as string) ?? "text-embedding-3-small",
+      client: openai,
     });
 
-    try {
-      const dataset = await ctx.runQuery(internal.datasets.getInternal, {
-        id: args.datasetId,
-      });
-      const config = dataset.strategyConfig as Record<string, unknown>;
-      const model = getModel(config);
-      const llmClient = createLLMClient();
+    const strategy = new RealWorldGroundedStrategy({
+      questions: (config.questions as string[]) ?? [],
+      totalSyntheticQuestions:
+        (config.totalSyntheticQuestions as number) ?? 50,
+      matchThreshold: config.matchThreshold as number | undefined,
+      fewShotExamplesPerDoc: config.fewShotExamplesPerDoc as
+        | number
+        | undefined,
+    });
 
-      const { corpus } = await loadCorpusFromKb(ctx, args.kbId);
+    const queries = await strategy.generate({
+      corpus,
+      llmClient,
+      model,
+      embedder,
+    });
 
-      // Create embedder
-      const openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-      });
-      const embedder = new OpenAIEmbedder({
-        model: (config.embeddingModel as string) ?? "text-embedding-3-small",
-        client: openai,
-      });
-
-      const strategy = new RealWorldGroundedStrategy({
-        questions: (config.questions as string[]) ?? [],
-        totalSyntheticQuestions:
-          (config.totalSyntheticQuestions as number) ?? 50,
-        matchThreshold: config.matchThreshold as number | undefined,
-        fewShotExamplesPerDoc: config.fewShotExamplesPerDoc as
-          | number
-          | undefined,
-        onProgress: (event) => {
-          void ctx.runMutation(internal.jobs.update, {
-            jobId: args.jobId,
-            progress: {
-              current: 0,
-              total: 1,
-              message: `${event.phase}...`,
-            },
-          });
-        },
-      });
-
-      const queries = await strategy.generate({
-        corpus,
-        llmClient,
-        model,
-        embedder,
-      });
-
-      await insertGeneratedQuestions(
-        ctx,
-        args.datasetId,
-        queries,
-        "rwg",
-      );
-
-      // Schedule ground truth phase
-      await ctx.scheduler.runAfter(
-        0,
-        internal.generationActions.assignGroundTruth,
-        {
-          jobId: args.jobId,
+    if (queries.length > 0) {
+      const BATCH_SIZE = 100;
+      for (let i = 0; i < queries.length; i += BATCH_SIZE) {
+        const batch = queries.slice(i, i + BATCH_SIZE);
+        await ctx.runMutation(internal.questions.insertBatch, {
           datasetId: args.datasetId,
-          kbId: args.kbId,
-        },
-      );
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
-      await ctx.runMutation(internal.jobs.update, {
-        jobId: args.jobId,
-        status: "failed",
-        error: message,
-      });
+          questions: batch.map((q, idx) => ({
+            queryId: `rwg_q${i + idx}`,
+            queryText: q.query,
+            sourceDocId: q.targetDocId,
+            relevantSpans: [],
+            metadata: q.metadata,
+          })),
+        });
+      }
     }
+
+    return { questionsGenerated: queries.length };
   },
 });
 
-// ─── Ground Truth Assignment (shared by all strategies) ───
+// ─── Per-Question Ground Truth Assignment ───
 
-/**
- * Assign ground truth character spans to each question.
- * Phase: "ground-truth" — one job item per question.
- * Uses eval-lib GroundTruthAssigner to extract exact text excerpts via LLM.
- */
-export const assignGroundTruth = internalAction({
+export const assignGroundTruthForQuestion = internalAction({
   args: {
-    jobId: v.id("jobs"),
-    datasetId: v.id("datasets"),
+    questionId: v.id("questions"),
     kbId: v.id("knowledgeBases"),
+    datasetId: v.id("datasets"),
   },
   handler: async (ctx, args) => {
-    // Initialize phase items on first run
-    const progress = await ctx.runQuery(internal.jobItems.getProgress, {
-      jobId: args.jobId,
-      phase: "ground-truth",
+    const question = await ctx.runQuery(internal.questions.getInternal, {
+      id: args.questionId,
     });
 
-    if (progress.total === 0) {
-      const questions = await ctx.runQuery(
-        internal.questions.byDatasetInternal,
-        { datasetId: args.datasetId },
-      );
-      await ctx.runMutation(internal.jobItems.initPhase, {
-        jobId: args.jobId,
-        phase: "ground-truth",
-        items: questions.map((q: any) => ({ itemKey: q._id })),
-      });
-    }
-
-    // Load full corpus for span position finding
     const { corpus } = await loadCorpusFromKb(ctx, args.kbId);
 
     const dataset = await ctx.runQuery(internal.datasets.getInternal, {
@@ -366,89 +213,33 @@ export const assignGroundTruth = internalAction({
     const llmClient = createLLMClient();
     const assigner = new GroundTruthAssigner();
 
-    await processBatch(ctx, {
-      jobId: args.jobId,
-      phase: "ground-truth",
-      batchSize: 30,
-      processItem: async (item) => {
-        const questionId = item.itemKey as Id<"questions">;
-        const question = await ctx.runQuery(internal.questions.getInternal, {
-          id: questionId,
-        });
-
-        const results = await assigner.assign(
-          [
-            {
-              query: question.queryText,
-              targetDocId: question.sourceDocId,
-              metadata: (question.metadata ?? {}) as Record<string, string>,
-            },
-          ],
-          { corpus, llmClient, model },
-        );
-
-        if (results.length > 0 && results[0].relevantSpans.length > 0) {
-          const spans = results[0].relevantSpans.map((s) => ({
-            docId: String(s.docId),
-            start: s.start,
-            end: s.end,
-            text: s.text,
-          }));
-
-          await ctx.runMutation(internal.questions.updateSpans, {
-            questionId,
-            relevantSpans: spans,
-          });
-
-          return { spansFound: spans.length };
-        }
-
-        return { spansFound: 0 };
-      },
-      phaseMessage: "Assigning ground truth",
-      continuationAction: internal.generationActions.assignGroundTruth,
-      continuationArgs: { datasetId: args.datasetId, kbId: args.kbId },
-      nextPhaseAction: internal.generationActions.finalizeGeneration,
-      nextPhaseArgs: { datasetId: args.datasetId },
-    });
-  },
-});
-
-// ─── Finalize ───
-
-/**
- * Update dataset question count and mark job complete.
- */
-export const finalizeGeneration = internalAction({
-  args: {
-    jobId: v.id("jobs"),
-    datasetId: v.id("datasets"),
-  },
-  handler: async (ctx, args) => {
-    const questions = await ctx.runQuery(
-      internal.questions.byDatasetInternal,
-      { datasetId: args.datasetId },
+    const results = await assigner.assign(
+      [
+        {
+          query: question.queryText,
+          targetDocId: question.sourceDocId,
+          metadata: (question.metadata ?? {}) as Record<string, string>,
+        },
+      ],
+      { corpus, llmClient, model },
     );
 
-    await ctx.runMutation(internal.datasets.updateQuestionCount, {
-      datasetId: args.datasetId,
-      questionCount: questions.length,
-    });
+    if (results.length > 0 && results[0].relevantSpans.length > 0) {
+      const spans = results[0].relevantSpans.map((s) => ({
+        docId: String(s.docId),
+        start: s.start,
+        end: s.end,
+        text: s.text,
+      }));
 
-    await ctx.runMutation(internal.jobs.update, {
-      jobId: args.jobId,
-      status: "completed",
-      result: {
-        datasetId: args.datasetId,
-        questionCount: questions.length,
-      },
-    });
+      await ctx.runMutation(internal.questions.updateSpans, {
+        questionId: args.questionId,
+        relevantSpans: spans,
+      });
 
-    // Fire-and-forget LangSmith sync
-    await ctx.scheduler.runAfter(
-      0,
-      internal.langsmithSync.syncDataset,
-      { datasetId: args.datasetId },
-    );
+      return { spansFound: spans.length };
+    }
+
+    return { spansFound: 0 };
   },
 });

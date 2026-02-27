@@ -87,6 +87,37 @@ export const syncDataset = internalAction({
         langsmithUrl: result.datasetUrl,
         langsmithSyncStatus: "synced",
       });
+
+      // I5: Link LangSmith example IDs back to questions for experiment result correlation
+      try {
+        const { Client } = await import("langsmith");
+        const client = new Client();
+        // List examples from the dataset we just created
+        const examples: Array<{ id: string; inputs: { query?: string } }> = [];
+        for await (const ex of client.listExamples({ datasetName: result.datasetName })) {
+          examples.push(ex as any);
+        }
+
+        // Match examples to questions by query text
+        const updates: Array<{ questionId: typeof questions[number]["_id"]; langsmithExampleId: string }> = [];
+        for (const q of questions) {
+          const match = examples.find(
+            (ex) => ex.inputs?.query === q.queryText,
+          );
+          if (match) {
+            updates.push({ questionId: q._id, langsmithExampleId: match.id });
+          }
+        }
+
+        if (updates.length > 0) {
+          await ctx.runMutation(internal.questions.updateLangsmithExampleIds, {
+            updates,
+          });
+        }
+      } catch (err) {
+        // Non-fatal — experiment runs work without example IDs
+        console.error("Failed to link LangSmith example IDs:", err);
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : String(error);
