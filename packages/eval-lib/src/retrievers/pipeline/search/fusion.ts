@@ -1,10 +1,5 @@
 import type { PositionAwareChunk } from "../../../types/index.js";
-
-/** A chunk paired with a relevance score. */
-export interface ScoredChunk {
-  readonly chunk: PositionAwareChunk;
-  readonly score: number;
-}
+import type { ScoredChunk } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Internal helpers

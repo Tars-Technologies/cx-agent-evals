@@ -13,7 +13,7 @@ import {
   computeIndexConfigHash,
 } from "./config.js";
 import { BM25SearchIndex } from "./search/bm25.js";
-import type { ScoredChunk } from "./search/fusion.js";
+import type { ScoredChunk } from "./types.js";
 import { weightedScoreFusion, reciprocalRankFusion } from "./search/fusion.js";
 import { applyThresholdFilter } from "./refinement/threshold.js";
 

@@ -20,7 +20,7 @@ export type {
   ThresholdRefinementStep,
 } from "./config.js";
 export { BM25SearchIndex } from "./search/index.js";
-export type { ScoredChunk } from "./search/index.js";
+export type { ScoredChunk } from "./types.js";
 export {
   weightedScoreFusion,
   reciprocalRankFusion,

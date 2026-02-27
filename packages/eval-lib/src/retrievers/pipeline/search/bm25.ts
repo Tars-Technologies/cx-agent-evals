@@ -1,13 +1,6 @@
 import MiniSearch from "minisearch";
 import type { PositionAwareChunk } from "../../../types/index.js";
-
-/**
- * Result of a BM25 search with the matching chunk and its normalized score.
- */
-export interface ScoredChunk {
-  readonly chunk: PositionAwareChunk;
-  readonly score: number;
-}
+import type { ScoredChunk } from "../types.js";
 
 /** Default BM25+ delta parameter (frequency normalization lower bound). */
 const DEFAULT_BM25_DELTA = 0.5;
