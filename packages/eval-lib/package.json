@@ -19,15 +19,6 @@
     "./rerankers/cohere": {
       "import": "./dist/rerankers/cohere.js",
       "types": "./dist/rerankers/cohere.d.ts"
-    },
-    "./langsmith": {
-      "types": "./dist/langsmith/index.d.ts",
-      "import": "./dist/langsmith/index.js",
-      "require": "./dist/langsmith/index.cjs"
-    },
-    "./langsmith/experiment-runner": {
-      "import": "./dist/langsmith/experiment-runner.js",
-      "types": "./dist/langsmith/experiment-runner.d.ts"
     }
   },
   "files": [
@@ -38,7 +29,6 @@
     "evaluation",
     "retrieval",
     "llm",
-    "langsmith",
     "typescript"
   ],
   "license": "MIT",
@@ -61,9 +51,6 @@
     "minisearch": "^7.2.0",
     "zod": "^3.23"
   },
-  "peerDependencies": {
-    "langsmith": ">=0.1.0"
-  },
   "optionalDependencies": {
     "cohere-ai": ">=7.0",
     "openai": ">=4.0"
@@ -72,7 +59,6 @@
     "@types/node": "^25.1.0",
     "@vitest/coverage-v8": "^1.6",
     "eslint": "^9.0",
-    "langsmith": ">=0.1.0",
     "prettier": "^3.2",
     "tsup": "^8.0",
     "typescript": "^5.4",

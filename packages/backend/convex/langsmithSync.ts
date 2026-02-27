@@ -4,19 +4,108 @@ import { internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import {
-  uploadDataset,
   QueryId,
   QueryText,
   DocumentId,
   type GroundTruth,
   type CharacterSpan,
 } from "rag-evaluation-system";
+import { getLangSmithClient } from "./lib/langsmith.js";
+
+// ─── Inlined from eval-lib/src/langsmith/upload.ts ───
+
+interface UploadProgress {
+  uploaded: number;
+  total: number;
+  failed: number;
+}
+
+interface UploadOptions {
+  datasetName?: string;
+  description?: string;
+  metadata?: Record<string, unknown>;
+  batchSize?: number;
+  maxRetries?: number;
+  onProgress?: (progress: UploadProgress) => void;
+}
+
+interface UploadResult {
+  datasetName: string;
+  datasetUrl: string;
+  uploaded: number;
+  failed: number;
+}
+
+async function uploadDataset(
+  groundTruth: readonly GroundTruth[],
+  options?: UploadOptions,
+): Promise<UploadResult> {
+  const client = await getLangSmithClient();
+  const name = options?.datasetName ?? "rag-eval-dataset";
+  const batchSize = options?.batchSize ?? 20;
+  const maxRetries = options?.maxRetries ?? 3;
+  const onProgress = options?.onProgress;
+
+  const dataset = await client.createDataset(name, {
+    description:
+      options?.description ?? "RAG evaluation ground truth (character spans)",
+    metadata: options?.metadata,
+  });
+
+  const datasetUrl = `${client.getHostUrl()}/datasets/${dataset.id}`;
+
+  // Build all examples upfront
+  const examples = groundTruth.map((gt) => ({
+    inputs: { query: String(gt.query.text) },
+    outputs: {
+      relevantSpans: gt.relevantSpans.map((span) => ({
+        docId: String(span.docId),
+        start: span.start,
+        end: span.end,
+        text: span.text,
+      })),
+    },
+    metadata: gt.query.metadata as Record<string, unknown>,
+    dataset_id: dataset.id,
+  }));
+
+  let uploaded = 0;
+  let failed = 0;
+  const total = examples.length;
+
+  // Upload in batches
+  for (let i = 0; i < total; i += batchSize) {
+    const batch = examples.slice(i, i + batchSize);
+    let attempt = 0;
+    let success = false;
+
+    while (attempt < maxRetries) {
+      try {
+        await client.createExamples(batch);
+        uploaded += batch.length;
+        success = true;
+        break;
+      } catch {
+        attempt++;
+        if (attempt >= maxRetries) {
+          failed += batch.length;
+        }
+      }
+    }
+
+    if (success || attempt >= maxRetries) {
+      onProgress?.({ uploaded, total, failed });
+    }
+  }
+
+  return { datasetName: name, datasetUrl, uploaded, failed };
+}
 
 // ─── Dataset Sync ───
 
 /**
  * Sync a dataset to LangSmith.
- * Reads all questions, converts to GroundTruth[], uploads via eval-lib.
+ * Reads all questions, converts to GroundTruth[], uploads via LangSmith client.
  */
 export const syncDataset = internalAction({
   args: {
@@ -90,8 +179,7 @@ export const syncDataset = internalAction({
 
       // I5: Link LangSmith example IDs back to questions for experiment result correlation
       try {
-        const { Client } = await import("langsmith");
-        const client = new Client();
+        const client = await getLangSmithClient();
         // List examples from the dataset we just created
         const examples: Array<{ id: string; inputs: { query?: string } }> = [];
         for await (const ex of client.listExamples({ datasetName: result.datasetName })) {

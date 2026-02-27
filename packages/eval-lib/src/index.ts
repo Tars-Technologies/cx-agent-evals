@@ -145,31 +145,6 @@ export type {
   ProgressEvent,
 } from "./synthetic-datagen/strategies/types.js";
 
-// LangSmith
-export {
-  getLangSmithClient,
-  uploadDataset,
-  loadDataset,
-  createLangSmithEvaluator,
-  createLangSmithEvaluators,
-  listDatasets,
-  listExperiments,
-  getCompareUrl,
-} from "./langsmith/index.js";
-export type {
-  UploadOptions,
-  UploadResult,
-  UploadProgress,
-  DatasetInfo,
-  ExperimentInfo,
-} from "./langsmith/index.js";
-
-// LangSmith experiment runner is available via:
-//   import { runLangSmithExperiment } from "rag-evaluation-system/langsmith/experiment-runner"
-// It is NOT re-exported from the main index to avoid pulling langsmith
-// into the module graph for consumers that don't need experiment running.
-export type { LangSmithExperimentConfig, ExperimentResult } from "./langsmith/index.js";
-
 // Utils
 export { generatePaChunkId } from "./utils/hashing.js";
 export { spanOverlaps, spanOverlapChars, spanLength } from "./utils/span.js";

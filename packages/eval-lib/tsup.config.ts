@@ -5,8 +5,6 @@ export default defineConfig({
     "src/index.ts",
     "src/embedders/openai.ts",
     "src/rerankers/cohere.ts",
-    "src/langsmith/index.ts",
-    "src/langsmith/experiment-runner.ts",
   ],
   format: ["esm", "cjs"],
   dts: true,
