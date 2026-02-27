@@ -1,5 +1,16 @@
 import { createHash } from "node:crypto";
 
+/** Deterministic JSON serialization — recursively sorts object keys at every level. */
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_key, val) =>
+    val && typeof val === "object" && !Array.isArray(val)
+      ? Object.fromEntries(
+          Object.entries(val).sort(([a], [b]) => a.localeCompare(b)),
+        )
+      : val,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Stage 1 — Index configuration
 // ---------------------------------------------------------------------------
@@ -127,8 +138,7 @@ export function computeRetrieverConfigHash(config: PipelineConfig, k: number): s
     search,
   };
 
-  // Sort top-level keys for deterministic serialization
-  const json = JSON.stringify(payload, Object.keys(payload).sort());
+  const json = stableStringify(payload);
   return createHash("sha256").update(json).digest("hex");
 }
 
@@ -143,8 +153,6 @@ export function computeIndexConfigHash(config: PipelineConfig): string {
     embeddingModel: index.embeddingModel ?? DEFAULT_INDEX_CONFIG.embeddingModel!,
   };
 
-  // Sort keys for deterministic serialization
-  const json = JSON.stringify(payload, Object.keys(payload).sort());
-
+  const json = stableStringify(payload);
   return createHash("sha256").update(json).digest("hex");
 }
