@@ -19,6 +19,14 @@
     "./rerankers/cohere": {
       "import": "./dist/rerankers/cohere.js",
       "types": "./dist/rerankers/cohere.d.ts"
+    },
+    "./pipeline/internals": {
+      "types": "./dist/pipeline/internals.d.ts",
+      "import": "./dist/pipeline/internals.js"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js"
     }
   },
   "files": [
