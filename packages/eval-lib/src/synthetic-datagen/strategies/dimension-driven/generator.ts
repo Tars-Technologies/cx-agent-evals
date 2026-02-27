@@ -85,12 +85,11 @@ export class DimensionDrivenStrategy implements QuestionStrategy {
 
     const results: GeneratedQuery[] = [];
     const docEntries = [...byDoc.entries()];
+    const docIndex = new Map(context.corpus.documents.map(d => [String(d.id), d]));
 
     for (let docIdx = 0; docIdx < docEntries.length; docIdx++) {
       const [docId, assignments] = docEntries[docIdx];
-      const doc = context.corpus.documents.find(
-        (d) => String(d.id) === docId,
-      );
+      const doc = docIndex.get(docId);
       if (!doc) continue;
 
       this._onProgress({

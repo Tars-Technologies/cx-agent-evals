@@ -19,12 +19,11 @@ export class GroundTruthAssigner implements GroundTruthAssignerInterface<GroundT
     context: GroundTruthAssignerContext,
   ): Promise<GroundTruth[]> {
     const results: GroundTruth[] = [];
+    const docIndex = new Map(context.corpus.documents.map(d => [String(d.id), d]));
 
     for (let i = 0; i < queries.length; i++) {
       const query = queries[i];
-      const doc = context.corpus.documents.find(
-        (d) => String(d.id) === query.targetDocId,
-      );
+      const doc = docIndex.get(query.targetDocId);
       if (!doc) continue;
 
       const excerpts = await this._extractExcerpts(
