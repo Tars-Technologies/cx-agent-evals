@@ -9,7 +9,6 @@ import { resolveConfig } from "@/lib/pipeline-types";
 
 interface PipelineConfigSummaryProps {
   config: PipelineConfig;
-  k: number;
   configName: string;
   isModified: boolean;
   onEdit: () => void;
@@ -40,7 +39,6 @@ function formatRefinement(steps: readonly RefinementStepConfig[]): string {
 
 export function PipelineConfigSummary({
   config,
-  k,
   configName,
   isModified,
   onEdit,
@@ -78,7 +76,7 @@ export function PipelineConfigSummary({
         <div className="flex gap-2">
           <span className="text-text-dim w-14 flex-shrink-0">Search</span>
           <span className="text-text-muted">
-            {formatSearch(resolved.search, k)}
+            {formatSearch(resolved.search, resolved.k)}
           </span>
         </div>
         <div className="flex gap-2">

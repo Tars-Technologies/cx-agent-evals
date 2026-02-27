@@ -23,7 +23,6 @@ import { saveConfig, configHash } from "@/lib/pipeline-storage";
 
 interface PipelineConfigModalProps {
   initialConfig: PipelineConfig;
-  initialK: number;
   initialName: string;
   basePreset: string;
   onSave: (saved: SavedPipelineConfig) => void;
@@ -38,20 +37,20 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function isPresetMatch(config: PipelineConfig, k: number, presetName: string): boolean {
+function isPresetMatch(config: PipelineConfig, presetName: string): boolean {
   const preset = PRESET_CONFIGS[presetName];
   if (!preset) return false;
   const a = resolveConfig({ ...config, name: "cmp" });
   const b = resolveConfig({ ...preset, name: "cmp" });
-  return deepEqual(a, b) && k === 5;
+  return deepEqual(a, b);
 }
 
-function buildAutoName(presetName: string, config: PipelineConfig, k: number): string {
-  if (isPresetMatch(config, k, presetName)) return presetName;
+function buildAutoName(presetName: string, config: PipelineConfig): string {
+  if (isPresetMatch(config, presetName)) return presetName;
   // Normalize name to a constant so the hash is stable (name must not feed into itself)
   const normalized = resolveConfig({ ...config, name: "" });
   const { name: _, ...withoutName } = normalized;
-  const hash = configHash(JSON.stringify({ ...withoutName, k }));
+  const hash = configHash(JSON.stringify(withoutName));
   return `${presetName}-${hash}`;
 }
 
@@ -61,7 +60,6 @@ function buildAutoName(presetName: string, config: PipelineConfig, k: number): s
 
 export function PipelineConfigModal({
   initialConfig,
-  initialK,
   initialName,
   basePreset,
   onSave,
@@ -78,7 +76,7 @@ export function PipelineConfigModal({
   const [searchStrategy, setSearchStrategy] = useState<"dense" | "bm25" | "hybrid">(
     resolved.search.strategy,
   );
-  const [k, setK] = useState(initialK);
+  const [k, setK] = useState(resolved.k);
   const [denseWeight, setDenseWeight] = useState(
     resolved.search.strategy === "hybrid" ? (resolved.search.denseWeight ?? 0.7) : 0.7,
   );
@@ -154,18 +152,19 @@ export function PipelineConfigModal({
       query: { strategy: "identity" },
       search,
       refinement: refinementSteps.length > 0 ? refinementSteps : undefined,
+      k,
     };
   }, [
     chunkSize, chunkOverlap, embeddingModel, searchStrategy, bm25K1, bm25B,
     denseWeight, sparseWeight, fusionMethod, candidateMultiplier,
-    refinementSteps,
+    refinementSteps, k,
   ]);
 
   // --- Auto-name when config changes ---
   useEffect(() => {
     if (nameManuallyEdited) return;
     const config = buildConfig();
-    setName(buildAutoName(basePreset, config, k));
+    setName(buildAutoName(basePreset, config));
   }, [
     chunkSize, chunkOverlap, embeddingModel, searchStrategy, bm25K1, bm25B,
     denseWeight, sparseWeight, fusionMethod, candidateMultiplier,
@@ -174,7 +173,7 @@ export function PipelineConfigModal({
 
   // --- Derived state ---
   const currentConfig = buildConfig();
-  const isUnmodified = isPresetMatch(currentConfig, k, basePreset);
+  const isUnmodified = isPresetMatch(currentConfig, basePreset);
   const isNameReadOnly = isUnmodified;
 
   // --- Validation ---
@@ -198,7 +197,6 @@ export function PipelineConfigModal({
       name,
       basePreset,
       config,
-      k,
     };
     saveConfig(saved);
     onSave(saved);

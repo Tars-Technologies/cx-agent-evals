@@ -2,6 +2,7 @@ export { PipelineRetriever } from "./pipeline-retriever.js";
 export type { PipelineRetrieverDeps } from "./pipeline-retriever.js";
 export {
   computeIndexConfigHash,
+  computeRetrieverConfigHash,
   DEFAULT_INDEX_CONFIG,
   DEFAULT_QUERY_CONFIG,
   DEFAULT_SEARCH_CONFIG,

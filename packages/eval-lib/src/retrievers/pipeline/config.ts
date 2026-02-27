@@ -103,6 +103,35 @@ interface IndexHashPayload {
   readonly embeddingModel: string;
 }
 
+/**
+ * Compute a deterministic SHA-256 hash of the full retriever config (all four stages + k).
+ * Two configs with identical stages and k produce the same hash regardless of name.
+ */
+export function computeRetrieverConfigHash(config: PipelineConfig, k: number): string {
+  const index = config.index ?? DEFAULT_INDEX_CONFIG;
+  const query = config.query ?? DEFAULT_QUERY_CONFIG;
+  const search = config.search ?? DEFAULT_SEARCH_CONFIG;
+  const refinement = config.refinement ?? [];
+
+  const payload = {
+    index: {
+      strategy: index.strategy,
+      chunkSize: index.chunkSize ?? DEFAULT_INDEX_CONFIG.chunkSize!,
+      chunkOverlap: index.chunkOverlap ?? DEFAULT_INDEX_CONFIG.chunkOverlap!,
+      separators: index.separators,
+      embeddingModel: index.embeddingModel ?? DEFAULT_INDEX_CONFIG.embeddingModel!,
+    },
+    k,
+    query,
+    refinement,
+    search,
+  };
+
+  // Sort top-level keys for deterministic serialization
+  const json = JSON.stringify(payload, Object.keys(payload).sort());
+  return createHash("sha256").update(json).digest("hex");
+}
+
 export function computeIndexConfigHash(config: PipelineConfig): string {
   const index = config.index ?? DEFAULT_INDEX_CONFIG;
 

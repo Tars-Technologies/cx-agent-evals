@@ -4,7 +4,7 @@ import Link from "next/link";
 import { OrganizationSwitcher, UserButton } from "@clerk/nextjs";
 
 interface HeaderProps {
-  mode?: "generate" | "experiments" | "agent";
+  mode?: "generate" | "retrievers" | "experiments" | "agent";
   onReset?: () => void;
 }
 
@@ -16,7 +16,7 @@ export function Header({ mode, onReset }: HeaderProps) {
           <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
             <div className="w-2 h-2 rounded-full bg-accent animate-pulse-dot" />
             <h1 className="text-sm font-semibold tracking-wide text-text">
-              rag-eval
+              CX Agent Evals
             </h1>
           </Link>
           {mode && (
@@ -32,6 +32,16 @@ export function Header({ mode, onReset }: HeaderProps) {
                   }`}
                 >
                   Generate
+                </Link>
+                <Link
+                  href="/retrievers"
+                  className={`px-3 py-1 text-xs rounded transition-colors ${
+                    mode === "retrievers"
+                      ? "bg-bg-elevated text-accent"
+                      : "text-text-muted hover:text-text"
+                  }`}
+                >
+                  Retrievers
                 </Link>
                 <Link
                   href="/experiments"
