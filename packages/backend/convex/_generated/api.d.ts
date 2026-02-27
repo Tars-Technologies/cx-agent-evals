@@ -23,6 +23,7 @@ import type * as langsmithRetry from "../langsmithRetry.js";
 import type * as langsmithSync from "../langsmithSync.js";
 import type * as langsmithSyncRetry from "../langsmithSyncRetry.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_langsmith from "../lib/langsmith.js";
 import type * as lib_llm from "../lib/llm.js";
 import type * as questions from "../questions.js";
 import type * as rag from "../rag.js";
@@ -53,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   langsmithSync: typeof langsmithSync;
   langsmithSyncRetry: typeof langsmithSyncRetry;
   "lib/auth": typeof lib_auth;
+  "lib/langsmith": typeof lib_langsmith;
   "lib/llm": typeof lib_llm;
   questions: typeof questions;
   rag: typeof rag;
