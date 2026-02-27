@@ -58,7 +58,9 @@ export { recall, precision, iou, f1 } from "./evaluation/metrics/index.js";
 export { mergeOverlappingSpans, calculateOverlap, totalSpanLength } from "./evaluation/metrics/utils.js";
 
 // Retrievers (canonical location: src/retrievers/)
-export { VectorRAGRetriever, CallbackRetriever } from "./retrievers/index.js";
+/** @deprecated Use `createBaselineVectorRagRetriever()` from `experiments/presets` instead */
+export { VectorRAGRetriever } from "./retrievers/index.js";
+export { CallbackRetriever } from "./retrievers/index.js";
 export type {
   Retriever,
   VectorRAGRetrieverConfig,
