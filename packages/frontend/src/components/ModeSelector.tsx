@@ -8,12 +8,12 @@ export function ModeSelector() {
     <div className="flex flex-col min-h-screen bg-bg">
       <Header />
       <div className="flex-1 flex items-center justify-center p-8">
-      <div className="max-w-3xl w-full">
+      <div className="max-w-5xl w-full">
         <div className="text-center mb-12">
           <div className="flex items-center justify-center gap-3 mb-4">
             <div className="w-3 h-3 rounded-full bg-accent animate-pulse-dot" />
             <h1 className="text-2xl font-semibold tracking-wide text-text">
-              rag-eval
+              CX Agent Evals
             </h1>
           </div>
           <p className="text-text-muted text-sm">
@@ -21,7 +21,7 @@ export function ModeSelector() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Generate Questions Card */}
           <Link
             href="/generate"
@@ -60,6 +60,44 @@ export function ModeSelector() {
             </div>
           </Link>
 
+          {/* Retrievers Card */}
+          <Link
+            href="/retrievers"
+            className="group block border border-border rounded-lg bg-bg-elevated p-8 hover:border-accent/50 hover:bg-bg-elevated/80 transition-all duration-200"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
+                <svg
+                  className="w-5 h-5 text-accent"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"
+                  />
+                </svg>
+              </div>
+              <h2 className="text-lg font-medium text-text group-hover:text-accent transition-colors">
+                Retrievers
+              </h2>
+            </div>
+            <p className="text-text-muted text-sm leading-relaxed">
+              Configure, index, and test retrieval pipelines against your
+              knowledge bases
+            </p>
+            <div className="mt-6 text-xs text-text-dim flex items-center gap-2">
+              <span>Select KB</span>
+              <span className="text-border">→</span>
+              <span>Configure & index</span>
+              <span className="text-border">→</span>
+              <span>Test & compare</span>
+            </div>
+          </Link>
+
           {/* Run Experiments Card */}
           <Link
             href="/experiments"
@@ -90,9 +128,9 @@ export function ModeSelector() {
               results across configurations
             </p>
             <div className="mt-6 text-xs text-text-dim flex items-center gap-2">
-              <span>Select dataset</span>
+              <span>Select retriever</span>
               <span className="text-border">→</span>
-              <span>Configure retriever</span>
+              <span>Select dataset</span>
               <span className="text-border">→</span>
               <span>Run & analyze</span>
             </div>

@@ -2,7 +2,7 @@
 
 Frontend page and components for configuring and running pipeline-based retrieval experiments with two-phase execution (indexing + evaluation) and real-time progress streaming.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Experiments page layout
 The system SHALL provide an experiments page at `/experiments` with a two-column layout: a fixed-width configuration panel (left) and a flexible execution panel (right). The page SHALL use the existing dark theme with JetBrains Mono font and emerald accent color.
@@ -11,35 +11,27 @@ The system SHALL provide an experiments page at `/experiments` with a two-column
 - **WHEN** user navigates to `/experiments`
 - **THEN** the page SHALL display a configuration panel on the left and an execution panel on the right
 
-### Requirement: Dataset picker
-The system SHALL provide a dataset picker dropdown that fetches datasets from Convex via reactive queries, ordered by creation date (most recent first). The picker SHALL display dataset names with question counts and show a loading state while fetching.
+### Requirement: Retriever configuration UI
+The system SHALL provide a retriever selector dropdown in the left panel that lists all retrievers with status `"ready"` for the current org, fetched via `useQuery(api.retrievers.byOrg, { status: "ready" })`. Each option SHALL display the retriever name, KB name, and search strategy. Selecting a retriever SHALL auto-filter the dataset picker to datasets belonging to the same KB. The preset dropdown, PipelineConfigSummary, PipelineConfigModal, and localStorage-based config management SHALL be removed from this page.
 
-#### Scenario: Datasets load on page mount
+#### Scenario: Retriever dropdown shows ready retrievers
 - **WHEN** the experiments page loads
-- **THEN** the dataset picker SHALL fetch and display available datasets
+- **THEN** the retriever dropdown SHALL list all "ready" retrievers grouped by KB
+
+#### Scenario: Selecting retriever filters datasets
+- **WHEN** user selects a retriever belonging to "KB Alpha"
+- **THEN** the dataset picker SHALL show only datasets belonging to "KB Alpha"
+
+### Requirement: Dataset picker
+The system SHALL provide a dataset picker dropdown that fetches datasets from Convex via reactive queries, filtered by the selected retriever's KB. The picker SHALL display dataset names with question counts and show a loading state while fetching.
+
+#### Scenario: Datasets filtered by retriever's KB
+- **WHEN** user selects a retriever for "KB Alpha"
+- **THEN** the dataset picker SHALL show only datasets belonging to "KB Alpha"
 
 #### Scenario: Dataset selection shows info
 - **WHEN** user selects a dataset
 - **THEN** the UI SHALL display the dataset strategy, question count, and LangSmith sync status
-
-### Requirement: Retriever configuration UI
-The system SHALL provide a retriever configuration section in the left panel consisting of: a preset dropdown with optgroup for "Presets" (baseline-vector-rag, bm25, hybrid, hybrid-reranked) and "Saved Configurations" (from localStorage), an inline PipelineConfigSummary showing the active pipeline configuration, and a PipelineConfigModal for full pipeline editing.
-
-#### Scenario: Preset dropdown selection
-- **WHEN** user selects "hybrid" from the preset dropdown
-- **THEN** the pipeline config SHALL be set to the hybrid preset defaults and the PipelineConfigSummary SHALL update to reflect the hybrid configuration
-
-#### Scenario: Saved configs in dropdown
-- **WHEN** user has custom configs saved in localStorage
-- **THEN** the dropdown SHALL show them under a "Saved Configurations" optgroup below the "Presets" optgroup
-
-#### Scenario: Selecting saved config restores it
-- **WHEN** user selects a saved custom config from the dropdown
-- **THEN** the pipeline config SHALL be restored from localStorage with all custom parameters
-
-#### Scenario: Modified preset shows badge
-- **WHEN** the active config is a modified version of a preset
-- **THEN** a "(modified)" badge SHALL appear next to the dropdown in dim text
 
 ### Requirement: Metrics selection
 The system SHALL provide checkboxes for selecting evaluation metrics: recall, precision, IoU, and F1. All metrics SHALL be selected by default.
@@ -49,56 +41,52 @@ The system SHALL provide checkboxes for selecting evaluation metrics: recall, pr
 - **THEN** that metric SHALL be excluded from the experiment configuration
 
 ### Requirement: Experiment name input
-The system SHALL provide an experiment name input that auto-generates from the pipeline config name and k value (e.g., `hybrid-reranked-k5`). The experiment name SHALL be separate from the pipeline config name — the config name identifies the retriever setup, while the experiment name identifies the specific run.
+The system SHALL provide an experiment name input that auto-generates from the retriever name and dataset name (e.g., `hybrid-reranked-dim-driven-50q`). The user SHALL be able to edit the name manually.
 
-#### Scenario: Name auto-generates from config
-- **WHEN** user selects the hybrid-reranked preset with k=5
-- **THEN** the experiment name SHALL auto-generate as "hybrid-reranked-k5"
-
-#### Scenario: Name updates when config changes
-- **WHEN** user changes from hybrid-reranked to bm25 preset
-- **THEN** the experiment name SHALL auto-update to "bm25-k5" (if not manually edited)
+#### Scenario: Name auto-generates from retriever and dataset
+- **WHEN** user selects retriever "hybrid-reranked" and dataset "dim-driven (50 questions)"
+- **THEN** the experiment name SHALL auto-generate as "hybrid-reranked-dim-driven-50q"
 
 #### Scenario: User can edit name
 - **WHEN** user edits the experiment name
 - **THEN** the custom name SHALL be used and auto-generation SHALL stop
 
 ### Requirement: Run experiment button
-The system SHALL provide a "Start Pipeline" button that triggers the experiment workflow. The button SHALL call the existing `experiments.start` mutation with the full PipelineConfig as the retrieverConfig parameter. The button SHALL be disabled when no dataset is selected, no pipeline config is set, or an experiment is already running.
+The system SHALL provide a "Run Experiment" button that triggers the experiment workflow. The button SHALL call `experiments.start` with `retrieverId` and `datasetId` (not inline `retrieverConfig`). The button SHALL be disabled when no retriever is selected, no dataset is selected, or an experiment is already running.
 
-#### Scenario: Button sends pipeline config to backend
-- **WHEN** user clicks "Start Pipeline"
-- **THEN** the mutation SHALL be called with `retrieverConfig` set to the full PipelineConfig object including index, query, search, and refinement stage configs
+#### Scenario: Button sends retrieverId to backend
+- **WHEN** user clicks "Run Experiment"
+- **THEN** the mutation SHALL be called with `retrieverId` and `datasetId`
 
 #### Scenario: Button disabled during run
 - **WHEN** an experiment is running
-- **THEN** the Start Pipeline button SHALL be disabled and show a spinner with "Running..." text
+- **THEN** the Run Experiment button SHALL be disabled and show a spinner with "Running..." text
 
-#### Scenario: Button disabled without dataset
-- **WHEN** no dataset is selected
-- **THEN** the Start Pipeline button SHALL be disabled
+#### Scenario: Button disabled without retriever
+- **WHEN** no retriever is selected
+- **THEN** the Run Experiment button SHALL be disabled
 
 ### Requirement: Experiment progress display
-The system SHALL display real-time experiment progress using the two-phase execution layout (defined in experiment-execution-phases spec) instead of a single-status panel. Progress SHALL be driven by reactive Convex queries on the job record's status, phase, and progress fields.
+The system SHALL display real-time experiment progress using a single-phase evaluation card (no indexing phase). Progress SHALL be driven by reactive Convex queries on the job record's status and progress fields.
 
 #### Scenario: Progress updates reactively
 - **WHEN** the backend job record updates
-- **THEN** the phase cards SHALL update reactively via Convex useQuery hooks
+- **THEN** the evaluation progress card SHALL update reactively via Convex useQuery hooks
 
-#### Scenario: Phase-specific progress
-- **WHEN** the job phase is "indexing"
-- **THEN** Phase 1 SHALL show running status; Phase 2 SHALL show pending/waiting status
+#### Scenario: No indexing phase displayed
+- **WHEN** an experiment is running
+- **THEN** the UI SHALL show only the evaluation phase progress, not an indexing phase
 
 ### Requirement: Experiment completion display
-The system SHALL display experiment results upon completion, showing: aggregate metric scores in a 2×2 grid (formatted to 3 decimal places), a "View in LangSmith" link, and add the experiment to the recent experiments list.
+The system SHALL display experiment results upon completion, showing: aggregate metric scores in a 2x2 grid (formatted to 3 decimal places), a "View in LangSmith" link, and add the experiment to the recent experiments list.
 
 #### Scenario: Scores displayed on completion
 - **WHEN** an experiment completes successfully
-- **THEN** the UI SHALL display the aggregate scores for each selected metric in a 2×2 grid
+- **THEN** the UI SHALL display the aggregate scores for each selected metric in a 2x2 grid
 
 #### Scenario: LangSmith link provided
 - **WHEN** an experiment completes
-- **THEN** the UI SHALL show a "View in LangSmith →" link that opens the experiment in a new tab
+- **THEN** the UI SHALL show a "View in LangSmith ->" link that opens the experiment in a new tab
 
 ### Requirement: Recent experiments list
 The system SHALL display a list of recent experiments for the selected dataset, fetched from Convex via reactive queries. Each experiment card SHALL show the experiment name, status badge, key metric scores, and a "View in LangSmith" link.

@@ -24,6 +24,11 @@
       "import": "./dist/rerankers/cohere.js",
       "types": "./dist/rerankers/cohere.d.ts"
     },
+    "./langsmith": {
+      "types": "./dist/langsmith/index.d.ts",
+      "import": "./dist/langsmith/index.js",
+      "require": "./dist/langsmith/index.cjs"
+    },
     "./langsmith/experiment-runner": {
       "import": "./dist/langsmith/experiment-runner.js",
       "types": "./dist/langsmith/experiment-runner.d.ts"

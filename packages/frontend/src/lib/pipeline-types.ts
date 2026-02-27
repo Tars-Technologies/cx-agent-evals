@@ -74,14 +74,17 @@ export type RefinementStepConfig =
   | RerankRefinementStep
   | ThresholdRefinementStep;
 
-// Pipeline config (composes all four stages)
+// Pipeline config (composes all four stages + k)
 export interface PipelineConfig {
   readonly name: string;
   readonly index?: IndexConfig;
   readonly query?: QueryConfig;
   readonly search?: SearchConfig;
   readonly refinement?: readonly RefinementStepConfig[];
+  readonly k?: number;
 }
+
+export const DEFAULT_K = 5;
 
 // ---------------------------------------------------------------------------
 // Preset definitions
@@ -92,11 +95,13 @@ export const PRESET_CONFIGS: Record<string, PipelineConfig> = {
     name: "baseline-vector-rag",
     index: { strategy: "plain" },
     search: { strategy: "dense" },
+    k: DEFAULT_K,
   },
   bm25: {
     name: "bm25",
     index: { strategy: "plain" },
     search: { strategy: "bm25" },
+    k: DEFAULT_K,
   },
   hybrid: {
     name: "hybrid",
@@ -108,6 +113,7 @@ export const PRESET_CONFIGS: Record<string, PipelineConfig> = {
       fusionMethod: "weighted",
       candidateMultiplier: 4,
     },
+    k: DEFAULT_K,
   },
   "hybrid-reranked": {
     name: "hybrid-reranked",
@@ -120,6 +126,7 @@ export const PRESET_CONFIGS: Record<string, PipelineConfig> = {
       candidateMultiplier: 4,
     },
     refinement: [{ type: "rerank" }],
+    k: DEFAULT_K,
   },
 };
 
@@ -140,7 +147,8 @@ export interface SavedPipelineConfig {
   readonly name: string;
   readonly basePreset: string;
   readonly config: PipelineConfig;
-  readonly k: number;
+  /** @deprecated k is now part of PipelineConfig. Kept for backward compat with localStorage. */
+  readonly k?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +161,7 @@ export function resolveConfig(config: PipelineConfig): {
   query: QueryConfig;
   search: SearchConfig;
   refinement: readonly RefinementStepConfig[];
+  k: number;
   name: string;
 } {
   const index = config.index ?? DEFAULT_INDEX_CONFIG;
@@ -168,13 +177,13 @@ export function resolveConfig(config: PipelineConfig): {
     query: config.query ?? DEFAULT_QUERY_CONFIG,
     search: config.search ?? DEFAULT_SEARCH_CONFIG,
     refinement: config.refinement ?? [],
+    k: config.k ?? DEFAULT_K,
   };
 }
 
-/** Check if a config matches a preset exactly. */
+/** Check if a config matches a preset exactly (k is now part of config). */
 export function isPresetUnmodified(
   config: PipelineConfig,
-  k: number,
   presetName: string,
 ): boolean {
   const preset = PRESET_CONFIGS[presetName];
@@ -182,5 +191,5 @@ export function isPresetUnmodified(
   // Compare serialized resolved configs (ignoring name)
   const a = resolveConfig({ ...config, name: "cmp" });
   const b = resolveConfig({ ...preset, name: "cmp" });
-  return JSON.stringify(a) === JSON.stringify(b) && k === 5;
+  return JSON.stringify(a) === JSON.stringify(b);
 }

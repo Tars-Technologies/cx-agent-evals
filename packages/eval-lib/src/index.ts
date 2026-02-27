@@ -70,6 +70,7 @@ export type {
 export {
   PipelineRetriever,
   computeIndexConfigHash,
+  computeRetrieverConfigHash,
   DEFAULT_INDEX_CONFIG,
   DEFAULT_QUERY_CONFIG,
   DEFAULT_SEARCH_CONFIG,

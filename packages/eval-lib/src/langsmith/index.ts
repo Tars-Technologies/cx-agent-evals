@@ -7,3 +7,5 @@ export { runLangSmithExperiment } from "./experiment-runner.js";
 export type { LangSmithExperimentConfig, ExperimentResult } from "./experiment-runner.js";
 export { listDatasets, listExperiments, getCompareUrl } from "./datasets.js";
 export type { DatasetInfo, ExperimentInfo } from "./datasets.js";
+export { createLangSmithExperiment, logLangSmithResult } from "./raw-api.js";
+export type { CreateExperimentOptions, CreateExperimentResult, LogResultOptions } from "./raw-api.js";
