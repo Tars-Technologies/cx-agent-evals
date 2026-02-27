@@ -4,6 +4,7 @@ import type {
   GeneratedQuery,
   SimpleStrategyOptions,
 } from "../types.js";
+import { safeParseLLMResponse } from "../../../utils/json.js";
 
 const SYSTEM_PROMPT = `You are an expert at generating evaluation questions for RAG (Retrieval-Augmented Generation) systems.
 
@@ -67,7 +68,7 @@ export class SimpleStrategy implements QuestionStrategy {
         responseFormat: "json",
       });
 
-      const data = JSON.parse(response);
+      const data = safeParseLLMResponse(response, { questions: [] as string[] });
       const questions: string[] = data.questions ?? [];
 
       for (const question of questions) {

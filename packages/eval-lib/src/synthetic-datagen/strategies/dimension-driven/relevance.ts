@@ -1,6 +1,7 @@
 import type { Corpus } from "../../../types/index.js";
 import type { LLMClient } from "../../base.js";
 import type { DimensionCombo, DocComboAssignment, RelevanceMatrix } from "../types.js";
+import { safeParseLLMResponse } from "../../../utils/json.js";
 
 const SUMMARY_PROMPT = `Summarize this document in one line: its topic, target audience, and purpose. Be specific and concise.
 
@@ -53,7 +54,7 @@ async function summarizeDocuments(
         ],
         responseFormat: "json",
       });
-      const data = JSON.parse(response);
+      const data = safeParseLLMResponse(response, { summary: "" });
       return [String(doc.id), data.summary ?? ""] as const;
     }),
   );
@@ -100,7 +101,7 @@ async function assignCombosToDocuments(
         responseFormat: "json",
       });
 
-      const data = JSON.parse(response);
+      const data = safeParseLLMResponse(response, { assignments: [] as Array<{ doc_id: string; combo_index: number }> });
       const rawAssignments: Array<{ doc_id: string; combo_index: number }> =
         data.assignments ?? [];
 

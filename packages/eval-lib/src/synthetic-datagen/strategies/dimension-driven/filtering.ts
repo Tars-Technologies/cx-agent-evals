@@ -1,5 +1,6 @@
 import type { LLMClient } from "../../base.js";
 import type { Dimension, DimensionCombo } from "../types.js";
+import { safeParseLLMResponse } from "../../../utils/json.js";
 
 const FILTER_PROMPT = `You are evaluating whether pairs of dimension values represent realistic user profiles for question generation.
 
@@ -68,7 +69,7 @@ Which pairs are unrealistic?`;
         responseFormat: "json",
       });
 
-      const data = JSON.parse(response);
+      const data = safeParseLLMResponse(response, { unrealistic_pairs: [] as Array<{ dim_a_value: string; dim_b_value: string }> });
       const unrealisticPairs: Array<{
         dim_a_value: string;
         dim_b_value: string;

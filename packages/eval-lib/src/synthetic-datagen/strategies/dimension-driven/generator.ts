@@ -6,6 +6,7 @@ import type {
   ProgressCallback,
   DocComboAssignment,
 } from "../types.js";
+import { safeParseLLMResponse } from "../../../utils/json.js";
 import { loadDimensions } from "./dimensions.js";
 import { filterCombinations } from "./filtering.js";
 import { buildRelevanceMatrix } from "./relevance.js";
@@ -119,7 +120,7 @@ export class DimensionDrivenStrategy implements QuestionStrategy {
         responseFormat: "json",
       });
 
-      const data = JSON.parse(response);
+      const data = safeParseLLMResponse(response, { questions: [] as Array<{ profile_index: number; question: string }> });
       const questions: Array<{ profile_index: number; question: string }> =
         data.questions ?? [];
 

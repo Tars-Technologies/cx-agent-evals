@@ -3,6 +3,7 @@ import { QueryId, QueryText } from "../../types/primitives.js";
 import { createCharacterSpan } from "../../types/chunks.js";
 import type { GroundTruthAssignerInterface, GroundTruthAssignerContext } from "./types.js";
 import type { GeneratedQuery } from "../strategies/types.js";
+import { safeParseLLMResponse } from "../../utils/json.js";
 
 const EXCERPT_PROMPT = `You are an expert at identifying relevant text.
 Given a document and question, extract exact passages that answer it.
@@ -68,7 +69,7 @@ export class GroundTruthAssigner implements GroundTruthAssignerInterface<GroundT
       ],
       responseFormat: "json",
     });
-    return JSON.parse(response).excerpts ?? [];
+    return safeParseLLMResponse(response, { excerpts: [] as string[] }).excerpts ?? [];
   }
 
   private _findSpanPositions(
