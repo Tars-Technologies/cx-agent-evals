@@ -1,18 +1,6 @@
 import type { PositionAwareChunk } from "../types/index.js";
 import type { VectorStore } from "./vector-store.interface.js";
-
-function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom === 0 ? 0 : dot / denom;
-}
+import { cosineSimilarity } from "../utils/similarity.js";
 
 export class InMemoryVectorStore implements VectorStore {
   readonly name = "InMemory";

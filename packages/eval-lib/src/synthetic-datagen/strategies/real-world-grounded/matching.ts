@@ -1,6 +1,7 @@
 import type { Corpus } from "../../../types/index.js";
 import type { Embedder } from "../../../embedders/embedder.interface.js";
 import type { MatchedQuestion } from "../types.js";
+import { cosineSimilarity } from "../../../utils/similarity.js";
 
 const PASSAGE_MAX_LENGTH = 500;
 const PASSAGE_MERGE_THRESHOLD = 100;
@@ -40,18 +41,7 @@ export function splitIntoPassages(text: string, maxLen = PASSAGE_MAX_LENGTH): st
   return passages;
 }
 
-export function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom === 0 ? 0 : dot / denom;
-}
+export { cosineSimilarity } from "../../../utils/similarity.js";
 
 export async function embedInBatches(
   texts: readonly string[],
