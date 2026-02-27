@@ -1,6 +1,7 @@
 import MiniSearch from "minisearch";
 import type { PositionAwareChunk } from "../../../types/index.js";
 import type { ScoredChunk } from "../types.js";
+import type { SearchStrategy, SearchStrategyDeps } from "./strategy.interface.js";
 
 /**
  * Default BM25+ delta parameter — the additive frequency normalization
@@ -122,5 +123,48 @@ export class BM25SearchIndex {
   clear(): void {
     this._index = null;
     this._chunkMap = new Map();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// BM25 Search Strategy (wraps BM25SearchIndex)
+// ---------------------------------------------------------------------------
+
+/**
+ * Strategy-pattern wrapper around {@link BM25SearchIndex}.
+ *
+ * Builds a BM25 inverted index during `init` and performs keyword-based
+ * retrieval during `search`.  The vector store and embedder are not used.
+ */
+export class BM25SearchStrategy implements SearchStrategy {
+  readonly name = "bm25";
+
+  private _index: BM25SearchIndex | null = null;
+  private readonly _k1: number | undefined;
+  private readonly _b: number | undefined;
+
+  constructor(options?: { readonly k1?: number; readonly b?: number }) {
+    this._k1 = options?.k1;
+    this._b = options?.b;
+  }
+
+  async init(chunks: readonly PositionAwareChunk[], _deps: SearchStrategyDeps): Promise<void> {
+    const bm25Config = { k1: this._k1, b: this._b };
+    this._index = new BM25SearchIndex(bm25Config);
+    this._index.build(chunks);
+  }
+
+  async search(query: string, k: number, _deps: SearchStrategyDeps): Promise<ScoredChunk[]> {
+    if (!this._index) {
+      return [];
+    }
+    return [...this._index.searchWithScores(query, k)];
+  }
+
+  async cleanup(_deps: SearchStrategyDeps): Promise<void> {
+    if (this._index) {
+      this._index.clear();
+      this._index = null;
+    }
   }
 }
