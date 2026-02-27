@@ -26,6 +26,13 @@ export interface PipelineRetrieverDeps {
   readonly embedder: Embedder;
   readonly vectorStore?: VectorStore;
   readonly reranker?: Reranker;
+  /**
+   * Number of chunks to embed per API call during the INDEX stage.
+   * Increase for throughput when your embedding provider allows large
+   * batches; decrease to stay within request-size or rate limits.
+   * @default 100
+   */
+  readonly embeddingBatchSize?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,7 +74,7 @@ export class PipelineRetriever implements Retriever {
     this._embedder = deps.embedder;
     this._vectorStore = deps.vectorStore ?? new InMemoryVectorStore();
     this._reranker = deps.reranker;
-    this._batchSize = 100;
+    this._batchSize = deps.embeddingBatchSize ?? 100;
 
     // Validate: rerank step requires a reranker dependency
     const hasRerankStep = this._refinementSteps.some((s) => s.type === "rerank");

@@ -3,8 +3,27 @@ import type { Embedder } from "../../../embedders/embedder.interface.js";
 import type { MatchedQuestion } from "../types.js";
 import { cosineSimilarity } from "../../../utils/similarity.js";
 
+/**
+ * Maximum character length for a single passage when splitting documents.
+ * Paragraphs are accumulated until this limit is reached, then flushed.
+ * Lower values produce more granular passages (better precision, slower);
+ * higher values capture more context per passage (better recall, faster).
+ */
 const PASSAGE_MAX_LENGTH = 500;
+
+/**
+ * Minimum character gap between consecutive paragraphs before they are
+ * split into separate passages.  When the accumulated text plus the next
+ * paragraph would exceed {@link PASSAGE_MAX_LENGTH}, a new passage begins.
+ * This constant is currently unused but reserved for future merge logic.
+ */
 const PASSAGE_MERGE_THRESHOLD = 100;
+
+/**
+ * Number of texts to embed in a single call to the embedder.
+ * Increase for throughput (if your API rate-limit allows); decrease to
+ * avoid request-size limits or to reduce memory pressure.
+ */
 const EMBED_BATCH_SIZE = 100;
 
 export interface PassageInfo {
@@ -66,6 +85,11 @@ export async function matchQuestionsToDocuments(
   embedder: Embedder,
   options?: { threshold?: number },
 ): Promise<Map<string, MatchedQuestion[]>> {
+  /**
+   * Minimum cosine-similarity score for a question-passage pair to be
+   * considered a match.  Raise toward 1.0 for stricter matching (fewer
+   * but higher-quality matches); lower toward 0.0 for broader coverage.
+   */
   const threshold = options?.threshold ?? 0.35;
 
   // Build passage index

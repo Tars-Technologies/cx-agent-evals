@@ -2,7 +2,13 @@ import MiniSearch from "minisearch";
 import type { PositionAwareChunk } from "../../../types/index.js";
 import type { ScoredChunk } from "../types.js";
 
-/** Default BM25+ delta parameter (frequency normalization lower bound). */
+/**
+ * Default BM25+ delta parameter — the additive frequency normalization
+ * lower bound introduced by BM25+.  A value of 0 reduces to classic BM25;
+ * higher values boost the contribution of terms that appear at least once,
+ * preventing near-zero term-frequency scores for long documents.
+ * Typical range: 0.0 -- 1.0.  The original BM25+ paper recommends 0.5.
+ */
 const DEFAULT_BM25_DELTA = 0.5;
 
 /**
@@ -17,6 +23,16 @@ export class BM25SearchIndex {
   private _index: MiniSearch | null = null;
   private _chunkMap: Map<string, PositionAwareChunk> = new Map();
 
+  /**
+   * @param options.k1 - Term-frequency saturation parameter (default 1.2).
+   *   Higher values increase the influence of term frequency; lower values
+   *   make the score less sensitive to how often a term appears in a chunk.
+   *   Typical range: 1.2 -- 2.0.
+   * @param options.b  - Document-length normalization (default 0.75, range 0 -- 1).
+   *   At 0, document length is ignored; at 1, term frequency is fully
+   *   normalized by document length.  Reduce for corpora where longer
+   *   chunks are inherently more relevant.
+   */
   constructor(options?: { readonly k1?: number; readonly b?: number }) {
     this._k1 = options?.k1 ?? 1.2;
     this._b = options?.b ?? 0.75;
