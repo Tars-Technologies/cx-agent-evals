@@ -54,6 +54,27 @@ Both paths then: sync dataset to LangSmith → create LangSmith experiment via r
 ### D6: Generation job tracking via generationJobs table
 Mirror the `indexingJobs` pattern with a `generationJobs` table. Fields: orgId, datasetId, kbId, strategy, phase, status, progress counters (totalItems, processedItems, failedItems), error details, timestamps. The frontend queries this table directly for progress display.
 
+### D7: Per-item cancellation via stored WorkIds
+Each job/experiment stores an array of `WorkId` strings returned by `pool.enqueueAction()`. Cancellation iterates these IDs and calls `pool.cancel(ctx, workId)` per item, instead of `pool.cancelAll(ctx)`. This ensures that canceling one job doesn't affect other jobs sharing the same pool. For generation's two-phase flow, Phase 2 `workIds` replace Phase 1 `workIds` on the job record.
+
+### D8: Phase 1 statistics preservation
+When generation transitions from Phase 1 to Phase 2, counters are reset to track Phase 2 progress. Phase 1 stats (`processedItems`, `failedItems`, `skippedItems`) are saved to `phase1Stats` before the reset. The final job status considers failures from BOTH phases — if Phase 1 had failures but Phase 2 succeeded, the job is `"completed_with_errors"`, not `"completed"`.
+
+### D9: Separate skipped vs failed counters
+WorkPool's `RunResult` has three kinds: `"success"`, `"failed"`, `"canceled"`. Originally, both `"failed"` and `"canceled"` incremented the same failure counter. Now they're tracked separately: `failedItems`/`failedQuestions` for errors, `skippedItems`/`skippedQuestions` for cancellations. This gives accurate progress reporting during partial cancellation.
+
+### D10: Cancel ordering — status before items
+Cancellation mutations set `status: "canceling"` BEFORE canceling individual work items. This ensures that any in-flight `onComplete` callbacks that execute during the cancel loop see the `"canceling"` status and behave accordingly (e.g., transitioning to `"canceled"` instead of `"completed"`).
+
+### D11: LangSmith example ID linkage
+After dataset sync to LangSmith, the system queries back the created examples and stores their IDs on the corresponding question records (`langsmithExampleId`). During evaluation, each `logLangSmithResult` call passes this ID as `reference_example_id`, linking experiment runs to their dataset examples. This enables LangSmith's comparison views to work correctly. The linkage is non-fatal — experiments still work without it.
+
+### D12: Experiments table is NOT renamed to experimentJobs
+Analysis confirmed that `experiments` serves a fundamentally different role than `indexingJobs`/`generationJobs`. The job tables are ephemeral progress trackers with a parent entity that stores config. `experiments` IS the primary entity — it stores configuration, execution progress, AND results (scores, LangSmith URLs). The frontend queries experiments as permanent, named records for comparison. The naming asymmetry is architecturally correct.
+
+### D13: Shared counter helpers (applyResult / counterPatch)
+Both `onQuestionGenerated` and `onGroundTruthAssigned` use the same counter update logic. Extracted into shared `applyResult()` (computes new counters from `RunResult`) and `counterPatch()` (formats counters for `ctx.db.patch()`) helpers to reduce duplication and ensure consistent handling of the three result kinds.
+
 ## Risks / Trade-offs
 
 - **[Phase transition race condition]** → The `onComplete` callback that triggers Phase 2 runs when the last Phase 1 item completes. Since `onComplete` is a mutation (atomic), the "check if all done → enqueue Phase 2" logic is safe. No race.
