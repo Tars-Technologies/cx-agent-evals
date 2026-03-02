@@ -26,7 +26,6 @@ export {
   createDocument,
   createCorpus,
   createCorpusFromDocuments,
-  corpusFromFolder,
   getDocument,
   CharacterSpanSchema,
   createCharacterSpan,
@@ -43,8 +42,8 @@ export type { Embedder } from "./embedders/index.js";
 export { OpenAIEmbedder } from "./embedders/index.js";
 
 // Vector Store
-export type { VectorStore } from "./vector-stores/index.js";
-export { InMemoryVectorStore } from "./vector-stores/index.js";
+export type { VectorStore, VectorSearchResult } from "./vector-stores/index.js";
+// InMemoryVectorStore moved to "rag-evaluation-system/pipeline/internals"
 
 // Reranker
 export type { Reranker } from "./rerankers/index.js";
@@ -56,10 +55,12 @@ export type { ComputeMetricsOptions } from "./evaluation/index.js";
 
 // Metrics
 export { recall, precision, iou, f1 } from "./evaluation/metrics/index.js";
-export { mergeOverlappingSpans, calculateOverlap, totalSpanLength } from "./evaluation/metrics/utils.js";
+// mergeOverlappingSpans, calculateOverlap, totalSpanLength moved to "rag-evaluation-system/utils"
 
 // Retrievers (canonical location: src/retrievers/)
-export { VectorRAGRetriever, CallbackRetriever } from "./retrievers/index.js";
+/** @deprecated Use `createBaselineVectorRagRetriever()` from `experiments/presets` instead */
+export { VectorRAGRetriever } from "./retrievers/index.js";
+export { CallbackRetriever } from "./retrievers/index.js";
 export type {
   Retriever,
   VectorRAGRetrieverConfig,
@@ -71,13 +72,8 @@ export {
   PipelineRetriever,
   computeIndexConfigHash,
   computeRetrieverConfigHash,
-  DEFAULT_INDEX_CONFIG,
-  DEFAULT_QUERY_CONFIG,
-  DEFAULT_SEARCH_CONFIG,
-  BM25SearchIndex,
-  weightedScoreFusion,
-  reciprocalRankFusion,
-  applyThresholdFilter,
+  // DEFAULT_INDEX_CONFIG, DEFAULT_QUERY_CONFIG, DEFAULT_SEARCH_CONFIG moved to "rag-evaluation-system/pipeline/internals"
+  // BM25SearchIndex, weightedScoreFusion, reciprocalRankFusion, applyThresholdFilter moved to "rag-evaluation-system/pipeline/internals"
 } from "./retrievers/index.js";
 export type {
   PipelineRetrieverDeps,
@@ -118,10 +114,9 @@ export type { GenerateOptions } from "./synthetic-datagen/index.js";
 export { SimpleStrategy } from "./synthetic-datagen/strategies/simple/generator.js";
 export { DimensionDrivenStrategy } from "./synthetic-datagen/strategies/dimension-driven/generator.js";
 export { RealWorldGroundedStrategy } from "./synthetic-datagen/strategies/real-world-grounded/generator.js";
-export { discoverDimensions } from "./synthetic-datagen/strategies/dimension-driven/discovery.js";
+// discoverDimensions moved to "rag-evaluation-system/pipeline/internals"
+// loadDimensions, loadDimensionsFromFile moved to "rag-evaluation-system/pipeline/internals"
 export {
-  loadDimensions,
-  loadDimensionsFromFile,
   parseDimensions,
 } from "./synthetic-datagen/strategies/dimension-driven/dimensions.js";
 export { GroundTruthAssigner } from "./synthetic-datagen/ground-truth/token-level.js";
@@ -143,31 +138,6 @@ export type {
   ProgressCallback,
   ProgressEvent,
 } from "./synthetic-datagen/strategies/types.js";
-
-// LangSmith
-export {
-  getLangSmithClient,
-  uploadDataset,
-  loadDataset,
-  createLangSmithEvaluator,
-  createLangSmithEvaluators,
-  listDatasets,
-  listExperiments,
-  getCompareUrl,
-} from "./langsmith/index.js";
-export type {
-  UploadOptions,
-  UploadResult,
-  UploadProgress,
-  DatasetInfo,
-  ExperimentInfo,
-} from "./langsmith/index.js";
-
-// LangSmith experiment runner is available via:
-//   import { runLangSmithExperiment } from "rag-evaluation-system/langsmith/experiment-runner"
-// It is NOT re-exported from the main index to avoid pulling langsmith
-// into the module graph for consumers that don't need experiment running.
-export type { LangSmithExperimentConfig, ExperimentResult } from "./langsmith/index.js";
 
 // Utils
 export { generatePaChunkId } from "./utils/hashing.js";

@@ -12,9 +12,11 @@ import {
   DEFAULT_SEARCH_CONFIG,
   computeIndexConfigHash,
 } from "./config.js";
-import { BM25SearchIndex } from "./search/bm25.js";
-import type { ScoredChunk } from "./search/fusion.js";
-import { weightedScoreFusion, reciprocalRankFusion } from "./search/fusion.js";
+import type { ScoredChunk } from "./types.js";
+import type { SearchStrategy, SearchStrategyDeps } from "./search/strategy.interface.js";
+import { DenseSearchStrategy, assignRankScores } from "./search/dense.js";
+import { BM25SearchStrategy } from "./search/bm25.js";
+import { HybridSearchStrategy } from "./search/hybrid.js";
 import { applyThresholdFilter } from "./refinement/threshold.js";
 
 // ---------------------------------------------------------------------------
@@ -26,6 +28,46 @@ export interface PipelineRetrieverDeps {
   readonly embedder: Embedder;
   readonly vectorStore?: VectorStore;
   readonly reranker?: Reranker;
+  /**
+   * Number of chunks to embed per API call during the INDEX stage.
+   * Increase for throughput when your embedding provider allows large
+   * batches; decrease to stay within request-size or rate limits.
+   * @default 100
+   */
+  readonly embeddingBatchSize?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Search strategy factory
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates the appropriate {@link SearchStrategy} instance based on the
+ * declarative search configuration.
+ */
+function createSearchStrategy(config: SearchConfig, batchSize: number): SearchStrategy {
+  switch (config.strategy) {
+    case "dense":
+      return new DenseSearchStrategy({ batchSize });
+
+    case "bm25":
+      return new BM25SearchStrategy({ k1: config.k1, b: config.b });
+
+    case "hybrid":
+      return new HybridSearchStrategy({
+        batchSize,
+        k1: config.k1,
+        b: config.b,
+        fusionMethod: config.fusionMethod,
+        denseWeight: config.denseWeight,
+        sparseWeight: config.sparseWeight,
+        candidateMultiplier: config.candidateMultiplier,
+        rrfK: config.rrfK,
+      });
+
+    default:
+      throw new Error(`Unknown search strategy: ${(config as any).strategy}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -45,29 +87,37 @@ export class PipelineRetriever implements Retriever {
   readonly name: string;
   readonly indexConfigHash: string;
 
-  private readonly _searchConfig: SearchConfig;
   private readonly _refinementSteps: readonly RefinementStepConfig[];
   private readonly _chunker: PositionAwareChunker;
-  private readonly _embedder: Embedder;
   private readonly _vectorStore: VectorStore;
   private readonly _reranker: Reranker | undefined;
-  private readonly _batchSize: number;
 
-  private _bm25Index: BM25SearchIndex | null = null;
+  private readonly _searchStrategy: SearchStrategy;
+  private readonly _searchStrategyDeps: SearchStrategyDeps;
+
   private _initialized = false;
 
   constructor(config: PipelineConfig, deps: PipelineRetrieverDeps) {
     this.name = config.name;
     this.indexConfigHash = computeIndexConfigHash(config);
 
-    this._searchConfig = config.search ?? DEFAULT_SEARCH_CONFIG;
+    const searchConfig = config.search ?? DEFAULT_SEARCH_CONFIG;
     this._refinementSteps = config.refinement ?? [];
 
     this._chunker = deps.chunker;
-    this._embedder = deps.embedder;
+    const embedder = deps.embedder;
     this._vectorStore = deps.vectorStore ?? new InMemoryVectorStore();
     this._reranker = deps.reranker;
-    this._batchSize = 100;
+    const batchSize = deps.embeddingBatchSize ?? 100;
+
+    // Build the strategy object from declarative config
+    this._searchStrategy = createSearchStrategy(searchConfig, batchSize);
+
+    // Shared deps passed to strategy methods
+    this._searchStrategyDeps = {
+      embedder,
+      vectorStore: this._vectorStore,
+    };
 
     // Validate: rerank step requires a reranker dependency
     const hasRerankStep = this._refinementSteps.some((s) => s.type === "rerank");
@@ -89,25 +139,7 @@ export class PipelineRetriever implements Retriever {
       chunks.push(...this._chunker.chunkWithPositions(doc));
     }
 
-    // Embed and store in vector store (needed for "dense" and "hybrid")
-    if (this._searchConfig.strategy !== "bm25") {
-      for (let i = 0; i < chunks.length; i += this._batchSize) {
-        const batch = chunks.slice(i, i + this._batchSize);
-        const embeddings = await this._embedder.embed(batch.map((c) => c.content));
-        await this._vectorStore.add(batch, embeddings);
-      }
-    }
-
-    // Build BM25 index (needed for "bm25" and "hybrid")
-    if (this._searchConfig.strategy === "bm25" || this._searchConfig.strategy === "hybrid") {
-      const bm25Config =
-        this._searchConfig.strategy === "bm25"
-          ? { k1: this._searchConfig.k1, b: this._searchConfig.b }
-          : { k1: this._searchConfig.k1, b: this._searchConfig.b };
-
-      this._bm25Index = new BM25SearchIndex(bm25Config);
-      this._bm25Index.build(chunks);
-    }
+    await this._searchStrategy.init(chunks, this._searchStrategyDeps);
 
     this._initialized = true;
   }
@@ -124,25 +156,12 @@ export class PipelineRetriever implements Retriever {
     // QUERY stage — identity passthrough (future: HyDE, multi-query)
     const processedQuery = query;
 
-    // SEARCH stage
-    let scoredResults: ScoredChunk[];
-
-    switch (this._searchConfig.strategy) {
-      case "dense":
-        scoredResults = await this._searchDense(processedQuery, k);
-        break;
-
-      case "bm25":
-        scoredResults = this._searchBM25(processedQuery, k);
-        break;
-
-      case "hybrid":
-        scoredResults = await this._searchHybrid(processedQuery, k);
-        break;
-
-      default:
-        throw new Error(`Unknown search strategy: ${(this._searchConfig as any).strategy}`);
-    }
+    // SEARCH stage — delegated to strategy object
+    let scoredResults: ScoredChunk[] = await this._searchStrategy.search(
+      processedQuery,
+      k,
+      this._searchStrategyDeps,
+    );
 
     // REFINEMENT stage
     scoredResults = await this._applyRefinements(processedQuery, scoredResults, k);
@@ -155,62 +174,11 @@ export class PipelineRetriever implements Retriever {
   // -------------------------------------------------------------------------
 
   async cleanup(): Promise<void> {
+    // Always clear the vector store (owned by PipelineRetriever)
     await this._vectorStore.clear();
-    if (this._bm25Index) {
-      this._bm25Index.clear();
-      this._bm25Index = null;
-    }
+    // Let the strategy clean up its own internal state (e.g. BM25 index)
+    await this._searchStrategy.cleanup(this._searchStrategyDeps);
     this._initialized = false;
-  }
-
-  // -------------------------------------------------------------------------
-  // Search strategy implementations
-  // -------------------------------------------------------------------------
-
-  private async _searchDense(query: string, k: number): Promise<ScoredChunk[]> {
-    const queryEmbedding = await this._embedder.embedQuery(query);
-    const chunks = await this._vectorStore.search(queryEmbedding, k);
-
-    // VectorStore returns chunks sorted by similarity but without scores.
-    // Assign linearly decaying scores for rank-based normalization.
-    return assignRankScores(chunks);
-  }
-
-  private _searchBM25(query: string, k: number): ScoredChunk[] {
-    if (!this._bm25Index) {
-      return [];
-    }
-    return [...this._bm25Index.searchWithScores(query, k)];
-  }
-
-  private async _searchHybrid(query: string, k: number): Promise<ScoredChunk[]> {
-    const config = this._searchConfig;
-    if (config.strategy !== "hybrid") return [];
-
-    const candidateK = k * (config.candidateMultiplier ?? 4);
-
-    // Run dense + BM25 in parallel
-    const [denseResults, sparseResults] = await Promise.all([
-      this._searchDense(query, candidateK),
-      Promise.resolve(this._searchBM25(query, candidateK)),
-    ]);
-
-    const fusionMethod = config.fusionMethod ?? "weighted";
-
-    if (fusionMethod === "rrf") {
-      return reciprocalRankFusion({
-        denseResults,
-        sparseResults,
-        k: config.rrfK,
-      });
-    }
-
-    return weightedScoreFusion({
-      denseResults,
-      sparseResults,
-      denseWeight: config.denseWeight ?? 0.7,
-      sparseWeight: config.sparseWeight ?? 0.3,
-    });
   }
 
   // -------------------------------------------------------------------------
@@ -245,21 +213,4 @@ export class PipelineRetriever implements Retriever {
 
     return current;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Utility
-// ---------------------------------------------------------------------------
-
-/**
- * Assigns linearly decaying scores based on position.
- * First result gets 1.0, last gets 1/count.
- */
-function assignRankScores(chunks: readonly PositionAwareChunk[]): ScoredChunk[] {
-  const count = chunks.length;
-  if (count === 0) return [];
-  return chunks.map((chunk, i) => ({
-    chunk,
-    score: (count - i) / count,
-  }));
 }

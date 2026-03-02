@@ -1,5 +1,6 @@
 import type { CharacterSpan } from "../types/chunks.js";
 import type { Metric } from "./metrics/base.js";
+import { mergeOverlappingSpans } from "./metrics/utils.js";
 
 export interface ComputeMetricsOptions {
   readonly results: ReadonlyArray<{
@@ -12,6 +13,9 @@ export interface ComputeMetricsOptions {
 /**
  * Pure function to compute retrieval metrics.
  * Computes each metric for each result and returns averaged scores.
+ *
+ * Pre-merges overlapping spans once per result and passes them to metrics
+ * that support `calculatePreMerged`, avoiding redundant sort+merge operations.
  */
 export function computeMetrics(options: ComputeMetricsOptions): Record<string, number> {
   const { results, metrics } = options;
@@ -30,8 +34,15 @@ export function computeMetrics(options: ComputeMetricsOptions): Record<string, n
   }
 
   for (const result of results) {
+    // Pre-compute merged spans once per result to avoid redundant merging
+    // across multiple metrics (each metric would otherwise merge independently).
+    const mergedRetrieved = mergeOverlappingSpans(result.retrieved);
+    const mergedGroundTruth = mergeOverlappingSpans(result.groundTruth);
+
     for (const metric of metrics) {
-      const score = metric.calculate(result.retrieved, result.groundTruth);
+      const score = metric.calculatePreMerged
+        ? metric.calculatePreMerged(mergedRetrieved, mergedGroundTruth)
+        : metric.calculate(result.retrieved, result.groundTruth);
       allScores[metric.name].push(score);
     }
   }

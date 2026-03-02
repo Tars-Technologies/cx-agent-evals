@@ -35,7 +35,7 @@ export class RecursiveCharacterChunker implements Chunker, PositionAwareChunker 
   chunkWithPositions(doc: Document): PositionAwareChunk[] {
     return this._splitTextWithPositions(doc.content, this._separators, 0).map(
       ([text, start, end]) => ({
-        id: generatePaChunkId(text),
+        id: generatePaChunkId(text, String(doc.id), start),
         content: text,
         docId: doc.id,
         start,

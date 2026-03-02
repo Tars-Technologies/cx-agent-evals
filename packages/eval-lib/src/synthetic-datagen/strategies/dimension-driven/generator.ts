@@ -6,6 +6,7 @@ import type {
   ProgressCallback,
   DocComboAssignment,
 } from "../types.js";
+import { safeParseLLMResponse } from "../../../utils/json.js";
 import { loadDimensions } from "./dimensions.js";
 import { filterCombinations } from "./filtering.js";
 import { buildRelevanceMatrix } from "./relevance.js";
@@ -84,12 +85,11 @@ export class DimensionDrivenStrategy implements QuestionStrategy {
 
     const results: GeneratedQuery[] = [];
     const docEntries = [...byDoc.entries()];
+    const docIndex = new Map(context.corpus.documents.map(d => [String(d.id), d]));
 
     for (let docIdx = 0; docIdx < docEntries.length; docIdx++) {
       const [docId, assignments] = docEntries[docIdx];
-      const doc = context.corpus.documents.find(
-        (d) => String(d.id) === docId,
-      );
+      const doc = docIndex.get(docId);
       if (!doc) continue;
 
       this._onProgress({
@@ -108,7 +108,11 @@ export class DimensionDrivenStrategy implements QuestionStrategy {
         return `[${i}] ${profileDesc}`;
       });
 
-      const prompt = `Document content:\n${doc.content.substring(0, 6000)}\n\nUser profiles (generate one question per profile):\n${profiles.join("\n")}`;
+      const maxChars = this._options.maxDocumentChars ?? 6000;
+      if (doc.content.length > maxChars) {
+        console.warn(`Document "${docId}" truncated from ${doc.content.length} to ${maxChars} chars`);
+      }
+      const prompt = `Document content:\n${doc.content.substring(0, maxChars)}\n\nUser profiles (generate one question per profile):\n${profiles.join("\n")}`;
 
       const response = await context.llmClient.complete({
         model: context.model,
@@ -119,7 +123,7 @@ export class DimensionDrivenStrategy implements QuestionStrategy {
         responseFormat: "json",
       });
 
-      const data = JSON.parse(response);
+      const data = safeParseLLMResponse(response, { questions: [] as Array<{ profile_index: number; question: string }> });
       const questions: Array<{ profile_index: number; question: string }> =
         data.questions ?? [];
 

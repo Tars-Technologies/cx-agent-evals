@@ -1,6 +1,11 @@
-import type { CharacterSpan } from "../../types/chunks.js";
+import type { CharacterSpan, SpanRange } from "../../types/chunks.js";
 import type { Metric } from "./base.js";
-import { calculateOverlap, totalSpanLength } from "./utils.js";
+import {
+  calculateOverlap,
+  calculateOverlapPreMerged,
+  totalSpanLength,
+  totalSpanLengthPreMerged,
+} from "./utils.js";
 
 export const iou: Metric = {
   name: "iou" as const,
@@ -11,6 +16,20 @@ export const iou: Metric = {
     const intersection = calculateOverlap(retrieved, groundTruth);
     const totalRet = totalSpanLength(retrieved);
     const totalGt = totalSpanLength(groundTruth);
+    const union = totalRet + totalGt - intersection;
+
+    return union > 0 ? intersection / union : 0.0;
+  },
+  calculatePreMerged(
+    mergedRetrieved: readonly SpanRange[],
+    mergedGroundTruth: readonly SpanRange[],
+  ): number {
+    if (mergedRetrieved.length === 0 && mergedGroundTruth.length === 0) return 1.0;
+    if (mergedRetrieved.length === 0 || mergedGroundTruth.length === 0) return 0.0;
+
+    const intersection = calculateOverlapPreMerged(mergedRetrieved, mergedGroundTruth);
+    const totalRet = totalSpanLengthPreMerged(mergedRetrieved);
+    const totalGt = totalSpanLengthPreMerged(mergedGroundTruth);
     const union = totalRet + totalGt - intersection;
 
     return union > 0 ? intersection / union : 0.0;

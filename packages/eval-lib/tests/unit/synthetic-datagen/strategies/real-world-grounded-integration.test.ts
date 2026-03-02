@@ -108,9 +108,6 @@ describe("RealWorldGroundedStrategy integration", () => {
       embedder: mockEmbedder,
     });
 
-    expect(phases).toContain("embedding-questions");
-    expect(phases).toContain("embedding-passages");
-    expect(phases).toContain("matching");
-    expect(phases).toContain("done");
+    expect(phases).toEqual(["embedding-questions", "embedding-passages", "matching", "generating", "done"]);
   });
 });

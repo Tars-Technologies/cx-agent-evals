@@ -7,7 +7,7 @@ import type {
   MatchedQuestion,
 } from "../types.js";
 import { matchQuestionsToDocuments } from "./matching.js";
-import { generateFewShotQuestions, distributeBudget } from "./generation.js";
+import { generateFewShotQuestions, distributeBudget } from "./few-shot.js";
 
 export class RealWorldGroundedStrategy implements QuestionStrategy {
   readonly name = "real-world-grounded";
@@ -88,9 +88,11 @@ export class RealWorldGroundedStrategy implements QuestionStrategy {
 
       const docsWithBudget = [...budget.entries()].filter(([, count]) => count > 0);
 
+      const docIndex = new Map(context.corpus.documents.map(d => [String(d.id), d]));
+
       for (let docIdx = 0; docIdx < docsWithBudget.length; docIdx++) {
         const [docId, count] = docsWithBudget[docIdx];
-        const doc = context.corpus.documents.find((d) => String(d.id) === docId);
+        const doc = docIndex.get(docId);
         if (!doc) continue;
 
         this._onProgress({
@@ -115,6 +117,7 @@ export class RealWorldGroundedStrategy implements QuestionStrategy {
           count,
           context.llmClient,
           context.model,
+          { maxDocumentChars: this._options.maxDocumentChars, docId },
         );
 
         for (const q of generated) {

@@ -1,12 +1,23 @@
 import type { PositionAwareChunk } from "../types/index.js";
 import type { Reranker } from "./reranker.interface.js";
 
+interface CohereRerankClient {
+  rerank(opts: {
+    model: string;
+    query: string;
+    documents: string[];
+    topN: number;
+  }): Promise<{
+    results: Array<{ index: number; relevanceScore: number }>;
+  }>;
+}
+
 export class CohereReranker implements Reranker {
   readonly name: string;
   private _model: string;
-  private _client: any;
+  private _client: CohereRerankClient;
 
-  private constructor(client: any, model: string) {
+  private constructor(client: CohereRerankClient, model: string) {
     this._client = client;
     this._model = model;
     this.name = `Cohere(${this._model})`;
@@ -38,6 +49,6 @@ export class CohereReranker implements Reranker {
       topN: topK ?? chunks.length,
     });
 
-    return response.results.map((r: any) => chunks[r.index]);
+    return response.results.map((r) => chunks[r.index]);
   }
 }

@@ -1,9 +1,4 @@
-import type { PositionAwareChunk } from "../../../types/index.js";
-
-export interface ScoredChunk {
-  readonly chunk: PositionAwareChunk;
-  readonly score: number;
-}
+import type { ScoredChunk } from "../types.js";
 
 /**
  * Filters scored chunks that fall below a minimum similarity score.

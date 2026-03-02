@@ -36,8 +36,6 @@ export interface GenerateOptions {
   readonly corpus: Corpus;
   readonly llmClient: LLMClient;
   readonly model?: string;
-  readonly uploadToLangsmith?: boolean;
-  readonly datasetName?: string;
 }
 
 export async function generate(options: GenerateOptions): Promise<GroundTruth[]> {
@@ -52,11 +50,6 @@ export async function generate(options: GenerateOptions): Promise<GroundTruth[]>
 
   const assigner = new GroundTruthAssigner();
   const results = await assigner.assign(queries, context);
-
-  if (options.uploadToLangsmith) {
-    const { uploadDataset } = await import("../langsmith/upload.js");
-    await uploadDataset(results, { datasetName: options.datasetName });
-  }
 
   return results;
 }

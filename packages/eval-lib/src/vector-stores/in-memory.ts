@@ -1,18 +1,6 @@
 import type { PositionAwareChunk } from "../types/index.js";
-import type { VectorStore } from "./vector-store.interface.js";
-
-function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom === 0 ? 0 : dot / denom;
-}
+import type { VectorStore, VectorSearchResult } from "./vector-store.interface.js";
+import { cosineSimilarity } from "../utils/similarity.js";
 
 export class InMemoryVectorStore implements VectorStore {
   readonly name = "InMemory";
@@ -23,6 +11,13 @@ export class InMemoryVectorStore implements VectorStore {
     chunks: readonly PositionAwareChunk[],
     embeddings: readonly number[][],
   ): Promise<void> {
+    if (this._chunks.length > 0) {
+      console.warn(
+        `[InMemoryVectorStore] add() called while store already contains ${this._chunks.length} chunks — clearing existing state to avoid duplicates`,
+      );
+      this._chunks = [];
+      this._embeddings = [];
+    }
     this._chunks.push(...chunks);
     this._embeddings.push(...embeddings.map((e) => [...e]));
   }
@@ -30,13 +25,13 @@ export class InMemoryVectorStore implements VectorStore {
   async search(
     queryEmbedding: readonly number[],
     k: number = 5,
-  ): Promise<PositionAwareChunk[]> {
+  ): Promise<VectorSearchResult[]> {
     const scored = this._chunks.map((chunk, i) => ({
       chunk,
       score: cosineSimilarity(queryEmbedding, this._embeddings[i]),
     }));
     scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, k).map((s) => s.chunk);
+    return scored.slice(0, k);
   }
 
   async clear(): Promise<void> {

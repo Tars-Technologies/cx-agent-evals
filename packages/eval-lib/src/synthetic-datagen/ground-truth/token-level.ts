@@ -3,6 +3,7 @@ import { QueryId, QueryText } from "../../types/primitives.js";
 import { createCharacterSpan } from "../../types/chunks.js";
 import type { GroundTruthAssignerInterface, GroundTruthAssignerContext } from "./types.js";
 import type { GeneratedQuery } from "../strategies/types.js";
+import { safeParseLLMResponse } from "../../utils/json.js";
 
 const EXCERPT_PROMPT = `You are an expert at identifying relevant text.
 Given a document and question, extract exact passages that answer it.
@@ -18,12 +19,11 @@ export class GroundTruthAssigner implements GroundTruthAssignerInterface<GroundT
     context: GroundTruthAssignerContext,
   ): Promise<GroundTruth[]> {
     const results: GroundTruth[] = [];
+    const docIndex = new Map(context.corpus.documents.map(d => [String(d.id), d]));
 
     for (let i = 0; i < queries.length; i++) {
       const query = queries[i];
-      const doc = context.corpus.documents.find(
-        (d) => String(d.id) === query.targetDocId,
-      );
+      const doc = docIndex.get(query.targetDocId);
       if (!doc) continue;
 
       const excerpts = await this._extractExcerpts(
@@ -56,10 +56,14 @@ export class GroundTruthAssigner implements GroundTruthAssignerInterface<GroundT
   private async _extractExcerpts(
     docContent: string,
     question: string,
-    _docId: string,
+    docId: string,
     context: GroundTruthAssignerContext,
   ): Promise<string[]> {
-    const prompt = `Document:\n${docContent.substring(0, 8000)}\n\nQuestion: ${question}\n\nExtract exact passages.`;
+    const maxChars = context.maxDocumentChars ?? 8000;
+    if (docContent.length > maxChars) {
+      console.warn(`Document "${docId}" truncated from ${docContent.length} to ${maxChars} chars`);
+    }
+    const prompt = `Document:\n${docContent.substring(0, maxChars)}\n\nQuestion: ${question}\n\nExtract exact passages.`;
     const response = await context.llmClient.complete({
       model: context.model,
       messages: [
@@ -68,7 +72,7 @@ export class GroundTruthAssigner implements GroundTruthAssignerInterface<GroundT
       ],
       responseFormat: "json",
     });
-    return JSON.parse(response).excerpts ?? [];
+    return safeParseLLMResponse(response, { excerpts: [] as string[] }).excerpts ?? [];
   }
 
   private _findSpanPositions(

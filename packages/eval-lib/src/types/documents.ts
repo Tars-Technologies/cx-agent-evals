@@ -48,58 +48,6 @@ export function createCorpus(documents: Document[], metadata?: Record<string, un
 }
 
 /**
- * Load a corpus from a folder on disk.
- * Requires Node.js — uses dynamic imports for fs/path to stay tree-shakeable.
- */
-export async function corpusFromFolder(
-  folderPath: string,
-  globPattern: string = "**/*.md",
-): Promise<Corpus> {
-  const { readdir, readFile } = await import("node:fs/promises");
-  const { join, relative } = await import("node:path");
-
-  const documents: Document[] = [];
-
-  async function collectFiles(
-    baseDir: string,
-    currentDir: string,
-    pattern: string,
-  ): Promise<void> {
-    const entries = await readdir(currentDir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const fullPath = join(currentDir, entry.name);
-
-      if (entry.isDirectory()) {
-        await collectFiles(baseDir, fullPath, pattern);
-      } else if (entry.isFile() && matchesGlob(relative(baseDir, fullPath), pattern)) {
-        const content = await readFile(fullPath, "utf-8");
-        documents.push(
-          createDocument({
-            id: relative(baseDir, fullPath),
-            content,
-          }),
-        );
-      }
-    }
-  }
-
-  await collectFiles(folderPath, folderPath, globPattern);
-  return createCorpus(documents);
-}
-
-function matchesGlob(filePath: string, pattern: string): boolean {
-  // Simple glob matching: support ** and *
-  // Replace **/ with optional directory prefix so it matches root-level files too
-  const regexStr = pattern
-    .replace(/\./g, "\\.")
-    .replace(/\*\*\//g, "(.*/)?")
-    .replace(/\*\*/g, ".*")
-    .replace(/\*/g, "[^/]*");
-  return new RegExp(`^${regexStr}$`).test(filePath);
-}
-
-/**
  * Create a Corpus from plain document objects (no filesystem access).
  * Use this in environments without Node.js fs APIs (e.g., Convex actions).
  */

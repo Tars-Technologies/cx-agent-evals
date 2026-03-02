@@ -1,12 +1,23 @@
 import type { Embedder } from "./embedder.interface.js";
 
+interface OpenAIEmbeddingsClient {
+  embeddings: {
+    create(opts: {
+      model: string;
+      input: string[];
+    }): Promise<{
+      data: Array<{ embedding: number[] }>;
+    }>;
+  };
+}
+
 export class OpenAIEmbedder implements Embedder {
   readonly name: string;
   readonly dimension: number;
   private _model: string;
-  private _client: any;
+  private _client: OpenAIEmbeddingsClient;
 
-  constructor(options: { model?: string; client: any }) {
+  constructor(options: { model?: string; client: OpenAIEmbeddingsClient }) {
     this._model = options.model ?? "text-embedding-3-small";
     this._client = options.client;
     this.name = `OpenAI(${this._model})`;
@@ -33,7 +44,7 @@ export class OpenAIEmbedder implements Embedder {
       model: this._model,
       input: [...texts],
     });
-    return response.data.map((item: any) => item.embedding);
+    return response.data.map((item) => item.embedding);
   }
 
   async embedQuery(query: string): Promise<number[]> {

@@ -1,5 +1,6 @@
 import type { LLMClient } from "../../base.js";
 import type { Dimension } from "../types.js";
+import { safeParseLLMResponse } from "../../../utils/json.js";
 
 const DISCOVERY_PROMPT = `You are analyzing a company's website content to identify the key dimensions that would vary across real user questions asked to their AI assistant or support system.
 
@@ -71,7 +72,7 @@ export async function discoverDimensions(
     responseFormat: "json",
   });
 
-  const data = JSON.parse(response);
+  const data = safeParseLLMResponse(response, { dimensions: [] as Dimension[] });
   const dimensions: Dimension[] = data.dimensions ?? [];
 
   if (options.outputPath) {

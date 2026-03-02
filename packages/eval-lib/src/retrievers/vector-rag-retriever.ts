@@ -1,10 +1,10 @@
-import type { Corpus, PositionAwareChunk } from "../../types/index.js";
-import type { PositionAwareChunker } from "../../chunkers/chunker.interface.js";
-import type { Embedder } from "../../embedders/embedder.interface.js";
-import type { VectorStore } from "../../vector-stores/vector-store.interface.js";
-import type { Reranker } from "../../rerankers/reranker.interface.js";
-import type { Retriever } from "../retriever.interface.js";
-import { InMemoryVectorStore } from "../../vector-stores/in-memory.js";
+import type { Corpus, PositionAwareChunk } from "../types/index.js";
+import type { PositionAwareChunker } from "../chunkers/chunker.interface.js";
+import type { Embedder } from "../embedders/embedder.interface.js";
+import type { VectorStore } from "../vector-stores/vector-store.interface.js";
+import type { Reranker } from "../rerankers/reranker.interface.js";
+import type { Retriever } from "./retriever.interface.js";
+import { InMemoryVectorStore } from "../vector-stores/in-memory.js";
 
 export interface VectorRAGRetrieverConfig {
   readonly chunker: PositionAwareChunker;
@@ -14,6 +14,7 @@ export interface VectorRAGRetrieverConfig {
   readonly batchSize?: number;
 }
 
+/** @deprecated Use `createBaselineVectorRagRetriever()` from `experiments/presets` instead */
 export class VectorRAGRetriever implements Retriever {
   readonly name = "baseline-vector-rag";
 
@@ -57,7 +58,8 @@ export class VectorRAGRetriever implements Retriever {
     }
 
     const queryEmbedding = await this._embedder.embedQuery(query);
-    let retrievedChunks = await this._vectorStore.search(queryEmbedding, k);
+    const results = await this._vectorStore.search(queryEmbedding, k);
+    let retrievedChunks = results.map((r) => r.chunk);
 
     if (this._reranker) {
       retrievedChunks = await this._reranker.rerank(query, retrievedChunks, k);

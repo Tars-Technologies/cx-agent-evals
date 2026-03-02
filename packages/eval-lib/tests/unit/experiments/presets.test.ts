@@ -2,13 +2,13 @@ import { describe, it, expect, afterEach } from "vitest";
 import {
   createBaselineVectorRagRetriever,
   BASELINE_VECTOR_RAG_CONFIG,
-} from "../../../src/experiments/baseline-vector-rag/index.js";
-import { createBM25Retriever, BM25_CONFIG } from "../../../src/experiments/bm25/index.js";
-import { createHybridRetriever, HYBRID_CONFIG } from "../../../src/experiments/hybrid/index.js";
-import {
+  createBM25Retriever,
+  BM25_CONFIG,
+  createHybridRetriever,
+  HYBRID_CONFIG,
   createHybridRerankedRetriever,
   HYBRID_RERANKED_CONFIG,
-} from "../../../src/experiments/hybrid-reranked/index.js";
+} from "../../../src/experiments/presets.js";
 import { RecursiveCharacterChunker } from "../../../src/chunkers/recursive-character.js";
 import { InMemoryVectorStore } from "../../../src/vector-stores/in-memory.js";
 import { createCorpus, createDocument } from "../../../src/types/documents.js";

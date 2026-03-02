@@ -1,5 +1,7 @@
 import type { LLMClient } from "../../base.js";
 import type { Dimension, DimensionCombo } from "../types.js";
+import { safeParseLLMResponse } from "../../../utils/json.js";
+import { mapWithConcurrency } from "../../../utils/concurrency.js";
 
 const FILTER_PROMPT = `You are evaluating whether pairs of dimension values represent realistic user profiles for question generation.
 
@@ -42,8 +44,9 @@ async function buildPairwiseFilters(
     }
   }
 
-  return Promise.all(
-    tasks.map(async ({ dimA, dimB }) => {
+  return mapWithConcurrency(
+    tasks,
+    async ({ dimA, dimB }) => {
       const pairs = dimA.values.flatMap((a) =>
         dimB.values.map((b) => `${a} × ${b}`),
       );
@@ -68,7 +71,7 @@ Which pairs are unrealistic?`;
         responseFormat: "json",
       });
 
-      const data = JSON.parse(response);
+      const data = safeParseLLMResponse(response, { unrealistic_pairs: [] as Array<{ dim_a_value: string; dim_b_value: string }> });
       const unrealisticPairs: Array<{
         dim_a_value: string;
         dim_b_value: string;
@@ -79,7 +82,8 @@ Which pairs are unrealistic?`;
       );
 
       return { dimA: dimA.name, dimB: dimB.name, unrealistic };
-    }),
+    },
+    5,
   );
 }
 
