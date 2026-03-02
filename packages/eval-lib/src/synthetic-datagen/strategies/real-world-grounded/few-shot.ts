@@ -22,12 +22,17 @@ export async function generateFewShotQuestions(
   count: number,
   llmClient: LLMClient,
   model: string,
+  options?: { maxDocumentChars?: number; docId?: string },
 ): Promise<string[]> {
+  const maxChars = options?.maxDocumentChars ?? 6000;
+  if (docContent.length > maxChars) {
+    console.warn(`Document "${options?.docId ?? "unknown"}" truncated from ${docContent.length} to ${maxChars} chars`);
+  }
   const exampleList = fewShotExamples
     .map((e, i) => `${i + 1}. "${e.question}"`)
     .join("\n");
 
-  const prompt = `Document content:\n${docContent.substring(0, 6000)}\n\nReal user questions about this content:\n${exampleList}\n\nGenerate ${count} new questions in the same style.`;
+  const prompt = `Document content:\n${docContent.substring(0, maxChars)}\n\nReal user questions about this content:\n${exampleList}\n\nGenerate ${count} new questions in the same style.`;
 
   const response = await llmClient.complete({
     model,

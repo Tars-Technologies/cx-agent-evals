@@ -1,15 +1,23 @@
-import { describe, it, expect } from "vitest";
-import { writeFile, rm, mkdir } from "node:fs/promises";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { writeFile, rm, mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { DimensionDrivenStrategy } from "../../../../src/synthetic-datagen/strategies/dimension-driven/generator.js";
 import type { LLMClient } from "../../../../src/synthetic-datagen/base.js";
 import { createDocument, createCorpus } from "../../../../src/types/documents.js";
 
-const tmpDir = "/private/tmp/claude-501/dd-integration-test";
+let tmpDir: string;
 
 describe("DimensionDrivenStrategy integration", () => {
+  beforeAll(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "dd-integration-"));
+  });
+
+  afterAll(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
   it("should run the full pipeline: load dims → filter → relevance → sample → generate", async () => {
-    await mkdir(tmpDir, { recursive: true });
     const dimsPath = join(tmpDir, "dims.json");
 
     await writeFile(
@@ -90,6 +98,5 @@ describe("DimensionDrivenStrategy integration", () => {
     expect(results[0].metadata.strategy).toBe("dimension-driven");
     expect(results[0].query).toBe("How do I configure OAuth2 for my app?");
 
-    await rm(tmpDir, { recursive: true });
   });
 });

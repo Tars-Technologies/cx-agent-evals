@@ -1,9 +1,21 @@
 import type { Corpus } from "../../../types/index.js";
 import type { Embedder } from "../../../embedders/embedder.interface.js";
 import type { MatchedQuestion } from "../types.js";
+import { cosineSimilarity } from "../../../utils/similarity.js";
 
+/**
+ * Maximum character length for a single passage when splitting documents.
+ * Paragraphs are accumulated until this limit is reached, then flushed.
+ * Lower values produce more granular passages (better precision, slower);
+ * higher values capture more context per passage (better recall, faster).
+ */
 const PASSAGE_MAX_LENGTH = 500;
-const PASSAGE_MERGE_THRESHOLD = 100;
+
+/**
+ * Number of texts to embed in a single call to the embedder.
+ * Increase for throughput (if your API rate-limit allows); decrease to
+ * avoid request-size limits or to reduce memory pressure.
+ */
 const EMBED_BATCH_SIZE = 100;
 
 export interface PassageInfo {
@@ -40,18 +52,7 @@ export function splitIntoPassages(text: string, maxLen = PASSAGE_MAX_LENGTH): st
   return passages;
 }
 
-export function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom === 0 ? 0 : dot / denom;
-}
+export { cosineSimilarity } from "../../../utils/similarity.js";
 
 export async function embedInBatches(
   texts: readonly string[],
@@ -76,6 +77,11 @@ export async function matchQuestionsToDocuments(
   embedder: Embedder,
   options?: { threshold?: number },
 ): Promise<Map<string, MatchedQuestion[]>> {
+  /**
+   * Minimum cosine-similarity score for a question-passage pair to be
+   * considered a match.  Raise toward 1.0 for stricter matching (fewer
+   * but higher-quality matches); lower toward 0.0 for broader coverage.
+   */
   const threshold = options?.threshold ?? 0.35;
 
   // Build passage index

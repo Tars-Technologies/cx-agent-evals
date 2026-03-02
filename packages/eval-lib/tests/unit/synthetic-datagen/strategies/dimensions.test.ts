@@ -1,11 +1,20 @@
-import { describe, it, expect } from "vitest";
-import { writeFile, rm } from "node:fs/promises";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { writeFile, rm, mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { loadDimensions } from "../../../../src/synthetic-datagen/strategies/dimension-driven/dimensions.js";
 import { discoverDimensions } from "../../../../src/synthetic-datagen/strategies/dimension-driven/discovery.js";
 import type { LLMClient } from "../../../../src/synthetic-datagen/base.js";
 
-const tmpDir = "/private/tmp/claude-501/dimensions-test";
+let tmpDir: string;
+
+beforeAll(async () => {
+  tmpDir = await mkdtemp(join(tmpdir(), "dimensions-test-"));
+});
+
+afterAll(async () => {
+  await rm(tmpDir, { recursive: true, force: true });
+});
 
 describe("loadDimensions", () => {
   it("should load and validate a valid dimensions file", async () => {

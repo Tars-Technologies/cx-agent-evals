@@ -19,8 +19,11 @@ export type {
   RerankRefinementStep,
   ThresholdRefinementStep,
 } from "./config.js";
-export { BM25SearchIndex } from "./search/index.js";
-export type { ScoredChunk } from "./search/index.js";
+export { BM25SearchIndex, BM25SearchStrategy } from "./search/index.js";
+export { DenseSearchStrategy, assignRankScores } from "./search/index.js";
+export { HybridSearchStrategy } from "./search/index.js";
+export type { SearchStrategy, SearchStrategyDeps } from "./search/index.js";
+export type { ScoredChunk } from "./types.js";
 export {
   weightedScoreFusion,
   reciprocalRankFusion,

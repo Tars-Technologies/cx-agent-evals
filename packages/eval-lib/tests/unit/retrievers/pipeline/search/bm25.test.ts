@@ -202,4 +202,38 @@ describe("BM25SearchIndex", () => {
       expect(newResults[0].id).toBe(PositionAwareChunkId("new-1"));
     });
   });
+
+  describe("edge cases", () => {
+    it("returns empty when built with an empty chunk array", () => {
+      const index = new BM25SearchIndex();
+      index.build([]);
+
+      const results = index.search("fox", 10);
+      expect(results).toEqual([]);
+    });
+
+    it("returns empty scores when built with an empty chunk array", () => {
+      const index = new BM25SearchIndex();
+      index.build([]);
+
+      const scored = index.searchWithScores("fox", 10);
+      expect(scored).toEqual([]);
+    });
+
+    it("indexes both chunks when two have identical content", () => {
+      const index = new BM25SearchIndex();
+      const duplicateChunks = [
+        makeChunk("dup-1", "The quick brown fox jumps over the lazy dog"),
+        makeChunk("dup-2", "The quick brown fox jumps over the lazy dog"),
+      ];
+      index.build(duplicateChunks);
+
+      const results = index.search("quick brown fox", 10);
+
+      expect(results.length).toBe(2);
+      const ids = results.map((c) => c.id as string);
+      expect(ids).toContain("dup-1");
+      expect(ids).toContain("dup-2");
+    });
+  });
 });

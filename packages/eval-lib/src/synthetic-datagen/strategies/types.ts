@@ -22,6 +22,8 @@ export interface QuestionStrategy {
 
 export interface SimpleStrategyOptions {
   readonly queriesPerDoc: number;
+  /** Maximum characters of document content sent to the LLM. Default: 8000. */
+  readonly maxDocumentChars?: number;
 }
 
 export type ProgressCallback = (event: ProgressEvent) => void;
@@ -45,6 +47,8 @@ export interface DimensionDrivenStrategyOptions {
   readonly dimensions?: readonly Dimension[];
   readonly totalQuestions: number;
   readonly onProgress?: ProgressCallback;
+  /** Maximum characters of document content sent to the LLM. Default: 6000. */
+  readonly maxDocumentChars?: number;
 }
 
 export interface Dimension {
@@ -71,6 +75,8 @@ export interface RealWorldGroundedStrategyOptions {
   readonly matchThreshold?: number;
   readonly fewShotExamplesPerDoc?: number;
   readonly onProgress?: ProgressCallback;
+  /** Maximum characters of document content sent to the LLM. Default: 6000. */
+  readonly maxDocumentChars?: number;
 }
 
 export interface MatchedQuestion {

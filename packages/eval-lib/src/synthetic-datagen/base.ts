@@ -1,4 +1,4 @@
-import type { Corpus } from "../types/index.js";
+import { withRetry } from "../utils/retry.js";
 
 export interface LLMClient {
   readonly name: string;
@@ -25,41 +25,18 @@ export function openAIClientAdapter(client: {
   return {
     name: "OpenAI",
     async complete(params) {
-      const response = await client.chat.completions.create({
-        model: params.model,
-        messages: [...params.messages],
-        ...(params.responseFormat === "json"
-          ? { response_format: { type: "json_object" } }
-          : {}),
-      });
+      const response = await withRetry(
+        () =>
+          client.chat.completions.create({
+            model: params.model,
+            messages: [...params.messages],
+            ...(params.responseFormat === "json"
+              ? { response_format: { type: "json_object" } }
+              : {}),
+          }),
+        { maxRetries: 3, backoffMs: 1000 },
+      );
       return response.choices[0].message.content ?? "";
     },
   };
-}
-
-export abstract class SyntheticDatasetGenerator {
-  protected _llm: LLMClient;
-  protected _corpus: Corpus;
-  protected _model: string;
-
-  constructor(llmClient: LLMClient, corpus: Corpus, model = "gpt-4o") {
-    this._llm = llmClient;
-    this._corpus = corpus;
-    this._model = model;
-  }
-
-  get corpus(): Corpus {
-    return this._corpus;
-  }
-
-  protected async callLLM(systemPrompt: string, userPrompt: string): Promise<string> {
-    return this._llm.complete({
-      model: this._model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      responseFormat: "json",
-    });
-  }
 }

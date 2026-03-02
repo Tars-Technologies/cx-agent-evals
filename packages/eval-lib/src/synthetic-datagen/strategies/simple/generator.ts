@@ -4,6 +4,7 @@ import type {
   GeneratedQuery,
   SimpleStrategyOptions,
 } from "../types.js";
+import { safeParseLLMResponse } from "../../../utils/json.js";
 
 const SYSTEM_PROMPT = `You are an expert at generating evaluation questions for RAG (Retrieval-Augmented Generation) systems.
 
@@ -53,9 +54,13 @@ export class SimpleStrategy implements QuestionStrategy {
 
   async generate(context: StrategyContext): Promise<GeneratedQuery[]> {
     const results: GeneratedQuery[] = [];
+    const maxChars = this._options.maxDocumentChars ?? 8000;
 
     for (const doc of context.corpus.documents) {
-      const docContent = doc.content.substring(0, 8000);
+      if (doc.content.length > maxChars) {
+        console.warn(`Document "${String(doc.id)}" truncated from ${doc.content.length} to ${maxChars} chars`);
+      }
+      const docContent = doc.content.substring(0, maxChars);
       const prompt = `Document:\n${docContent}\n\nGenerate ${this._options.queriesPerDoc} diverse questions following the requirements above.`;
 
       const response = await context.llmClient.complete({
@@ -67,7 +72,7 @@ export class SimpleStrategy implements QuestionStrategy {
         responseFormat: "json",
       });
 
-      const data = JSON.parse(response);
+      const data = safeParseLLMResponse(response, { questions: [] as string[] });
       const questions: string[] = data.questions ?? [];
 
       for (const question of questions) {

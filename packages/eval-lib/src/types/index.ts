@@ -12,7 +12,6 @@ export {
   createDocument,
   createCorpus,
   createCorpusFromDocuments,
-  corpusFromFolder,
   getDocument,
 } from "./documents.js";
 export type { CharacterSpan, SpanRange, PositionAwareChunk } from "./chunks.js";

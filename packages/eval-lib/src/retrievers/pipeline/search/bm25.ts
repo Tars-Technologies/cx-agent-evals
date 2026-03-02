@@ -1,15 +1,15 @@
 import MiniSearch from "minisearch";
 import type { PositionAwareChunk } from "../../../types/index.js";
+import type { ScoredChunk } from "../types.js";
+import type { SearchStrategy, SearchStrategyDeps } from "./strategy.interface.js";
 
 /**
- * Result of a BM25 search with the matching chunk and its normalized score.
+ * Default BM25+ delta parameter — the additive frequency normalization
+ * lower bound introduced by BM25+.  A value of 0 reduces to classic BM25;
+ * higher values boost the contribution of terms that appear at least once,
+ * preventing near-zero term-frequency scores for long documents.
+ * Typical range: 0.0 -- 1.0.  The original BM25+ paper recommends 0.5.
  */
-export interface ScoredChunk {
-  readonly chunk: PositionAwareChunk;
-  readonly score: number;
-}
-
-/** Default BM25+ delta parameter (frequency normalization lower bound). */
 const DEFAULT_BM25_DELTA = 0.5;
 
 /**
@@ -24,6 +24,16 @@ export class BM25SearchIndex {
   private _index: MiniSearch | null = null;
   private _chunkMap: Map<string, PositionAwareChunk> = new Map();
 
+  /**
+   * @param options.k1 - Term-frequency saturation parameter (default 1.2).
+   *   Higher values increase the influence of term frequency; lower values
+   *   make the score less sensitive to how often a term appears in a chunk.
+   *   Typical range: 1.2 -- 2.0.
+   * @param options.b  - Document-length normalization (default 0.75, range 0 -- 1).
+   *   At 0, document length is ignored; at 1, term frequency is fully
+   *   normalized by document length.  Reduce for corpora where longer
+   *   chunks are inherently more relevant.
+   */
   constructor(options?: { readonly k1?: number; readonly b?: number }) {
     this._k1 = options?.k1 ?? 1.2;
     this._b = options?.b ?? 0.75;
@@ -113,5 +123,48 @@ export class BM25SearchIndex {
   clear(): void {
     this._index = null;
     this._chunkMap = new Map();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// BM25 Search Strategy (wraps BM25SearchIndex)
+// ---------------------------------------------------------------------------
+
+/**
+ * Strategy-pattern wrapper around {@link BM25SearchIndex}.
+ *
+ * Builds a BM25 inverted index during `init` and performs keyword-based
+ * retrieval during `search`.  The vector store and embedder are not used.
+ */
+export class BM25SearchStrategy implements SearchStrategy {
+  readonly name = "bm25";
+
+  private _index: BM25SearchIndex | null = null;
+  private readonly _k1: number | undefined;
+  private readonly _b: number | undefined;
+
+  constructor(options?: { readonly k1?: number; readonly b?: number }) {
+    this._k1 = options?.k1;
+    this._b = options?.b;
+  }
+
+  async init(chunks: readonly PositionAwareChunk[], _deps: SearchStrategyDeps): Promise<void> {
+    const bm25Config = { k1: this._k1, b: this._b };
+    this._index = new BM25SearchIndex(bm25Config);
+    this._index.build(chunks);
+  }
+
+  async search(query: string, k: number, _deps: SearchStrategyDeps): Promise<ScoredChunk[]> {
+    if (!this._index) {
+      return [];
+    }
+    return [...this._index.searchWithScores(query, k)];
+  }
+
+  async cleanup(_deps: SearchStrategyDeps): Promise<void> {
+    if (this._index) {
+      this._index.clear();
+      this._index = null;
+    }
   }
 }

@@ -306,11 +306,9 @@ describe("PipelineRetriever — rerank refinement", () => {
     // The mock reranker reverses order, so the first result of the reranked
     // pipeline should match the last result of the plain pipeline (when both
     // have the same number of results).
-    if (results.length > 1 && plainResults.length > 1) {
-      const rerankedFirst = results[0];
-      const plainLast = plainResults[plainResults.length - 1];
-      expect(rerankedFirst.id).toBe(plainLast.id);
-    }
+    expect(results.length).toBeGreaterThan(1);
+    expect(plainResults.length).toBeGreaterThan(1);
+    expect(results[0].id).toBe(plainResults[plainResults.length - 1].id);
 
     await retriever.cleanup();
     await plainRetriever.cleanup();
