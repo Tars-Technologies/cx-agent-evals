@@ -18,10 +18,9 @@ This document is a comprehensive guide to the eval-lib codebase — the core Typ
 7. [Retrievers & The Pipeline](#7-retrievers--the-pipeline)
 8. [Evaluation Metrics](#8-evaluation-metrics)
 9. [Synthetic Data Generation](#9-synthetic-data-generation)
-10. [LangSmith Integration](#10-langsmith-integration)
-11. [Experiment Presets](#11-experiment-presets)
-12. [Utilities](#12-utilities)
-13. [Build & Exports](#13-build--exports)
+10. [Experiment Presets](#10-experiment-presets)
+11. [Utilities](#11-utilities)
+12. [Build & Exports](#12-build--exports)
 
 ---
 
@@ -31,33 +30,56 @@ eval-lib is a self-contained TypeScript library for evaluating RAG retrieval pip
 
 - **Span-based evaluation** — metrics computed on exact character positions, not fuzzy text matching
 - **Pluggable components** — interfaces for chunkers, embedders, vector stores, rerankers, and retrievers
-- **Pipeline retriever** — a composable 4-stage retrieval architecture (INDEX → QUERY → SEARCH → REFINEMENT)
+- **Pipeline retriever** — a composable 4-stage retrieval architecture (INDEX → QUERY → SEARCH → REFINEMENT) with a strategy-object pattern for extensibility
 - **Synthetic data generation** — three strategies for generating evaluation questions with character-level ground truth
-- **LangSmith integration** — dataset upload, experiment execution, and result tracking
+- **Resilient LLM integration** — retry logic, concurrency limits, and safe JSON parsing for LLM calls
+
+> **Note:** LangSmith integration code previously lived in eval-lib under `src/langsmith/`. It has been migrated to the Convex backend (`packages/backend/convex/`). eval-lib is now a pure evaluation library with zero LangSmith dependency.
 
 ### Directory Structure
 
 ```
 src/
-├── types/                  # Branded types, domain interfaces, Zod schemas
-├── chunkers/               # Text chunking with position tracking
-├── embedders/              # Text → vector embedding
-├── vector-stores/          # Vector similarity search backends
-├── rerankers/              # Result reranking via external models
-├── retrievers/             # Retriever interface + pipeline implementation
-│   ├── pipeline/           # 4-stage pipeline retriever
-│   │   ├── search/         # BM25 index, fusion algorithms
-│   │   └── refinement/     # Threshold filtering
-│   ├── baseline-vector-rag/# Legacy standalone retriever
-│   └── callback-retriever.ts
-├── evaluation/             # Span-based metrics (recall, precision, IoU, F1)
-│   └── metrics/            # Individual metric implementations
-├── synthetic-datagen/      # Question generation + ground truth assignment
-│   ├── strategies/         # Simple, Dimension-Driven, Real-World-Grounded
-│   └── ground-truth/       # Character span extraction
-├── experiments/            # Preset retriever configurations
-├── langsmith/              # LangSmith upload, experiment runner, raw API
-└── utils/                  # Hashing, span operations
+├── types/                      # Branded types, domain interfaces, Zod schemas
+├── chunkers/                   # Text chunking with position tracking
+├── embedders/                  # Text → vector embedding
+├── vector-stores/              # Vector similarity search backends
+├── rerankers/                  # Result reranking via external models
+├── retrievers/                 # Retriever interface + pipeline implementation
+│   ├── retriever.interface.ts  # Core Retriever interface
+│   ├── callback-retriever.ts   # Adapter for user-provided callbacks
+│   ├── vector-rag-retriever.ts # Legacy standalone retriever (@deprecated)
+│   └── pipeline/               # 4-stage pipeline retriever
+│       ├── types.ts            # Shared ScoredChunk type
+│       ├── config.ts           # Config types + hashing
+│       ├── pipeline-retriever.ts
+│       ├── search/             # Search strategy implementations
+│       │   ├── strategy.interface.ts
+│       │   ├── dense.ts        # DenseSearchStrategy
+│       │   ├── bm25.ts         # BM25SearchStrategy + BM25SearchIndex
+│       │   ├── hybrid.ts       # HybridSearchStrategy
+│       │   └── fusion.ts       # Weighted + RRF fusion algorithms
+│       └── refinement/         # Threshold filtering
+│           └── threshold.ts
+├── evaluation/                 # Span-based metrics (recall, precision, IoU, F1)
+│   ├── evaluator.ts            # computeMetrics with pre-merged span optimization
+│   └── metrics/                # Individual metric implementations
+├── synthetic-datagen/          # Question generation + ground truth assignment
+│   ├── base.ts                 # LLMClient interface + openAIClientAdapter (with retry)
+│   ├── strategies/             # Simple, Dimension-Driven, Real-World-Grounded
+│   └── ground-truth/           # Character span extraction
+├── experiments/                # Preset retriever configurations
+│   └── presets.ts              # All configs + generic factory + named wrappers
+├── pipeline/                   # Secondary entry point for internal exports
+│   └── internals.ts            # Config defaults, BM25, fusion, InMemoryVectorStore
+├── utils/                      # Hashing, span ops, similarity, JSON, concurrency, retry
+│   ├── hashing.ts              # SHA-256 chunk ID generation
+│   ├── span.ts                 # All span geometry (overlap, merge, length)
+│   ├── similarity.ts           # Cosine similarity
+│   ├── json.ts                 # safeParseLLMResponse
+│   ├── concurrency.ts          # mapWithConcurrency
+│   └── retry.ts                # withRetry (exponential backoff)
+└── index.ts                    # Root barrel export (public API surface)
 ```
 
 ### Key Design Principles
@@ -66,6 +88,8 @@ src/
 2. **Interfaces over implementations.** `Chunker`, `Embedder`, `VectorStore`, `Reranker`, `Retriever` — all abstract interfaces. Swap any component.
 3. **Branded types for safety.** `DocumentId`, `QueryId`, `PositionAwareChunkId` are branded strings — you can't accidentally pass a query ID where a document ID is expected.
 4. **Config-driven pipelines.** The `PipelineRetriever` reads a declarative `PipelineConfig` object to assemble its behavior. No subclassing required.
+5. **Strategy objects for extensibility.** Search strategies (`DenseSearchStrategy`, `BM25SearchStrategy`, `HybridSearchStrategy`) implement a `SearchStrategy` interface. Adding a new search approach means adding a new class, not modifying the pipeline retriever.
+6. **Pure library, no external system coupling.** eval-lib has no dependency on LangSmith, Convex, or any external service. All integration code lives in the backend.
 
 ---
 
@@ -103,9 +127,11 @@ interface Corpus {
 }
 ```
 
-**Factories:** `createDocument()`, `createCorpus()`, `createCorpusFromDocuments()`, `corpusFromFolder(path, glob)`
+**Factories:** `createDocument()`, `createCorpus()`, `createCorpusFromDocuments()`
 
 **Zod schemas:** `DocumentSchema`, `CorpusSchema` for runtime validation.
+
+> **Note:** `corpusFromFolder()` and `matchesGlob()` (which used `node:fs/promises`) have been removed. Use `createCorpusFromDocuments()` for environment-agnostic corpus construction.
 
 ### 2.3 Chunks & Spans (`chunks.ts`)
 
@@ -225,7 +251,7 @@ class RecursiveCharacterChunker {
 
 **Position tracking:** The `baseOffset` parameter accumulates through recursion, ensuring all positions are absolute character offsets in the original document. Trim offsets are calculated via `text.indexOf(trimmed)`.
 
-**Chunk IDs:** Generated via `generatePaChunkId(content)` — an FNV-1a hash producing deterministic IDs like `pa_chunk_a1b2c3d4ef12`.
+**Chunk IDs:** Generated via `generatePaChunkId(content, docId, start)` — a SHA-256 hash incorporating content, document ID, and position for collision-free deterministic IDs like `pa_chunk_a1b2c3d4ef123456`.
 
 ---
 
@@ -250,7 +276,7 @@ interface Embedder {
 
 ```typescript
 class OpenAIEmbedder implements Embedder {
-  constructor(options: { model?: string; client: any });
+  constructor(options: { model?: string; client: OpenAIEmbeddingsClient });
   static async create(options?: { model?: string }): Promise<OpenAIEmbedder>;
 }
 ```
@@ -258,14 +284,24 @@ class OpenAIEmbedder implements Embedder {
 **Supported models:**
 
 | Model | Dimensions |
-|-------|-----------|
+|-------|-----------:|
 | `text-embedding-3-small` (default) | 1536 |
 | `text-embedding-3-large` | 3072 |
 | `text-embedding-ada-002` | 1536 |
 
-The constructor takes a pre-instantiated OpenAI client (for dependency injection and testing). The static `create()` factory dynamically imports the `openai` package and creates a client automatically.
+The constructor takes a client matching the structural `OpenAIEmbeddingsClient` interface (no `any` — the client is duck-typed against the exact surface area used):
 
-Calls `client.embeddings.create({ model, input: texts })` and maps the response to `number[][]`.
+```typescript
+interface OpenAIEmbeddingsClient {
+  embeddings: {
+    create(opts: { model: string; input: string[] }): Promise<{
+      data: Array<{ embedding: number[] }>;
+    }>;
+  };
+}
+```
+
+The static `create()` factory dynamically imports the `openai` package and creates a client automatically.
 
 ---
 
@@ -276,31 +312,36 @@ Calls `client.embeddings.create({ model, input: texts })` and maps the response 
 ### 5.1 Interface (`vector-store.interface.ts`)
 
 ```typescript
+interface VectorSearchResult {
+  readonly chunk: PositionAwareChunk;
+  readonly score: number;
+}
+
 interface VectorStore {
   readonly name: string;
   add(chunks: readonly PositionAwareChunk[], embeddings: readonly number[][]): Promise<void>;
-  search(queryEmbedding: readonly number[], k?: number): Promise<PositionAwareChunk[]>;
+  search(queryEmbedding: readonly number[], k?: number): Promise<VectorSearchResult[]>;
   clear(): Promise<void>;
 }
 ```
 
-`add()` takes parallel arrays of chunks and their embeddings. `search()` returns the top-k most similar chunks.
+`add()` takes parallel arrays of chunks and their embeddings. `search()` returns the top-k most similar chunks **with their real similarity scores** (not synthetic rank scores). This enables downstream fusion and refinement stages to work with actual similarity values.
 
 ### 5.2 InMemoryVectorStore (`in-memory.ts`)
 
-Stores chunks and embeddings in arrays. Search computes **cosine similarity** against all stored embeddings:
+Stores chunks and embeddings in arrays. Search computes **cosine similarity** (via `utils/similarity.ts`) against all stored embeddings:
 
 ```
-similarity(a, b) = (a · b) / (||a|| × ||b||)
+similarity(a, b) = (a · b) / (‖a‖ × ‖b‖)
 ```
 
-Returns top-k by descending similarity. Suitable for evaluation workloads up to ~10K chunks.
+Returns top-k `VectorSearchResult[]` by descending similarity. Suitable for evaluation workloads up to ~10K chunks.
 
-### 5.3 ChromaVectorStore (`chroma.ts`)
+**Deduplication guard:** If `add()` is called when chunks are already stored, it logs a warning and clears existing data before inserting the new batch. This prevents silent data accumulation from repeated `init()` calls.
 
-Wraps the `chromadb` package with a lazy-initialized collection using HNSW index with cosine distance. Uses a static `create()` factory (dynamically imports `chromadb`). Stores chunk positions as Chroma metadata for round-trip fidelity.
+> **Import note:** `InMemoryVectorStore` is not on the root barrel export. Import from `rag-evaluation-system/pipeline/internals` for direct access.
 
-Not exported from the main entry point — import directly from `rag-evaluation-system/vector-stores/chroma`.
+> **Note:** `ChromaVectorStore` (`chroma.ts`) has been removed as dead code. The Convex backend uses its native `ctx.vectorSearch()` and will never use Chroma. `InMemoryVectorStore` covers local/test use.
 
 ---
 
@@ -328,7 +369,22 @@ class CohereReranker implements Reranker {
 }
 ```
 
-Uses `cohere-ai` package (dynamically imported). Calls `client.rerank({ model, query, documents, topN })`. Maps the API response indices back to the original `PositionAwareChunk` objects, preserving all span metadata.
+Uses `cohere-ai` package (dynamically imported). Client typed via a structural `CohereRerankClient` interface (no `any`):
+
+```typescript
+interface CohereRerankClient {
+  rerank(opts: {
+    model: string;
+    query: string;
+    documents: string[];
+    topN: number;
+  }): Promise<{
+    results: Array<{ index: number; relevanceScore: number }>;
+  }>;
+}
+```
+
+Maps the API response indices back to the original `PositionAwareChunk` objects, preserving all span metadata.
 
 Import directly from `rag-evaluation-system/rerankers/cohere`.
 
@@ -368,21 +424,29 @@ interface CallbackRetrieverConfig {
 
 Used by the Convex backend to plug its own vector search into eval-lib without eval-lib knowing about Convex.
 
-### 7.3 VectorRAGRetriever (`baseline-vector-rag/retriever.ts`)
+### 7.3 VectorRAGRetriever (`vector-rag-retriever.ts`) — @deprecated
 
-A simpler, non-pipeline retriever. `init()` chunks + embeds + stores. `retrieve()` embeds query → vector search → optional rerank. Useful as a baseline.
+A simpler, non-pipeline retriever. `init()` chunks + embeds + stores. `retrieve()` embeds query → vector search → optional rerank.
+
+> **Deprecated.** Use `createBaselineVectorRagRetriever()` from the experiment presets instead. The pipeline retriever provides the same behavior with config hashing, BM25 support, and composable refinement.
 
 ### 7.4 PipelineRetriever — The 4-Stage Pipeline
 
 > `src/retrievers/pipeline/`
 
-This is the centerpiece of the library. A declarative, config-driven retriever with four composable stages.
+This is the centerpiece of the library. A declarative, config-driven retriever with four composable stages, using a **strategy-object pattern** for the search stage.
 
 ```
-┌─────────┐    ┌─────────┐    ┌─────────┐    ┌────────────┐
-│  INDEX   │ →  │  QUERY  │ →  │ SEARCH  │ →  │ REFINEMENT │ → results
-└─────────┘    └─────────┘    └─────────┘    └────────────┘
-  (init)        (retrieve)     (retrieve)       (retrieve)
+┌─────────┐    ┌─────────┐    ┌──────────────┐    ┌────────────┐
+│  INDEX   │ →  │  QUERY  │ →  │    SEARCH    │ →  │ REFINEMENT │ → results
+└─────────┘    └─────────┘    │ (strategy)   │    └────────────┘
+  (init)        (retrieve)     └──────────────┘       (retrieve)
+                                 ↓ delegates to
+                   ┌─────────────────────────────┐
+                   │ DenseSearchStrategy          │
+                   │ BM25SearchStrategy           │
+                   │ HybridSearchStrategy         │
+                   └─────────────────────────────┘
 ```
 
 #### Dependencies (`pipeline-retriever.ts`)
@@ -393,6 +457,7 @@ interface PipelineRetrieverDeps {
   readonly embedder: Embedder;
   readonly vectorStore?: VectorStore;    // Defaults to InMemoryVectorStore
   readonly reranker?: Reranker;          // Required if refinement includes "rerank"
+  readonly embeddingBatchSize?: number;  // Default: 100 — chunks per API call during INDEX
 }
 ```
 
@@ -415,7 +480,6 @@ interface PipelineConfig {
 **Runs during `init(corpus)`.**
 
 ```typescript
-// Currently one strategy
 interface IndexConfig {
   readonly strategy: "plain";
   readonly chunkSize?: number;        // Default: 1000
@@ -428,44 +492,57 @@ interface IndexConfig {
 **What happens:**
 
 1. **Chunk** all documents with position tracking via `chunker.chunkWithPositions(doc)`
-2. **Embed** chunks in batches of 100 via `embedder.embed()` and store in `vectorStore` (if strategy needs dense search)
-3. **Build BM25 index** via `BM25SearchIndex.build(chunks)` (if strategy needs sparse search)
-
-Which indices are built depends on the search strategy:
-- `dense` → vector store only
-- `bm25` → BM25 index only
-- `hybrid` → both
+2. **Delegate to search strategy** via `searchStrategy.init(chunks, deps)` — the strategy handles index construction internally (embedding/storing for dense, BM25 index for sparse, both for hybrid)
 
 #### Stage 2: QUERY
 
 **Runs at the start of `retrieve(query, k)`.**
 
 ```typescript
-// Currently one strategy
 interface IdentityQueryConfig {
   readonly strategy: "identity";    // Passes query through unchanged
 }
 ```
 
-Currently a passthrough. The plan expands this with HyDE, multi-query, step-back, and rewrite strategies.
+Currently a passthrough. Extensible to HyDE, multi-query, step-back, and rewrite strategies.
 
-#### Stage 3: SEARCH
+#### Stage 3: SEARCH (Strategy-Object Pattern)
 
 **Runs during `retrieve()` after query processing.**
 
+The search stage uses a **strategy-object pattern**. Each strategy implements:
+
+```typescript
+interface SearchStrategy {
+  readonly name: string;
+  init(chunks: readonly PositionAwareChunk[], deps: SearchStrategyDeps): Promise<void>;
+  search(query: string, k: number, deps: SearchStrategyDeps): Promise<ScoredChunk[]>;
+  cleanup(deps: SearchStrategyDeps): Promise<void>;
+}
+
+interface SearchStrategyDeps {
+  readonly embedder: Embedder;
+  readonly vectorStore: VectorStore;
+}
+```
+
+`PipelineRetriever` creates the appropriate strategy at construction time via `createSearchStrategy(config)` and delegates all search operations to it. Adding a new search approach means implementing a new `SearchStrategy` class — no modification to the pipeline retriever required.
+
 Three strategies, selected by `SearchConfig.strategy`:
 
-##### Dense Search (`strategy: "dense"`)
+##### DenseSearchStrategy (`search/dense.ts`)
 
 ```typescript
 interface DenseSearchConfig { readonly strategy: "dense"; }
 ```
 
-1. Embed query via `embedder.embedQuery(query)`
-2. Search vector store for top-k: `vectorStore.search(queryEmbedding, k)`
-3. Assign linearly decaying rank scores: first = 1.0, last = 1/count
+1. **Init:** Embed chunks in batches (configurable `batchSize`, default 100) and store in vector store
+2. **Search:** Embed query via `embedder.embedQuery(query)`, search vector store for top-k. Uses **real similarity scores** from the vector store directly
+3. **Cleanup:** No-op (vector store owned by PipelineRetriever)
 
-##### BM25 Search (`strategy: "bm25"`)
+Also exports `assignRankScores(chunks)` — assigns linearly decaying scores: `score[i] = (count - i) / count`.
+
+##### BM25SearchStrategy (`search/bm25.ts`)
 
 ```typescript
 interface BM25SearchConfig {
@@ -475,12 +552,13 @@ interface BM25SearchConfig {
 }
 ```
 
-1. Query the pre-built BM25 index (powered by MiniSearch)
-2. Scores are normalized: top result = 1.0, rest proportional
+1. **Init:** Build BM25 index via `BM25SearchIndex.build(chunks)`
+2. **Search:** Query the BM25 index via `searchWithScores()`. Scores are normalized: top result = 1.0, rest proportional
+3. **Cleanup:** Release BM25 index and chunk map
 
-**BM25SearchIndex** (`search/bm25.ts`): Wraps MiniSearch with `fields: ["content"]`. Uses BM25+ scoring with configurable k1, b, and delta (0.5) parameters.
+**BM25SearchIndex** wraps MiniSearch with `fields: ["content"]`. Uses BM25+ scoring with configurable k1, b, and delta (0.5) parameters.
 
-##### Hybrid Search (`strategy: "hybrid"`)
+##### HybridSearchStrategy (`search/hybrid.ts`)
 
 ```typescript
 interface HybridSearchConfig {
@@ -495,8 +573,10 @@ interface HybridSearchConfig {
 }
 ```
 
-1. Run dense and BM25 search **in parallel**, each fetching `k × candidateMultiplier` candidates
-2. Fuse results using one of two methods:
+Composes `DenseSearchStrategy` + `BM25SearchStrategy` internally:
+
+1. **Init:** Initialize both sub-strategies
+2. **Search:** Run dense and BM25 search **in parallel**, each fetching `k × candidateMultiplier` candidates, then fuse:
 
 **Weighted Score Fusion** (`search/fusion.ts`):
 ```
@@ -511,6 +591,8 @@ rrf_score = Σ 1/(k + rank)   for each list where chunk appears
 Position-based (ignores raw scores), more robust to score distribution differences.
 
 Both methods use `buildEntryMap()` to unify chunks from both lists by a composite key (`docId:start:end`).
+
+3. **Cleanup:** Cleanup both sub-strategies (dense no-op, BM25 releases index)
 
 #### Stage 4: REFINEMENT
 
@@ -530,9 +612,9 @@ interface RerankRefinementStep { readonly type: "rerank"; }
 
 1. Extract chunks from scored results
 2. Call `reranker.rerank(query, chunks, k)`
-3. Reassign linearly decaying rank scores to the reranked order
+3. Reassign linearly decaying rank scores to the reranked order via `assignRankScores()`
 
-Requires a `Reranker` in `PipelineRetrieverDeps` — the constructor validates this.
+Requires a `Reranker` in `PipelineRetrieverDeps` — the constructor validates this at construction time.
 
 ##### Threshold (`type: "threshold"`)
 
@@ -562,17 +644,15 @@ function computeRetrieverConfigHash(config: PipelineConfig, k: number): string;
 
 Both use `stableStringify()` (recursively sorts all object keys) → SHA-256 → hex string. Two configs with identical settings produce the same hash regardless of property order or `name` field.
 
-#### Internal Types
+#### Internal Types (`pipeline/types.ts`)
 
 ```typescript
-// Used throughout the pipeline for scored results
+// Used throughout the pipeline for scored results — single definition, shared everywhere
 interface ScoredChunk {
   readonly chunk: PositionAwareChunk;
   readonly score: number;
 }
 ```
-
-The `assignRankScores()` utility converts a sorted chunk array into scored chunks: `score[i] = (count - i) / count`.
 
 ---
 
@@ -589,25 +669,35 @@ interface Metric {
   readonly name: string;
   readonly calculate: (
     retrieved: readonly CharacterSpan[],
-    groundTruth: readonly CharacterSpan[]
+    groundTruth: readonly CharacterSpan[],
+  ) => number;
+  readonly calculatePreMerged?: (
+    mergedRetrieved: readonly SpanRange[],
+    mergedGroundTruth: readonly SpanRange[],
   ) => number;
 }
 ```
 
-### 8.2 Span Utilities (`metrics/utils.ts`)
+The optional `calculatePreMerged` method accepts pre-merged, non-overlapping spans. When provided, `computeMetrics` calls this instead of `calculate` to avoid redundant sort+merge operations across multiple metrics.
 
-Before computing any metric, spans are preprocessed:
+### 8.2 Span Utilities (`utils/span.ts`)
+
+All span geometry functions are consolidated in `utils/span.ts`:
 
 **`mergeOverlappingSpans(spans)`** — Groups spans by docId, sorts by start, merges overlapping/adjacent ranges into maximal spans. Prevents double-counting.
 
 **`calculateOverlap(spansA, spansB)`** — Merges both sets, then sums character-level intersection across all pairwise span comparisons (same-doc only).
 
-**`totalSpanLength(spans)`** — Merges spans, then sums `(end - start)` for each.
+**`calculateOverlapPreMerged(mergedA, mergedB)`** — Same as above but skips the merge step (for use with pre-merged inputs).
 
-Low-level helpers in `utils/span.ts`:
+**`totalSpanLength(spans)`** / **`totalSpanLengthPreMerged(mergedSpans)`** — Merges spans (or skips merge), then sums `(end - start)` for each.
+
+Low-level helpers (also in `utils/span.ts`):
 - `spanOverlaps(a, b)` — true if same doc and ranges intersect
 - `spanOverlapChars(a, b)` — `min(a.end, b.end) - max(a.start, b.start)` (or 0)
 - `spanLength(span)` — `end - start`
+
+> **Note:** `evaluation/metrics/utils.ts` exists for backward compatibility but simply re-exports from `utils/span.ts`.
 
 ### 8.3 The Four Metrics
 
@@ -618,7 +708,7 @@ Low-level helpers in `utils/span.ts`:
 | **IoU** | `overlap / (totalRet + totalGT - overlap)` | Symmetric overlap quality | Both empty → 1.0; one empty → 0.0 |
 | **F1** | `2 × (P × R) / (P + R)` | Harmonic mean of precision & recall | Both 0 → 0.0 |
 
-All scores clamped to [0, 1].
+All scores clamped to [0, 1]. Each metric implements both `calculate` and `calculatePreMerged` for optimal performance.
 
 ### 8.4 Orchestrator (`evaluator.ts`)
 
@@ -633,6 +723,8 @@ interface ComputeMetricsOptions {
 
 function computeMetrics(options): Record<string, number>;
 ```
+
+**Pre-merge optimization:** Before computing individual metrics, the orchestrator pre-merges overlapping spans once per result via `mergeOverlappingSpans`. If a metric provides `calculatePreMerged`, that variant is called with the pre-merged spans — avoiding redundant sort+merge that would otherwise happen independently in each metric. This is significant for F1, which internally calls both recall and precision.
 
 Computes each metric for each result, then returns **arithmetic mean** per metric across all results.
 
@@ -657,9 +749,13 @@ interface LLMClient {
   }): Promise<string>;
 }
 
-// Adapter for OpenAI SDK
+// Adapter for OpenAI SDK — with built-in retry logic
 function openAIClientAdapter(client): LLMClient;
+```
 
+The `openAIClientAdapter` wraps LLM calls in `withRetry()` (3 retries, 1000ms exponential backoff) to handle transient API errors gracefully.
+
+```typescript
 // Output of all strategies
 interface GeneratedQuery {
   readonly query: string;
@@ -681,6 +777,8 @@ interface StrategyContext {
 }
 ```
 
+> **Note:** The `SyntheticDatasetGenerator` abstract class that previously existed in `base.ts` has been removed. It was never extended — all strategies implement `QuestionStrategy` directly.
+
 ### 9.2 Strategy 1: SimpleStrategy (`strategies/simple/`)
 
 ```typescript
@@ -689,7 +787,7 @@ class SimpleStrategy implements QuestionStrategy {
 }
 ```
 
-For each document: truncate to 8000 chars → prompt LLM → parse N questions from JSON response. Total output: `queriesPerDoc × numDocs`.
+For each document: truncate to configurable max chars → prompt LLM → parse questions from JSON response via `safeParseLLMResponse()`. Total output: `queriesPerDoc × numDocs`.
 
 ### 9.3 Strategy 2: DimensionDrivenStrategy (`strategies/dimension-driven/`)
 
@@ -720,10 +818,12 @@ interface Dimension {
 ```
 
 **Pipeline steps:**
-1. **Filtering** (`filtering.ts`) — Cartesian product of all dimension values → LLM marks unrealistic pairs → filter to plausible combos
-2. **Relevance** (`relevance.ts`) — Summarize each doc → LLM assigns combos to docs → builds a relevance matrix
+1. **Filtering** (`filtering.ts`) — Cartesian product of all dimension values → LLM marks unrealistic pairs → filter to plausible combos. Uses `mapWithConcurrency()` with a limit of 5 to avoid rate-limiting.
+2. **Relevance** (`relevance.ts`) — Summarize each doc → LLM assigns combos to docs → builds a relevance matrix. Uses `mapWithConcurrency()` with a limit of 5.
 3. **Sampling** (`sampling.ts`) — 3-phase stratified sampling: (a) one combo per doc, (b) each combo at least once, (c) proportional fill to budget
 4. **Generation** — For each doc with assigned combos, LLM generates one question per user profile
+
+All LLM JSON parsing uses `safeParseLLMResponse()` with appropriate fallbacks for resilience.
 
 Supports progress callbacks for UI integration.
 
@@ -744,12 +844,14 @@ class RealWorldGroundedStrategy implements QuestionStrategy {
 
 Matches real-world questions to documents via embedding similarity, then generates more questions in the same style:
 
-1. **Matching** (`matching.ts`) — Split docs into ~500-char passages, embed all passages + questions, find best matches above threshold
-2. **Budget allocation** (`generation.ts`) — Distribute generation quota proportional to match count per doc
-3. **Few-shot generation** — Use matched questions as examples, LLM generates new questions in the same style
+1. **Matching** (`matching.ts`) — Split docs into ~500-char passages, embed all passages + questions, find best matches above threshold. Uses `cosineSimilarity()` from `utils/similarity.ts`.
+2. **Budget allocation** (`few-shot.ts`) — Distribute generation quota proportional to match count per doc
+3. **Few-shot generation** (`few-shot.ts`) — Use matched questions as examples, LLM generates new questions in the same style
 4. **Output** — Both direct matches (`mode: "direct"`) and generated questions (`mode: "generated"`)
 
 Requires an `Embedder` in the strategy context.
+
+> **Note:** The file `generation.ts` has been renamed to `few-shot.ts` to disambiguate it from `generator.ts` (which contains the `RealWorldGroundedStrategy` class).
 
 ### 9.5 Ground Truth Assignment (`ground-truth/`)
 
@@ -768,88 +870,51 @@ For each query:
 3. For each passage, find its exact character position in the document via string search (with whitespace-normalized fallback)
 4. Create `CharacterSpan` with precise start/end offsets
 
+LLM JSON parsing uses `safeParseLLMResponse()` for resilience.
+
 Output: `GroundTruth[]` — each binding a query to its character-level spans.
 
 ### 9.6 End-to-End Flow (`index.ts`)
 
 ```typescript
+interface GenerateOptions {
+  readonly strategy: QuestionStrategy;
+  readonly corpus: Corpus;
+  readonly llmClient: LLMClient;
+  readonly model?: string;
+}
+
 async function generate(options: GenerateOptions): Promise<GroundTruth[]>;
 ```
 
 ```
 Strategy.generate(context) → GeneratedQuery[]
                   ↓
-GroundTruthAssigner.assign() → GroundTruth[]
-                  ↓
-(optional) uploadDataset() → LangSmith
+ GroundTruthAssigner.assign() → GroundTruth[]
 ```
+
+> **Note:** The previous `uploadToLangsmith` and `datasetName` options have been removed from `GenerateOptions`. LangSmith dataset upload is now handled entirely by the Convex backend.
 
 ---
 
-## 10. LangSmith Integration
-
-> `src/langsmith/`
-
-### 10.1 Dataset Operations
-
-**`upload.ts`** — `uploadDataset(groundTruth, options)`: Converts `GroundTruth[]` to LangSmith examples, batch uploads (default 20, 3 retries), returns dataset URL.
-
-**`client.ts`** — `loadDataset(datasetName)`: Loads a LangSmith dataset back into `GroundTruth[]` format.
-
-**`datasets.ts`** — `listDatasets()`, `listExperiments(datasetId)`, `getCompareUrl(datasetId)`: List and explore datasets/experiments.
-
-### 10.2 Experiment Runner (`experiment-runner.ts`)
-
-```typescript
-interface LangSmithExperimentConfig {
-  readonly corpus: Corpus;
-  readonly retriever: Retriever;
-  readonly k: number;
-  readonly datasetName: string;
-  readonly metrics?: readonly Metric[];     // Default: [recall, precision, iou, f1]
-  readonly experimentPrefix?: string;
-  readonly metadata?: Record<string, unknown>;
-  readonly onResult?: (result: ExperimentResult) => Promise<void>;
-}
-
-async function runLangSmithExperiment(config): Promise<void>;
-```
-
-**Execution flow:**
-
-1. `retriever.init(corpus)`
-2. Define target function: `query → retriever.retrieve(query, k) → { relevantSpans }`
-3. Create evaluators via `createLangSmithEvaluators(metrics)` — each deserializes spans and computes a metric
-4. If `onResult` provided, add a callback evaluator that fires per question with `{ query, retrievedSpans, scores }`
-5. Call LangSmith `evaluate(target, { data, evaluators, experimentPrefix, metadata })`
-6. `retriever.cleanup()` in finally block
-
-### 10.3 Evaluator Adapters (`evaluator-adapters.ts`)
-
-```typescript
-function deserializeSpans(raw: unknown): CharacterSpan[];
-function createLangSmithEvaluator(metric: Metric): LangSmithEvaluatorFn;
-function createLangSmithEvaluators(metrics: readonly Metric[]): LangSmithEvaluatorFn[];
-```
-
-Bridges eval-lib metrics to LangSmith's evaluator format: extract spans from `outputs`/`referenceOutputs`, compute metric, return `{ key, score }`.
-
-### 10.4 Raw API (`raw-api.ts`)
-
-```typescript
-async function createLangSmithExperiment(options): Promise<{ experimentId, experimentUrl }>;
-async function logLangSmithResult(options): Promise<void>;
-```
-
-Lower-level API for per-question parallel evaluation (used by Convex WorkPool). Creates experiment projects directly and logs individual runs with scores as feedback.
-
----
-
-## 11. Experiment Presets
+## 10. Experiment Presets
 
 > `src/experiments/`
 
-Four named preset configurations, each a directory with `config.ts` and `index.ts`:
+All preset configurations are consolidated in a single file: `presets.ts`.
+
+### Shared Dependencies Interface
+
+```typescript
+interface PipelinePresetDeps {
+  readonly chunker: PositionAwareChunker;
+  readonly embedder: Embedder;
+  readonly vectorStore?: VectorStore;
+  readonly reranker?: Reranker;
+}
+```
+
+### Preset Configs
 
 | Preset | Search Strategy | Refinement | Key Settings |
 |--------|----------------|------------|-------------|
@@ -858,25 +923,49 @@ Four named preset configurations, each a directory with `config.ts` and `index.t
 | `hybrid` | Hybrid (weighted) | — | 70% dense + 30% BM25, 4x candidates |
 | `hybrid-reranked` | Hybrid (weighted) | Rerank | Same as hybrid + Cohere reranking |
 
-Each exports:
-- A `PipelineConfig` constant (e.g., `BASELINE_VECTOR_RAG_CONFIG`)
-- A factory function (e.g., `createBaselineVectorRagRetriever(deps, overrides?)`)
+### Generic Factory
 
-Factory functions create a `PipelineRetriever` with the preset config, accepting optional overrides.
+```typescript
+function createPresetRetriever(
+  presetName: "baseline-vector-rag" | "bm25" | "hybrid" | "hybrid-reranked",
+  deps: PipelinePresetDeps,
+  overrides?: Partial<PipelineConfig>,
+): PipelineRetriever;
+```
+
+### Named Convenience Wrappers
+
+One-liner wrappers for backward compatibility:
+- `createBaselineVectorRagRetriever(deps, overrides?)`
+- `createBM25Retriever(deps, overrides?)`
+- `createHybridRetriever(deps, overrides?)`
+- `createHybridRerankedRetriever(deps, overrides?)` — requires `reranker` in deps
+
+Adding a new preset is a single line — one config object + one convenience wrapper.
+
+> **Note:** The previous structure had 4 subdirectories (8 files) under `experiments/`. These have been collapsed into a single `presets.ts` file.
 
 ---
 
-## 12. Utilities
+## 11. Utilities
 
 > `src/utils/`
+
+Six utility modules, all re-exported from `src/utils/index.ts` and accessible via the `rag-evaluation-system/utils` sub-path.
 
 ### Hashing (`hashing.ts`)
 
 ```typescript
-function generatePaChunkId(content: string): PositionAwareChunkId;
+function generatePaChunkId(
+  content: string,
+  docId?: string,
+  start?: number,
+): PositionAwareChunkId;
 ```
 
-Uses dual FNV-1a hashing (32-bit, no Node.js crypto dependency) for deterministic chunk IDs. Format: `pa_chunk_{hash1}{hash2_prefix}`.
+Uses SHA-256 hashing for deterministic chunk IDs. When `docId` and `start` are provided, the input is `${docId}:${start}:${content}`, which eliminates collisions for identical text appearing in different documents or at different positions. Format: `pa_chunk_{hash16}`.
+
+Backward compatible: calling with just `content` still works (hashes content only).
 
 ### Span Operations (`span.ts`)
 
@@ -884,39 +973,91 @@ Uses dual FNV-1a hashing (32-bit, no Node.js crypto dependency) for deterministi
 function spanOverlaps(a: SpanRange, b: SpanRange): boolean;
 function spanOverlapChars(a: SpanRange, b: SpanRange): number;
 function spanLength(span: SpanRange): number;
+function mergeOverlappingSpans(spans: readonly SpanRange[]): SpanRange[];
+function calculateOverlap(spansA: readonly SpanRange[], spansB: readonly SpanRange[]): number;
+function calculateOverlapPreMerged(mergedA: readonly SpanRange[], mergedB: readonly SpanRange[]): number;
+function totalSpanLength(spans: readonly SpanRange[]): number;
+function totalSpanLengthPreMerged(mergedSpans: readonly SpanRange[]): number;
 ```
 
-Low-level helpers used by evaluation metrics. All are document-aware (spans on different documents never overlap).
+All span geometry functions are consolidated here. Low-level helpers are used by evaluation metrics. The `*PreMerged` variants skip the merge step for callers that have already merged (used by `computeMetrics` optimization).
+
+### Cosine Similarity (`similarity.ts`)
+
+```typescript
+function cosineSimilarity(a: readonly number[], b: readonly number[]): number;
+```
+
+Consolidated implementation used by `InMemoryVectorStore` and `RealWorldGroundedStrategy`'s matching module. Returns 0 if either vector is zero.
+
+### Safe JSON Parsing (`json.ts`)
+
+```typescript
+function safeParseLLMResponse<T>(response: string, fallback: T): T;
+```
+
+Strips markdown code fences (```` ```json ... ``` ````) if present, parses JSON, and returns the fallback value on failure (with a `console.warn`). Used across all synthetic datagen modules to gracefully handle malformed LLM responses.
+
+### Concurrency Limiter (`concurrency.ts`)
+
+```typescript
+function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  fn: (item: T) => Promise<R>,
+  limit?: number,    // Default: 5
+): Promise<R[]>;
+```
+
+Worker-pool pattern that processes items with up to `limit` concurrent async workers, preserving input order. Used in dimension-driven strategy for bounded LLM fan-outs (filtering and relevance stages).
+
+### Retry Logic (`retry.ts`)
+
+```typescript
+function withRetry<T>(
+  fn: () => Promise<T>,
+  opts?: { maxRetries?: number; backoffMs?: number },
+): Promise<T>;
+```
+
+Exponential backoff retry: delay = `backoffMs × 2^attempt`. Defaults: 3 retries, 1000ms base. Used internally by `openAIClientAdapter` to handle transient LLM API errors.
 
 ---
 
-## 13. Build & Exports
+## 12. Build & Exports
 
 ### tsup Configuration (`tsup.config.ts`)
 
-Six entry points, each producing ESM + CJS + .d.ts:
+Five entry points, each producing ESM + CJS + .d.ts:
 
 | Entry | Purpose |
 |-------|---------|
-| `src/index.ts` | Main barrel — all types, chunkers, embedders, vector stores, retrievers, evaluation, synthetic datagen, utils |
+| `src/index.ts` | Main barrel — types, core implementations, preset factories |
 | `src/embedders/openai.ts` | OpenAI embedder (tree-shakeable, avoids pulling `openai` into main bundle) |
-| `src/vector-stores/chroma.ts` | Chroma vector store (optional dependency) |
 | `src/rerankers/cohere.ts` | Cohere reranker (optional dependency) |
-| `src/langsmith/index.ts` | LangSmith utilities (optional dependency) |
-| `src/langsmith/experiment-runner.ts` | Experiment runner (kept separate from langsmith/index to avoid pulling all of langsmith) |
+| `src/pipeline/internals.ts` | Internal pipeline utilities (config defaults, BM25, fusion, InMemoryVectorStore, dimension discovery) |
+| `src/utils/index.ts` | Utility functions (span ops, similarity, JSON, concurrency, retry) |
 
 ### Package Exports (`package.json`)
 
 ```json
 {
-  ".": "Main entry (types, core implementations)",
+  ".": "Main entry (types, core implementations, preset factories)",
   "./embedders/openai": "OpenAI embedder",
-  "./vector-stores/chroma": "Chroma vector store",
   "./rerankers/cohere": "Cohere reranker",
-  "./langsmith": "LangSmith utilities",
-  "./langsmith/experiment-runner": "Experiment runner"
+  "./pipeline/internals": "Internal pipeline utilities, InMemoryVectorStore, dimension discovery",
+  "./utils": "Utility functions (span geometry, similarity, JSON parsing, concurrency, retry)"
 }
 ```
+
+### Public API Surface (Root Barrel)
+
+The root barrel (`src/index.ts`) exports the primary public API. Items are organized into tiers:
+
+**Always on root:** Types, branded ID factories, core interfaces, `PipelineRetriever`, preset factories, strategy classes, `computeMetrics`, metrics, `GroundTruthAssigner`, `generate()`, `parseDimensions`, `openAIClientAdapter`, config hash functions, basic span utilities.
+
+**Moved to `./pipeline/internals`:** `InMemoryVectorStore`, `BM25SearchIndex`, `weightedScoreFusion`, `reciprocalRankFusion`, `applyThresholdFilter`, `DEFAULT_INDEX_CONFIG`, `DEFAULT_QUERY_CONFIG`, `DEFAULT_SEARCH_CONFIG`, `discoverDimensions`, `loadDimensions`, `loadDimensionsFromFile`.
+
+**Moved to `./utils`:** `mergeOverlappingSpans`, `calculateOverlap`, `calculateOverlapPreMerged`, `totalSpanLength`, `totalSpanLengthPreMerged`, `cosineSimilarity`, `safeParseLLMResponse`, `mapWithConcurrency`, `withRetry`.
 
 ### Dependencies
 
@@ -924,12 +1065,12 @@ Six entry points, each producing ESM + CJS + .d.ts:
 |------|---------|---------|
 | **Required** | `minisearch` | BM25 full-text search |
 | **Required** | `zod` | Schema validation |
-| **Peer** | `langsmith` | LangSmith integration |
 | **Optional** | `openai` | OpenAIEmbedder |
 | **Optional** | `cohere-ai` | CohereReranker |
-| **Optional** | `chromadb` | ChromaVectorStore |
 
 Optional dependencies use dynamic `import()` with graceful error messages if not installed.
+
+> **Note:** `langsmith` and `chromadb` are no longer dependencies. LangSmith integration lives in the Convex backend. ChromaVectorStore has been removed.
 
 ---
 
@@ -946,7 +1087,7 @@ Putting it all together — here's how a complete evaluation run flows through t
    ↓
  GroundTruthAssigner.assign() →  GroundTruth[] (query + CharacterSpan[])
    ↓
- uploadDataset()              →  LangSmith Dataset
+ (backend uploads to LangSmith)
 
 
                          EXPERIMENT EXECUTION
@@ -955,25 +1096,30 @@ Putting it all together — here's how a complete evaluation run flows through t
    ↓
  PipelineRetriever(config, deps)
    ↓
- .init(corpus)
-   ├── Chunk documents         →  PositionAwareChunk[]
-   ├── Embed + store vectors   →  VectorStore
-   └── Build BM25 index        →  BM25SearchIndex
+ createSearchStrategy(config) → DenseSearchStrategy | BM25SearchStrategy | HybridSearchStrategy
    ↓
- runLangSmithExperiment({ retriever, datasetName, k, metrics })
+ .init(corpus)
+   ├── Chunk documents                    →  PositionAwareChunk[]
+   └── searchStrategy.init(chunks, deps)
+       ├── Dense: embed batches + store   →  VectorStore
+       ├── BM25: build inverted index     →  BM25SearchIndex
+       └── Hybrid: both in sequence
+   ↓
+ (backend runs LangSmith experiment)
    ↓
  For each question in dataset:
    │
-   ├── QUERY:  identity(query)         →  processedQuery
-   ├── SEARCH: dense/bm25/hybrid       →  ScoredChunk[]
-   ├── REFINE: rerank → threshold       →  ScoredChunk[]
-   ├── Return top-k PositionAwareChunk[] → CharacterSpan[]
+   ├── QUERY:  identity(query)                        →  processedQuery
+   ├── SEARCH: searchStrategy.search(query, k, deps)  →  ScoredChunk[]
+   ├── REFINE: rerank → threshold                      →  ScoredChunk[]
+   ├── Return top-k PositionAwareChunk[]               → CharacterSpan[]
    │
    └── EVALUATE:
-       ├── recall(retrieved, groundTruth)    →  0.XX
-       ├── precision(retrieved, groundTruth) →  0.XX
-       ├── iou(retrieved, groundTruth)       →  0.XX
-       └── f1(retrieved, groundTruth)        →  0.XX
+       ├── Pre-merge spans once per result
+       ├── recall(mergedRetrieved, mergedGT)      →  0.XX
+       ├── precision(mergedRetrieved, mergedGT)   →  0.XX
+       ├── iou(mergedRetrieved, mergedGT)         →  0.XX
+       └── f1(mergedRetrieved, mergedGT)          →  0.XX
    ↓
  Average all per-question scores
    ↓
