@@ -24,9 +24,18 @@ export default defineSchema({
     name: v.string(),
     description: v.optional(v.string()),
     metadata: v.any(),
+    industry: v.optional(v.string()),
+    subIndustry: v.optional(v.string()),
+    company: v.optional(v.string()),
+    entityType: v.optional(v.string()),
+    sourceUrl: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
     createdBy: v.id("users"),
     createdAt: v.number(),
-  }).index("by_org", ["orgId"]),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_org_industry", ["orgId", "industry"])
+    .index("by_org_company", ["orgId", "company"]),
 
   // ─── Documents (markdown files in a knowledge base) ───
   documents: defineTable({
@@ -35,9 +44,11 @@ export default defineSchema({
     docId: v.string(),
     title: v.string(),
     content: v.string(),
-    fileId: v.id("_storage"),
+    fileId: v.optional(v.id("_storage")),
     contentLength: v.number(),
     metadata: v.any(),
+    sourceUrl: v.optional(v.string()),
+    sourceType: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_kb", ["kbId"])
@@ -253,4 +264,51 @@ export default defineSchema({
     .index("by_kb_config", ["kbId", "indexConfigHash"])
     .index("by_org", ["orgId"])
     .index("by_status", ["orgId", "status"]),
+
+  // ─── Crawl Jobs (web crawl orchestration) ───
+  crawlJobs: defineTable({
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    userId: v.id("users"),
+    startUrl: v.string(),
+    config: v.object({
+      maxDepth: v.optional(v.number()),
+      maxPages: v.optional(v.number()),
+      includePaths: v.optional(v.array(v.string())),
+      excludePaths: v.optional(v.array(v.string())),
+      allowSubdomains: v.optional(v.boolean()),
+      onlyMainContent: v.optional(v.boolean()),
+      delay: v.optional(v.number()),
+      concurrency: v.optional(v.number()),
+    }),
+    status: v.string(),
+    stats: v.object({
+      discovered: v.number(),
+      scraped: v.number(),
+      failed: v.number(),
+      skipped: v.number(),
+    }),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_kb", ["kbId"])
+    .index("by_status", ["status"]),
+
+  // ─── Crawl URLs (individual URLs within a crawl job) ───
+  crawlUrls: defineTable({
+    crawlJobId: v.id("crawlJobs"),
+    url: v.string(),
+    normalizedUrl: v.string(),
+    status: v.string(),
+    depth: v.number(),
+    parentUrl: v.optional(v.string()),
+    documentId: v.optional(v.id("documents")),
+    error: v.optional(v.string()),
+    retryCount: v.optional(v.number()),
+    scrapedAt: v.optional(v.number()),
+  })
+    .index("by_job_status", ["crawlJobId", "status"])
+    .index("by_job_url", ["crawlJobId", "normalizedUrl"]),
 });
