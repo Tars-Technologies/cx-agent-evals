@@ -1,7 +1,7 @@
-import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { v } from "convex/values";
-import { getAuthContext } from "./lib/auth";
+import { getAuthContext } from "../lib/auth";
 
 // ─── Queries ───
 
@@ -172,7 +172,7 @@ export const remove = mutation({
       if (sharingChunks.length === 0) {
         await ctx.scheduler.runAfter(
           0,
-          internal.indexingActions.cleanupAction,
+          internal.retrieval.indexingActions.cleanupAction,
           {
             kbId: retriever.kbId,
             indexConfigHash: retriever.indexConfigHash,
@@ -251,7 +251,7 @@ export const deleteIndex = mutation({
     if (retriever.indexingJobId) {
       await ctx.scheduler.runAfter(
         0,
-        internal.indexingActions.cleanupAction,
+        internal.retrieval.indexingActions.cleanupAction,
         {
           kbId: retriever.kbId,
           indexConfigHash: retriever.indexConfigHash,

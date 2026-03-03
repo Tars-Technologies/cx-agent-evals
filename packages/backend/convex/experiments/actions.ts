@@ -1,9 +1,9 @@
 "use node";
 
-import { internalAction } from "./_generated/server";
+import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import { internal } from "../_generated/api";
+import { Id } from "../_generated/dataModel";
 import {
   CallbackRetriever,
   computeIndexConfigHash,
@@ -37,13 +37,13 @@ export const runExperiment = internalAction({
   handler: async (ctx, args) => {
     try {
       // ── Step 0: Initialize ──
-      await ctx.runMutation(internal.experiments.updateStatus, {
+      await ctx.runMutation(internal.experiments.orchestration.updateStatus, {
         experimentId: args.experimentId,
         status: "running",
         phase: "initializing",
       });
 
-      const experiment = await ctx.runQuery(internal.experiments.getInternal, {
+      const experiment = await ctx.runQuery(internal.experiments.orchestration.getInternal, {
         id: args.experimentId,
       });
 
@@ -53,7 +53,7 @@ export const runExperiment = internalAction({
 
       if (experiment.retrieverId) {
         // ── Retriever path: load config, skip indexing ──
-        const retriever = await ctx.runQuery(internal.retrievers.getInternal, {
+        const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
           id: experiment.retrieverId,
         });
         if (retriever.status !== "ready") {
@@ -90,7 +90,7 @@ export const runExperiment = internalAction({
         });
 
         const indexResult = await ctx.runMutation(
-          internal.indexing.startIndexing,
+          internal.retrieval.indexing.startIndexing,
           {
             orgId: experiment.orgId,
             kbId: args.kbId,
@@ -101,7 +101,7 @@ export const runExperiment = internalAction({
         );
 
         if (!indexResult.alreadyCompleted) {
-          await ctx.runMutation(internal.experiments.updateStatus, {
+          await ctx.runMutation(internal.experiments.orchestration.updateStatus, {
             experimentId: args.experimentId,
             status: "running",
             phase: "indexing",
@@ -111,7 +111,7 @@ export const runExperiment = internalAction({
           while (!indexingDone) {
             await new Promise((resolve) => setTimeout(resolve, 2000));
             const indexJob = await ctx.runQuery(
-              internal.indexing.getJobInternal,
+              internal.retrieval.indexing.getJobInternal,
               { jobId: indexResult.jobId },
             );
             if (!indexJob) throw new Error("Indexing job disappeared");
@@ -131,34 +131,34 @@ export const runExperiment = internalAction({
       }
 
       // ── Step 2: Ensure dataset is synced to LangSmith ──
-      let dataset = await ctx.runQuery(internal.datasets.getInternal, {
+      let dataset = await ctx.runQuery(internal.crud.datasets.getInternal, {
         id: args.datasetId,
       });
 
       if (!dataset.langsmithDatasetId) {
-        await ctx.runMutation(internal.experiments.updateStatus, {
+        await ctx.runMutation(internal.experiments.orchestration.updateStatus, {
           experimentId: args.experimentId,
           status: "running",
           phase: "syncing",
         });
 
-        await ctx.runAction(internal.langsmithSync.syncDataset, {
+        await ctx.runAction(internal.langsmith.sync.syncDataset, {
           datasetId: args.datasetId,
         });
 
-        dataset = await ctx.runQuery(internal.datasets.getInternal, {
+        dataset = await ctx.runQuery(internal.crud.datasets.getInternal, {
           id: args.datasetId,
         });
       }
 
       // ── Step 3: Count questions and guard against empty datasets ──
       const questions = await ctx.runQuery(
-        internal.questions.byDatasetInternal,
+        internal.crud.questions.byDatasetInternal,
         { datasetId: args.datasetId },
       );
 
       if (questions.length === 0) {
-        await ctx.runMutation(internal.experiments.updateStatus, {
+        await ctx.runMutation(internal.experiments.orchestration.updateStatus, {
           experimentId: args.experimentId,
           status: "completed",
           phase: "done",
@@ -167,7 +167,7 @@ export const runExperiment = internalAction({
         return;
       }
 
-      await ctx.runMutation(internal.experiments.updateStatus, {
+      await ctx.runMutation(internal.experiments.orchestration.updateStatus, {
         experimentId: args.experimentId,
         status: "running",
         phase: "evaluating",
@@ -175,7 +175,7 @@ export const runExperiment = internalAction({
       });
 
       // ── Step 4: Enqueue single evaluation WorkPool item ──
-      await ctx.runMutation(internal.experiments.enqueueExperiment, {
+      await ctx.runMutation(internal.experiments.orchestration.enqueueExperiment, {
         experimentId: args.experimentId,
         datasetId: args.datasetId,
         kbId: args.kbId,
@@ -186,7 +186,7 @@ export const runExperiment = internalAction({
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await ctx.runMutation(internal.experiments.updateStatus, {
+      await ctx.runMutation(internal.experiments.orchestration.updateStatus, {
         experimentId: args.experimentId,
         status: "failed",
         error: message,
@@ -214,12 +214,12 @@ export const runEvaluation = internalAction({
     datasetName: v.string(),
   },
   handler: async (ctx, args) => {
-    const experiment = await ctx.runQuery(internal.experiments.getInternal, {
+    const experiment = await ctx.runQuery(internal.experiments.orchestration.getInternal, {
       id: args.experimentId,
     });
 
     // Load all documents to build corpus
-    const docs = await ctx.runQuery(internal.documents.listByKbInternal, {
+    const docs = await ctx.runQuery(internal.crud.documents.listByKbInternal, {
       kbId: args.kbId,
     });
     const corpus = createCorpusFromDocuments(
@@ -231,7 +231,7 @@ export const runEvaluation = internalAction({
 
     // Build query → questionId lookup for onResult callback
     const questions = await ctx.runQuery(
-      internal.questions.byDatasetInternal,
+      internal.crud.questions.byDatasetInternal,
       { datasetId: args.datasetId },
     );
     const queryToQuestionId = new Map<string, Id<"questions">>();
@@ -255,7 +255,7 @@ export const runEvaluation = internalAction({
           },
         );
 
-        const chunks = await ctx.runQuery(internal.rag.fetchChunksWithDocs, {
+        const chunks = await ctx.runQuery(internal.retrieval.chunks.fetchChunksWithDocs, {
           ids: searchResults.map((r: any) => r._id),
         });
 
@@ -294,7 +294,7 @@ export const runEvaluation = internalAction({
       onResult: async (result: ExperimentResult) => {
         const questionId = queryToQuestionId.get(result.query);
         if (questionId) {
-          await ctx.runMutation(internal.experimentResults.insert, {
+          await ctx.runMutation(internal.experiments.results.insert, {
             experimentId: args.experimentId,
             questionId,
             retrievedSpans: result.retrievedSpans,
@@ -303,7 +303,7 @@ export const runEvaluation = internalAction({
           });
         }
         resultsCount++;
-        await ctx.runMutation(internal.experiments.updateStatus, {
+        await ctx.runMutation(internal.experiments.orchestration.updateStatus, {
           experimentId: args.experimentId,
           status: "running",
           phase: "evaluating",
@@ -314,7 +314,7 @@ export const runEvaluation = internalAction({
 
     // Aggregate scores after evaluate() completes
     const results = await ctx.runQuery(
-      internal.experimentResults.byExperimentInternal,
+      internal.experiments.results.byExperimentInternal,
       { experimentId: args.experimentId },
     );
 
@@ -333,7 +333,7 @@ export const runEvaluation = internalAction({
     }
 
     // Mark experiment complete with aggregated scores
-    await ctx.runMutation(internal.experiments.updateStatus, {
+    await ctx.runMutation(internal.experiments.orchestration.updateStatus, {
       experimentId: args.experimentId,
       status: "completed",
       scores: avgScores,

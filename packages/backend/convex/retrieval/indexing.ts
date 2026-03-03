@@ -3,12 +3,12 @@ import {
   internalQuery,
   mutation,
   query,
-} from "./_generated/server";
-import { components, internal } from "./_generated/api";
+} from "../_generated/server";
+import { components, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { Workpool, vOnCompleteArgs, type RunResult } from "@convex-dev/workpool";
-import { getAuthContext } from "./lib/auth";
-import { Id } from "./_generated/dataModel";
+import { getAuthContext } from "../lib/auth";
+import { Id } from "../_generated/dataModel";
 import type { JobStatus } from "rag-evaluation-system/shared";
 
 // ─── WorkPool Instance ───
@@ -131,7 +131,7 @@ export const startIndexing = internalMutation({
     for (const doc of docs) {
       await pool.enqueueAction(
         ctx,
-        internal.indexingActions.indexDocument,
+        internal.retrieval.indexingActions.indexDocument,
         {
           documentId: doc._id,
           kbId: args.kbId,
@@ -142,7 +142,7 @@ export const startIndexing = internalMutation({
         },
         {
           context: { jobId, documentId: doc._id },
-          onComplete: internal.indexing.onDocumentIndexed,
+          onComplete: internal.retrieval.indexing.onDocumentIndexed,
         },
       );
     }
@@ -255,7 +255,7 @@ export const onDocumentIndexed = internalMutation({
           retriever.status === "indexing"
         ) {
           await ctx.runMutation(
-            internal.retrievers.syncStatusFromIndexingJob,
+            internal.crud.retrievers.syncStatusFromIndexingJob,
             { retrieverId: retriever._id },
           );
         }
@@ -378,7 +378,7 @@ export const cleanupIndex = mutation({
       )
       .first();
 
-    await ctx.scheduler.runAfter(0, internal.indexingActions.cleanupAction, {
+    await ctx.scheduler.runAfter(0, internal.retrieval.indexingActions.cleanupAction, {
       kbId: args.kbId,
       indexConfigHash: args.indexConfigHash,
       jobId: job?._id,

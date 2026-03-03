@@ -1,5 +1,5 @@
-import { internalAction } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { internalAction } from "../_generated/server";
+import { internal } from "../_generated/api";
 
 /**
  * Cron job action: retry failed LangSmith syncs.
@@ -12,20 +12,20 @@ export const retryFailed = internalAction({
     // We can't query by prefix, so we scan recent datasets
     // In production, we'd add an index on langsmithSyncStatus
     const datasets = await ctx.runQuery(
-      internal.langsmithSyncRetry.getFailedDatasets,
+      internal.langsmith.syncRetry.getFailedDatasets,
     );
 
     for (const dataset of datasets) {
       await ctx.scheduler.runAfter(
         0,
-        internal.langsmithSync.syncDataset,
+        internal.langsmith.sync.syncDataset,
         { datasetId: dataset._id },
       );
     }
   },
 });
 
-import { internalQuery } from "./_generated/server";
+import { internalQuery } from "../_generated/server";
 
 /**
  * Internal query: find datasets with failed LangSmith sync status.

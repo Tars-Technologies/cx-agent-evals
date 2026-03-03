@@ -1,16 +1,16 @@
 "use node";
 
-import { action, ActionCtx } from "./_generated/server";
+import { action, ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import { internal } from "../_generated/api";
+import { Id } from "../_generated/dataModel";
 import {
   computeIndexConfigHash,
   computeRetrieverConfigHash,
   type PipelineConfig,
 } from "rag-evaluation-system";
 import { createEmbedder } from "rag-evaluation-system/llm";
-import { getAuthContext } from "./lib/auth";
+import { getAuthContext } from "../lib/auth";
 
 // ─── Create Retriever ───
 
@@ -37,7 +37,7 @@ export const create = action({
 
     // Dedup: check if retriever with same (kbId, retrieverConfigHash) exists
     const existing = await ctx.runQuery(
-      internal.retrievers.findByConfigHash,
+      internal.crud.retrievers.findByConfigHash,
       { kbId: args.kbId, retrieverConfigHash },
     );
 
@@ -46,7 +46,7 @@ export const create = action({
     }
 
     // Look up user record
-    const user = await ctx.runQuery(internal.users.getByClerkId, {
+    const user = await ctx.runQuery(internal.crud.users.getByClerkId, {
       clerkId: userId,
     });
     if (!user) throw new Error("User not found");
@@ -54,7 +54,7 @@ export const create = action({
     const name = config.name ?? `retriever-${retrieverConfigHash.slice(0, 8)}`;
 
     const retrieverId = await ctx.runMutation(
-      internal.retrievers.insertRetriever,
+      internal.crud.retrievers.insertRetriever,
       {
         orgId,
         kbId: args.kbId,
@@ -85,7 +85,7 @@ export const startIndexing = action({
   handler: async (ctx, args): Promise<{ status: string }> => {
     const { orgId, userId } = await getAuthContext(ctx);
 
-    const retriever = await ctx.runQuery(internal.retrievers.getInternal, {
+    const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
       id: args.retrieverId,
     });
 
@@ -111,14 +111,14 @@ export const startIndexing = action({
     };
 
     // Look up user record
-    const user = await ctx.runQuery(internal.users.getByClerkId, {
+    const user = await ctx.runQuery(internal.crud.users.getByClerkId, {
       clerkId: userId,
     });
     if (!user) throw new Error("User not found");
 
     // Trigger indexing
     const indexResult = await ctx.runMutation(
-      internal.indexing.startIndexing,
+      internal.retrieval.indexing.startIndexing,
       {
         orgId,
         kbId: retriever.kbId,
@@ -133,7 +133,7 @@ export const startIndexing = action({
     let chunkCount: number | undefined;
 
     if (indexResult.alreadyCompleted) {
-      const job = await ctx.runQuery(internal.indexing.getJobInternal, {
+      const job = await ctx.runQuery(internal.retrieval.indexing.getJobInternal, {
         jobId: indexResult.jobId,
       });
       chunkCount = job?.totalChunks;
@@ -142,7 +142,7 @@ export const startIndexing = action({
       status = "indexing";
     }
 
-    await ctx.runMutation(internal.retrievers.updateIndexingStatus, {
+    await ctx.runMutation(internal.crud.retrievers.updateIndexingStatus, {
       retrieverId: args.retrieverId,
       indexingJobId: indexResult.jobId,
       status,
@@ -177,7 +177,7 @@ export const retrieve = action({
     const { orgId } = await getAuthContext(ctx);
 
     // Load retriever
-    const retriever = await ctx.runQuery(internal.retrievers.getInternal, {
+    const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
       id: args.retrieverId,
     });
 
@@ -217,7 +217,7 @@ export const retrieve = action({
     );
 
     // Hydrate chunks with document info
-    const chunks = await ctx.runQuery(internal.rag.fetchChunksWithDocs, {
+    const chunks = await ctx.runQuery(internal.retrieval.chunks.fetchChunksWithDocs, {
       ids: searchResults.map((r: any) => r._id),
     });
 

@@ -3,13 +3,13 @@ import {
   internalQuery,
   mutation,
   query,
-} from "./_generated/server";
-import { components, internal } from "./_generated/api";
+} from "../_generated/server";
+import { components, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { Workpool, WorkId, vOnCompleteArgs, type RunResult } from "@convex-dev/workpool";
-import { getAuthContext } from "./lib/auth";
-import { applyResult, counterPatch } from "./lib/workpool";
-import { Id } from "./_generated/dataModel";
+import { getAuthContext } from "../lib/auth";
+import { applyResult, counterPatch } from "../lib/workpool";
+import { Id } from "../_generated/dataModel";
 import type { JobStatus } from "rag-evaluation-system/shared";
 
 // ─── WorkPool Instance ───
@@ -97,7 +97,7 @@ export const startGeneration = mutation({
       for (const doc of docs) {
         const wId = await pool.enqueueAction(
           ctx,
-          internal.generationActions.generateForDocument,
+          internal.generation.actions.generateForDocument,
           {
             datasetId,
             documentId: doc._id,
@@ -105,7 +105,7 @@ export const startGeneration = mutation({
           },
           {
             context: { jobId, itemKey: doc._id as string },
-            onComplete: internal.generation.onQuestionGenerated,
+            onComplete: internal.generation.orchestration.onQuestionGenerated,
           },
         );
         workIds.push(wId);
@@ -113,7 +113,7 @@ export const startGeneration = mutation({
     } else if (args.strategy === "dimension-driven") {
       const wId = await pool.enqueueAction(
         ctx,
-        internal.generationActions.generateDimensionDriven,
+        internal.generation.actions.generateDimensionDriven,
         {
           datasetId,
           kbId: args.kbId,
@@ -121,14 +121,14 @@ export const startGeneration = mutation({
         },
         {
           context: { jobId, itemKey: "corpus" },
-          onComplete: internal.generation.onQuestionGenerated,
+          onComplete: internal.generation.orchestration.onQuestionGenerated,
         },
       );
       workIds.push(wId);
     } else if (args.strategy === "real-world-grounded") {
       const wId = await pool.enqueueAction(
         ctx,
-        internal.generationActions.generateRealWorldGrounded,
+        internal.generation.actions.generateRealWorldGrounded,
         {
           datasetId,
           kbId: args.kbId,
@@ -136,7 +136,7 @@ export const startGeneration = mutation({
         },
         {
           context: { jobId, itemKey: "corpus" },
-          onComplete: internal.generation.onQuestionGenerated,
+          onComplete: internal.generation.orchestration.onQuestionGenerated,
         },
       );
       workIds.push(wId);
@@ -221,7 +221,7 @@ export const onQuestionGenerated = internalMutation({
       for (const question of questions) {
         const wId = await pool.enqueueAction(
           ctx,
-          internal.generationActions.assignGroundTruthForQuestion,
+          internal.generation.actions.assignGroundTruthForQuestion,
           {
             questionId: question._id,
             kbId: job.kbId,
@@ -229,7 +229,7 @@ export const onQuestionGenerated = internalMutation({
           },
           {
             context: { jobId: context.jobId, itemKey: question._id as string },
-            onComplete: internal.generation.onGroundTruthAssigned,
+            onComplete: internal.generation.orchestration.onGroundTruthAssigned,
           },
         );
         gtWorkIds.push(wId);
@@ -307,7 +307,7 @@ export const onGroundTruthAssigned = internalMutation({
       // Fire-and-forget LangSmith sync
       await ctx.scheduler.runAfter(
         0,
-        internal.langsmithSync.syncDataset,
+        internal.langsmith.sync.syncDataset,
         { datasetId: job.datasetId },
       );
     } else {

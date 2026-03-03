@@ -10,7 +10,7 @@ const crons = cronJobs();
 crons.interval(
   "retry failed langsmith syncs",
   { hours: 1 },
-  internal.langsmithSyncRetry.retryFailed,
+  internal.langsmith.syncRetry.retryFailed,
 );
 
 export default crons;

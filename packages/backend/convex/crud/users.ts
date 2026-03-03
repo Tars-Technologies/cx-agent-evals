@@ -1,4 +1,4 @@
-import { mutation, query, internalQuery } from "./_generated/server";
+import { mutation, query, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 
 /**

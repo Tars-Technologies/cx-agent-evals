@@ -1,7 +1,7 @@
-import { mutation } from "./_generated/server";
+import { mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
-import { getAuthContext } from "./lib/auth";
+import { internal } from "../_generated/api";
+import { getAuthContext } from "../lib/auth";
 
 /**
  * Manually retry a failed LangSmith sync for a dataset.
@@ -16,7 +16,7 @@ export const retryDatasetSync = mutation({
       throw new Error("Dataset not found");
     }
 
-    await ctx.scheduler.runAfter(0, internal.langsmithSync.syncDataset, {
+    await ctx.scheduler.runAfter(0, internal.langsmith.sync.syncDataset, {
       datasetId: args.datasetId,
     });
   },

@@ -1,9 +1,9 @@
 "use node";
 
-import { internalAction } from "./_generated/server";
+import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import { internal } from "../_generated/api";
+import { Id } from "../_generated/dataModel";
 import {
   SimpleStrategy,
   DimensionDrivenStrategy,
@@ -21,7 +21,7 @@ async function loadCorpusFromKb(
   ctx: { runQuery: (ref: any, args: any) => Promise<any> },
   kbId: Id<"knowledgeBases">,
 ) {
-  const docs = await ctx.runQuery(internal.documents.listByKbInternal, {
+  const docs = await ctx.runQuery(internal.crud.documents.listByKbInternal, {
     kbId,
   });
   return {
@@ -46,7 +46,7 @@ export const generateForDocument = internalAction({
     const model = getModel(config);
     const llmClient = createLLMClient();
 
-    const doc = await ctx.runQuery(internal.documents.getInternal, {
+    const doc = await ctx.runQuery(internal.crud.documents.getInternal, {
       id: args.documentId,
     });
 
@@ -60,7 +60,7 @@ export const generateForDocument = internalAction({
     if (queries.length > 0) {
       for (let i = 0; i < queries.length; i += QUESTION_INSERT_BATCH_SIZE) {
         const batch = queries.slice(i, i + QUESTION_INSERT_BATCH_SIZE);
-        await ctx.runMutation(internal.questions.insertBatch, {
+        await ctx.runMutation(internal.crud.questions.insertBatch, {
           datasetId: args.datasetId,
           questions: batch.map((q, idx) => ({
             queryId: `${doc.docId}_q${i + idx}`,
@@ -105,7 +105,7 @@ export const generateDimensionDriven = internalAction({
     if (queries.length > 0) {
       for (let i = 0; i < queries.length; i += QUESTION_INSERT_BATCH_SIZE) {
         const batch = queries.slice(i, i + QUESTION_INSERT_BATCH_SIZE);
-        await ctx.runMutation(internal.questions.insertBatch, {
+        await ctx.runMutation(internal.crud.questions.insertBatch, {
           datasetId: args.datasetId,
           questions: batch.map((q, idx) => ({
             queryId: `dd_q${i + idx}`,
@@ -165,7 +165,7 @@ export const generateRealWorldGrounded = internalAction({
     if (queries.length > 0) {
       for (let i = 0; i < queries.length; i += QUESTION_INSERT_BATCH_SIZE) {
         const batch = queries.slice(i, i + QUESTION_INSERT_BATCH_SIZE);
-        await ctx.runMutation(internal.questions.insertBatch, {
+        await ctx.runMutation(internal.crud.questions.insertBatch, {
           datasetId: args.datasetId,
           questions: batch.map((q, idx) => ({
             queryId: `rwg_q${i + idx}`,
@@ -191,13 +191,13 @@ export const assignGroundTruthForQuestion = internalAction({
     datasetId: v.id("datasets"),
   },
   handler: async (ctx, args) => {
-    const question = await ctx.runQuery(internal.questions.getInternal, {
+    const question = await ctx.runQuery(internal.crud.questions.getInternal, {
       id: args.questionId,
     });
 
     const { corpus } = await loadCorpusFromKb(ctx, args.kbId);
 
-    const dataset = await ctx.runQuery(internal.datasets.getInternal, {
+    const dataset = await ctx.runQuery(internal.crud.datasets.getInternal, {
       id: args.datasetId,
     });
     const config = dataset.strategyConfig as Record<string, unknown>;
@@ -224,7 +224,7 @@ export const assignGroundTruthForQuestion = internalAction({
         text: s.text,
       }));
 
-      await ctx.runMutation(internal.questions.updateSpans, {
+      await ctx.runMutation(internal.crud.questions.updateSpans, {
         questionId: args.questionId,
         relevantSpans: spans,
       });

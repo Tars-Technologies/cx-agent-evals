@@ -1,8 +1,8 @@
 "use node";
 
-import { internalAction } from "./_generated/server";
+import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
+import { internal } from "../_generated/api";
 import {
   RecursiveCharacterChunker,
   createDocument,
@@ -35,7 +35,7 @@ export const indexDocument = internalAction({
   }> => {
     // ── Idempotency check: query existing chunks ──
     const existingChunks: any[] = await ctx.runQuery(
-      internal.rag.getChunksByDocConfig,
+      internal.retrieval.chunks.getChunksByDocConfig,
       {
         documentId: args.documentId,
         indexConfigHash: args.indexConfigHash,
@@ -52,7 +52,7 @@ export const indexDocument = internalAction({
       // Some chunks exist but not all embedded — skip to Phase B
     } else {
       // ── PHASE A: Chunk & Store (pure compute, atomic) ──
-      const doc = await ctx.runQuery(internal.documents.getInternal, {
+      const doc = await ctx.runQuery(internal.crud.documents.getInternal, {
         id: args.documentId,
       });
 
@@ -69,7 +69,7 @@ export const indexDocument = internalAction({
       }
 
       // Insert ALL chunks WITHOUT embeddings in one atomic mutation
-      await ctx.runMutation(internal.rag.insertChunkBatch, {
+      await ctx.runMutation(internal.retrieval.chunks.insertChunkBatch, {
         chunks: chunks.map((c) => ({
           documentId: args.documentId,
           kbId: args.kbId,
@@ -84,7 +84,7 @@ export const indexDocument = internalAction({
     }
 
     // ── PHASE B: Embed in Batches (API calls, resumable) ──
-    const unembedded = await ctx.runQuery(internal.rag.getUnembeddedChunks, {
+    const unembedded = await ctx.runQuery(internal.retrieval.chunks.getUnembeddedChunks, {
       documentId: args.documentId,
       indexConfigHash: args.indexConfigHash,
     });
@@ -106,7 +106,7 @@ export const indexDocument = internalAction({
       const embeddings = await embedder.embed(texts);
 
       // Patch this batch's embeddings — checkpoint saved
-      await ctx.runMutation(internal.rag.patchChunkEmbeddings, {
+      await ctx.runMutation(internal.retrieval.chunks.patchChunkEmbeddings, {
         patches: batch.map((c: any, idx: number) => ({
           chunkId: c._id,
           embedding: embeddings[idx],
@@ -117,7 +117,7 @@ export const indexDocument = internalAction({
     }
 
     // Count total chunks for this document (including previously embedded)
-    const allChunks: any[] = await ctx.runQuery(internal.rag.getChunksByDocConfig, {
+    const allChunks: any[] = await ctx.runQuery(internal.retrieval.chunks.getChunksByDocConfig, {
       documentId: args.documentId,
       indexConfigHash: args.indexConfigHash,
     });
@@ -149,7 +149,7 @@ export const cleanupAction = internalAction({
     // Paginated chunk deletion
     let hasMore = true;
     while (hasMore) {
-      const result = await ctx.runMutation(internal.rag.deleteKbConfigChunks, {
+      const result = await ctx.runMutation(internal.retrieval.chunks.deleteKbConfigChunks, {
         kbId: args.kbId,
         indexConfigHash: args.indexConfigHash,
         limit: CLEANUP_BATCH_SIZE,
@@ -161,11 +161,11 @@ export const cleanupAction = internalAction({
     // Optionally delete source documents
     let docsDeleted = 0;
     if (args.deleteDocuments) {
-      const docs = await ctx.runQuery(internal.documents.listByKbInternal, {
+      const docs = await ctx.runQuery(internal.crud.documents.listByKbInternal, {
         kbId: args.kbId,
       });
       for (const doc of docs) {
-        await ctx.runMutation(internal.rag.deleteDocumentChunks, {
+        await ctx.runMutation(internal.retrieval.chunks.deleteDocumentChunks, {
           documentId: doc._id,
         });
         // Note: document deletion itself is not done here — that would
@@ -176,7 +176,7 @@ export const cleanupAction = internalAction({
 
     // Delete the associated indexing job record
     if (args.jobId) {
-      await ctx.runMutation(internal.indexing.deleteJob, {
+      await ctx.runMutation(internal.retrieval.indexing.deleteJob, {
         jobId: args.jobId,
       });
     }

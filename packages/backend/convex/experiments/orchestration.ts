@@ -3,12 +3,12 @@ import {
   query,
   internalQuery,
   internalMutation,
-} from "./_generated/server";
-import { components, internal } from "./_generated/api";
+} from "../_generated/server";
+import { components, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { Workpool, WorkId, vOnCompleteArgs, type RunResult } from "@convex-dev/workpool";
-import { getAuthContext } from "./lib/auth";
-import { Id } from "./_generated/dataModel";
+import { getAuthContext } from "../lib/auth";
+import { Id } from "../_generated/dataModel";
 
 // ─── WorkPool Instance ───
 
@@ -83,7 +83,7 @@ export const start = mutation({
     // Schedule the orchestrator action
     await ctx.scheduler.runAfter(
       0,
-      internal.experimentActions.runExperiment,
+      internal.experiments.actions.runExperiment,
       {
         experimentId,
         datasetId: args.datasetId,
@@ -180,7 +180,7 @@ export const enqueueExperiment = internalMutation({
   handler: async (ctx, args) => {
     const wId = await pool.enqueueAction(
       ctx,
-      internal.experimentActions.runEvaluation,
+      internal.experiments.actions.runEvaluation,
       {
         experimentId: args.experimentId,
         datasetId: args.datasetId,
@@ -194,7 +194,7 @@ export const enqueueExperiment = internalMutation({
         context: {
           experimentId: args.experimentId,
         },
-        onComplete: internal.experiments.onExperimentComplete,
+        onComplete: internal.experiments.orchestration.onExperimentComplete,
       },
     );
 

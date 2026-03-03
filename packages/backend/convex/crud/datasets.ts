@@ -1,6 +1,6 @@
-import { query, internalMutation, internalQuery } from "./_generated/server";
+import { query, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
-import { getAuthContext } from "./lib/auth";
+import { getAuthContext } from "../lib/auth";
 
 export const list = query({
   args: {},

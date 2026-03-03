@@ -1,6 +1,6 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
-import { getAuthContext } from "./lib/auth";
+import { getAuthContext } from "../lib/auth";
 
 export const create = mutation({
   args: {

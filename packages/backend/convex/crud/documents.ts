@@ -1,6 +1,6 @@
-import { mutation, query, internalQuery } from "./_generated/server";
+import { mutation, query, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
-import { getAuthContext } from "./lib/auth";
+import { getAuthContext } from "../lib/auth";
 
 export const generateUploadUrl = mutation({
   args: {},

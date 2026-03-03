@@ -1,8 +1,8 @@
 "use node";
 
-import { internalAction } from "./_generated/server";
+import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
+import { internal } from "../_generated/api";
 import {
   QueryId,
   QueryText,
@@ -24,23 +24,23 @@ export const syncDataset = internalAction({
   },
   handler: async (ctx, args) => {
     // Update sync status to syncing
-    await ctx.runMutation(internal.datasets.updateSyncStatus, {
+    await ctx.runMutation(internal.crud.datasets.updateSyncStatus, {
       datasetId: args.datasetId,
       langsmithSyncStatus: "syncing",
     });
 
     try {
-      const dataset = await ctx.runQuery(internal.datasets.getInternal, {
+      const dataset = await ctx.runQuery(internal.crud.datasets.getInternal, {
         id: args.datasetId,
       });
 
       const questions = await ctx.runQuery(
-        internal.questions.byDatasetInternal,
+        internal.crud.questions.byDatasetInternal,
         { datasetId: args.datasetId },
       );
 
       if (questions.length === 0) {
-        await ctx.runMutation(internal.datasets.updateSyncStatus, {
+        await ctx.runMutation(internal.crud.datasets.updateSyncStatus, {
           datasetId: args.datasetId,
           langsmithSyncStatus: "skipped",
         });
@@ -81,7 +81,7 @@ export const syncDataset = internalAction({
       });
 
       // Update dataset with LangSmith info
-      await ctx.runMutation(internal.datasets.updateSyncStatus, {
+      await ctx.runMutation(internal.crud.datasets.updateSyncStatus, {
         datasetId: args.datasetId,
         langsmithDatasetId: result.datasetName,
         langsmithUrl: result.datasetUrl,
@@ -109,7 +109,7 @@ export const syncDataset = internalAction({
         }
 
         if (updates.length > 0) {
-          await ctx.runMutation(internal.questions.updateLangsmithExampleIds, {
+          await ctx.runMutation(internal.crud.questions.updateLangsmithExampleIds, {
             updates,
           });
         }
@@ -120,7 +120,7 @@ export const syncDataset = internalAction({
     } catch (error) {
       const message =
         error instanceof Error ? error.message : String(error);
-      await ctx.runMutation(internal.datasets.updateSyncStatus, {
+      await ctx.runMutation(internal.crud.datasets.updateSyncStatus, {
         datasetId: args.datasetId,
         langsmithSyncStatus: `failed: ${message}`,
       });
