@@ -1,6 +1,6 @@
 # KB Data Sourcing Plan
 
-> Successor to `multi-industry-kb-plan.md`. Covers everything from that plan plus the in-house web scraper, file processing pipeline, and crawl orchestration.
+> Successor to `multi-industry-kb-plan.md`. Covers structured KB metadata, file processing pipeline (HTML/PDF/MD → markdown), in-house web scraper, crawl orchestration, seed companies, and frontend updates.
 
 ## Context
 
@@ -10,31 +10,37 @@ This plan introduces:
 
 1. **Structured KB metadata** — industry, company, entity type, tags
 2. **File processing pipeline** — converts HTML, PDF, and raw markdown into clean markdown
-3. **In-house web scraper** — Firecrawl-compatible interface for scraping/crawling websites
+3. **In-house web scraper** — Firecrawl-inspired single-page scraper with link extraction
 4. **Crawl orchestration** — reliable, time-budgeted batch scraping via Convex WorkPool
-5. **Bulk import HTTP endpoint** — for external tools to push documents into KBs
-6. **Seed company list** — 28 entities across 6 industries for initial benchmarking
-7. **Minimal frontend updates** — industry filter, URL import, PDF/HTML upload support
+5. **Seed company list** — 28 entities across 6 industries for initial benchmarking
+6. **Minimal frontend updates** — industry filter, URL import, PDF/HTML upload support
 
 ### Design Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| JS rendering | Hybrid: static fetch default, headless opt-in | Most corporate pages are server-rendered; headless is expensive |
-| Runtime | Convex Node actions + external fallback for headless | Leverages existing WorkPool; external service only when needed |
-| Orchestration | WorkPool fan-out with time-budgeted batch actions | Proven pattern in codebase (indexing, generation); reliable at scale |
+| JS rendering | Static HTML fetch only (v1) | Most corporate pages are server-rendered; headless is expensive and can be added later |
+| Runtime | Convex Node actions | Leverages existing WorkPool infrastructure; no external services needed |
+| Orchestration | WorkPool with time-budgeted batch actions | Proven pattern in codebase (indexing, generation); reliable at scale |
 | Config depth | Sensible defaults + key overrides | Simple interface, good defaults for readability/turndown/unpdf |
 | PDF conversion | Server-side in Convex Node action | Fits existing upload pattern; fine for typical support docs |
-| Code location | Full scraper + file processor in eval-lib | Maximum reusability; backend is thin orchestration layer |
+| Code location | Scraper + file processor in eval-lib; orchestration in backend | eval-lib stays stateless and testable; backend handles Convex-specific wiring |
 | Frontier state | Convex tables (crawlJobs + crawlUrls) | Persistent, queryable, survives restarts, enables progress UI |
 | Raw HTML storage | Not stored | HTML is available at source URL; only clean markdown persisted |
-| Frontend scope | Minimal | Industry metadata fields, import button, progress display |
+| HTML parsing | jsdom for everything (readability + link extraction) | Already a dependency for readability; eliminates need for cheerio |
+
+### Explicitly Out of Scope (v1)
+
+- Headless browser / JS-rendered pages — add when we encounter pages that need it
+- robots.txt compliance — add later; v1 targets known corporate support pages
+- Bulk import HTTP endpoint — not needed; scraper creates documents directly via Convex mutations
+- Image extraction — RAG eval doesn't use images; always excluded from markdown
 
 ---
 
-## Phase 1: Schema Changes
+## Phase 1: Schema Changes + KB Queries
 
-**File**: `packages/backend/convex/schema.ts`
+**Files**: `packages/backend/convex/schema.ts`, `packages/backend/convex/knowledgeBases.ts`
 
 ### 1a. Extend `knowledgeBases` table
 
@@ -60,21 +66,16 @@ Add indexes:
 
 Change `fileId: v.id("_storage")` → `fileId: v.optional(v.id("_storage"))`.
 
-Reason: Scraped documents arrive as markdown strings with no file upload. The `content` field stores the full text. Existing documents with `fileId` are unaffected.
+Scraped documents arrive as markdown strings with no file upload. The `content` field stores the full text. Existing documents with `fileId` are unaffected.
 
 ### 1c. Add source tracking to `documents` table
 
 ```typescript
-sourceUrl: v.optional(v.string()),                    // URL this document was scraped from
-sourceType: v.optional(v.string()),                   // "markdown" | "html" | "pdf" | "scraped"
-rawFileId: v.optional(v.id("_storage")),              // raw file before conversion (PDF, user-uploaded HTML)
-conversionMetadata: v.optional(v.object({
-  sourceFormat: v.string(),                           // original format
-  convertedAt: v.number(),                            // timestamp
-  method: v.string(),                                 // "readability+turndown", "unpdf", "cleanup"
-  wordCount: v.optional(v.number()),
-})),
+sourceUrl: v.optional(v.string()),       // URL this document was scraped from
+sourceType: v.optional(v.string()),      // "markdown" | "html" | "pdf" | "scraped"
 ```
+
+Minimal tracking — just the URL and original format. No nested metadata objects.
 
 ### 1d. New `crawlJobs` table
 
@@ -91,10 +92,7 @@ crawlJobs: defineTable({
     excludePaths: v.optional(v.array(v.string())),    // glob patterns: ["/login", "/admin/*"]
     allowSubdomains: v.optional(v.boolean()),          // default: false
     onlyMainContent: v.optional(v.boolean()),          // default: true
-    includeLinks: v.optional(v.boolean()),             // default: true
-    includeImages: v.optional(v.boolean()),            // default: false
     delay: v.optional(v.number()),                     // ms between requests (rate limiting)
-    respectRobotsTxt: v.optional(v.boolean()),         // default: true
     concurrency: v.optional(v.number()),               // parallel requests per action, default: 3
   }),
   status: v.string(),                                 // "pending" | "running" | "completed" | "failed" | "cancelled"
@@ -132,7 +130,15 @@ crawlUrls: defineTable({
   .index("by_job_url", ["crawlJobId", "normalizedUrl"]),
 ```
 
-All changes are backward-compatible (optional fields, new tables, no migrations needed).
+### 1f. Update `create` mutation
+
+Add optional args to `knowledgeBases.create`: `industry`, `subIndustry`, `company`, `entityType`, `sourceUrl`, `tags`. Pass through to `ctx.db.insert`.
+
+### 1g. Add `listByIndustry` query
+
+Uses `by_org_industry` index when industry filter is provided, falls back to `by_org` for unfiltered. Frontend handles any grouping/display logic client-side.
+
+All schema changes are backward-compatible (optional fields, new tables, no migrations needed).
 
 ---
 
@@ -145,29 +151,29 @@ A reusable conversion engine that takes any raw file format and produces clean m
 ### Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     FileProcessor                        │
-│                                                          │
-│  processFile(input, config) → ProcessedDocument          │
-│                                                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │  HtmlToMd    │  │  PdfToMd     │  │  MdCleanup   │  │
-│  │              │  │              │  │              │   │
-│  │  readability │  │  unpdf /     │  │  frontmatter │   │
-│  │  + turndown  │  │  pdf-parse   │  │  link fix    │   │
-│  │              │  │              │  │  whitespace  │   │
-│  └──────────────┘  └──────────────┘  └──────────────┘  │
-└─────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────┐
+│                  FileProcessor                     │
+│                                                    │
+│  processFile(input, config) → ProcessedDocument    │
+│                                                    │
+│  ┌─────────────┐  ┌─────────────┐                │
+│  │  HtmlToMd   │  │  PdfToMd    │                │
+│  │             │  │             │                 │
+│  │ readability │  │ unpdf       │  ← converters  │
+│  │ + turndown  │  │             │                 │
+│  │ + cleanup   │  │ + cleanup   │                 │
+│  └─────────────┘  └─────────────┘                │
+└───────────────────────────────────────────────────┘
 ```
 
-### 2a. Types (`types.ts`)
+### 2a. Core types and processor (`processor.ts`)
+
+Types and main dispatcher live in the same file:
 
 ```typescript
 interface FileProcessorConfig {
   onlyMainContent?: boolean;    // HTML: use readability to extract article (default: true)
-  includeImages?: boolean;      // keep image references in markdown (default: false)
   includeLinks?: boolean;       // keep hyperlinks in markdown (default: true)
-  cleanupMarkdown?: boolean;    // run MD cleanup pass (default: true)
 }
 
 interface ProcessedDocument {
@@ -176,44 +182,11 @@ interface ProcessedDocument {
   metadata: {
     sourceFormat: "html" | "pdf" | "markdown";
     wordCount: number;
-    links?: string[];           // extracted links (useful for crawling)
-    images?: string[];
+    links?: string[];           // extracted links (useful for crawl frontier)
   };
 }
-```
 
-### 2b. HTML to Markdown (`html-to-markdown.ts`)
-
-Pipeline:
-1. Parse HTML with `jsdom`
-2. Extract main content with `@mozilla/readability` (when `onlyMainContent: true`)
-3. Convert to markdown with `turndown`
-4. Optionally strip images/links based on config
-5. Run markdown cleanup
-
-Libraries: `@mozilla/readability`, `jsdom`, `turndown`
-
-### 2c. PDF to Markdown (`pdf-to-markdown.ts`)
-
-Pipeline:
-1. Extract text from PDF buffer using `unpdf`
-2. Structure into markdown (headings from font size, paragraphs from spacing)
-3. Run markdown cleanup
-
-Library: `unpdf` (modern, TypeScript-native, async)
-
-### 2d. Markdown Cleanup (`markdown-cleanup.ts`)
-
-- Normalize whitespace (collapse multiple blank lines)
-- Remove/strip frontmatter if unwanted
-- Fix relative links (resolve against base URL when provided)
-- Strip HTML comments
-- Trim trailing whitespace
-
-### 2e. Main Processor (`processor.ts`)
-
-```typescript
-function processFile(
+async function processFile(
   input:
     | { content: string; format: "html"; baseUrl?: string }
     | { buffer: Buffer; format: "pdf" }
@@ -222,11 +195,33 @@ function processFile(
 ): Promise<ProcessedDocument>;
 ```
 
-Dispatches to the appropriate converter based on `format`, then runs cleanup.
+Dispatches to the appropriate converter, then runs cleanup.
 
-### 2f. Barrel Export (`index.ts`)
+### 2b. HTML to Markdown (`html-to-markdown.ts`)
 
-Exports all types, `processFile`, and individual converters (`htmlToMarkdown`, `pdfToMarkdown`, `cleanupMarkdown`) for direct use.
+Pipeline:
+1. Parse HTML with `jsdom`
+2. Extract links from the full DOM (before readability strips them — needed for crawl frontier)
+3. Extract main content with `@mozilla/readability` (when `onlyMainContent: true`)
+4. Convert extracted HTML to markdown with `turndown`
+5. Cleanup: normalize whitespace, collapse blank lines, strip HTML comments, trim
+
+Libraries: `@mozilla/readability`, `jsdom`, `turndown`
+
+Link extraction uses the same `jsdom` DOM instance — no need for a separate cheerio dependency.
+
+### 2c. PDF to Markdown (`pdf-to-markdown.ts`)
+
+Pipeline:
+1. Extract text from PDF buffer using `unpdf`
+2. Structure into markdown (headings from font size, paragraphs from spacing)
+3. Same cleanup as HTML path
+
+Library: `unpdf` (modern, TypeScript-native, async)
+
+### 2d. Barrel Export (`index.ts`)
+
+Exports `processFile`, `htmlToMarkdown`, `pdfToMarkdown`, and all types.
 
 ### New dependencies for eval-lib
 
@@ -239,17 +234,15 @@ unpdf                  — PDF text extraction
 
 ---
 
-## Phase 3: Web Scraper Module (eval-lib)
+## Phase 3: Web Scraper + Seed Companies (eval-lib)
 
-A Firecrawl-compatible scraper SDK that handles single-page scraping and link extraction. Crawl orchestration is delegated to the Convex backend (Phase 5).
+A single-page scraper that handles HTTP fetching and delegates to the file processing pipeline for conversion. Crawl orchestration (frontier, fan-out, progress) is the backend's job (Phase 4).
 
 **New directory**: `packages/eval-lib/src/scraper/`
 
 ### 3a. Types (`types.ts`)
 
 ```typescript
-// ─── Scrape Types (Firecrawl-compatible) ───
-
 interface ScrapedPage {
   url: string;
   markdown: string;                       // clean markdown content
@@ -264,31 +257,11 @@ interface ScrapedPage {
 }
 
 interface ScrapeOptions {
-  formats?: ("markdown")[];               // currently only markdown supported
   onlyMainContent?: boolean;              // default: true
   includeLinks?: boolean;                 // default: true
-  includeImages?: boolean;                // default: false
   timeout?: number;                       // per-page timeout ms (default: 30000)
   headers?: Record<string, string>;       // custom request headers
-  useHeadless?: boolean;                  // default: false (triggers HeadlessBrowserRequired error)
 }
-
-// ─── Crawl Config (used by backend orchestrator) ───
-
-interface CrawlConfig {
-  url: string;                            // start URL
-  maxDepth?: number;                      // default: 3
-  maxPages?: number;                      // default: 100
-  includePaths?: string[];                // glob patterns: ["/help/*", "/support/*"]
-  excludePaths?: string[];                // glob patterns: ["/login", "/admin/*"]
-  allowSubdomains?: boolean;              // default: false
-  scrapeOptions?: ScrapeOptions;          // applied to each page
-  delay?: number;                         // ms between requests (rate limiting)
-  respectRobotsTxt?: boolean;             // default: true
-  concurrency?: number;                   // parallel fetches, default: 3
-}
-
-// ─── Seed Entity ───
 
 interface SeedEntity {
   name: string;
@@ -320,22 +293,20 @@ class ContentScraper {
 ```
 
 Implementation:
-1. Fetch HTML via `got-scraping` (browser-like headers, anti-bot TLS)
-2. Call `htmlToMarkdown()` from file processing pipeline
-3. Call `extractLinks()` for link discovery
-4. Return `ScrapedPage` with markdown + metadata
-
-When `useHeadless: true`, throws `HeadlessBrowserRequired` error — the backend catches this and delegates to an external service (out of scope for initial version).
+1. Fetch HTML via `got-scraping` (browser-like headers, anti-bot TLS fingerprints)
+2. Call `htmlToMarkdown()` from file processing pipeline (extracts main content + links)
+3. Return `ScrapedPage` with markdown + metadata including discovered links
 
 ### 3c. Link Extractor (`link-extractor.ts`)
 
 ```typescript
 /**
- * Extract and filter links from HTML content.
+ * Filter a list of discovered links against include/exclude patterns.
  * Pure function — no HTTP calls, no side effects.
+ * Link discovery itself happens in htmlToMarkdown (reuses the jsdom DOM).
  */
-function extractLinks(
-  html: string,
+function filterLinks(
+  links: string[],
   baseUrl: string,
   config?: {
     includePaths?: string[];
@@ -343,32 +314,15 @@ function extractLinks(
     allowSubdomains?: boolean;
   }
 ): string[];
-```
 
-Uses `cheerio` to parse `<a href>` tags, resolves relative URLs, applies glob-pattern filters, respects subdomain settings.
-
-### 3d. URL Utilities (`url-utils.ts`)
-
-```typescript
 /**
- * Normalize URL for dedup: strip fragments, trailing slash, sort query params, lowercase host.
+ * Normalize URL for dedup: strip fragments, trailing slash,
+ * sort query params, lowercase host.
  */
 function normalizeUrl(url: string): string;
-
-/**
- * Parse and check robots.txt for a given URL.
- */
-function isAllowedByRobotsTxt(robotsTxt: string, url: string, userAgent: string): boolean;
-
-/**
- * Fetch and cache robots.txt for a domain.
- */
-async function fetchRobotsTxt(domain: string): Promise<string | null>;
 ```
 
-Uses `robots-parser` npm package for robots.txt compliance.
-
-### 3e. Seed Companies (`seed-companies.ts`)
+### 3d. Seed Companies (`seed-companies.ts`)
 
 28 entities:
 
@@ -384,87 +338,23 @@ Uses `robots-parser` npm package for robots.txt compliance.
 
 Helper functions: `getSeedIndustries()`, `getSeedEntitiesByIndustry(industry)`.
 
-### 3f. Barrel Export (`index.ts`)
+### 3e. Barrel Export (`index.ts`)
 
-Exports `ContentScraper`, all types, `extractLinks`, `normalizeUrl`, seed company helpers.
+Exports `ContentScraper`, all types, `filterLinks`, `normalizeUrl`, seed company helpers.
 
 ### New dependencies for eval-lib
 
 ```
-got-scraping           — HTTP client with browser-like headers and anti-bot features
-cheerio                — fast HTML parsing for link extraction
-robots-parser          — robots.txt parsing and compliance checking
+got-scraping           — HTTP client with browser-like headers and anti-bot TLS
 ```
-
-Note: `got-scraping` is the HTTP client used by Crawlee internally. It provides browser-like TLS fingerprints and headers out of the box, which is critical for avoiding blocks on corporate websites.
 
 ---
 
-## Phase 4: KB CRUD + Bulk Import (backend)
+## Phase 4: Crawl Orchestration (backend)
 
-### 4a. Update `create` mutation
+The backend manages crawl lifecycle using WorkPool + persistent frontier tables. The scraper itself (eval-lib) is stateless — all state lives in Convex tables.
 
-**File**: `packages/backend/convex/knowledgeBases.ts`
-
-Add optional args: `industry`, `subIndustry`, `company`, `entityType`, `sourceUrl`, `tags`. Pass them through to `ctx.db.insert`.
-
-### 4b. Add `listByIndustry` query
-
-Uses `by_org_industry` index when industry filter is provided, falls back to `by_org` for unfiltered.
-
-### 4c. Add `listGroupedByIndustry` query
-
-Fetches all KBs for the org, groups into `Record<string, KB[]>` by industry. KBs without industry go under `"uncategorized"`.
-
-### 4d. HTTP Bulk Import Endpoint
-
-**New files**:
-- `packages/backend/convex/http.ts` — HTTP router, routes `POST /api/bulk-import`
-- `packages/backend/convex/bulkImport.ts` — HTTP action handler
-- `packages/backend/convex/bulkImportMutations.ts` — internal mutations
-
-Auth: `x-api-key` header checked against `BULK_IMPORT_API_KEY` env var.
-
-Request body:
-
-```json
-{
-  "orgId": "org_xxx",
-  "userId": "user_xxx",
-  "kb": {
-    "name": "JPMorgan Chase - Support",
-    "industry": "finance",
-    "subIndustry": "retail-banking",
-    "company": "JPMorgan Chase",
-    "entityType": "company",
-    "sourceUrl": "https://www.chase.com",
-    "tags": ["fortune-500", "cx"]
-  },
-  "documents": [
-    { "title": "FAQ - Checking Accounts", "content": "# FAQ...", "sourceUrl": "https://..." }
-  ]
-}
-```
-
-Logic:
-1. Validate API key
-2. `findOrCreateKb` — idempotent by `(orgId, company, industry)` via `by_org_company` index
-3. Batch-insert documents (50 per mutation call to respect transaction limits)
-4. Return `{ kbId, documentsInserted }`
-
-**Note**: HTTP actions run in V8 runtime (no `"use node"`). All logic delegated to internal mutations via `ctx.runMutation`.
-
-### 4e. Update `.env.example`
-
-Add `BULK_IMPORT_API_KEY=` with comment.
-
----
-
-## Phase 5: Crawl Orchestration (backend)
-
-The backend manages crawl lifecycle using WorkPool + persistent frontier tables.
-
-### 5a. New WorkPool
+### 4a. New WorkPool
 
 **File**: `packages/backend/convex/convex.config.ts`
 
@@ -486,7 +376,7 @@ const pool = new Workpool(components.scrapingPool, {
 });
 ```
 
-### 5b. Crawl Job Lifecycle
+### 4b. Crawl Job Lifecycle
 
 ```
 User triggers "Import from URL"
@@ -501,48 +391,47 @@ User triggers "Import from URL"
   batchScrape action (scrapingActions.ts, "use node")
   ├─ TIME_BUDGET = 9 minutes (1 min buffer before 10-min Convex timeout)
   ├─ LOOP while time remaining > 30s:
-  │   ├─ Query batch of pending URLs (10-20) from crawlUrls via internal query
-  │   ├─ Mark batch as "scraping" via internal mutation
+  │   ├─ Check crawlJob status (exit if cancelled)
+  │   ├─ Check maxPages limit (exit if reached)
+  │   ├─ Query batch of pending URLs (10-20) from crawlUrls
+  │   ├─ Mark batch as "scraping" via mutation
   │   ├─ For each URL (3-5 concurrent via Promise.allSettled):
-  │   │   ├─ Check robots.txt (cached per domain)
   │   │   ├─ Respect delay config (rate limiting)
   │   │   ├─ Call eval-lib ContentScraper.scrape(url, options)
-  │   │   ├─ Call eval-lib extractLinks(html, baseUrl, filters)
-  │   │   ├─ Persist via internal mutation:
+  │   │   ├─ Filter discovered links via eval-lib filterLinks()
+  │   │   ├─ Persist via mutation:
   │   │   │   ├─ Create document in documents table (sourceType: "scraped")
   │   │   │   ├─ Mark crawlUrl as "done", set documentId
   │   │   │   └─ Insert newly discovered URLs (dedup via by_job_url index)
   │   │   └─ On failure: mark crawlUrl as "failed", increment retryCount
-  │   └─ Update crawlJob stats via internal mutation
+  │   └─ Update crawlJob stats via mutation
   └─ END LOOP
         │
         ▼
   onComplete callback (scraping.ts)
-  ├─ Check: any remaining pending URLs in crawlUrls?
-  ├─ Check: maxPages limit reached?
   ├─ Reset failed URLs with retryCount < max → "pending"
-  ├─ If more work → enqueue another batchScrape action
-  └─ If done → mark crawlJob "completed" with final stats
+  ├─ If pending URLs remain and maxPages not reached → enqueue another batchScrape
+  └─ Otherwise → mark crawlJob "completed" with final stats
 ```
 
-### 5c. New Convex Files
+### 4c. New Convex Files
 
 | File | Runtime | Purpose |
 |------|---------|---------|
-| `convex/scraping.ts` | V8 | WorkPool setup, `startCrawl` mutation, `cancelCrawl` mutation, crawl queries, onComplete callback |
+| `convex/scraping.ts` | V8 | WorkPool setup, `startCrawl`/`cancelCrawl` mutations, crawl queries, `onComplete` callback |
 | `convex/scrapingActions.ts` | Node (`"use node"`) | `batchScrape` action — time-budgeted scraping loop calling eval-lib |
-| `convex/scrapingMutations.ts` | V8 | Internal mutations: `markUrlsScraping`, `persistScrapedPage`, `insertDiscoveredUrls`, `updateCrawlJobStats`, `markUrlFailed`, `getPendingUrls` (internal query) |
+| `convex/scrapingMutations.ts` | V8 | Internal mutations: `markUrlsScraping`, `persistScrapedPage`, `insertDiscoveredUrls`, `updateCrawlJobStats`, `markUrlFailed`; internal query: `getPendingUrls` |
 
-### 5d. Reliability Guarantees
+### 4d. Reliability Guarantees
 
 - **Checkpoint per URL**: Each scraped page is persisted immediately via mutation. If the action crashes mid-batch, completed pages are not lost.
-- **Retry with backoff**: WorkPool retries failed actions. Individual URL failures are tracked in `crawlUrls.retryCount`.
+- **Retry with backoff**: WorkPool retries failed actions. Individual URL failures tracked in `crawlUrls.retryCount`.
 - **Dedup**: `crawlUrls.by_job_url` index on `normalizedUrl` prevents re-discovering the same URL.
 - **Never redo work**: The action queries only `status: "pending"` URLs. Completed URLs are never re-processed.
-- **Cancellation**: `cancelCrawl` mutation sets job status to "cancelled". The batchScrape action checks job status at the start of each loop iteration and exits early.
-- **Scale**: A 100K page crawl runs as ~100+ sequential batch actions (each scraping ~500-1000 pages in 9 minutes), fully reliable, checkpointed per URL.
+- **Cancellation**: `cancelCrawl` mutation sets job status to "cancelled". The batchScrape action checks at the start of each loop iteration and exits early.
+- **Scale**: A 100K page crawl runs as sequential batch actions (each scraping hundreds of pages in 9 minutes), fully reliable, checkpointed per URL.
 
-### 5e. Parallelism Model
+### 4e. Parallelism Model
 
 | Level | Parallelism | Controlled by |
 |-------|-------------|---------------|
@@ -550,7 +439,7 @@ User triggers "Import from URL"
 | Across actions for same job | 1 (sequential continuation) | WorkPool enqueue pattern |
 | Across different crawl jobs | Up to `maxParallelism` (3) | WorkPool `scrapingPool` |
 
-### 5f. File Upload Enhancement
+### 4f. File Upload Enhancement
 
 The existing `FileUploader` + `documents.ts` get extended:
 
@@ -558,71 +447,27 @@ The existing `FileUploader` + `documents.ts` get extended:
 - After upload to Convex storage, enqueue a file processing action:
   1. Read raw file from storage
   2. Call eval-lib `processFile()` (HTML→MD or PDF→MD)
-  3. Update document record with clean markdown content + `conversionMetadata`
-- Raw file remains in storage as `rawFileId` (for PDF and user-uploaded files only)
+  3. Update document record with clean markdown content and `sourceType`
+- Original file remains in storage as `fileId`
 
 ---
 
-## Phase 6: Seed Company Config (eval-lib)
+## Phase 5: Frontend — Minimal Updates
 
-**File**: `packages/eval-lib/src/scraper/seed-companies.ts`
+**Files**: `packages/frontend/src/components/KBSelector.tsx`, `packages/frontend/src/components/FileUploader.tsx`
 
-```typescript
-const SEED_ENTITIES: SeedEntity[] = [
-  // Finance (3)
-  {
-    name: "JPMorgan Chase",
-    industry: "finance",
-    subIndustry: "retail-banking",
-    entityType: "company",
-    sourceUrls: ["https://www.chase.com/digital/resources/privacy-security/questions"],
-    tags: ["fortune-500", "cx"],
-  },
-  // ... Bank of America, Wells Fargo
+### 5a. Industry filter
 
-  // Insurance (3)
-  // ... UnitedHealth Group, Elevance Health, MetLife
+Add a `<select>` above the KB dropdown: "All Industries", "finance", "insurance", etc. Uses `api.knowledgeBases.listByIndustry` query with the selected industry as filter.
 
-  // Healthcare (3)
-  // ... CVS Health, HCA Healthcare, Humana
-
-  // Telecom (3)
-  // ... AT&T, Verizon, T-Mobile
-
-  // Education (3)
-  // ... UC System, Coursera, Pearson
-
-  // Government - States (8)
-  // ... CA, TX, NY, FL, IL, OH, GA, WA
-
-  // Government - Counties (5)
-  // ... Los Angeles, Cook, Harris, Maricopa, King
-];
-
-function getSeedIndustries(): string[];
-function getSeedEntitiesByIndustry(industry: string): SeedEntity[];
-```
-
-Exported from `scraper/index.ts` and `src/index.ts`.
-
----
-
-## Phase 7: Frontend — Minimal Updates
-
-**File**: `packages/frontend/src/components/KBSelector.tsx`
-
-### 7a. Industry filter
-
-Add a `<select>` above the KB dropdown: "All Industries", "finance", "insurance", etc. Uses `api.knowledgeBases.listGroupedByIndustry` query.
-
-### 7b. Enhanced create form
+### 5b. Enhanced create form
 
 Collapsible "Advanced" section when creating a new KB:
 - Industry dropdown (known industries)
 - Company name text input
 - Entity type dropdown
 
-### 7c. Import from URL
+### 5c. Import from URL
 
 New section below the KB document list:
 - Text input for URL
@@ -630,7 +475,7 @@ New section below the KB document list:
 - Progress display: "Scraping... 45/120 pages" (reactive query on `crawlJobs`)
 - Cancel button
 
-### 7d. Enhanced FileUploader
+### 5d. Enhanced FileUploader
 
 - Accept `.pdf` and `.html` files
 - Show conversion progress for non-markdown files
@@ -641,20 +486,16 @@ New section below the KB document list:
 ## Implementation Order
 
 ```
-Phase 1 (schema) ──┬──> Phase 4 (KB queries + bulk import)
-                   │
-                   └──> Phase 5 (crawl orchestration) ──> Phase 7 (frontend)
-                                    │
-Phase 2 (file processing) ─────────┤
-                                    │
-Phase 3 (scraper module) ──────────┘
-
-Phase 6 (seed companies) — independent, parallel with any phase
+Phase 1 (schema + KB queries) ──┬──> Phase 4 (crawl orchestration) ──> Phase 5 (frontend)
+                                │
+Phase 2 (file processing) ──────┤
+                                │
+Phase 3 (scraper + seeds) ──────┘
 ```
 
-Recommended sequence: **1 → 2 → 3 → 4 → 5 → 6 → 7**
+Recommended sequence: **1 → 2 → 3 → 4 → 5**
 
-Phases 2, 3, and 6 can be parallelized since they're eval-lib only (no backend dependency beyond Phase 1 schema).
+Phases 2 and 3 can be parallelized (both eval-lib only, no backend dependency beyond Phase 1 schema).
 
 ---
 
@@ -665,25 +506,18 @@ Phases 2, 3, and 6 can be parallelized since they're eval-lib only (no backend d
 | Modify | `convex/schema.ts` | backend |
 | Modify | `convex/knowledgeBases.ts` | backend |
 | Modify | `convex/convex.config.ts` | backend |
-| Modify | `.env.example` | backend |
 | Modify | `src/index.ts` | eval-lib |
 | Modify | `src/components/KBSelector.tsx` | frontend |
 | Modify | `src/components/FileUploader.tsx` | frontend |
-| Create | `src/file-processing/types.ts` | eval-lib |
+| Create | `src/file-processing/processor.ts` | eval-lib |
 | Create | `src/file-processing/html-to-markdown.ts` | eval-lib |
 | Create | `src/file-processing/pdf-to-markdown.ts` | eval-lib |
-| Create | `src/file-processing/markdown-cleanup.ts` | eval-lib |
-| Create | `src/file-processing/processor.ts` | eval-lib |
 | Create | `src/file-processing/index.ts` | eval-lib |
 | Create | `src/scraper/types.ts` | eval-lib |
 | Create | `src/scraper/scraper.ts` | eval-lib |
 | Create | `src/scraper/link-extractor.ts` | eval-lib |
-| Create | `src/scraper/url-utils.ts` | eval-lib |
 | Create | `src/scraper/seed-companies.ts` | eval-lib |
 | Create | `src/scraper/index.ts` | eval-lib |
-| Create | `convex/http.ts` | backend |
-| Create | `convex/bulkImport.ts` | backend |
-| Create | `convex/bulkImportMutations.ts` | backend |
 | Create | `convex/scraping.ts` | backend |
 | Create | `convex/scrapingActions.ts` | backend |
 | Create | `convex/scrapingMutations.ts` | backend |
@@ -696,9 +530,7 @@ Phases 2, 3, and 6 can be parallelized since they're eval-lib only (no backend d
 jsdom                   — DOM implementation for readability in Node.js
 turndown                — HTML → Markdown conversion
 unpdf                   — PDF text extraction (modern, TypeScript-native)
-got-scraping            — HTTP client with browser-like headers/TLS
-cheerio                 — fast HTML parsing for link extraction
-robots-parser           — robots.txt parsing and compliance
+got-scraping            — HTTP client with browser-like headers/TLS fingerprints
 ```
 
 **backend** (`packages/backend/package.json`):
@@ -709,9 +541,8 @@ No new dependencies. Uses eval-lib's scraper via workspace dependency.
 ## Verification
 
 1. **Schema**: `pnpm -C packages/backend npx convex dev --once` — deploys schema, confirms no validation errors
-2. **Eval-lib build**: `pnpm build` — confirms file processor and scraper types compile and export correctly
-3. **Unit tests**: `pnpm test` — new tests for file processing pipeline (HTML→MD, PDF→MD, cleanup) and scraper (link extraction, URL normalization)
-4. **Integration test**: Use `curl` to POST a test payload to the bulk import endpoint and verify KB + documents are created
-5. **Crawl test**: Trigger a small crawl (5-10 pages) from the frontend and verify documents appear in the KB
-6. **TypeScript**: `pnpm typecheck` and `pnpm typecheck:backend` — no type errors
-7. **Existing tests**: `pnpm test` — all existing tests still pass (no breaking changes)
+2. **Eval-lib build**: `pnpm build` — confirms file processor and scraper compile and export correctly
+3. **Unit tests**: `pnpm test` — new tests for file processing (HTML→MD, PDF→MD) and scraper (link filtering, URL normalization)
+4. **Crawl test**: Trigger a small crawl (5-10 pages) from the frontend and verify documents appear in the KB
+5. **TypeScript**: `pnpm typecheck` and `pnpm typecheck:backend` — no type errors
+6. **Existing tests**: `pnpm test` — all existing tests still pass (no breaking changes)
