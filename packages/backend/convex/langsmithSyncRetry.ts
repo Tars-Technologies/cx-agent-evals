@@ -1,8 +1,6 @@
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-const MAX_AUTO_RETRIES = 3;
-
 /**
  * Cron job action: retry failed LangSmith syncs.
  * Finds datasets and experiments with failed sync status and retries.

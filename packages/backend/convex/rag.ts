@@ -138,32 +138,6 @@ export const getUnembeddedChunks = internalQuery({
   },
 });
 
-// ─── Legacy Mutations (kept for backward compatibility) ───
-
-/**
- * @deprecated Use insertChunkBatch instead.
- * Insert a single document chunk into the documentChunks table.
- */
-export const insertChunk = internalMutation({
-  args: {
-    documentId: v.id("documents"),
-    kbId: v.id("knowledgeBases"),
-    indexConfigHash: v.optional(v.string()),
-    chunkId: v.string(),
-    content: v.string(),
-    start: v.number(),
-    end: v.number(),
-    embedding: v.optional(v.array(v.float64())),
-    metadata: v.any(),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db.insert("documentChunks", {
-      ...args,
-      indexConfigHash: args.indexConfigHash ?? "legacy",
-    });
-  },
-});
-
 /**
  * Delete all chunks for a document.
  */
@@ -173,25 +147,6 @@ export const deleteDocumentChunks = internalMutation({
     const chunks = await ctx.db
       .query("documentChunks")
       .withIndex("by_document", (q) => q.eq("documentId", args.documentId))
-      .collect();
-
-    for (const chunk of chunks) {
-      await ctx.db.delete(chunk._id);
-    }
-    return { chunksDeleted: chunks.length };
-  },
-});
-
-/**
- * @deprecated Use deleteKbConfigChunks for paginated deletion instead.
- * Delete all chunks for a knowledge base (collects all — OOM risk for large KBs).
- */
-export const deleteKbChunks = internalMutation({
-  args: { kbId: v.id("knowledgeBases") },
-  handler: async (ctx, args) => {
-    const chunks = await ctx.db
-      .query("documentChunks")
-      .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
       .collect();
 
     for (const chunk of chunks) {
