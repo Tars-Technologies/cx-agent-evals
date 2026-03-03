@@ -90,7 +90,7 @@ export const startGeneration = mutation({
       createdAt: Date.now(),
     });
 
-    // Enqueue work items based on strategy and collect workIds (C1)
+    // Enqueue work items based on strategy and collect workIds for selective cancellation
     const workIds: WorkId[] = [];
 
     if (isPerDoc) {
@@ -144,7 +144,7 @@ export const startGeneration = mutation({
       throw new Error(`Unknown strategy: ${args.strategy}`);
     }
 
-    // Store workIds on the job for selective cancellation (C1)
+    // Store workIds on the job for selective cancellation
     await ctx.db.patch(jobId, { workIds: workIds as string[] });
 
     return { datasetId, jobId };
@@ -168,7 +168,7 @@ export const onQuestionGenerated = internalMutation({
     const job = await ctx.db.get(context.jobId);
     if (!job) return;
     if (job.status === "canceled") return;
-    // I9: Guard against stale Phase 1 callbacks after Phase 2 has started
+    // Guard against stale Phase 1 callbacks arriving after Phase 2 has started
     if (job.phase === "ground-truth") return;
 
     const counters = applyResult(job, result, context.itemKey);
@@ -201,7 +201,7 @@ export const onQuestionGenerated = internalMutation({
         return;
       }
 
-      // I1: Preserve Phase 1 stats before resetting counters
+      // Preserve Phase 1 stats before resetting counters for Phase 2
       await ctx.db.patch(context.jobId, {
         phase1Stats: {
           processedItems: counters.processedItems,
@@ -216,7 +216,7 @@ export const onQuestionGenerated = internalMutation({
         failedItemDetails: undefined,
       });
 
-      // Enqueue one GT action per question and collect workIds (C1)
+      // Enqueue one ground-truth action per question and collect workIds
       const gtWorkIds: WorkId[] = [];
       for (const question of questions) {
         const wId = await pool.enqueueAction(
@@ -235,7 +235,7 @@ export const onQuestionGenerated = internalMutation({
         gtWorkIds.push(wId);
       }
 
-      // Update workIds for Phase 2 selective cancellation (C1)
+      // Update workIds for Phase 2 selective cancellation
       await ctx.db.patch(context.jobId, { workIds: gtWorkIds as string[] });
     } else {
       await ctx.db.patch(context.jobId, counterPatch(counters));
@@ -285,7 +285,7 @@ export const onGroundTruthAssigned = internalMutation({
         questionCount: questions.length,
       });
 
-      // I1: Consider Phase 1 failures in final status determination
+      // Consider Phase 1 failures when determining final job status
       const phase1Failures = job.phase1Stats?.failedItems ?? 0;
       const totalFailures = counters.failedItems + phase1Failures;
 
@@ -316,7 +316,7 @@ export const onGroundTruthAssigned = internalMutation({
   },
 });
 
-// ─── Cancel Generation (C1: selective cancel, I3: status before cancel) ───
+// ─── Cancel Generation ───
 
 export const cancelGeneration = mutation({
   args: { jobId: v.id("generationJobs") },
@@ -330,10 +330,10 @@ export const cancelGeneration = mutation({
       throw new Error(`Cannot cancel job in status: ${job.status}`);
     }
 
-    // I3: Set status first so callbacks see "canceling"
+    // Set status to "canceling" first so in-flight callbacks see the updated state
     await ctx.db.patch(args.jobId, { status: "canceling" });
 
-    // C1: Cancel only this job's work items, not the entire pool
+    // Cancel only this job's work items, not the entire pool
     const workIds = job.workIds ?? [];
     for (const wId of workIds) {
       await pool.cancel(ctx, wId as WorkId);

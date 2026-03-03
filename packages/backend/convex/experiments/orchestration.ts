@@ -280,7 +280,7 @@ export const get = query({
     const { orgId } = await getAuthContext(ctx);
 
     const exp = await ctx.db.get(args.id);
-    // C3: Return null instead of throwing — query is used by useQuery which
+    // Return null instead of throwing — query is used by useQuery which
     // may call with a stale/deleted experiment ID
     if (!exp || exp.orgId !== orgId) return null;
     return exp;
