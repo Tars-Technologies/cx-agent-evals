@@ -1,13 +1,7 @@
 import { query, internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthContext } from "./lib/auth";
-
-const spanValidator = v.object({
-  docId: v.string(),
-  start: v.number(),
-  end: v.number(),
-  text: v.string(),
-});
+import { spanValidator } from "./lib/validators";
 
 export const byExperiment = query({
   args: { experimentId: v.id("experiments") },

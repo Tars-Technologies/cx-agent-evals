@@ -8,6 +8,7 @@ import { components, internal } from "./_generated/api";
 import { v } from "convex/values";
 import { Workpool, WorkId, vOnCompleteArgs, type RunResult } from "@convex-dev/workpool";
 import { getAuthContext } from "./lib/auth";
+import { applyResult, counterPatch } from "./lib/workpool";
 import { Id } from "./_generated/dataModel";
 import type { JobStatus } from "rag-evaluation-system/shared";
 
@@ -22,34 +23,6 @@ const pool = new Workpool(components.generationPool, {
     base: 2,
   },
 });
-
-// ─── Shared onComplete Counter Logic (S3) ───
-
-function applyResult(
-  job: { processedItems: number; failedItems: number; skippedItems: number; failedItemDetails?: Array<{ itemKey: string; error: string }> },
-  result: RunResult,
-  itemKey: string,
-) {
-  const processedItems = job.processedItems + (result.kind === "success" ? 1 : 0);
-  const failedItems = job.failedItems + (result.kind === "failed" ? 1 : 0);
-  const skippedItems = job.skippedItems + (result.kind === "canceled" ? 1 : 0);
-  const failedItemDetails = [...(job.failedItemDetails ?? [])];
-
-  if (result.kind === "failed") {
-    failedItemDetails.push({ itemKey, error: result.error });
-  }
-
-  return { processedItems, failedItems, skippedItems, failedItemDetails };
-}
-
-function counterPatch(counters: { processedItems: number; failedItems: number; skippedItems: number; failedItemDetails: Array<{ itemKey: string; error: string }> }) {
-  return {
-    processedItems: counters.processedItems,
-    failedItems: counters.failedItems,
-    skippedItems: counters.skippedItems,
-    failedItemDetails: counters.failedItemDetails.length > 0 ? counters.failedItemDetails : undefined,
-  };
-}
 
 // ─── Start Generation ───
 

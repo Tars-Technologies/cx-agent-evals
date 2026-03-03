@@ -1,13 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-
-// Shared validator for CharacterSpan-shaped objects
-const spanValidator = v.object({
-  docId: v.string(),
-  start: v.number(),
-  end: v.number(),
-  text: v.string(),
-});
+import { spanValidator } from "./lib/validators";
 
 export default defineSchema({
   // ─── Users (synced from Clerk) ───
