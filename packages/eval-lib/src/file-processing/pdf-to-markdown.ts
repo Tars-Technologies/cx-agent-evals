@@ -5,18 +5,7 @@
  * with markdown content, title, and metadata.
  */
 
-// NOTE: Once html-to-markdown.ts is available, import ProcessedDocument from there instead.
-// import type { ProcessedDocument } from "./html-to-markdown.js";
-
-export interface ProcessedDocument {
-  content: string;
-  title: string;
-  metadata: {
-    sourceFormat: "html" | "pdf" | "markdown";
-    wordCount: number;
-    links?: string[];
-  };
-}
+import type { ProcessedDocument } from "./html-to-markdown.js";
 
 export async function pdfToMarkdown(
   buffer: Buffer,
