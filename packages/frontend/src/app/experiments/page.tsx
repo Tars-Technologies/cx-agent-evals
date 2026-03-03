@@ -12,13 +12,13 @@ import { Header } from "@/components/Header";
 
 export default function ExperimentsPage() {
   // --- Retriever selection ---
-  const readyRetrievers = useQuery(api.retrievers.byOrg, { status: "ready" });
+  const readyRetrievers = useQuery(api.crud.retrievers.byOrg, { status: "ready" });
   const [selectedRetrieverId, setSelectedRetrieverId] = useState<Id<"retrievers"> | null>(null);
 
   const selectedRetriever = readyRetrievers?.find((r) => r._id === selectedRetrieverId) ?? null;
 
   // --- Dataset selection (filtered by retriever's KB when possible) ---
-  const datasets = useQuery(api.datasets.list);
+  const datasets = useQuery(api.crud.datasets.list);
   const [selectedDatasetId, setSelectedDatasetId] = useState<Id<"datasets"> | null>(null);
 
   // Filter datasets to same KB as selected retriever
@@ -37,12 +37,12 @@ export default function ExperimentsPage() {
   }, [selectedRetriever, selectedDatasetId, datasets]);
 
   const experiments = useQuery(
-    api.experiments.byDataset,
+    api.experiments.orchestration.byDataset,
     selectedDatasetId ? { datasetId: selectedDatasetId } : "skip",
   );
 
   const selectedDataset = useQuery(
-    api.datasets.get,
+    api.crud.datasets.get,
     selectedDatasetId ? { id: selectedDatasetId } : "skip",
   );
 
@@ -50,11 +50,11 @@ export default function ExperimentsPage() {
   const [experimentId, setExperimentId] = useState<Id<"experiments"> | null>(null);
 
   const currentExperiment = useQuery(
-    api.experiments.get,
+    api.experiments.orchestration.get,
     experimentId ? { id: experimentId } : "skip",
   );
 
-  const startExperiment = useMutation(api.experiments.start);
+  const startExperiment = useMutation(api.experiments.orchestration.start);
 
   // --- Metrics ---
   const [metrics, setMetrics] = useState({

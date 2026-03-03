@@ -43,7 +43,7 @@ export function RetrieverPlayground({
   // Set of expanded chunk indices, keyed as "retrieverId:chunkIndex"
   const [expandedChunks, setExpandedChunks] = useState<Set<string>>(new Set());
 
-  const retrieve = useAction(api.retrieverActions.retrieve);
+  const retrieve = useAction(api.retrieval.retrieverActions.retrieve);
 
   const isRunning = loadingIds.size > 0;
 

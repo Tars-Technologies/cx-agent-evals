@@ -23,23 +23,23 @@ export default function GeneratePage() {
 
   // Questions from Convex (reactive)
   const questionsData = useQuery(
-    api.questions.byDataset,
+    api.crud.questions.byDataset,
     datasetId ? { datasetId } : "skip",
   );
 
   // Documents in the selected KB
   const documentsData = useQuery(
-    api.documents.listByKb,
+    api.crud.documents.listByKb,
     selectedKbId ? { kbId: selectedKbId } : "skip",
   );
 
   // Job status (reactive — updates as generation progresses)
-  const job = useQuery(api.generation.getJob, jobId ? { jobId } : "skip");
+  const job = useQuery(api.generation.orchestration.getJob, jobId ? { jobId } : "skip");
 
   // Dataset info
-  const dataset = useQuery(api.datasets.get, datasetId ? { id: datasetId } : "skip");
+  const dataset = useQuery(api.crud.datasets.get, datasetId ? { id: datasetId } : "skip");
 
-  const startGeneration = useMutation(api.generation.startGeneration);
+  const startGeneration = useMutation(api.generation.orchestration.startGeneration);
 
   // UI state
   const [selectedQuestion, setSelectedQuestion] = useState<number | null>(null);
@@ -61,7 +61,7 @@ export default function GeneratePage() {
   // Selected document for viewing
   const [selectedDocId, setSelectedDocId] = useState<Id<"documents"> | null>(null);
   const selectedDocData = useQuery(
-    api.documents.get,
+    api.crud.documents.get,
     selectedDocId ? { id: selectedDocId } : "skip",
   );
 
