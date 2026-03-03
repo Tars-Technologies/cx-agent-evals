@@ -9,6 +9,7 @@ import {
 import { getAuthContext } from "./lib/auth";
 import { internalMutation } from "./_generated/server";
 import { normalizeUrl } from "rag-evaluation-system";
+import { Id } from "./_generated/dataModel";
 
 // ─── WorkPool Instance ───
 
@@ -141,16 +142,24 @@ export const listCrawlJobs = query({
 // ─── onComplete Callback ───
 
 export const onBatchComplete = internalMutation({
-  args: vOnCompleteArgs,
-  handler: async (ctx, args) => {
-    const jobId = args.context.jobId as string;
-    const job = await ctx.db.get(jobId as any);
+  args: vOnCompleteArgs(
+    v.object({
+      jobId: v.id("crawlJobs"),
+    }),
+  ),
+  handler: async (
+    ctx,
+    { context, result }: {
+      workId: string;
+      context: { jobId: Id<"crawlJobs"> };
+      result: RunResult;
+    },
+  ) => {
+    const job = await ctx.db.get(context.jobId);
     if (!job) return;
 
     // If cancelled or already completed, don't continue
     if (job.status === "cancelled" || job.status === "completed") return;
-
-    const result = args.result as RunResult;
 
     // If the action itself failed (WorkPool-level), check retries
     if (result.kind !== "success") {
@@ -177,7 +186,7 @@ export const onBatchComplete = internalMutation({
       { crawlJobId: job._id },
     );
 
-    const maxPages = job.config.maxPages ?? 100;
+    const maxPages = (job.config as any).maxPages ?? 100;
     const reachedLimit = job.stats.scraped >= maxPages;
 
     if (pendingCount > 0 && !reachedLimit) {
@@ -193,10 +202,8 @@ export const onBatchComplete = internalMutation({
       );
     } else {
       // Job complete
-      const finalStatus =
-        job.stats.failed > 0 ? "completed" : "completed";
       await ctx.db.patch(job._id, {
-        status: finalStatus,
+        status: "completed",
         completedAt: Date.now(),
       });
     }
