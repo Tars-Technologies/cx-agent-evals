@@ -153,3 +153,18 @@ export type {
   FileProcessorConfig,
   ProcessedDocument,
 } from "./file-processing/index.js";
+
+// ─── Scraper ───
+export {
+  ContentScraper,
+  filterLinks,
+  normalizeUrl,
+  SEED_ENTITIES,
+  getSeedIndustries,
+  getSeedEntitiesByIndustry,
+} from "./scraper/index.js";
+export type {
+  ScrapedPage,
+  ScrapeOptions,
+  SeedEntity,
+} from "./scraper/index.js";
