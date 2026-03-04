@@ -14,7 +14,6 @@
     "@langchain/core": ">=0.1.0",
     "convex": "^1.32.0",
     "langsmith": ">=0.1.0",
-    "minisearch": "^7.2.0",
     "openai": "^4.70.0",
     "rag-evaluation-system": "workspace:*"
   },

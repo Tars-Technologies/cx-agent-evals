@@ -46,3 +46,21 @@ export async function getAuthContext(
     orgRole: orgRole ?? "org:member",
   };
 }
+
+/**
+ * Look up a user record by their Clerk ID.
+ * Used by mutations that need the internal user _id.
+ */
+export async function lookupUser(
+  ctx: QueryCtx | MutationCtx,
+  clerkId: string,
+) {
+  const user = await ctx.db
+    .query("users")
+    .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
+    .unique();
+  if (!user) {
+    throw new Error("User not found. Please sign in again.");
+  }
+  return user;
+}

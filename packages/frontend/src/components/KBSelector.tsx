@@ -12,12 +12,12 @@ interface KBSelectorProps {
 }
 
 export function KBSelector({ selectedKbId, onSelect }: KBSelectorProps) {
-  const kbs = useQuery(api.knowledgeBases.list);
+  const kbs = useQuery(api.crud.knowledgeBases.list);
   const documents = useQuery(
-    api.documents.listByKb,
+    api.crud.documents.listByKb,
     selectedKbId ? { kbId: selectedKbId } : "skip",
   );
-  const createKb = useMutation(api.knowledgeBases.create);
+  const createKb = useMutation(api.crud.knowledgeBases.create);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);

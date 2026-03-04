@@ -51,7 +51,7 @@ function RetrieverCardWithProgress({
   onDelete: (id: Id<"retrievers">) => void;
 }) {
   const job = useQuery(
-    api.indexing.getJob,
+    api.retrieval.indexing.getJob,
     retriever.status === "indexing" && retriever.indexingJobId
       ? { jobId: retriever.indexingJobId }
       : "skip",
@@ -94,17 +94,17 @@ export default function RetrieversPage() {
 
   // --- Retriever list ---
   const retrievers = useQuery(
-    api.retrievers.byKb,
+    api.crud.retrievers.byKb,
     selectedKbId ? { kbId: selectedKbId } : "skip",
   );
 
   // --- Actions & Mutations ---
-  const createRetriever = useAction(api.retrieverActions.create);
-  const startIndexingAction = useAction(api.retrieverActions.startIndexing);
-  const removeRetriever = useMutation(api.retrievers.remove);
-  const deleteIndexMutation = useMutation(api.retrievers.deleteIndex);
-  const resetAfterCancelMutation = useMutation(api.retrievers.resetAfterCancel);
-  const cancelIndexingMutation = useMutation(api.indexing.cancelIndexing);
+  const createRetriever = useAction(api.retrieval.retrieverActions.create);
+  const startIndexingAction = useAction(api.retrieval.retrieverActions.startIndexing);
+  const removeRetriever = useMutation(api.crud.retrievers.remove);
+  const deleteIndexMutation = useMutation(api.crud.retrievers.deleteIndex);
+  const resetAfterCancelMutation = useMutation(api.crud.retrievers.resetAfterCancel);
+  const cancelIndexingMutation = useMutation(api.retrieval.indexing.cancelIndexing);
 
   // --- UI state ---
   const [isCreating, setIsCreating] = useState(false);

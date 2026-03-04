@@ -27,6 +27,18 @@
     "./utils": {
       "types": "./dist/utils/index.d.ts",
       "import": "./dist/utils/index.js"
+    },
+    "./langsmith": {
+      "types": "./dist/langsmith/index.d.ts",
+      "import": "./dist/langsmith/index.js"
+    },
+    "./llm": {
+      "types": "./dist/llm/index.d.ts",
+      "import": "./dist/llm/index.js"
+    },
+    "./shared": {
+      "types": "./dist/shared/index.d.ts",
+      "import": "./dist/shared/index.js"
     }
   },
   "files": [
@@ -56,6 +68,8 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
+    "@langchain/core": ">=0.1.0",
+    "langsmith": ">=0.1.0",
     "minisearch": "^7.2.0",
     "zod": "^3.23"
   },

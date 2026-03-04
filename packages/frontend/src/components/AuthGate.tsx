@@ -93,7 +93,7 @@ function OrgGate({ children }: { children: React.ReactNode }) {
   const { isLoading: convexLoading } = useConvexAuth();
   const [activating, setActivating] = useState(false);
   const [userSynced, setUserSynced] = useState(false);
-  const getOrCreateUser = useMutation(api.users.getOrCreate);
+  const getOrCreateUser = useMutation(api.crud.users.getOrCreate);
 
   // Auto-select first org if user has orgs but none is active
   useEffect(() => {

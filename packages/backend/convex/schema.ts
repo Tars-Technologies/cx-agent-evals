@@ -1,13 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-
-// Shared validator for CharacterSpan-shaped objects
-const spanValidator = v.object({
-  docId: v.string(),
-  start: v.number(),
-  end: v.number(),
-  text: v.string(),
-});
+import { spanValidator } from "./lib/validators";
 
 export default defineSchema({
   // ─── Users (synced from Clerk) ───
@@ -63,7 +56,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_org", ["orgId"])
-    .index("by_kb", ["kbId"]),
+    .index("by_kb", ["kbId"])
+    .index("by_sync_status", ["langsmithSyncStatus"]),
 
   // ─── Questions (individual questions within a dataset) ───
   questions: defineTable({
@@ -166,17 +160,27 @@ export default defineSchema({
       v.literal("canceling"),
       v.literal("canceled"),
     ),
-    phase: v.optional(v.string()),
+    phase: v.optional(
+      v.union(
+        v.literal("initializing"),
+        v.literal("indexing"),
+        v.literal("syncing"),
+        v.literal("evaluating"),
+        v.literal("done"),
+      ),
+    ),
     totalQuestions: v.optional(v.number()),
     processedQuestions: v.optional(v.number()),
     failedQuestions: v.optional(v.number()),
     skippedQuestions: v.optional(v.number()),
-    workIds: v.optional(v.array(v.string())),
     indexConfigHash: v.optional(v.string()),
-    scores: v.optional(v.any()),
-    langsmithExperimentId: v.optional(v.string()),
-    langsmithUrl: v.optional(v.string()),
     langsmithSyncStatus: v.optional(v.string()),
+    workIds: v.optional(v.array(v.string())),
+    scores: v.optional(v.record(v.string(), v.number())),
+    // TODO: populate langsmithExperimentId from evaluate() result
+    langsmithExperimentId: v.optional(v.string()),
+    // TODO: populate langsmithUrl from evaluate() result (used in frontend for experiment links)
+    langsmithUrl: v.optional(v.string()),
     error: v.optional(v.string()),
     createdBy: v.id("users"),
     createdAt: v.number(),
@@ -191,7 +195,7 @@ export default defineSchema({
     experimentId: v.id("experiments"),
     questionId: v.id("questions"),
     retrievedSpans: v.array(spanValidator),
-    scores: v.any(),
+    scores: v.record(v.string(), v.number()),
     metadata: v.any(),
   }).index("by_experiment", ["experimentId"]),
 
@@ -237,6 +241,7 @@ export default defineSchema({
     failedDocs: v.number(),
     skippedDocs: v.number(),
     totalChunks: v.number(),
+    workIds: v.optional(v.array(v.string())),
     error: v.optional(v.string()),
     failedDocDetails: v.optional(
       v.array(

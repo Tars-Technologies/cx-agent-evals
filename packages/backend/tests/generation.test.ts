@@ -1,78 +1,17 @@
 import { convexTest } from "convex-test";
 import { describe, it, expect, beforeEach } from "vitest";
-import schema from "../convex/schema";
 import { internal } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
-import workpoolTest from "@convex-dev/workpool/test";
+import {
+  TEST_ORG_ID,
+  testIdentity,
+  setupTest,
+  seedUser,
+  seedKB,
+  seedDataset,
+} from "./helpers";
 
-// Module maps for convex-test
-const modules = import.meta.glob("../convex/**/*.ts");
-
-// ─── Test Helpers ───
-
-const TEST_ORG_ID = "org_test123";
-const TEST_CLERK_ID = "user_test456";
-
-const testIdentity = {
-  subject: TEST_CLERK_ID,
-  issuer: "https://test.clerk.com",
-  org_id: TEST_ORG_ID,
-  org_role: "org:admin",
-};
-
-function setupTest() {
-  const t = convexTest(schema, modules);
-  workpoolTest.register(t, "indexingPool");
-  workpoolTest.register(t, "generationPool");
-  workpoolTest.register(t, "experimentPool");
-  return t;
-}
-
-async function seedUser(t: ReturnType<typeof convexTest>) {
-  return await t.run(async (ctx) => {
-    return await ctx.db.insert("users", {
-      clerkId: TEST_CLERK_ID,
-      email: "test@test.com",
-      name: "Test User",
-      createdAt: Date.now(),
-    });
-  });
-}
-
-async function seedKB(
-  t: ReturnType<typeof convexTest>,
-  userId: Id<"users">,
-) {
-  return await t.run(async (ctx) => {
-    return await ctx.db.insert("knowledgeBases", {
-      orgId: TEST_ORG_ID,
-      name: "Test KB",
-      metadata: {},
-      createdBy: userId,
-      createdAt: Date.now(),
-    });
-  });
-}
-
-async function seedDataset(
-  t: ReturnType<typeof convexTest>,
-  userId: Id<"users">,
-  kbId: Id<"knowledgeBases">,
-) {
-  return await t.run(async (ctx) => {
-    return await ctx.db.insert("datasets", {
-      orgId: TEST_ORG_ID,
-      kbId,
-      name: "Test Dataset",
-      strategy: "simple",
-      strategyConfig: {},
-      questionCount: 0,
-      metadata: {},
-      createdBy: userId,
-      createdAt: Date.now(),
-    });
-  });
-}
+// ─── Domain-Specific Seeders ───
 
 async function seedGenerationJob(
   t: ReturnType<typeof convexTest>,
@@ -141,7 +80,7 @@ describe("generation: onQuestionGenerated", () => {
       processedItems: 1,
     });
 
-    await t.mutation(internal.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_2" },
       result: { kind: "success", returnValue: {} },
@@ -161,7 +100,7 @@ describe("generation: onQuestionGenerated", () => {
       totalItems: 2,
     });
 
-    await t.mutation(internal.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_1" },
       result: { kind: "failed", error: "LLM timeout" },
@@ -182,7 +121,7 @@ describe("generation: onQuestionGenerated", () => {
       totalItems: 2,
     });
 
-    await t.mutation(internal.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_1" },
       result: { kind: "canceled" },
@@ -205,7 +144,7 @@ describe("generation: onQuestionGenerated", () => {
     // Seed a question that would have been created by the generation action
     await seedQuestion(t, datasetId, 1);
 
-    await t.mutation(internal.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_1" },
       result: { kind: "success", returnValue: {} },
@@ -230,7 +169,7 @@ describe("generation: onQuestionGenerated", () => {
       totalItems: 1,
     });
 
-    await t.mutation(internal.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_1" },
       result: { kind: "failed", error: "API error" },
@@ -250,7 +189,7 @@ describe("generation: onQuestionGenerated", () => {
       totalItems: 1,
     });
 
-    await t.mutation(internal.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_1" },
       result: { kind: "canceled" },
@@ -270,7 +209,7 @@ describe("generation: onQuestionGenerated", () => {
       totalItems: 2,
     });
 
-    await t.mutation(internal.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_1" },
       result: { kind: "success", returnValue: {} },
@@ -290,7 +229,7 @@ describe("generation: onQuestionGenerated", () => {
       totalItems: 2,
     });
 
-    await t.mutation(internal.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_1" },
       result: { kind: "success", returnValue: {} },
@@ -318,7 +257,7 @@ describe("generation: onGroundTruthAssigned", () => {
       processedItems: 1,
     });
 
-    await t.mutation(internal.generation.onGroundTruthAssigned, {
+    await t.mutation(internal.generation.orchestration.onGroundTruthAssigned, {
       workId: "w_fake",
       context: { jobId, itemKey: "q_1" },
       result: { kind: "success", returnValue: {} },
@@ -340,7 +279,7 @@ describe("generation: onGroundTruthAssigned", () => {
       processedItems: 0,
     });
 
-    await t.mutation(internal.generation.onGroundTruthAssigned, {
+    await t.mutation(internal.generation.orchestration.onGroundTruthAssigned, {
       workId: "w_fake",
       context: { jobId, itemKey: "q_1" },
       result: { kind: "success", returnValue: {} },
@@ -384,7 +323,7 @@ describe("generation: onGroundTruthAssigned", () => {
       });
     });
 
-    await t.mutation(internal.generation.onGroundTruthAssigned, {
+    await t.mutation(internal.generation.orchestration.onGroundTruthAssigned, {
       workId: "w_fake",
       context: { jobId, itemKey: "q_1" },
       result: { kind: "success", returnValue: {} },
@@ -404,7 +343,7 @@ describe("generation: onGroundTruthAssigned", () => {
       totalItems: 1,
     });
 
-    await t.mutation(internal.generation.onGroundTruthAssigned, {
+    await t.mutation(internal.generation.orchestration.onGroundTruthAssigned, {
       workId: "w_fake",
       context: { jobId, itemKey: "q_1" },
       result: { kind: "canceled" },
@@ -435,7 +374,7 @@ describe("generation: getJob", () => {
     });
 
     const authedT = t.withIdentity(testIdentity);
-    const job = await authedT.query(internal.generation.getJob, { jobId });
+    const job = await authedT.query(internal.generation.orchestration.getJob, { jobId });
 
     expect(job).not.toBeNull();
     expect(job!.pendingItems).toBe(4); // 10 - 3 - 2 - 1
@@ -465,7 +404,7 @@ describe("generation: getJob", () => {
     });
 
     const authedT = t.withIdentity(testIdentity);
-    const job = await authedT.query(internal.generation.getJob, { jobId });
+    const job = await authedT.query(internal.generation.orchestration.getJob, { jobId });
     expect(job).toBeNull();
   });
 });

@@ -9,28 +9,28 @@
  */
 
 import type * as crons from "../crons.js";
-import type * as datasets from "../datasets.js";
-import type * as documents from "../documents.js";
-import type * as experimentActions from "../experimentActions.js";
-import type * as experimentResults from "../experimentResults.js";
-import type * as experiments from "../experiments.js";
-import type * as generation from "../generation.js";
-import type * as generationActions from "../generationActions.js";
-import type * as indexing from "../indexing.js";
-import type * as indexingActions from "../indexingActions.js";
-import type * as knowledgeBases from "../knowledgeBases.js";
-import type * as langsmithRetry from "../langsmithRetry.js";
-import type * as langsmithSync from "../langsmithSync.js";
-import type * as langsmithSyncRetry from "../langsmithSyncRetry.js";
+import type * as crud_datasets from "../crud/datasets.js";
+import type * as crud_documents from "../crud/documents.js";
+import type * as crud_knowledgeBases from "../crud/knowledgeBases.js";
+import type * as crud_questions from "../crud/questions.js";
+import type * as crud_retrievers from "../crud/retrievers.js";
+import type * as crud_users from "../crud/users.js";
+import type * as experiments_actions from "../experiments/actions.js";
+import type * as experiments_orchestration from "../experiments/orchestration.js";
+import type * as experiments_results from "../experiments/results.js";
+import type * as generation_actions from "../generation/actions.js";
+import type * as generation_orchestration from "../generation/orchestration.js";
+import type * as langsmith_retry from "../langsmith/retry.js";
+import type * as langsmith_sync from "../langsmith/sync.js";
+import type * as langsmith_syncRetry from "../langsmith/syncRetry.js";
 import type * as lib_auth from "../lib/auth.js";
-import type * as lib_langsmith from "../lib/langsmith.js";
-import type * as lib_llm from "../lib/llm.js";
-import type * as questions from "../questions.js";
-import type * as rag from "../rag.js";
-import type * as ragActions from "../ragActions.js";
-import type * as retrieverActions from "../retrieverActions.js";
-import type * as retrievers from "../retrievers.js";
-import type * as users from "../users.js";
+import type * as lib_validators from "../lib/validators.js";
+import type * as lib_vectorSearch from "../lib/vectorSearch.js";
+import type * as lib_workpool from "../lib/workpool.js";
+import type * as retrieval_chunks from "../retrieval/chunks.js";
+import type * as retrieval_indexing from "../retrieval/indexing.js";
+import type * as retrieval_indexingActions from "../retrieval/indexingActions.js";
+import type * as retrieval_retrieverActions from "../retrieval/retrieverActions.js";
 
 import type {
   ApiFromModules,
@@ -40,28 +40,28 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   crons: typeof crons;
-  datasets: typeof datasets;
-  documents: typeof documents;
-  experimentActions: typeof experimentActions;
-  experimentResults: typeof experimentResults;
-  experiments: typeof experiments;
-  generation: typeof generation;
-  generationActions: typeof generationActions;
-  indexing: typeof indexing;
-  indexingActions: typeof indexingActions;
-  knowledgeBases: typeof knowledgeBases;
-  langsmithRetry: typeof langsmithRetry;
-  langsmithSync: typeof langsmithSync;
-  langsmithSyncRetry: typeof langsmithSyncRetry;
+  "crud/datasets": typeof crud_datasets;
+  "crud/documents": typeof crud_documents;
+  "crud/knowledgeBases": typeof crud_knowledgeBases;
+  "crud/questions": typeof crud_questions;
+  "crud/retrievers": typeof crud_retrievers;
+  "crud/users": typeof crud_users;
+  "experiments/actions": typeof experiments_actions;
+  "experiments/orchestration": typeof experiments_orchestration;
+  "experiments/results": typeof experiments_results;
+  "generation/actions": typeof generation_actions;
+  "generation/orchestration": typeof generation_orchestration;
+  "langsmith/retry": typeof langsmith_retry;
+  "langsmith/sync": typeof langsmith_sync;
+  "langsmith/syncRetry": typeof langsmith_syncRetry;
   "lib/auth": typeof lib_auth;
-  "lib/langsmith": typeof lib_langsmith;
-  "lib/llm": typeof lib_llm;
-  questions: typeof questions;
-  rag: typeof rag;
-  ragActions: typeof ragActions;
-  retrieverActions: typeof retrieverActions;
-  retrievers: typeof retrievers;
-  users: typeof users;
+  "lib/validators": typeof lib_validators;
+  "lib/vectorSearch": typeof lib_vectorSearch;
+  "lib/workpool": typeof lib_workpool;
+  "retrieval/chunks": typeof retrieval_chunks;
+  "retrieval/indexing": typeof retrieval_indexing;
+  "retrieval/indexingActions": typeof retrieval_indexingActions;
+  "retrieval/retrieverActions": typeof retrieval_retrieverActions;
 }>;
 
 /**

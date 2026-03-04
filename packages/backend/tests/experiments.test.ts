@@ -1,78 +1,17 @@
 import { convexTest } from "convex-test";
 import { describe, it, expect, beforeEach } from "vitest";
-import schema from "../convex/schema";
 import { internal } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
-import workpoolTest from "@convex-dev/workpool/test";
+import {
+  TEST_ORG_ID,
+  testIdentity,
+  setupTest,
+  seedUser,
+  seedKB,
+  seedDataset,
+} from "./helpers";
 
-// Module maps for convex-test
-const modules = import.meta.glob("../convex/**/*.ts");
-
-// ─── Test Helpers ───
-
-const TEST_ORG_ID = "org_test123";
-const TEST_CLERK_ID = "user_test456";
-
-const testIdentity = {
-  subject: TEST_CLERK_ID,
-  issuer: "https://test.clerk.com",
-  org_id: TEST_ORG_ID,
-  org_role: "org:admin",
-};
-
-function setupTest() {
-  const t = convexTest(schema, modules);
-  workpoolTest.register(t, "indexingPool");
-  workpoolTest.register(t, "generationPool");
-  workpoolTest.register(t, "experimentPool");
-  return t;
-}
-
-async function seedUser(t: ReturnType<typeof convexTest>) {
-  return await t.run(async (ctx) => {
-    return await ctx.db.insert("users", {
-      clerkId: TEST_CLERK_ID,
-      email: "test@test.com",
-      name: "Test User",
-      createdAt: Date.now(),
-    });
-  });
-}
-
-async function seedKB(
-  t: ReturnType<typeof convexTest>,
-  userId: Id<"users">,
-) {
-  return await t.run(async (ctx) => {
-    return await ctx.db.insert("knowledgeBases", {
-      orgId: TEST_ORG_ID,
-      name: "Test KB",
-      metadata: {},
-      createdBy: userId,
-      createdAt: Date.now(),
-    });
-  });
-}
-
-async function seedDataset(
-  t: ReturnType<typeof convexTest>,
-  userId: Id<"users">,
-  kbId: Id<"knowledgeBases">,
-) {
-  return await t.run(async (ctx) => {
-    return await ctx.db.insert("datasets", {
-      orgId: TEST_ORG_ID,
-      kbId,
-      name: "Test Dataset",
-      strategy: "simple",
-      strategyConfig: {},
-      questionCount: 0,
-      metadata: {},
-      createdBy: userId,
-      createdAt: Date.now(),
-    });
-  });
-}
+// ─── Domain-Specific Seeders ───
 
 async function seedExperiment(
   t: ReturnType<typeof convexTest>,
@@ -119,7 +58,7 @@ describe("experiments: onExperimentComplete", () => {
       phase: "done",
     });
 
-    await t.mutation(internal.experiments.onExperimentComplete, {
+    await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
       result: { kind: "success", returnValue: {} },
@@ -138,7 +77,7 @@ describe("experiments: onExperimentComplete", () => {
       status: "running",
     });
 
-    await t.mutation(internal.experiments.onExperimentComplete, {
+    await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
       result: { kind: "failed", error: "Action timed out" },
@@ -158,7 +97,7 @@ describe("experiments: onExperimentComplete", () => {
       status: "canceling",
     });
 
-    await t.mutation(internal.experiments.onExperimentComplete, {
+    await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
       result: { kind: "canceled" },
@@ -177,7 +116,7 @@ describe("experiments: onExperimentComplete", () => {
       status: "failed",
     });
 
-    await t.mutation(internal.experiments.onExperimentComplete, {
+    await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
       result: { kind: "failed", error: "Duplicate failure" },
@@ -215,7 +154,7 @@ describe("experiments: get query", () => {
     });
 
     const authedT = t.withIdentity(testIdentity);
-    const exp = await authedT.query(internal.experiments.get, { id: experimentId });
+    const exp = await authedT.query(internal.experiments.orchestration.get, { id: experimentId });
     expect(exp).toBeNull();
   });
 
@@ -226,7 +165,7 @@ describe("experiments: get query", () => {
     const experimentId = await seedExperiment(t, userId, datasetId);
 
     const authedT = t.withIdentity(testIdentity);
-    const exp = await authedT.query(internal.experiments.get, { id: experimentId });
+    const exp = await authedT.query(internal.experiments.orchestration.get, { id: experimentId });
     expect(exp).not.toBeNull();
     expect(exp!.name).toBe("Test Experiment");
   });

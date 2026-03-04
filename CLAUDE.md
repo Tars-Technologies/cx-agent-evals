@@ -25,43 +25,54 @@ packages/
           real-world-grounded/  # RealWorldGroundedStrategy — question matching with embedding similarity
         ground-truth/           # Ground truth assigner (span-based)
       experiments/              # Experiment runner, baseline retrievers, CallbackRetriever
-      langsmith/                # LangSmith upload/load/experiment-runner utilities
+      langsmith/                # LangSmith client, dataset upload, experiment runner (sub-path: rag-evaluation-system/langsmith)
+      llm/                      # OpenAI client, embedder factory, model config (sub-path: rag-evaluation-system/llm)
+      shared/                   # JobStatus type, SerializedSpan, ExperimentResult, constants (sub-path: rag-evaluation-system/shared)
       utils/                    # Hashing, span utilities
     tests/                      # Vitest test suites
 
   backend/                      # Convex backend
     convex/
-      schema.ts                 # Full schema: users, knowledgeBases, documents, datasets, questions, experiments, experimentResults, jobs, jobItems, documentChunks
-      lib/auth.ts               # Clerk JWT auth context extraction
-      lib/llm.ts                # OpenAI client adapter for eval-lib
-      lib/batchProcessor.ts     # Shared batch processing with time budget, checkpointing, continuation
-      knowledgeBases.ts         # KB CRUD (org-scoped)
-      documents.ts              # Document upload via Convex storage
-      generation.ts             # Question generation job orchestration
-      generationActions.ts      # "use node" — strategy execution actions
-      questions.ts              # Question CRUD
-      datasets.ts               # Dataset CRUD
-      experiments.ts            # Experiment mutations/queries (start, status, list)
-      experimentActions.ts      # "use node" — single-action experiment runner via LangSmith evaluate()
-      experimentResults.ts      # Per-question result mutations/queries
-      rag.ts                    # Chunk mutations/queries
-      ragActions.ts             # "use node" — document indexing with chunking + embedding
-      langsmithSync.ts          # "use node" — LangSmith dataset sync
-      langsmithRetry.ts         # Manual dataset sync retry mutation
-      langsmithSyncRetry.ts     # "use node" — cron-driven failed sync retry
-      users.ts                  # User record sync (getOrCreate from Clerk)
-      jobs.ts                   # Job tracking with watchdog
-      jobItems.ts               # Per-item tracking within job phases
+      schema.ts                 # Full schema: users, knowledgeBases, documents, datasets, questions, experiments, experimentResults, retrievers, indexingJobs, documentChunks, generationJobs
+      lib/
+        auth.ts                 # Clerk JWT auth context extraction + lookupUser helper
+        validators.ts           # Shared Convex validators (spanValidator)
+        workpool.ts             # Shared WorkPool helpers (applyResult, counterPatch)
+        vectorSearch.ts         # Shared vector search with post-filtering helper
+      crud/                     # CRUD operations (org-scoped queries/mutations)
+        knowledgeBases.ts       # KB CRUD
+        documents.ts            # Document upload via Convex storage
+        datasets.ts             # Dataset CRUD
+        questions.ts            # Question CRUD
+        users.ts                # User record sync (getOrCreate from Clerk)
+        retrievers.ts           # Retriever CRUD, shared index protection, status sync
+      generation/               # Question generation domain
+        orchestration.ts        # Job orchestration, WorkPool callbacks, cancel
+        actions.ts              # "use node" — strategy execution actions
+      retrieval/                # Indexing and retrieval domain
+        indexing.ts             # Indexing orchestration, WorkPool callbacks, cancel
+        indexingActions.ts      # "use node" — two-phase document indexing, cleanup
+        retrieverActions.ts     # "use node" — create (hash), start indexing, standalone retrieve
+        chunks.ts               # Low-level chunk CRUD (insert/patch/delete batches, queries)
+      experiments/              # Experiment evaluation domain
+        orchestration.ts        # Experiment mutations/queries (start, status, list)
+        actions.ts              # "use node" — single-action experiment runner via LangSmith evaluate()
+        results.ts              # Per-question result mutations/queries
+      langsmith/                # LangSmith integration
+        sync.ts                 # "use node" — dataset sync to LangSmith
+        retry.ts                # Manual dataset sync retry mutation
+        syncRetry.ts            # "use node" — cron-driven failed sync retry
       crons.ts                  # Hourly LangSmith retry cron
       auth.config.ts            # Clerk auth provider config
-      testing.ts                # Test-only helper functions
       convex.json               # Bundler config (externalPackages: langsmith, @langchain/core, openai)
     tests/                      # convex-test integration tests
+      helpers.ts                # Shared test helpers (setupTest, seeders, constants)
 
   frontend/                     # Next.js 16 app (Tailwind CSS v4, dark theme)
     src/app/                    # App router pages
       generate/                 # Question generation page (Convex hooks)
       experiments/              # Experiment runner page (Convex hooks)
+      retrievers/               # Retriever management page (Convex hooks)
       sign-in/                  # Clerk sign-in
       sign-up/                  # Clerk sign-up
     src/components/             # UI components
@@ -76,6 +87,7 @@ packages/
       GenerateConfig.tsx        # Generation configuration panel
       QuestionList.tsx          # Generated questions display
       DocumentViewer.tsx        # Document content viewer
+      RetrieverPlayground.tsx   # Standalone retrieval testing
     src/lib/convex.ts           # Convex API re-exports
     src/middleware.ts            # Clerk auth middleware
 
@@ -158,10 +170,10 @@ All strategies produce `GeneratedQuery[]`, which are then passed to the `GroundT
 ### Experiment execution
 
 Experiments run via LangSmith's native `evaluate()` API:
-1. `experiments.start` mutation creates experiment + job records, schedules `runExperiment` action
-2. `runExperiment` (single Convex action) handles the full pipeline:
+1. `experiments.orchestration.start` mutation creates experiment record, enqueues `runExperiment` action via WorkPool
+2. `runExperiment` (single Convex action in `experiments/actions.ts`) handles the full pipeline:
    - Ensures KB is indexed (skips if chunks already exist)
-   - Ensures dataset is synced to LangSmith (delegates to `syncDataset` action)
+   - Ensures dataset is synced to LangSmith (delegates to `langsmith.sync.syncDataset` action)
    - Creates a `CallbackRetriever` (eval-lib) backed by Convex vector search
    - Calls `runLangSmithExperiment()` with `onResult` callback that writes per-question results to Convex
    - Aggregates scores and marks experiment complete
@@ -173,12 +185,14 @@ Key eval-lib types for experiment integration:
 
 ### Backend (Convex)
 
+- **Directory structure**: `convex/` is organized into domain directories: `crud/` (CRUD operations), `generation/` (question generation), `retrieval/` (indexing + retrieval), `experiments/` (evaluation), `langsmith/` (sync), `lib/` (shared helpers). Convex uses file-based routing, so `convex/crud/users.ts` → `api.crud.users.functionName` and `internal.crud.users.functionName`.
 - **Auth**: Clerk JWT with org-scoped access. Every public function calls `getAuthContext(ctx)` to extract userId/orgId. User records synced via `users.getOrCreate`.
-- **Job pipeline**: Long-running operations (question generation) use a batch processor with 8-minute time budget, per-item checkpointing, continuation scheduling, and watchdog recovery. Experiment execution uses a single action (no batch processor).
-- **RAG**: Position-aware chunking (RecursiveCharacterChunker) + OpenAI embeddings (text-embedding-3-small, 1536 dims) + Convex vector search. Chunks store character offsets for direct metric compatibility.
-- **LangSmith sync**: Dataset sync is a separate action (`langsmithSync.syncDataset`). Experiment sync happens natively during `evaluate()` — no separate sync step.
-- **`"use node"` constraint**: Files with `"use node"` can ONLY contain actions. Mutations/queries must be in separate files.
+- **Job pipeline**: Long-running operations (question generation, indexing) use WorkPool (`@convex-dev/workpool`) with per-item callbacks, selective cancellation via stored `workIds`, and status transitions. Experiment execution uses a single WorkPool action (no batch processor).
+- **RAG**: Position-aware chunking (RecursiveCharacterChunker) + OpenAI embeddings (text-embedding-3-small, 1536 dims) + Convex vector search. Chunks store character offsets for direct metric compatibility. Vector search uses `lib/vectorSearch.ts` helper for the shared embed → search → post-filter → topK pattern.
+- **LangSmith sync**: Dataset sync is a separate action (`langsmith.sync.syncDataset`). Experiment sync happens natively during `evaluate()` — no separate sync step.
+- **`"use node"` constraint**: Files with `"use node"` can ONLY contain actions. Mutations/queries must be in separate files. In the domain directories: `actions.ts` files have `"use node"`, `orchestration.ts`/other files do not.
 - **`vectorSearch` constraint**: `ctx.vectorSearch()` is only available in actions, not queries. Pattern: vectorSearch in action → hydrate via internalQuery.
+- **Sub-path isolation**: eval-lib's `/langsmith` and `/llm` sub-paths must only be imported from `"use node"` action files (they use Node.js-only dependencies like `openai`, `langsmith`). The `/shared` sub-path is safe for any file.
 - **External packages**: `convex.json` marks `langsmith`, `@langchain/core`, and `openai` as external packages (not bundled by esbuild, installed on Convex server). Both `langsmith` and `@langchain/core` must be in `package.json` dependencies for the Convex bundler to resolve them correctly with pnpm.
 
 ### Frontend
@@ -190,6 +204,7 @@ Key eval-lib types for experiment integration:
 
 ### Testing
 
-- eval-lib: 133 vitest tests covering strategies, ground-truth assigners, metrics, types, and utilities (3 pre-existing dimension test failures)
-- backend: 5 convex-test integration tests for batch processor
+- eval-lib: 225 vitest tests covering strategies, ground-truth assigners, metrics, types, utilities, and sub-path modules (shared, llm, langsmith)
+- backend: 46 convex-test integration tests covering generation callbacks, experiment callbacks, indexing callbacks, retriever CRUD, shared index protection, and workpool helpers
+- Shared test helpers in `packages/backend/tests/helpers.ts` (setupTest, seedUser, seedKB, seedDataset, testIdentity)
 - Mock LLM clients for testing strategies (return canned JSON responses)
