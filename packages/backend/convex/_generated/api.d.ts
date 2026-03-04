@@ -25,6 +25,7 @@ import type * as langsmith_sync from "../langsmith/sync.js";
 import type * as langsmith_syncRetry from "../langsmith/syncRetry.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_validators from "../lib/validators.js";
+import type * as lib_vectorSearch from "../lib/vectorSearch.js";
 import type * as lib_workpool from "../lib/workpool.js";
 import type * as retrieval_chunks from "../retrieval/chunks.js";
 import type * as retrieval_indexing from "../retrieval/indexing.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   "langsmith/syncRetry": typeof langsmith_syncRetry;
   "lib/auth": typeof lib_auth;
   "lib/validators": typeof lib_validators;
+  "lib/vectorSearch": typeof lib_vectorSearch;
   "lib/workpool": typeof lib_workpool;
   "retrieval/chunks": typeof retrieval_chunks;
   "retrieval/indexing": typeof retrieval_indexing;

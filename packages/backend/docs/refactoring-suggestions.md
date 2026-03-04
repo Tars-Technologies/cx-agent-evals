@@ -148,19 +148,47 @@ eval-lib already exists as a workspace dependency. The only changes needed:
 // Add entry points: src/langsmith/index.ts, src/llm/index.ts, src/shared/index.ts
 ```
 
-```json
-// packages/eval-lib/package.json (add exports for new modules)
+```jsonc
+// packages/eval-lib/package.json — add new sub-path exports alongside existing ones.
+// eval-lib already uses conditional exports (types/import/require). Follow the same pattern.
 {
   "exports": {
-    ".": "./dist/index.js",
-    "./langsmith": "./dist/langsmith/index.js",
-    "./llm": "./dist/llm/index.js",
-    "./shared": "./dist/shared/index.js"
+    // ... existing sub-paths (.  ./embedders/openai  ./rerankers/cohere  ./pipeline/internals  ./utils) stay as-is ...
+    "./langsmith": {
+      "types": "./dist/langsmith/index.d.ts",
+      "import": "./dist/langsmith/index.js"
+    },
+    "./llm": {
+      "types": "./dist/llm/index.d.ts",
+      "import": "./dist/llm/index.js"
+    },
+    "./shared": {
+      "types": "./dist/shared/index.d.ts",
+      "import": "./dist/shared/index.js"
+    }
   }
 }
 ```
 
 No changes to `pnpm-workspace.yaml`. No new package to register.
+
+### Critical Constraint: Sub-Path Isolation
+
+The new `langsmith/` and `llm/` modules use Node.js-dependent packages (`langsmith`, `@langchain/core`, `openai`). Convex runs mutations and queries in a V8 isolate (no Node.js), so these modules **must never** be imported from mutation/query files.
+
+**Rules:**
+1. The root barrel (`src/index.ts`) must **NOT** re-export from `./langsmith/`, `./llm/`, or any module that transitively imports Node.js packages.
+2. Only `"use node"` action files in `convex/` may import from `rag-evaluation-system/langsmith` or `rag-evaluation-system/llm`.
+3. The `./shared` sub-path (types, constants, corpus builder) is safe for any file since it has no Node.js dependencies.
+
+**Why this works:** Convex's esbuild bundler marks packages in `convex.json` `externalPackages` as external. When it bundles eval-lib code (which is NOT in `externalPackages`), it inlines it — but any transitive import of `langsmith` or `openai` is correctly left external because those ARE in `externalPackages`. This only applies to `"use node"` action bundles; the `externalPackages` mechanism does not apply to the default V8 runtime.
+
+**Current state is safe:** All 7 backend files that currently import from `rag-evaluation-system` already have `"use node"`. After Phase 2, mutation/query files (e.g., `generation.ts`, `indexing.ts`) will import from `rag-evaluation-system/shared` for `JobStatus` and constants — this is safe because `/shared` has zero Node.js dependencies. The constraint applies specifically to the `/langsmith` and `/llm` sub-paths, which must only be imported from `"use node"` action files.
+
+### Dependency Notes
+
+- `openai` is currently an **optional** dependency in eval-lib. Since the `/llm` sub-path directly creates OpenAI clients, either promote it to a regular dependency or keep it optional and document that consumers of the `/llm` sub-path must have `openai` installed. The Convex backend already has it in `externalPackages`, so this works either way.
+- `langsmith` and `@langchain/core` are new dependencies for eval-lib. They must also remain in the backend's `convex.json` `externalPackages` list (they already are).
 
 ### Impact on `experimentActions.ts`
 
@@ -170,8 +198,8 @@ After: **~250 lines** (pure Convex orchestration + bridge code):
 
 ```typescript
 "use node";
-import { createEmbedder, runLangSmithExperiment } from "rag-evaluation-system/langsmith";
-import { createLLMClient } from "rag-evaluation-system/llm";
+import { runLangSmithExperiment } from "rag-evaluation-system/langsmith";
+import { createEmbedder, createLLMClient } from "rag-evaluation-system/llm";
 import { CallbackRetriever, DocumentId, PositionAwareChunkId, positionAwareChunkToSpan } from "rag-evaluation-system";
 // ... Convex imports
 
@@ -233,35 +261,33 @@ packages/backend/convex/
     └── syncRetry.ts               # Cron-driven auto-retry
 ```
 
+### Relative Import Paths
+
+13 backend files import from `./lib/auth`, `./lib/llm`, or `./lib/langsmith` using relative paths. When these files move into subdirectories (e.g., `generation/orchestration.ts`), these paths must be updated to `../lib/auth`, etc. No backend files import from each other using relative paths — all cross-file calls go through `internal.*`, which is the correct Convex pattern.
+
 ### API Path Changes
 
 All `internal.*` and `api.*` references change when files move. The `_generated/api.ts` auto-regenerates, but **all call sites** must be updated.
+
+#### Public API (`api.*`) — 25 paths, all used by frontend
 
 | Before (flat) | After (nested) |
 |---|---|
 | `api.generation.startGeneration` | `api.generation.orchestration.startGeneration` |
 | `api.generation.getJob` | `api.generation.orchestration.getJob` |
-| `internal.generationActions.generateForDocument` | `internal.generation.actions.generateForDocument` |
-| `internal.generationActions.assignGroundTruthForQuestion` | `internal.generation.actions.assignGroundTruthForQuestion` |
 | `api.indexing.getJob` | `api.retrieval.indexing.getJob` |
 | `api.indexing.cancelIndexing` | `api.retrieval.indexing.cancelIndexing` |
-| `internal.indexingActions.indexDocument` | `internal.retrieval.indexingActions.indexDocument` |
-| `internal.indexingActions.cleanupAction` | `internal.retrieval.indexingActions.cleanupAction` |
 | `api.retrieverActions.create` | `api.retrieval.retrieverActions.create` |
 | `api.retrieverActions.startIndexing` | `api.retrieval.retrieverActions.startIndexing` |
 | `api.retrieverActions.retrieve` | `api.retrieval.retrieverActions.retrieve` |
-| `internal.rag.insertChunkBatch` | `internal.retrieval.chunks.insertChunkBatch` |
-| `internal.rag.fetchChunksWithDocs` | `internal.retrieval.chunks.fetchChunksWithDocs` |
 | `api.experiments.start` | `api.experiments.orchestration.start` |
 | `api.experiments.byDataset` | `api.experiments.orchestration.byDataset` |
 | `api.experiments.get` | `api.experiments.orchestration.get` |
-| `internal.experimentActions.runExperiment` | `internal.experiments.actions.runExperiment` |
-| `internal.experimentActions.runEvaluation` | `internal.experiments.actions.runEvaluation` |
-| `internal.experimentResults.insert` | `internal.experiments.results.insert` |
 | `api.knowledgeBases.list` | `api.crud.knowledgeBases.list` |
 | `api.knowledgeBases.create` | `api.crud.knowledgeBases.create` |
 | `api.documents.create` | `api.crud.documents.create` |
 | `api.documents.listByKb` | `api.crud.documents.listByKb` |
+| `api.documents.get` | `api.crud.documents.get` |
 | `api.documents.generateUploadUrl` | `api.crud.documents.generateUploadUrl` |
 | `api.datasets.list` | `api.crud.datasets.list` |
 | `api.datasets.get` | `api.crud.datasets.get` |
@@ -272,10 +298,63 @@ All `internal.*` and `api.*` references change when files move. The `_generated/
 | `api.retrievers.remove` | `api.crud.retrievers.remove` |
 | `api.retrievers.deleteIndex` | `api.crud.retrievers.deleteIndex` |
 | `api.retrievers.resetAfterCancel` | `api.crud.retrievers.resetAfterCancel` |
-| `internal.langsmithSync.syncDataset` | `internal.langsmith.sync.syncDataset` |
-| `internal.langsmithSyncRetry.retryFailed` | `internal.langsmith.syncRetry.retryFailed` |
 
-> **Impact**: This changes ~100+ internal references across backend files and ~25 `api.*` references in the frontend. See [Frontend Changes After Backend Refactor](./frontend-changes-after-backend-refactor.md) for the full frontend impact.
+#### Internal API (`internal.*`) — ~70 call sites across 12 files
+
+| Before (flat) | After (nested) | Call Sites |
+|---|---|---|
+| **Generation** | | |
+| `internal.generation.onQuestionGenerated` | `internal.generation.orchestration.onQuestionGenerated` | 3 |
+| `internal.generation.onGroundTruthAssigned` | `internal.generation.orchestration.onGroundTruthAssigned` | 1 |
+| `internal.generationActions.generateForDocument` | `internal.generation.actions.generateForDocument` | 1 |
+| `internal.generationActions.generateDimensionDriven` | `internal.generation.actions.generateDimensionDriven` | 1 |
+| `internal.generationActions.generateRealWorldGrounded` | `internal.generation.actions.generateRealWorldGrounded` | 1 |
+| `internal.generationActions.assignGroundTruthForQuestion` | `internal.generation.actions.assignGroundTruthForQuestion` | 1 |
+| **Retrieval** | | |
+| `internal.indexing.startIndexing` | `internal.retrieval.indexing.startIndexing` | 1 |
+| `internal.indexing.onDocumentIndexed` | `internal.retrieval.indexing.onDocumentIndexed` | 1 |
+| `internal.indexing.getJobInternal` | `internal.retrieval.indexing.getJobInternal` | 2 |
+| `internal.indexing.deleteJob` | `internal.retrieval.indexing.deleteJob` | 1 |
+| `internal.indexingActions.indexDocument` | `internal.retrieval.indexingActions.indexDocument` | 1 |
+| `internal.indexingActions.cleanupAction` | `internal.retrieval.indexingActions.cleanupAction` | 3 |
+| `internal.rag.insertChunkBatch` | `internal.retrieval.chunks.insertChunkBatch` | 1 |
+| `internal.rag.getChunksByDocConfig` | `internal.retrieval.chunks.getChunksByDocConfig` | 2 |
+| `internal.rag.getUnembeddedChunks` | `internal.retrieval.chunks.getUnembeddedChunks` | 1 |
+| `internal.rag.patchChunkEmbeddings` | `internal.retrieval.chunks.patchChunkEmbeddings` | 1 |
+| `internal.rag.deleteKbConfigChunks` | `internal.retrieval.chunks.deleteKbConfigChunks` | 1 |
+| `internal.rag.deleteDocumentChunks` | `internal.retrieval.chunks.deleteDocumentChunks` | 1 |
+| `internal.rag.fetchChunksWithDocs` | `internal.retrieval.chunks.fetchChunksWithDocs` | 2 |
+| `internal.retrievers.findByConfigHash` | `internal.crud.retrievers.findByConfigHash` | 1 |
+| `internal.retrievers.insertRetriever` | `internal.crud.retrievers.insertRetriever` | 1 |
+| `internal.retrievers.getInternal` | `internal.crud.retrievers.getInternal` | 3 |
+| `internal.retrievers.updateIndexingStatus` | `internal.crud.retrievers.updateIndexingStatus` | 1 |
+| `internal.retrievers.syncStatusFromIndexingJob` | `internal.crud.retrievers.syncStatusFromIndexingJob` | 1 |
+| **Experiments** | | |
+| `internal.experimentActions.runExperiment` | `internal.experiments.actions.runExperiment` | 1 |
+| `internal.experimentActions.runEvaluation` | `internal.experiments.actions.runEvaluation` | 1 |
+| `internal.experiments.getInternal` | `internal.experiments.orchestration.getInternal` | 2 |
+| `internal.experiments.updateStatus` | `internal.experiments.orchestration.updateStatus` | 8 |
+| `internal.experiments.enqueueExperiment` | `internal.experiments.orchestration.enqueueExperiment` | 1 |
+| `internal.experiments.onExperimentComplete` | `internal.experiments.orchestration.onExperimentComplete` | 1 |
+| `internal.experimentResults.insert` | `internal.experiments.results.insert` | 1 |
+| `internal.experimentResults.byExperimentInternal` | `internal.experiments.results.byExperimentInternal` | 1 |
+| **CRUD** | | |
+| `internal.documents.getInternal` | `internal.crud.documents.getInternal` | 3 |
+| `internal.documents.listByKbInternal` | `internal.crud.documents.listByKbInternal` | 2 |
+| `internal.datasets.getInternal` | `internal.crud.datasets.getInternal` | 3 |
+| `internal.datasets.updateSyncStatus` | `internal.crud.datasets.updateSyncStatus` | 4 |
+| `internal.questions.insertBatch` | `internal.crud.questions.insertBatch` | 3 |
+| `internal.questions.getInternal` | `internal.crud.questions.getInternal` | 1 |
+| `internal.questions.byDatasetInternal` | `internal.crud.questions.byDatasetInternal` | 2 |
+| `internal.questions.updateSpans` | `internal.crud.questions.updateSpans` | 1 |
+| `internal.questions.updateLangsmithExampleIds` | `internal.crud.questions.updateLangsmithExampleIds` | 1 |
+| `internal.users.getByClerkId` | `internal.crud.users.getByClerkId` | 2 |
+| **LangSmith** | | |
+| `internal.langsmithSync.syncDataset` | `internal.langsmith.sync.syncDataset` | 3 |
+| `internal.langsmithSyncRetry.retryFailed` | `internal.langsmith.syncRetry.retryFailed` | 1 |
+| `internal.langsmithSyncRetry.getFailedDatasets` | `internal.langsmith.syncRetry.getFailedDatasets` | 1 |
+
+> **Impact**: This changes ~70 `internal.*` call-site references across 12 backend files and 26 `api.*` references across 7 frontend files. See [Frontend Changes After Backend Refactor](./frontend-changes-after-backend-refactor.md) for the full frontend impact.
 
 ### Deleted Files
 
@@ -331,15 +410,15 @@ Defined identically in `schema.ts`, `questions.ts`, and `experimentResults.ts`.
 
 **Fix**: Export from `convex/lib/validators.ts`, imported by all three.
 
-### 5.3 `JobStatus` Type — 3 Copies → 1
+### 5.3 `JobStatus` Type — 2 Copies → 1
 
-Defined locally in `generation.ts`, `indexing.ts`, and inline in `experiments.ts`.
+Defined locally in `generation.ts` (line 27) and `indexing.ts` (line 215). `experiments.ts` uses string literals directly without a type alias.
 
 **Fix**: Define once in `eval-lib/src/shared/types.ts`.
 
-### 5.4 `applyResult` / `counterPatch` Logic — 2 Copies → 1
+### 5.4 `applyResult` / `counterPatch` Logic — Extract to Shared Helper
 
-The counter-update pattern in `generation.ts` is structurally identical to `indexing.ts:onDocumentIndexed`.
+`generation.ts` has extracted `applyResult()` (lines 31-46) and `counterPatch()` (lines 48-55) helpers. `indexing.ts:onDocumentIndexed` uses the same counter-update pattern but inlines the logic with separate variables. Both should use a single shared helper.
 
 **Fix**: Create a generic helper in `convex/lib/workpool.ts`:
 ```typescript
@@ -359,7 +438,7 @@ The `BATCH_SIZE=100` loop for inserting questions is copy-pasted across all thre
 
 The "embed query → vectorSearch → fetchChunksWithDocs → post-filter by indexConfigHash → take topK" pipeline appears in both `retrieverActions.ts` and `experimentActions.ts`.
 
-**Fix**: Extract the common logic into a shared helper in `convex/retrieval/` that both call sites use.
+**Fix**: Extract the common logic into `convex/lib/vectorSearch.ts` (a shared internal action helper). This goes in `lib/` rather than `retrieval/` because both `retrieval/retrieverActions.ts` and `experiments/actions.ts` use it — placing it in either domain folder would create a misleading cross-domain dependency.
 
 ### 5.7 User Lookup Pattern — 3 Copies → 1
 
@@ -432,13 +511,19 @@ Comments reference cryptic IDs like `I1`, `I3`, `I9`, `C1`, `C3`, `S3`. Expand t
 
 ### `minisearch`
 
-Listed in both `package.json` dependencies and `convex.json` externalPackages, but **not imported anywhere** in the backend code. Remove from both.
+Listed in backend's `package.json` dependencies and `convex.json` externalPackages. Not directly imported by any backend file, but **used by eval-lib** (`src/retrievers/pipeline/search/bm25.ts` for BM25 search). Since eval-lib is bundled (not in `externalPackages`), `minisearch` must stay in `convex.json` `externalPackages` so esbuild correctly externalizes it when bundling eval-lib's BM25 code. The redundant entry in backend's `package.json` can be removed (it's a transitive dependency via eval-lib).
 
 ### eval-lib Import Surface
 
-eval-lib no longer exports LangSmith utilities. The `src/langsmith/` directory was completely removed. The backend should only import from:
-- `rag-evaluation-system` (main barrel) — types, strategies, metrics, chunkers, config hashing, `CallbackRetriever`, `openAIClientAdapter`
-- `rag-evaluation-system/embedders/openai` — `OpenAIEmbedder` (tree-shakeable)
+After Phase 2, the backend imports from these eval-lib sub-paths:
+
+| Sub-path | Used By | Contains |
+|---|---|---|
+| `rag-evaluation-system` (root) | All action files | Types, strategies, metrics, chunkers, config hashing, `CallbackRetriever`, `openAIClientAdapter` |
+| `rag-evaluation-system/langsmith` | `"use node"` action files only | `runLangSmithExperiment()`, `uploadDataset()`, `getLangSmithClient()` |
+| `rag-evaluation-system/llm` | `"use node"` action files only | `createEmbedder()`, `createLLMClient()`, `getModel()` |
+| `rag-evaluation-system/shared` | Any file (no Node.js deps) | `JobStatus`, `SerializedSpan`, constants, `buildCorpusFromDocs()` |
+| `rag-evaluation-system/embedders/openai` | `"use node"` action files only | `OpenAIEmbedder` |
 
 Other available sub-paths (`./pipeline/internals`, `./utils`, `./rerankers/cohere`) are not currently used by the backend.
 
@@ -485,9 +570,9 @@ Cancels ALL items in the indexing pool — not just this job's. Fix: store `work
 
 `getFailedDatasets` calls `ctx.db.query("datasets").collect()` without filtering. Add an index on `langsmithSyncStatus`.
 
-### 10.4 `langsmithSyncRetry.ts` Missing `"use node"`
+### 10.4 `langsmithSyncRetry.ts` Mixes Action and Query Without `"use node"`
 
-Contains an `internalAction` but is missing the `"use node"` directive. Verify and fix if needed.
+This file exports both an `internalAction` (`retryFailed`) and an `internalQuery` (`getFailedDatasets`) without a `"use node"` directive. Adding `"use node"` would break the query (files with `"use node"` can only export actions). The action only uses `ctx.runQuery` and `ctx.scheduler.runAfter` (Convex runtime calls, no Node.js needed), so it works correctly as-is. During the directory reorganization (Phase 3), consider splitting into separate files if this pattern causes confusion.
 
 ---
 
@@ -586,7 +671,7 @@ Quick wins that reduce noise before the structural refactor:
 - [ ] Remove `ragActions.ts` (deprecated, no callers)
 - [ ] Remove `testing.ts` (empty file)
 - [ ] Remove `rag.insertChunk` and `rag.deleteKbChunks` (deprecated)
-- [ ] Remove `minisearch` from `package.json` and `convex.json`
+- [ ] Remove `minisearch` from backend `package.json` (keep in `convex.json` — used by eval-lib's BM25 search)
 - [ ] Remove `MAX_AUTO_RETRIES` unused constant
 - [ ] Verify no remaining imports from `rag-evaluation-system/langsmith/*`
 - [ ] Fix dangling docstrings in `datasets.ts` and `questions.ts`
@@ -624,9 +709,10 @@ Move files into domain subfolders. **This changes all `api.*` and `internal.*` p
 - [ ] Create `crud/` — move `knowledgeBases.ts`, `documents.ts`, `datasets.ts`, `questions.ts`, `users.ts`, `retrievers.ts`
 - [ ] Create `langsmith/` — move `langsmithSync.ts` → `sync.ts`, `langsmithRetry.ts` → `retry.ts`, `langsmithSyncRetry.ts` → `syncRetry.ts`
 - [ ] Move `retrieverActions.ts` → `retrieval/retrieverActions.ts`
-- [ ] Update ALL `internal.*` references across all backend files (~100+ references)
-- [ ] Update ALL `api.*` references in frontend files (~25 references) — see [Frontend Changes](./frontend-changes-after-backend-refactor.md)
-- [ ] Update `crons.ts` references
+- [ ] Update relative `./lib/auth` imports in all moved files (13 files import from `./lib/`)
+- [ ] Update ALL `internal.*` references across all backend files (~70 call sites across 12 files)
+- [ ] Update ALL `api.*` references in frontend files (26 references across 7 files) — see [Frontend Changes](./frontend-changes-after-backend-refactor.md)
+- [ ] Update `crons.ts` reference (`internal.langsmithSyncRetry.retryFailed`)
 - [ ] Verify `pnpm build`, `npx convex dev --once`, and frontend build all succeed
 
 ### Phase 4: Type Safety & Schema (Medium Risk)
@@ -652,6 +738,6 @@ Move files into domain subfolders. **This changes all `api.*` and `internal.*` p
 - [ ] Fix `cancelIndexing` to use selective cancel (not `cancelAll`)
 - [ ] Add index on `datasets.langsmithSyncStatus` for efficient retry queries
 - [ ] Consider replacing experiment orchestrator polling with scheduler-based phases
-- [ ] Extract common vector search pattern into shared helper
+- [ ] Extract common vector search pattern into `lib/vectorSearch.ts`
 - [ ] Expand change ID comments into self-documenting form
 - [ ] Remove legacy experiment path (`retrieverConfig` without `retrieverId`)

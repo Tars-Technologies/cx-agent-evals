@@ -171,6 +171,10 @@ export default defineSchema({
     ),
     totalQuestions: v.optional(v.number()),
     processedQuestions: v.optional(v.number()),
+    failedQuestions: v.optional(v.number()),
+    skippedQuestions: v.optional(v.number()),
+    indexConfigHash: v.optional(v.string()),
+    langsmithSyncStatus: v.optional(v.string()),
     workIds: v.optional(v.array(v.string())),
     scores: v.optional(v.record(v.string(), v.number())),
     // TODO: populate langsmithExperimentId from evaluate() result
