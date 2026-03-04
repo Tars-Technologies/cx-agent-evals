@@ -15,14 +15,14 @@
 ### Task 1: Add `kbId` to experiments schema + `by_kb` index
 
 **Files:**
-- Modify: `packages/backend/convex/schema.ts:149-185`
+- Modify: `packages/backend/convex/schema.ts:146-191`
 
 **Step 1: Add kbId field and index to experiments table**
 
-In `packages/backend/convex/schema.ts`, add `kbId` field to the experiments table definition (after `orgId` on line 151), and add a `by_kb` index:
+In `packages/backend/convex/schema.ts`, add `kbId` field to the experiments table definition (after `orgId` on line 147), and add a `by_kb` index:
 
 ```typescript
-// Line 149-185: experiments table
+// Line 146-191: experiments table
 experiments: defineTable({
     orgId: v.string(),
     kbId: v.optional(v.id("knowledgeBases")),  // NEW — denormalized from dataset
@@ -54,12 +54,12 @@ git commit -m "schema: add kbId + by_kb index to experiments table"
 ### Task 2: Populate `kbId` on experiment creation + add `byKb` query
 
 **Files:**
-- Modify: `packages/backend/convex/experiments.ts:24-95` (start mutation)
-- Modify: `packages/backend/convex/experiments.ts:236-267` (add byKb query)
+- Modify: `packages/backend/convex/experiments/orchestration.ts:24-96` (start mutation)
+- Modify: `packages/backend/convex/experiments/orchestration.ts:259-289` (add byKb query after existing queries)
 
 **Step 1: Update start mutation to populate kbId**
 
-In `packages/backend/convex/experiments.ts`, the `start` mutation already fetches the dataset (line 35) which has `dataset.kbId`. Add `kbId` to the insert on line 69:
+In `packages/backend/convex/experiments/orchestration.ts`, the `start` mutation already fetches the dataset (line 36) which has `dataset.kbId`. Add `kbId` to the insert on line 70:
 
 ```typescript
     const experimentId = await ctx.db.insert("experiments", {
@@ -68,7 +68,7 @@ In `packages/backend/convex/experiments.ts`, the `start` mutation already fetche
       datasetId: args.datasetId,
       name: args.name,
       retrieverId: args.retrieverId,
-      retrievalConfig: args.retrieverConfig,
+      retrieverConfig: args.retrieverConfig,
       k: args.k,
       metricNames: args.metricNames,
       status: "pending",
@@ -79,7 +79,7 @@ In `packages/backend/convex/experiments.ts`, the `start` mutation already fetche
 
 **Step 2: Add byKb query**
 
-Add after the existing `byDataset` query (after line 254):
+Add after the existing `byDataset` query (after line 275):
 
 ```typescript
 export const byKb = query({
@@ -109,8 +109,8 @@ Expected: Successful deployment with new query available.
 **Step 4: Commit**
 
 ```bash
-git add packages/backend/convex/experiments.ts
-git commit -m "feat: populate kbId on experiment creation, add experiments.byKb query"
+git add packages/backend/convex/experiments/orchestration.ts
+git commit -m "feat: populate kbId on experiment creation, add experiments.orchestration.byKb query"
 ```
 
 ---
@@ -391,7 +391,7 @@ After the KB selection, add:
 ```typescript
 // Datasets for selected KB
 const kbDatasets = useQuery(
-  api.datasets.byKb,
+  api.crud.datasets.byKb,
   selectedKbId ? { kbId: selectedKbId } : "skip",
 );
 
@@ -404,7 +404,7 @@ const [browseDatasetId, setBrowseDatasetId] = useState<Id<"datasets"> | null>(nu
 
 // Questions for browsed dataset
 const browseQuestions = useQuery(
-  api.questions.byDataset,
+  api.crud.questions.byDataset,
   browseDatasetId ? { datasetId: browseDatasetId } : "skip",
 );
 
@@ -626,18 +626,18 @@ function ExperimentsPageContent() {
 
   // --- Datasets for selected KB ---
   const kbDatasets = useQuery(
-    api.datasets.byKb,
+    api.crud.datasets.byKb,
     selectedKbId ? { kbId: selectedKbId } : "skip",
   );
   const [selectedDatasetId, setSelectedDatasetId] = useState<Id<"datasets"> | null>(null);
   const selectedDataset = useQuery(
-    api.datasets.get,
+    api.crud.datasets.get,
     selectedDatasetId ? { id: selectedDatasetId } : "skip",
   );
 
   // --- Retrievers for selected KB (ready only) ---
   const kbRetrievers = useQuery(
-    api.retrievers.byKb,
+    api.crud.retrievers.byKb,
     selectedKbId ? { kbId: selectedKbId } : "skip",
   );
   const readyRetrievers = (kbRetrievers ?? []).filter((r) => r.status === "ready");
@@ -645,11 +645,11 @@ function ExperimentsPageContent() {
 
   // --- Progressive experiment queries ---
   const kbExperiments = useQuery(
-    api.experiments.byKb,
+    api.experiments.orchestration.byKb,
     selectedKbId ? { kbId: selectedKbId } : "skip",
   );
   const datasetExperiments = useQuery(
-    api.experiments.byDataset,
+    api.experiments.orchestration.byDataset,
     selectedDatasetId ? { datasetId: selectedDatasetId } : "skip",
   );
 
@@ -681,7 +681,7 @@ function ExperimentsPageContent() {
   }, [selectedDatasetId]);
 
   // --- Experiment execution ---
-  const startExperiment = useMutation(api.experiments.start);
+  const startExperiment = useMutation(api.experiments.orchestration.start);
   const [runningExperimentIds, setRunningExperimentIds] = useState<Set<Id<"experiments">>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
