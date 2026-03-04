@@ -10,7 +10,9 @@
 
 Organized into **6 vertical slices** — each slice unlocks a new set of runnable experiments. Scope: **eval-lib only** (no backend/frontend changes).
 
-**Updated 2026-03-01**: Synced with the eval-lib codebase refactor (PR #24, `va_evallib_refactor`). Major changes: experiments collapsed from 4 subdirectories into single `presets.ts`, `ChromaVectorStore` removed, exports reorganized into 5 entry points, all LangSmith code migrated to backend. See [Impact of Codebase Refactor](#impact-of-codebase-refactor) for details.
+**Updated 2026-03-04**: Synced with the backend refactor (PR #27, `va_backend_refactor`). Major changes: backend reorganized from flat to nested domain directories (`retrieval/`, `experiments/`, `generation/`, `crud/`, `langsmith/`), code extracted to eval-lib sub-paths (`/llm`, `/langsmith`, `/shared`), shared helpers factored to `lib/`. See [Impact of Codebase Refactor](#impact-of-codebase-refactor) for details.
+
+**Updated 2026-03-01**: Synced with the eval-lib codebase refactor (PR #24, `va_evallib_refactor`). Major changes: experiments collapsed from 4 subdirectories into single `presets.ts`, `ChromaVectorStore` removed, exports reorganized into 8 entry points, all LangSmith code migrated to backend then extracted to eval-lib sub-paths. See [Impact of Codebase Refactor](#impact-of-codebase-refactor) for details.
 
 ---
 
@@ -33,12 +35,13 @@ Organized into **6 vertical slices** — each slice unlocks a new set of runnabl
 
 ## Impact of Codebase Refactor
 
-The eval-lib package went through two significant refactors that affect this plan:
+The eval-lib package and backend went through three significant refactors that affect this plan:
 
 1. **PR #18 (`va_kb_indexing_management`)** — Retrievers became first-class backend entities separate from experiments.
 2. **PR #24 (`va_evallib_refactor`)** — Major codebase cleanup: experiments collapsed, ChromaVectorStore removed, exports reorganized, LangSmith migrated to backend.
+3. **PR #27 (`va_backend_refactor`)** — Backend directory reorganization + code extraction to eval-lib sub-paths.
 
-### What Changed in PR #24 (Most Recent)
+### What Changed in PR #24
 
 ```
 BEFORE (pre-refactor):
@@ -63,12 +66,82 @@ AFTER (current state):
   vector-stores/
     └── in-memory.ts           # InMemoryVectorStore only
 
-  (no langsmith/ directory — all migrated to packages/backend/convex/)
+  (no langsmith/ directory — all migrated to backend, then extracted to eval-lib sub-paths in PR #27)
 ```
+
+### What Changed in PR #27 (Most Recent)
+
+The backend underwent a major restructure. Key changes relevant to this plan:
+
+**1. Directory reorganization** — Flat `convex/` directory reorganized into domain folders:
+
+```
+BEFORE (flat):
+  convex/
+    ├── retrieverActions.ts
+    ├── indexingActions.ts
+    ├── experimentActions.ts
+    ├── generationActions.ts
+    ├── indexing.ts
+    ├── experiments.ts
+    ├── generation.ts
+    ├── rag.ts
+    ├── knowledgeBases.ts, documents.ts, datasets.ts, ...
+    └── lib/llm.ts, lib/langsmith.ts
+
+AFTER (nested domain folders):
+  convex/
+    ├── retrieval/
+    │   ├── retrieverActions.ts     # "use node" — create, startIndexing, retrieve
+    │   ├── indexingActions.ts       # "use node" — two-phase document indexing
+    │   ├── indexing.ts             # Indexing orchestration + WorkPool callbacks
+    │   └── chunks.ts              # Chunk CRUD (was rag.ts)
+    ├── experiments/
+    │   ├── actions.ts             # "use node" — runExperiment + runEvaluation (was experimentActions.ts)
+    │   ├── orchestration.ts       # Start, enqueue, cancel, queries
+    │   └── results.ts             # Per-question results
+    ├── generation/
+    │   ├── actions.ts             # "use node" — strategy execution (was generationActions.ts)
+    │   └── orchestration.ts       # Job orchestration, WorkPool callbacks
+    ├── crud/
+    │   ├── retrievers.ts, documents.ts, datasets.ts, ...
+    │   └── users.ts
+    ├── langsmith/
+    │   ├── sync.ts, retry.ts, syncRetry.ts
+    ├── lib/
+    │   ├── auth.ts                # + lookupUser() helper
+    │   ├── validators.ts          # Shared spanValidator (was triplicated)
+    │   ├── workpool.ts            # Shared applyResult/counterPatch
+    │   └── vectorSearch.ts        # Shared vector search with post-filtering
+    └── schema.ts, crons.ts, auth.config.ts, convex.config.ts
+```
+
+**2. eval-lib sub-path adoption** — Backend now imports from three eval-lib sub-paths:
+
+| Sub-path | Used By | Contains |
+|---|---|---|
+| `rag-evaluation-system/llm` | `"use node"` action files only | `createEmbedder()`, `createLLMClient()`, `getModel()` |
+| `rag-evaluation-system/langsmith` | `"use node"` action files only | `runLangSmithExperiment()`, `uploadDataset()`, `getLangSmithClient()` |
+| `rag-evaluation-system/shared` | Any file (no Node.js deps) | `JobStatus`, `ExperimentResult`, `EMBED_BATCH_SIZE`, etc. |
+
+This means:
+- `createEmbedder()` is now consolidated in eval-lib (was 4 copies across backend action files)
+- LangSmith `runLangSmithExperiment()` and `uploadDataset()` live in eval-lib, imported by backend
+- Backend action files import from `rag-evaluation-system/llm` and `rag-evaluation-system/langsmith`
+- The old `convex/lib/llm.ts` and `convex/lib/langsmith.ts` are deleted
+
+**3. Shared helpers extracted** — Common patterns factored into `convex/lib/`:
+- `vectorSearch.ts` — embed → vectorSearch → fetchChunks → post-filter by indexConfigHash → topK (shared by `retrieval/retrieverActions.ts` and `experiments/actions.ts`)
+- `workpool.ts` — WorkPool counter helpers (shared by generation, indexing, experiments)
+- `validators.ts` — shared `spanValidator` (was triplicated)
+
+**4. Dead code removed** — `ragActions.ts` (deprecated), `testing.ts` (empty), deprecated `insertChunk`/`deleteKbChunks` functions.
+
+**5. API paths changed** — All `api.*` and `internal.*` paths updated to reflect nested structure (e.g., `api.retrieverActions.create` → `api.retrieval.retrieverActions.create`).
 
 ### Current Codebase State (Ground Truth)
 
-All references below are verified against the actual source files as of 2026-03-01.
+All references below are verified against the actual source files as of 2026-03-04.
 
 **Interfaces (unchanged — our targets to implement against):**
 
@@ -200,6 +273,8 @@ export function computeRetrieverConfigHash(config: PipelineConfig, k: number): s
 ```json
 {
   "dependencies": {
+    "langsmith": "^0.3.0",
+    "@langchain/core": "^0.3.0",
     "minisearch": "^7.2.0",
     "zod": "^3.23"
   },
@@ -210,7 +285,7 @@ export function computeRetrieverConfigHash(config: PipelineConfig, k: number): s
 }
 ```
 
-Note: `chromadb` is **no longer** in optionalDependencies (removed in refactor).
+Note: `langsmith` and `@langchain/core` were added in the backend refactor (PR #27) as part of extracting LangSmith code to eval-lib sub-paths. `chromadb` is **no longer** in optionalDependencies (removed in PR #24 refactor).
 
 **Current Export Entry Points (`tsup.config.ts`):**
 
@@ -220,9 +295,14 @@ src/embedders/openai.ts         # OpenAI embedder (tree-shakeable)
 src/rerankers/cohere.ts         # Cohere reranker (optional dep)
 src/pipeline/internals.ts       # Config defaults, BM25, fusion, InMemoryVectorStore
 src/utils/index.ts              # Utility functions
+src/langsmith/index.ts          # LangSmith client, upload, experiment runner (added in PR #27)
+src/llm/index.ts                # createEmbedder, createLLMClient, getModel (added in PR #27)
+src/shared/index.ts             # JobStatus, ExperimentResult, constants (added in PR #27)
 ```
 
-**Current Test Suite:** 24 test files under `packages/eval-lib/tests/`
+External packages (not bundled): `openai`, `langsmith`, `langsmith/evaluation`, `@langchain/core`, `cohere-ai`
+
+**Current Test Suite:** 24+ test files under `packages/eval-lib/tests/` (including tests for shared, llm, and langsmith modules added in PR #27)
 
 ### Impacts on This Plan
 
@@ -231,14 +311,16 @@ src/utils/index.ts              # Utility functions
 | 1 | **Experiment presets are now in a single `presets.ts` file** | 6 | The plan's Slice 6 should extend the existing `PRESET_CONFIGS` map and `createPresetRetriever` factory — NOT create a separate `PIPELINE_PRESETS` registry. Merge new presets into the existing pattern. |
 | 2 | **ChromaVectorStore removed** | — | Remove all references to Chroma from the plan. `InMemoryVectorStore` is the only vector store. |
 | 3 | **`chromadb` not in optionalDependencies** | 1 | Don't add it back. Only add new provider SDKs. |
-| 4 | **LangSmith code migrated to backend** | — | No eval-lib LangSmith references needed. |
-| 5 | **5 tsup entry points already exist** | 1 | New providers need their own entry points (e.g., `./embedders/voyage`, `./rerankers/jina`) or be added to existing entry points. Each provider that requires an optional dependency should get its own entry point for tree-shaking. |
+| 4 | **LangSmith code now lives in eval-lib sub-path** | — | As of PR #27, `runLangSmithExperiment()` and `uploadDataset()` are in `rag-evaluation-system/langsmith`. Backend imports from this sub-path. No impact on this plan (eval-lib-only changes). |
+| 5 | **8 tsup entry points already exist** | 1 | The 5 original + 3 new sub-paths (`langsmith`, `llm`, `shared`) from PR #27. New providers need their own entry points (e.g., `./embedders/voyage`, `./rerankers/jina`) or be added to existing entry points. Each provider that requires an optional dependency should get its own entry point for tree-shaking. |
 | 6 | **`IndexConfig` is a single interface, not a discriminated union yet** | 4 | Converting it to a discriminated union is a breaking change. The `DEFAULT_INDEX_CONFIG` constant and `IndexHashPayload` type must be updated simultaneously. |
 | 7 | **`computeRetrieverConfigHash` serializes the full config** | 3, 4, 5 | Uses `stableStringify` on the raw config payload. New fields on extended types are included automatically. But `computeIndexConfigHash` uses a concrete `IndexHashPayload` interface that must become strategy-aware. |
-| 8 | **Backend `startIndexing` hardcodes `strategy: "plain"`** | 4 | `retrieverActions.ts` line 117 hardcodes this. When we add contextual/summary/parent-child index strategies in eval-lib, the backend will need a separate follow-up PR. Our plan stays eval-lib-only. |
-| 9 | **Backend `retrieve` action only does dense vector search** | — | Does NOT use `PipelineRetriever`. The playground only tests dense retrieval today. |
-| 10 | **Backend creates embedder with `createEmbedder(model)` — OpenAI only** | 1 | When we add Cohere/Voyage/Jina embedders to eval-lib, the backend will need a provider-aware factory. Out of scope. |
+| 8 | **Backend `startIndexing` hardcodes `strategy: "plain"`** | 4 | `retrieval/retrieverActions.ts` line 106 hardcodes `strategy: "plain" as const` when resolving index config. `retrieval/indexingActions.ts` hardcodes `RecursiveCharacterChunker` as the only chunker. When we add contextual/summary/parent-child index strategies in eval-lib, the backend will need a separate follow-up PR. Our plan stays eval-lib-only. |
+| 9 | **Backend `retrieve` action only does dense vector search** | — | `retrieval/retrieverActions.ts` uses `lib/vectorSearch.ts` for embed → vectorSearch → post-filter → topK. Does NOT use `PipelineRetriever`. The playground only tests dense retrieval today. |
+| 10 | **Backend imports `createEmbedder` from eval-lib — OpenAI only** | 1 | Backend action files now import `createEmbedder` from `rag-evaluation-system/llm` (consolidated in PR #27, was 4 copies). Still OpenAI-only. When we add Cohere/Voyage/Jina embedders to eval-lib, the backend will need a provider-aware factory. Out of scope. |
 | 11 | **Frontend `pipeline-types.ts` must mirror new config types** | 3, 4, 5 | When we extend eval-lib's discriminated unions, the frontend type mirror must be updated. Out of scope (frontend follow-up). |
+| 12 | **eval-lib now has `langsmith/`, `llm/`, `shared/` sub-paths** | 1, 3 | Added in PR #27. `createEmbedder()` and `createLLMClient()` live in `/llm`, `runLangSmithExperiment()` in `/langsmith`. New modules added by this plan (chunkers, query strategies, etc.) should NOT go in these sub-paths — they belong in the main barrel or under `pipeline/`. The `/llm` sub-path's `createEmbedder()` will need updating when we add provider-aware embedder creation (backend follow-up). |
+| 13 | **Backend uses `lib/vectorSearch.ts` shared helper** | — | The embed → vectorSearch → post-filter → topK pattern is in `convex/lib/vectorSearch.ts`, shared by `retrieval/retrieverActions.ts` and `experiments/actions.ts`. When the backend eventually supports full `PipelineRetriever`, this helper may be replaced. |
 
 ### No Breaking Changes to eval-lib Public API
 
@@ -261,9 +343,10 @@ These were evaluated during research (see `retriever-architecture-exploration.md
 
 These are tracked for awareness but explicitly out of scope:
 
-- **Backend provider factory**: Update `retrieverActions.ts` to instantiate the correct embedder/reranker based on `PipelineConfig` fields.
-- **Backend index strategy support**: Update `startIndexing` to handle non-plain index strategies.
-- **Backend full pipeline retrieval**: Update `retrieve` action to run the full `PipelineRetriever` pipeline.
+- **Backend provider factory**: Update `retrieval/retrieverActions.ts` and `rag-evaluation-system/llm` to instantiate the correct embedder/reranker based on `PipelineConfig` fields (currently hardcoded to OpenAI via `createEmbedder(model)`).
+- **Backend index strategy support**: Update `retrieval/retrieverActions.ts` (line 104-112, currently hardcodes `strategy: "plain"`) and `retrieval/indexingActions.ts` (currently hardcodes `RecursiveCharacterChunker`) to handle non-plain index strategies (contextual, summary, parent-child).
+- **Backend full pipeline retrieval**: Update `retrieval/retrieverActions.ts` `retrieve` action and `experiments/actions.ts` `runEvaluation` to use the full `PipelineRetriever` instead of simple embed → vectorSearch via `lib/vectorSearch.ts`.
+- **Backend experiment evaluation**: Update `experiments/actions.ts` `runEvaluation` which creates a `CallbackRetriever` backed by `vectorSearchWithFilter` — should eventually use a full `PipelineRetriever` to test query/refinement stages.
 - **Frontend type sync**: Update `pipeline-types.ts` to mirror new eval-lib config types.
 - **Frontend UI for new strategies**: Add dropdowns for embedding model provider, query strategy, etc.
 - **Cost/latency tracking**: Add per-stage timing and token-cost tracking to `PipelineRetriever` for experiment analytics. Not required for correctness — pure observability concern.
@@ -469,8 +552,16 @@ export class VoyageReranker implements Reranker {
 
 ### 1g. Package.json Changes
 
+Current state after PR #27:
+
 ```json
 {
+  "dependencies": {
+    "langsmith": "^0.3.0",
+    "@langchain/core": "^0.3.0",
+    "minisearch": "^7.2.0",
+    "zod": "^3.23"
+  },
   "optionalDependencies": {
     "cohere-ai": ">=7.0",
     "openai": ">=4.0"
@@ -478,20 +569,37 @@ export class VoyageReranker implements Reranker {
 }
 ```
 
-**No new npm dependencies.** Voyage and Jina use plain `fetch` (Node 18+ built-in). Cohere embedder reuses the existing `cohere-ai` optional dependency.
+**No new npm dependencies needed for Slice 1.** Voyage and Jina use plain `fetch` (Node 18+ built-in). Cohere embedder reuses the existing `cohere-ai` optional dependency. The `langsmith` and `@langchain/core` dependencies were already added in PR #27.
 
 ### 1h. tsup Entry Points
 
 Add new entry points for each provider that has an optional dependency, following the existing `embedders/openai` and `rerankers/cohere` pattern:
 
 ```typescript
-// tsup.config.ts — add to entry array:
+// tsup.config.ts — add to the existing entry array (which already has 8 entry points):
+// Existing: src/index.ts, src/embedders/openai.ts, src/rerankers/cohere.ts,
+//           src/pipeline/internals.ts, src/utils/index.ts,
+//           src/langsmith/index.ts, src/llm/index.ts, src/shared/index.ts
+//
+// Add:
 "src/embedders/cohere.ts",                   // uses cohere-ai (already optional dep)
 "src/embedders/voyage.ts",                   // uses plain fetch (no optional dep needed)
 "src/embedders/jina.ts",                     // uses plain fetch (no optional dep needed)
 "src/rerankers/jina.ts",                     // uses plain fetch
 "src/rerankers/voyage.ts",                   // uses plain fetch
 "src/retrievers/pipeline/llm-openai.ts",     // Slice 3 — uses openai (already optional dep)
+```
+
+Also add these to the `external` array in tsup.config.ts if not already present (Voyage and Jina use plain `fetch`, so no additions needed for those):
+
+```typescript
+external: [
+  "openai",          // already present
+  "langsmith",       // already present
+  "langsmith/evaluation", // already present
+  "@langchain/core", // already present
+  "cohere-ai",       // already present
+],
 ```
 
 And corresponding package.json exports:
@@ -1866,15 +1974,15 @@ packages/eval-lib/src/
 └── index.ts                              # Root barrel exports (Slice 1-6)
 
 packages/eval-lib/
-├── package.json                          # New dependencies (Slice 2)
-└── tsup.config.ts                        # New entry points (Slice 1)
+├── package.json                          # New dependencies (Slice 2); langsmith, @langchain/core already added in PR #27
+└── tsup.config.ts                        # New entry points (Slice 1); 8 entry points already exist from PR #27
 ```
 
 ---
 
 ## Testing Strategy
 
-**Approach**: Unit tests with mocks only. No real API calls in tests. Follow existing patterns from the 24 test files already in the repo.
+**Approach**: Unit tests with mocks only. No real API calls in tests. Follow existing patterns from the existing test files in the repo (including tests added for the `shared/`, `llm/`, and `langsmith/` modules in PR #27).
 
 ### Provider Tests (Embedders + Rerankers)
 
@@ -2029,7 +2137,7 @@ describe("AsyncPositionAwareChunker type guard", () => {
 
 After each slice:
 1. `pnpm -C packages/eval-lib build` — TypeScript compiles
-2. `pnpm -C packages/eval-lib test` — all tests pass (existing 24 files + new)
+2. `pnpm -C packages/eval-lib test` — all tests pass (existing 27 files / 225 tests + new)
 3. `pnpm typecheck` — no type errors across workspace
 
 ---
