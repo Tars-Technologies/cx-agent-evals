@@ -20,6 +20,26 @@
       "import": "./dist/rerankers/cohere.js",
       "types": "./dist/rerankers/cohere.d.ts"
     },
+    "./embedders/cohere": {
+      "types": "./dist/embedders/cohere.d.ts",
+      "import": "./dist/embedders/cohere.js"
+    },
+    "./embedders/voyage": {
+      "types": "./dist/embedders/voyage.d.ts",
+      "import": "./dist/embedders/voyage.js"
+    },
+    "./embedders/jina": {
+      "types": "./dist/embedders/jina.d.ts",
+      "import": "./dist/embedders/jina.js"
+    },
+    "./rerankers/jina": {
+      "types": "./dist/rerankers/jina.d.ts",
+      "import": "./dist/rerankers/jina.js"
+    },
+    "./rerankers/voyage": {
+      "types": "./dist/rerankers/voyage.d.ts",
+      "import": "./dist/rerankers/voyage.js"
+    },
     "./pipeline/internals": {
       "types": "./dist/pipeline/internals.d.ts",
       "import": "./dist/pipeline/internals.js"
