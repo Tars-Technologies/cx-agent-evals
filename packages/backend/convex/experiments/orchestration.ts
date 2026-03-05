@@ -69,6 +69,7 @@ export const start = mutation({
 
     const experimentId = await ctx.db.insert("experiments", {
       orgId,
+      kbId: dataset.kbId,
       datasetId: args.datasetId,
       name: args.name,
       retrieverId: args.retrieverId,
@@ -269,6 +270,24 @@ export const byDataset = query({
     return await ctx.db
       .query("experiments")
       .withIndex("by_dataset", (q) => q.eq("datasetId", args.datasetId))
+      .order("desc")
+      .collect();
+  },
+});
+
+export const byKb = query({
+  args: { kbId: v.id("knowledgeBases") },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+
+    const kb = await ctx.db.get(args.kbId);
+    if (!kb || kb.orgId !== orgId) {
+      throw new Error("Knowledge base not found");
+    }
+
+    return await ctx.db
+      .query("experiments")
+      .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
       .order("desc")
       .collect();
   },
