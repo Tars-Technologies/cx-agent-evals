@@ -25,7 +25,8 @@ export function FileUploader({ kbId }: FileUploaderProps) {
     let failed = 0;
 
     for (const file of Array.from(files)) {
-      if (!file.name.endsWith(".md") && !file.name.endsWith(".txt")) {
+      const validExts = [".md", ".txt", ".html", ".htm", ".pdf"];
+      if (!validExts.some((ext) => file.name.toLowerCase().endsWith(ext))) {
         failed++;
         continue;
       }
@@ -105,7 +106,7 @@ export function FileUploader({ kbId }: FileUploaderProps) {
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".md,.txt"
+          accept=".md,.txt,.html,.htm,.pdf"
           onChange={(e) => handleFiles(e.target.files)}
           className="hidden"
         />
@@ -117,7 +118,7 @@ export function FileUploader({ kbId }: FileUploaderProps) {
           </div>
         ) : (
           <div className="text-text-dim text-xs">
-            <p>Drop .md files here or click to browse</p>
+            <p>Drop .md, .html, or .pdf files here or click to browse</p>
           </div>
         )}
       </div>
