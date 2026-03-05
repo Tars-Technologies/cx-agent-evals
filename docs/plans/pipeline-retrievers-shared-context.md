@@ -109,8 +109,8 @@ export function computeRetrieverConfigHash(config: PipelineConfig, k: number): s
 ```json
 {
   "dependencies": {
-    "@langchain/core": ">=0.1.0",
-    "langsmith": ">=0.1.0",
+    "@langchain/core": "^1.1.0",
+    "langsmith": "^0.5.0",
     "minisearch": "^7.2.0",
     "zod": "^3.23"
   },

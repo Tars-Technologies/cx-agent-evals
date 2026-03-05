@@ -185,7 +185,7 @@ rag-evaluation-system/
     "zod": "^3.23"
   },
   "peerDependencies": {
-    "langsmith": ">=0.1.0"
+    "langsmith": "^0.5.0"
   },
   "peerDependenciesMeta": {
     "langsmith": { "optional": true }
@@ -203,7 +203,7 @@ rag-evaluation-system/
     "eslint": "^9.0",
     "typescript-eslint": "^8.0",
     "prettier": "^3.2",
-    "langsmith": ">=0.1.0"
+    "langsmith": "^0.5.0"
   }
 }
 ```

@@ -6,6 +6,20 @@
 
 This slice adds no new pipeline stages — just new providers that plug into the existing interfaces. Highest ROI starting point.
 
+---
+
+## Design decisions (Slice 1–specific)
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| S1-1 | Constructor visibility | **Public** (like `OpenAIEmbedder`) | Enables direct mock-client injection in unit tests. Private constructors (like `CohereReranker`) prevent this and the existing `CohereReranker` has zero unit tests as a result. |
+| S1-2 | Constructor signature | Options object `{ client, model? }` | Matches `OpenAIEmbedder`. More ergonomic than positional args, self-documenting, forward-compatible with new options. |
+| S1-3 | Barrel exports for new providers | **Sub-path only** (like `CohereReranker`) — NOT added to barrel `index.ts` or root `index.ts` | Follows the more recent convention. Keeps the root barrel lean; users opt-in to providers via sub-path imports (`rag-evaluation-system/embedders/cohere`). The existing `OpenAIEmbedder` root-barrel export is a legacy exception. |
+| S1-4 | Fetch-based provider testability | Local client interface (same pattern as `OpenAIEmbeddingsClient` / `CohereRerankClient`) | Abstract the HTTP call behind a typed interface. Production `create()` builds a fetch-based implementation; tests inject a mock object. No need for global fetch mocking. |
+| S1-5 | Cohere reranker default model | **Keep `"rerank-english-v3.0"`** | This is a library — changing the default is a silent behavior change for all consumers. Document `"rerank-v3.5"` as available; let consumers opt in explicitly. |
+
+---
+
 ### 1a. Cohere Embedder
 
 **File**: `packages/eval-lib/src/embedders/cohere.ts`
@@ -13,10 +27,9 @@ This slice adds no new pipeline stages — just new providers that plug into the
 ```typescript
 // Implements: Embedder interface (from embedder.interface.ts)
 // Package: cohere-ai (already in optionalDependencies)
-// Pattern: follows CohereReranker — private constructor + static async create() factory
-//   (Note: OpenAIEmbedder uses a PUBLIC constructor + static create(); new embedders
-//    use private constructor to force async factory usage for API key / SDK init)
+// Pattern: follows OpenAIEmbedder — public constructor + static async create() factory
 
+// Local client interface for testability (structural typing, not importing SDK types)
 interface CohereEmbedClient {
   embed(opts: {
     model: string;
@@ -28,21 +41,34 @@ interface CohereEmbedClient {
   }>;
 }
 
+// Dimension lookup (same pattern as OpenAIEmbedder's knownDims)
+const knownDims: Record<string, number> = {
+  "embed-english-v3.0": 1024,
+  "embed-multilingual-v3.0": 1024,
+};
+// Fallback: 1024
+
 export class CohereEmbedder implements Embedder {
   readonly name: string;     // "Cohere(embed-english-v3.0)"
-  readonly dimension: number; // 1024
+  readonly dimension: number; // knownDims[model] ?? 1024
 
-  private constructor(client: CohereEmbedClient, model: string);
+  // PUBLIC constructor — enables direct mock injection in tests
+  constructor(options: { client: CohereEmbedClient; model?: string });
 
+  // Factory for production use — dynamically imports cohere-ai SDK
   static async create(options?: {
-    model?: string;  // "embed-english-v3.0" | "embed-multilingual-v3.0"
-    apiKey?: string;
+    model?: string;  // default: "embed-english-v3.0"
+    apiKey?: string; // read by CohereClient from COHERE_API_KEY if omitted
   }): Promise<CohereEmbedder>;
+  // create() does: const { CohereClient } = await import("cohere-ai");
+  //                const client = new CohereClient({ token: options?.apiKey });
+  //                return new CohereEmbedder({ client, model: options?.model });
 
-  // Key implementation details:
-  // embed()      → inputType: "search_document"
-  // embedQuery() → inputType: "search_query"
-  // Always pass embeddingTypes: ["float"] to get numeric arrays (Cohere also supports int8/ubinary)
+  // Implementation details:
+  // embed(texts)      → client.embed({ model, texts: [...texts], inputType: "search_document", embeddingTypes: ["float"] })
+  //                   → return response.embeddings.float
+  // embedQuery(query) → same as embed([query]) but with inputType: "search_query"
+  //                   → return result[0]
 }
 ```
 
@@ -59,24 +85,47 @@ export class CohereEmbedder implements Embedder {
 ```typescript
 // Implements: Embedder interface
 // Package: plain fetch to https://api.voyageai.com/v1/embeddings
-// Pattern: private constructor + static async create() factory (same as CohereReranker)
+// Pattern: public constructor + static async create() factory
+
+// Local client interface — abstracts fetch for testability
+interface VoyageEmbedClient {
+  embed(opts: {
+    model: string;
+    input: string[];
+    input_type: string;
+  }): Promise<{
+    data: Array<{ embedding: number[]; index: number }>;
+  }>;
+}
+
+const knownDims: Record<string, number> = {
+  "voyage-3.5": 1024,
+  "voyage-3.5-lite": 512,
+  "voyage-3": 1024,
+  "voyage-code-3": 1024,
+};
+// Fallback: 1024
 
 export class VoyageEmbedder implements Embedder {
   readonly name: string;     // "Voyage(voyage-3.5)"
-  readonly dimension: number; // 1024 (varies by model)
+  readonly dimension: number; // knownDims[model] ?? 1024
+
+  constructor(options: { client: VoyageEmbedClient; model?: string });
 
   static async create(options?: {
-    model?: string;  // "voyage-3.5" | "voyage-3.5-lite" | "voyage-3" | "voyage-code-3"
+    model?: string;  // default: "voyage-3.5"
     apiKey?: string; // defaults to process.env.VOYAGE_API_KEY
   }): Promise<VoyageEmbedder>;
+  // create() builds a VoyageEmbedClient that calls fetch("https://api.voyageai.com/v1/embeddings", ...)
+  // with Authorization: Bearer ${apiKey} header
 
-  // Key implementation detail:
-  // embed()      → input_type: "document"
-  // embedQuery() → input_type: "query"
+  // Implementation details:
+  // embed(texts)      → client.embed({ model, input: [...texts], input_type: "document" })
+  //                   → return response.data.map(d => d.embedding)
+  // embedQuery(query) → client.embed({ model, input: [query], input_type: "query" })
+  //                   → return response.data[0].embedding
 }
 ```
-
-Uses plain `fetch` — no additional npm dependency required. The Voyage API is OpenAI-compatible with an added `input_type` field.
 
 **Models**:
 | Model | Dims | Max Tokens | Notes |
@@ -93,40 +142,63 @@ Uses plain `fetch` — no additional npm dependency required. The Voyage API is 
 ```typescript
 // Implements: Embedder interface
 // Package: plain fetch to https://api.jina.ai/v1/embeddings
-// Pattern: private constructor + static async create() factory (same as CohereReranker)
+// Pattern: public constructor + static async create() factory
+
+// Local client interface — abstracts fetch for testability
+interface JinaEmbedClient {
+  embed(opts: {
+    model: string;
+    input: string[];
+    task: string;
+    dimensions?: number;
+  }): Promise<{
+    data: Array<{ embedding: number[]; index: number }>;
+  }>;
+}
 
 export class JinaEmbedder implements Embedder {
   readonly name: string;     // "Jina(jina-embeddings-v3)"
-  readonly dimension: number; // 1024
+  readonly dimension: number; // from options.dimensions ?? 1024
+
+  constructor(options: { client: JinaEmbedClient; model?: string; dimensions?: number });
 
   static async create(options?: {
-    model?: string;     // "jina-embeddings-v3"
+    model?: string;     // default: "jina-embeddings-v3"
     apiKey?: string;    // defaults to process.env.JINA_API_KEY
     dimensions?: number; // Matryoshka: 32-1024, default 1024
   }): Promise<JinaEmbedder>;
+  // create() builds a JinaEmbedClient that calls fetch("https://api.jina.ai/v1/embeddings", ...)
+  // with Authorization: Bearer ${apiKey} header
 
-  // Key implementation detail:
-  // embed()      → task: "retrieval.passage"
-  // embedQuery() → task: "retrieval.query"
+  // Implementation details:
+  // embed(texts)      → client.embed({ model, input: [...texts], task: "retrieval.passage", dimensions })
+  //                   → return response.data.map(d => d.embedding)
+  // embedQuery(query) → client.embed({ model, input: [query], task: "retrieval.query", dimensions })
+  //                   → return response.data[0].embedding
 }
 ```
 
-Uses plain `fetch` — no additional npm dependency required.
+**Note**: Jina's `dimension` is set at construction time via `options.dimensions` (Matryoshka embedding), not from a lookup table. Default 1024.
 
-### 1d. Update Cohere Reranker
+### 1d. Update Cohere Reranker — Documentation Only
 
 **File**: `packages/eval-lib/src/rerankers/cohere.ts` (modify existing)
 
-The current `CohereReranker.create()` accepts `{ model?: string }` and defaults to `"rerank-english-v3.0"`. Change the default to `"rerank-v3.5"` (latest) and document the supported models.
+**Keep the default model as `"rerank-english-v3.0"`** (see decision S1-5). Add a JSDoc comment documenting available models:
 
 ```typescript
-// CHANGE: Default model from "rerank-english-v3.0" to "rerank-v3.5"
+/**
+ * @param options.model - Cohere reranker model. Available models:
+ *   - "rerank-english-v3.0" (default) — English-only, proven stable
+ *   - "rerank-v3.5" — Latest multilingual model
+ *   - "rerank-english-v2.0" — Legacy
+ */
 static async create(options?: {
-  model?: string;  // "rerank-v3.5" (NEW default) | "rerank-english-v3.0" (old default)
+  model?: string;  // default: "rerank-english-v3.0" (unchanged)
 }): Promise<CohereReranker>;
 ```
 
-**Note**: This is a minor behavior change. If backward compatibility is critical, keep `"rerank-english-v3.0"` as default and just add documentation for the newer model. The factory already accepts any model string.
+This is the only change to this file — a documentation addition, no behavior change.
 
 ### 1e. Jina Reranker
 
@@ -135,20 +207,35 @@ static async create(options?: {
 ```typescript
 // Implements: Reranker interface (from reranker.interface.ts)
 // Package: plain fetch to https://api.jina.ai/v1/rerank
-// Pattern: follows CohereReranker — private constructor + static async create() factory
+// Pattern: public constructor + static async create() factory
+
+// Local client interface — abstracts fetch for testability
+interface JinaRerankClient {
+  rerank(opts: {
+    model: string;
+    query: string;
+    documents: string[];
+    top_n: number;
+  }): Promise<{
+    results: Array<{ index: number; relevance_score: number }>;
+  }>;
+}
 
 export class JinaReranker implements Reranker {
   readonly name: string; // "Jina(jina-reranker-v2-base-multilingual)"
 
+  constructor(options: { client: JinaRerankClient; model?: string });
+
   static async create(options?: {
-    model?: string;  // "jina-reranker-v2-base-multilingual"
+    model?: string;  // default: "jina-reranker-v2-base-multilingual"
     apiKey?: string; // defaults to process.env.JINA_API_KEY
   }): Promise<JinaReranker>;
 
-  // API: POST https://api.jina.ai/v1/rerank
-  // Request: { model, query, documents: string[], top_n }
-  // Response: { results: [{ index, relevance_score }] }
-  // Map response indices back to PositionAwareChunk[]
+  // rerank() implementation — must match CohereReranker pattern:
+  // 1. Early return [] when chunks.length === 0
+  // 2. client.rerank({ model, query, documents: chunks.map(c => c.content), top_n: topK ?? chunks.length })
+  // 3. return response.results.map(r => chunks[r.index])
+  //    (maps indices back to original PositionAwareChunk objects — preserves id, docId, start, end, metadata)
 }
 ```
 
@@ -159,25 +246,50 @@ export class JinaReranker implements Reranker {
 ```typescript
 // Implements: Reranker interface
 // Package: plain fetch to https://api.voyageai.com/v1/rerank
-// Pattern: follows CohereReranker — private constructor + static async create() factory
+// Pattern: public constructor + static async create() factory
+
+// Local client interface — abstracts fetch for testability
+interface VoyageRerankClient {
+  rerank(opts: {
+    model: string;
+    query: string;
+    documents: string[];
+    top_k: number;
+  }): Promise<{
+    data: Array<{ index: number; relevance_score: number }>;
+  }>;
+}
 
 export class VoyageReranker implements Reranker {
   readonly name: string; // "Voyage(rerank-2.5)"
 
+  constructor(options: { client: VoyageRerankClient; model?: string });
+
   static async create(options?: {
-    model?: string;  // "rerank-2.5" | "rerank-2"
+    model?: string;  // default: "rerank-2.5"
     apiKey?: string; // defaults to process.env.VOYAGE_API_KEY
   }): Promise<VoyageReranker>;
 
-  // API: POST https://api.voyageai.com/v1/rerank
-  // Request: { model, query, documents: string[], top_k }
-  // Response: { data: [{ index, relevance_score }] }
+  // rerank() implementation — must match CohereReranker pattern:
+  // 1. Early return [] when chunks.length === 0
+  // 2. client.rerank({ model, query, documents: chunks.map(c => c.content), top_k: topK ?? chunks.length })
+  // 3. return response.data.map(r => chunks[r.index])
+  //    NOTE: Voyage uses "data" array (not "results" like Cohere/Jina)
+  //    NOTE: Voyage uses "top_k" param (not "topN" like Cohere or "top_n" like Jina)
 }
 ```
 
+**API differences between reranker providers** (critical for correct implementation):
+
+| Provider | topK param name | Response array key | Score field |
+|----------|----------------|-------------------|-------------|
+| Cohere (SDK) | `topN` (camelCase) | `results` | `relevanceScore` (camelCase) |
+| Jina (REST) | `top_n` | `results` | `relevance_score` (snake_case) |
+| Voyage (REST) | `top_k` | `data` | `relevance_score` (snake_case) |
+
 ### 1g. Package.json Changes
 
-Current state after PR #27:
+Current actual state of `packages/eval-lib/package.json`:
 
 ```json
 {
@@ -194,11 +306,11 @@ Current state after PR #27:
 }
 ```
 
-**No new npm dependencies needed for Slice 1.** Voyage and Jina use plain `fetch` (Node 18+ built-in). Cohere embedder reuses the existing `cohere-ai` optional dependency. The `langsmith` and `@langchain/core` dependencies were already added in PR #27.
+**No new npm dependencies needed for Slice 1.** Voyage and Jina use plain `fetch` (Node 18+ built-in). Cohere embedder reuses the existing `cohere-ai` optional dependency.
 
 ### 1h. tsup Entry Points
 
-Add new entry points for each provider that has an optional dependency, following the existing `embedders/openai` and `rerankers/cohere` pattern:
+Add new entry points for each provider, following the existing `embedders/openai` and `rerankers/cohere` pattern:
 
 ```typescript
 // tsup.config.ts — add to the existing entry array (which already has 8 entry points):
@@ -206,111 +318,214 @@ Add new entry points for each provider that has an optional dependency, followin
 //           src/pipeline/internals.ts, src/utils/index.ts,
 //           src/langsmith/index.ts, src/llm/index.ts, src/shared/index.ts
 //
-// Add:
-"src/embedders/cohere.ts",                   // uses cohere-ai (already optional dep)
-"src/embedders/voyage.ts",                   // uses plain fetch (no optional dep needed)
-"src/embedders/jina.ts",                     // uses plain fetch (no optional dep needed)
-"src/rerankers/jina.ts",                     // uses plain fetch
-"src/rerankers/voyage.ts",                   // uses plain fetch
-"src/retrievers/pipeline/llm-openai.ts",     // Slice 3 — uses openai (already optional dep)
+// Add (5 new entries):
+"src/embedders/cohere.ts",
+"src/embedders/voyage.ts",
+"src/embedders/jina.ts",
+"src/rerankers/jina.ts",
+"src/rerankers/voyage.ts",
 ```
 
-Also add these to the `external` array in tsup.config.ts if not already present:
+The `external` array needs **no changes** — all 5 existing entries are sufficient. Cohere embedder uses `cohere-ai` (already external). Voyage and Jina use plain `fetch` (no external package).
 
-```typescript
-external: [
-  "openai",          // already present
-  "langsmith",       // already present
-  "langsmith/evaluation", // already present
-  "@langchain/core", // already present
-  "cohere-ai",       // already present
-],
-```
-
-And corresponding package.json exports:
+And corresponding package.json exports (5 new entries):
 
 ```json
 {
   "exports": {
-    "./embedders/cohere": { "import": "...", "types": "..." },
-    "./embedders/voyage": { "import": "...", "types": "..." },
-    "./embedders/jina":   { "import": "...", "types": "..." },
-    "./rerankers/jina":   { "import": "...", "types": "..." },
-    "./rerankers/voyage": { "import": "...", "types": "..." },
-    "./pipeline/llm-openai": { "import": "...", "types": "..." }
+    "./embedders/cohere": {
+      "types": "./dist/embedders/cohere.d.ts",
+      "import": "./dist/embedders/cohere.js"
+    },
+    "./embedders/voyage": {
+      "types": "./dist/embedders/voyage.d.ts",
+      "import": "./dist/embedders/voyage.js"
+    },
+    "./embedders/jina": {
+      "types": "./dist/embedders/jina.d.ts",
+      "import": "./dist/embedders/jina.js"
+    },
+    "./rerankers/jina": {
+      "types": "./dist/rerankers/jina.d.ts",
+      "import": "./dist/rerankers/jina.js"
+    },
+    "./rerankers/voyage": {
+      "types": "./dist/rerankers/voyage.d.ts",
+      "import": "./dist/rerankers/voyage.js"
+    }
   }
 }
 ```
 
-**Design note**: Even though Voyage and Jina use plain `fetch` (no optional deps), separate entry points keep the main bundle lean and maintain the pattern for consistency.
+**Note**: `"types"` before `"import"` — matches the convention used by the majority of existing entries (`./pipeline/internals`, `./utils`, `./langsmith`, `./llm`, `./shared`). The older `./embedders/openai` and `./rerankers/cohere` entries have reversed order but that doesn't affect resolution.
 
-### 1i. Index Exports
+### 1i. Index Exports — No Changes
 
-**File**: `packages/eval-lib/src/embedders/index.ts` — re-export `CohereEmbedder`, `VoyageEmbedder`, `JinaEmbedder`
+Per decision S1-3, new providers are **sub-path only** — they are NOT added to:
+- `src/embedders/index.ts` (stays: `Embedder` type + `OpenAIEmbedder`)
+- `src/rerankers/index.ts` (stays: `Reranker` type only)
+- `src/index.ts` (no new concrete class exports)
 
-**File**: `packages/eval-lib/src/rerankers/index.ts` — re-export `JinaReranker`, `VoyageReranker`
-
-**File**: `packages/eval-lib/src/index.ts` — add to the existing Embedder and Reranker sections:
-
+Consumers import new providers via sub-paths:
 ```typescript
-// Embedder
-export type { Embedder } from "./embedders/index.js";
-export { OpenAIEmbedder, CohereEmbedder, VoyageEmbedder, JinaEmbedder } from "./embedders/index.js";
-
-// Reranker
-export type { Reranker } from "./rerankers/index.js";
-export { JinaReranker, VoyageReranker } from "./rerankers/index.js";
-// CohereReranker remains at "rag-evaluation-system/rerankers/cohere" for backward compat
+import { CohereEmbedder } from "rag-evaluation-system/embedders/cohere";
+import { VoyageEmbedder } from "rag-evaluation-system/embedders/voyage";
+import { JinaEmbedder } from "rag-evaluation-system/embedders/jina";
+import { JinaReranker } from "rag-evaluation-system/rerankers/jina";
+import { VoyageReranker } from "rag-evaluation-system/rerankers/voyage";
 ```
 
 ---
 
 ## Testing (Slice 1)
 
+### Test approach
+
+All new providers use **public constructors** that accept a local client interface. Tests inject mock clients directly — no SDK imports, no fetch mocking, no `vi.mock()`.
+
+This matches the existing `OpenAIEmbedder` test pattern (see `tests/fixtures.ts`), where mock embedders/rerankers are plain objects implementing the interface.
+
+### Embedder test pattern
+
 ```typescript
-// Pattern: mock the SDK client/fetch, verify correct API calls
-// Follow the existing CohereReranker and OpenAIEmbedder test patterns
+// tests/unit/embedders/cohere.test.ts
+import { describe, it, expect, vi } from "vitest";
+import { CohereEmbedder } from "../../../src/embedders/cohere.js";
 
 describe("CohereEmbedder", () => {
-  it("should call embed with inputType search_document for embed()", async () => {
-    const mockClient = {
-      embed: vi.fn().mockResolvedValue({
-        embeddings: { float: [[0.1, 0.2, ...]] },
-      }),
-    };
-    const embedder = new CohereEmbedder(mockClient, "embed-english-v3.0");
+  const mockClient = {
+    embed: vi.fn().mockResolvedValue({
+      embeddings: { float: [[0.1, 0.2, 0.3]] },
+    }),
+  };
+
+  it("should use inputType search_document for embed()", async () => {
+    const embedder = new CohereEmbedder({ client: mockClient, model: "embed-english-v3.0" });
 
     await embedder.embed(["test text"]);
 
     expect(mockClient.embed).toHaveBeenCalledWith(
-      expect.objectContaining({ inputType: "search_document" })
+      expect.objectContaining({
+        inputType: "search_document",
+        embeddingTypes: ["float"],
+        model: "embed-english-v3.0",
+      }),
     );
   });
 
-  it("should call embed with inputType search_query for embedQuery()", async () => {
-    // ... inputType: "search_query"
+  it("should use inputType search_query for embedQuery()", async () => {
+    const embedder = new CohereEmbedder({ client: mockClient });
+
+    await embedder.embedQuery("test query");
+
+    expect(mockClient.embed).toHaveBeenCalledWith(
+      expect.objectContaining({ inputType: "search_query" }),
+    );
+  });
+
+  it("should set name and dimension from model", () => {
+    const embedder = new CohereEmbedder({ client: mockClient, model: "embed-multilingual-v3.0" });
+    expect(embedder.name).toBe("Cohere(embed-multilingual-v3.0)");
+    expect(embedder.dimension).toBe(1024);
   });
 });
 ```
 
-### New Files (Slice 1)
+Voyage and Jina embedder tests follow the same pattern — inject mock client, assert correct API parameters (especially `input_type`/`task` for document vs query).
+
+### Reranker test pattern
+
+```typescript
+// tests/unit/rerankers/jina.test.ts
+import { describe, it, expect, vi } from "vitest";
+import { JinaReranker } from "../../../src/rerankers/jina.js";
+import type { PositionAwareChunk } from "../../../src/types/index.js";
+
+const makeChunk = (id: string, content: string): PositionAwareChunk => ({
+  id: id as any,
+  content,
+  docId: "doc1" as any,
+  start: 0,
+  end: content.length,
+  metadata: {},
+});
+
+describe("JinaReranker", () => {
+  it("should return empty array for empty input", async () => {
+    const mockClient = { rerank: vi.fn() };
+    const reranker = new JinaReranker({ client: mockClient });
+
+    const result = await reranker.rerank("query", []);
+
+    expect(result).toEqual([]);
+    expect(mockClient.rerank).not.toHaveBeenCalled();
+  });
+
+  it("should map response indices back to original chunks", async () => {
+    const chunks = [makeChunk("c1", "first"), makeChunk("c2", "second"), makeChunk("c3", "third")];
+    const mockClient = {
+      rerank: vi.fn().mockResolvedValue({
+        results: [
+          { index: 2, relevance_score: 0.9 },
+          { index: 0, relevance_score: 0.7 },
+        ],
+      }),
+    };
+    const reranker = new JinaReranker({ client: mockClient });
+
+    const result = await reranker.rerank("query", chunks, 2);
+
+    expect(result).toEqual([chunks[2], chunks[0]]);
+    expect(mockClient.rerank).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documents: ["first", "second", "third"],
+        top_n: 2,
+      }),
+    );
+  });
+
+  it("should default topK to chunks.length when omitted", async () => {
+    const chunks = [makeChunk("c1", "first"), makeChunk("c2", "second")];
+    const mockClient = {
+      rerank: vi.fn().mockResolvedValue({
+        results: [{ index: 1, relevance_score: 0.9 }, { index: 0, relevance_score: 0.5 }],
+      }),
+    };
+    const reranker = new JinaReranker({ client: mockClient });
+
+    await reranker.rerank("query", chunks);
+
+    expect(mockClient.rerank).toHaveBeenCalledWith(
+      expect.objectContaining({ top_n: 2 }),
+    );
+  });
+});
+```
+
+Voyage reranker tests follow the same pattern, but assert `top_k` (not `top_n`) and `response.data` (not `response.results`).
+
+---
+
+## File checklist
+
+### New files (5 source + 5 test = 10 files)
 - `src/embedders/cohere.ts`
 - `src/embedders/voyage.ts`
 - `src/embedders/jina.ts`
 - `src/rerankers/jina.ts`
 - `src/rerankers/voyage.ts`
-
-### New Test Files (Slice 1)
 - `tests/unit/embedders/cohere.test.ts`
 - `tests/unit/embedders/voyage.test.ts`
 - `tests/unit/embedders/jina.test.ts`
 - `tests/unit/rerankers/jina.test.ts`
 - `tests/unit/rerankers/voyage.test.ts`
 
-### Modified Files (Slice 1)
-- `src/embedders/index.ts` — re-exports
-- `src/rerankers/cohere.ts` — model default update
-- `src/rerankers/index.ts` — re-exports
-- `src/index.ts` — root barrel
-- `package.json` — dependency versions
-- `tsup.config.ts` — new entry points
+### Modified files (3 files)
+- `src/rerankers/cohere.ts` — JSDoc addition only (no behavior change)
+- `package.json` — 5 new export entries
+- `tsup.config.ts` — 5 new entry points
+
+### NOT modified (per decision S1-3)
+- `src/embedders/index.ts` — unchanged
+- `src/rerankers/index.ts` — unchanged
+- `src/index.ts` — unchanged
