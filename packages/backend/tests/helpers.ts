@@ -24,6 +24,7 @@ export function setupTest() {
   workpoolTest.register(t, "indexingPool");
   workpoolTest.register(t, "generationPool");
   workpoolTest.register(t, "experimentPool");
+  workpoolTest.register(t, "scrapingPool");
   return t;
 }
 

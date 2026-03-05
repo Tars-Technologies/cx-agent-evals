@@ -1,6 +1,9 @@
 {
   "$schema": "./node_modules/convex/schemas/convex.schema.json",
   "node": {
-    "externalPackages": ["langsmith", "@langchain/core", "openai", "minisearch"]
+    "externalPackages": [
+      "langsmith", "@langchain/core", "openai", "minisearch",
+      "@mozilla/readability", "jsdom", "turndown", "unpdf", "got-scraping"
+    ]
   }
 }
