@@ -56,6 +56,27 @@ export const list = query({
   },
 });
 
+export const listByIndustry = query({
+  args: { industry: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+    if (args.industry) {
+      return await ctx.db
+        .query("knowledgeBases")
+        .withIndex("by_org_industry", (q) =>
+          q.eq("orgId", orgId).eq("industry", args.industry!),
+        )
+        .order("desc")
+        .collect();
+    }
+    return await ctx.db
+      .query("knowledgeBases")
+      .withIndex("by_org", (q) => q.eq("orgId", orgId))
+      .order("desc")
+      .collect();
+  },
+});
+
 export const get = query({
   args: { id: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
