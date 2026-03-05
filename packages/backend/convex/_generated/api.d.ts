@@ -31,6 +31,8 @@ import type * as retrieval_chunks from "../retrieval/chunks.js";
 import type * as retrieval_indexing from "../retrieval/indexing.js";
 import type * as retrieval_indexingActions from "../retrieval/indexingActions.js";
 import type * as retrieval_retrieverActions from "../retrieval/retrieverActions.js";
+import type * as scraping_actions from "../scraping/actions.js";
+import type * as scraping_orchestration from "../scraping/orchestration.js";
 
 import type {
   ApiFromModules,
@@ -62,6 +64,8 @@ declare const fullApi: ApiFromModules<{
   "retrieval/indexing": typeof retrieval_indexing;
   "retrieval/indexingActions": typeof retrieval_indexingActions;
   "retrieval/retrieverActions": typeof retrieval_retrieverActions;
+  "scraping/actions": typeof scraping_actions;
+  "scraping/orchestration": typeof scraping_orchestration;
 }>;
 
 /**
@@ -288,6 +292,104 @@ export declare const components: {
     };
   };
   experimentPool: {
+    config: {
+      update: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+          maxParallelism?: number;
+        },
+        any
+      >;
+    };
+    lib: {
+      cancel: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          id: string;
+          logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+        },
+        any
+      >;
+      cancelAll: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          before?: number;
+          limit?: number;
+          logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+        },
+        any
+      >;
+      enqueue: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config: {
+            logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+            maxParallelism?: number;
+          };
+          fnArgs: any;
+          fnHandle: string;
+          fnName: string;
+          fnType: "action" | "mutation" | "query";
+          onComplete?: { context?: any; fnHandle: string };
+          retryBehavior?: {
+            base: number;
+            initialBackoffMs: number;
+            maxAttempts: number;
+          };
+          runAt: number;
+        },
+        string
+      >;
+      enqueueBatch: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config: {
+            logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+            maxParallelism?: number;
+          };
+          items: Array<{
+            fnArgs: any;
+            fnHandle: string;
+            fnName: string;
+            fnType: "action" | "mutation" | "query";
+            onComplete?: { context?: any; fnHandle: string };
+            retryBehavior?: {
+              base: number;
+              initialBackoffMs: number;
+              maxAttempts: number;
+            };
+            runAt: number;
+          }>;
+        },
+        Array<string>
+      >;
+      status: FunctionReference<
+        "query",
+        "internal",
+        { id: string },
+        | { previousAttempts: number; state: "pending" }
+        | { previousAttempts: number; state: "running" }
+        | { state: "finished" }
+      >;
+      statusBatch: FunctionReference<
+        "query",
+        "internal",
+        { ids: Array<string> },
+        Array<
+          | { previousAttempts: number; state: "pending" }
+          | { previousAttempts: number; state: "running" }
+          | { state: "finished" }
+        >
+      >;
+    };
+  };
+  scrapingPool: {
     config: {
       update: FunctionReference<
         "mutation",
