@@ -1,4 +1,4 @@
-import { mutation, query, internalQuery } from "../_generated/server";
+import { mutation, query, internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { getAuthContext } from "../lib/auth";
 
@@ -106,5 +106,34 @@ export const getInternal = internalQuery({
     const doc = await ctx.db.get(args.id);
     if (!doc) throw new Error("Document not found");
     return doc;
+  },
+});
+
+/**
+ * Internal mutation: create a document from scraped content (no file upload).
+ * Used by scraping actions to persist crawled pages.
+ */
+export const createFromScrape = internalMutation({
+  args: {
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    title: v.string(),
+    content: v.string(),
+    sourceUrl: v.optional(v.string()),
+    sourceType: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("documents", {
+      orgId: args.orgId,
+      kbId: args.kbId,
+      docId: args.title,
+      title: args.title,
+      content: args.content,
+      contentLength: args.content.length,
+      metadata: {},
+      sourceUrl: args.sourceUrl,
+      sourceType: args.sourceType,
+      createdAt: Date.now(),
+    });
   },
 });
