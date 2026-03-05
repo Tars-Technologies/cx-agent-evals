@@ -35,7 +35,10 @@ export class CohereEmbedder implements Embedder {
     try {
       const { CohereClient } = await import("cohere-ai");
       const client = new CohereClient({ token: options.apiKey });
-      return new CohereEmbedder({ client, model: options.model });
+      return new CohereEmbedder({
+        client: client as CohereEmbedClient,
+        model: options.model,
+      });
     } catch {
       throw new Error(
         "cohere-ai package required. Install with: pnpm add cohere-ai",

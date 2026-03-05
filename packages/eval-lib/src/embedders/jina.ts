@@ -60,12 +60,15 @@ export class JinaEmbedder implements Embedder {
         });
 
         if (!response.ok) {
+          const body = await response.text();
           throw new Error(
-            `Jina API error: ${response.status} ${response.statusText}`,
+            `Jina API error: ${response.status} ${response.statusText} — ${body}`,
           );
         }
 
-        return response.json();
+        return (await response.json()) as {
+          data: Array<{ embedding: number[]; index: number }>;
+        };
       },
     };
 

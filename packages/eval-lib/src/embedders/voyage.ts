@@ -61,12 +61,15 @@ export class VoyageEmbedder implements Embedder {
         );
 
         if (!response.ok) {
+          const body = await response.text();
           throw new Error(
-            `Voyage API error: ${response.status} ${response.statusText}`,
+            `Voyage API error: ${response.status} ${response.statusText} — ${body}`,
           );
         }
 
-        return response.json();
+        return (await response.json()) as {
+          data: Array<{ embedding: number[]; index: number }>;
+        };
       },
     };
 
