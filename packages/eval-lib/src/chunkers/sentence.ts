@@ -16,6 +16,14 @@ export class SentenceChunker implements Chunker, PositionAwareChunker {
   constructor(options: SentenceChunkerOptions = {}) {
     this._maxChunkSize = options.maxChunkSize ?? 1000;
     this._overlapSentences = options.overlapSentences ?? 0;
+
+    if (this._maxChunkSize <= 0) {
+      throw new Error("maxChunkSize must be positive");
+    }
+    if (this._overlapSentences < 0) {
+      throw new Error("overlapSentences must be non-negative");
+    }
+
     this.name = `Sentence(size=${this._maxChunkSize})`;
   }
 
