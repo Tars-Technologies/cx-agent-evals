@@ -34,8 +34,8 @@ export {
 } from "./types/index.js";
 
 // Chunkers
-export type { Chunker, PositionAwareChunker, RecursiveCharacterChunkerOptions } from "./chunkers/index.js";
-export { isPositionAwareChunker, RecursiveCharacterChunker } from "./chunkers/index.js";
+export type { Chunker, PositionAwareChunker, RecursiveCharacterChunkerOptions, SentenceChunkerOptions, TokenChunkerOptions, MarkdownChunkerOptions } from "./chunkers/index.js";
+export { isPositionAwareChunker, RecursiveCharacterChunker, SentenceChunker, TokenChunker, MarkdownChunker } from "./chunkers/index.js";
 
 // Embedder
 export type { Embedder } from "./embedders/index.js";
