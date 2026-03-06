@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/lib/convex";
 import { Id } from "@convex/_generated/dataModel";
 import { Header } from "@/components/Header";
+import { useKbFromUrl } from "@/lib/useKbFromUrl";
 import { KBSelector } from "@/components/KBSelector";
 import { PipelineConfigModal } from "@/components/PipelineConfigModal";
 import {
@@ -81,8 +82,16 @@ function RetrieverCardWithProgress({
 // ---------------------------------------------------------------------------
 
 export default function RetrieversPage() {
+  return (
+    <Suspense fallback={<div className="flex flex-col h-screen"><Header mode="retrievers" /></div>}>
+      <RetrieversPageContent />
+    </Suspense>
+  );
+}
+
+function RetrieversPageContent() {
   // --- KB selection ---
-  const [selectedKbId, setSelectedKbId] = useState<Id<"knowledgeBases"> | null>(null);
+  const [selectedKbId, setSelectedKbId] = useKbFromUrl();
 
   // --- Pipeline config state ---
   const [pipelineConfig, setPipelineConfig] = useState<PipelineConfig | null>(null);
@@ -275,7 +284,7 @@ export default function RetrieversPage() {
 
   return (
     <div className="flex flex-col h-screen">
-      <Header mode="retrievers" />
+      <Header mode="retrievers" kbId={selectedKbId} />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Configuration Panel */}
