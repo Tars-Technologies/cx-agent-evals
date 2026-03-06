@@ -208,7 +208,7 @@ function KBPageContent() {
       {/* ── Master-Detail Split ── */}
       <div className="flex flex-1 overflow-hidden">
         {/* Document Panel (left, ~30%) */}
-        <div className="w-[420px] border-r border-border flex flex-col bg-bg-elevated">
+        <div className="w-[360px] border-r border-border flex flex-col bg-bg-elevated">
           {selectedKbId ? (
             <>
               {/* Search */}

@@ -288,7 +288,7 @@ function RetrieversPageContent() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Configuration Panel */}
-        <div className="w-[420px] flex-shrink-0 border-r border-border bg-bg-elevated overflow-y-auto">
+        <div className="w-[360px] flex-shrink-0 border-r border-border bg-bg-elevated overflow-y-auto">
           <div className="p-4 space-y-4">
             {/* KB Selector */}
             <div className="border border-border rounded-lg bg-bg">
