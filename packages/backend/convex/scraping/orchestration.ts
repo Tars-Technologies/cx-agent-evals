@@ -53,7 +53,17 @@ export const startCrawl = mutation({
       .unique();
     if (!user) throw new Error("User not found");
 
-    const config = args.config ?? {};
+    const userConfig = args.config ?? {};
+    const config = {
+      maxDepth: userConfig.maxDepth ?? 3,
+      maxPages: userConfig.maxPages ?? 100,
+      includePaths: userConfig.includePaths,
+      excludePaths: userConfig.excludePaths,
+      allowSubdomains: userConfig.allowSubdomains ?? false,
+      onlyMainContent: userConfig.onlyMainContent ?? true,
+      delay: userConfig.delay ?? 0,
+      concurrency: userConfig.concurrency ?? 3,
+    };
 
     // Create crawl job
     const jobId = await ctx.db.insert("crawlJobs", {
@@ -340,9 +350,23 @@ export const onBatchComplete = internalMutation({
         },
       );
     } else {
-      // Done — mark completed
+      // Done — determine final status based on stats
+      const { scraped, failed } = job.stats;
+      let finalStatus: "completed" | "completed_with_errors" | "failed";
+      let error: string | undefined;
+
+      if (scraped === 0 && failed > 0) {
+        finalStatus = "failed";
+        error = `All ${failed} URL(s) failed to scrape`;
+      } else if (failed > 0) {
+        finalStatus = "completed_with_errors";
+      } else {
+        finalStatus = "completed";
+      }
+
       await ctx.db.patch(context.jobId, {
-        status: "completed",
+        status: finalStatus,
+        ...(error && { error }),
         completedAt: Date.now(),
       });
     }

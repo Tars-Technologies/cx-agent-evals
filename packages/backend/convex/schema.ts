@@ -292,6 +292,7 @@ export default defineSchema({
       v.literal("pending"),
       v.literal("running"),
       v.literal("completed"),
+      v.literal("completed_with_errors"),
       v.literal("failed"),
       v.literal("cancelled"),
     ),

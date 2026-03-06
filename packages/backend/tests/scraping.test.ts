@@ -484,6 +484,44 @@ describe("scraping: onBatchComplete", () => {
     expect(job!.completedAt).toBeDefined();
   });
 
+  it("marks job failed when all URLs failed and none scraped", async () => {
+    const userId = await seedUser(t);
+    const kbId = await seedKB(t, userId);
+    const jobId = await seedCrawlJob(t, userId, kbId, {
+      stats: { discovered: 3, scraped: 0, failed: 3, skipped: 0 },
+    });
+
+    await t.mutation(internal.scraping.orchestration.onBatchComplete, {
+      workId: "test-work-id",
+      context: { jobId },
+      result: { kind: "success", returnValue: {} },
+    });
+
+    const job = await t.run(async (ctx) => ctx.db.get(jobId));
+    expect(job!.status).toBe("failed");
+    expect(job!.error).toBe("All 3 URL(s) failed to scrape");
+    expect(job!.completedAt).toBeDefined();
+  });
+
+  it("marks job completed_with_errors when some URLs failed", async () => {
+    const userId = await seedUser(t);
+    const kbId = await seedKB(t, userId);
+    const jobId = await seedCrawlJob(t, userId, kbId, {
+      stats: { discovered: 5, scraped: 3, failed: 2, skipped: 0 },
+    });
+
+    await t.mutation(internal.scraping.orchestration.onBatchComplete, {
+      workId: "test-work-id",
+      context: { jobId },
+      result: { kind: "success", returnValue: {} },
+    });
+
+    const job = await t.run(async (ctx) => ctx.db.get(jobId));
+    expect(job!.status).toBe("completed_with_errors");
+    expect(job!.error).toBeUndefined();
+    expect(job!.completedAt).toBeDefined();
+  });
+
   it("sets completedAt when job is cancelled", async () => {
     const userId = await seedUser(t);
     const kbId = await seedKB(t, userId);

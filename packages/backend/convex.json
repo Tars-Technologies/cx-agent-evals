@@ -3,7 +3,7 @@
   "node": {
     "externalPackages": [
       "langsmith", "@langchain/core", "openai", "minisearch",
-      "@mozilla/readability", "jsdom", "turndown", "unpdf"
+      "@mozilla/readability", "linkedom", "turndown", "unpdf"
     ]
   }
 }

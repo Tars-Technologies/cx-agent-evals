@@ -13,17 +13,24 @@ export async function htmlToMarkdown(
   html: string,
   options?: HtmlToMarkdownOptions,
 ): Promise<HtmlToMarkdownResult> {
-  // Dynamic imports — jsdom loads filesystem resources (default-stylesheet.css)
-  // at module init time, which breaks in serverless environments like Convex.
-  const { JSDOM } = await import("jsdom");
-  const { Readability } = await import("@mozilla/readability");
-  const TurndownService = (await import("turndown")).default;
+  // Dynamic imports — deferred so module-level init doesn't run during
+  // Convex's push analysis phase.  All three deps are CJS, so .default may
+  // or may not exist depending on the runtime's CJS/ESM interop behavior.
+  const linkedomMod = await import("linkedom");
+  const parseHTML: (html: string) => { document: any } =
+    (linkedomMod as any).parseHTML ?? (linkedomMod as any).default?.parseHTML;
+
+  const readabilityMod = await import("@mozilla/readability");
+  const Readability: new (doc: any) => { parse(): { content: string; title: string } | null } =
+    (readabilityMod as any).Readability ??
+    (readabilityMod as any).default?.Readability;
+
+  const turndownMod = await import("turndown");
+  const TurndownService = (turndownMod as any).default ?? turndownMod;
 
   const onlyMainContent = options?.onlyMainContent ?? true;
   const baseUrl = options?.baseUrl;
-  const dom = new JSDOM(html, { url: baseUrl || "https://placeholder.local" });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const doc = dom.window.document as any;
+  const { document: doc } = parseHTML(html) as { document: any };
 
   const links = extractLinks(doc, baseUrl);
   let title: string = doc.querySelector("title")?.textContent?.trim() || "";

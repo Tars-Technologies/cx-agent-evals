@@ -255,6 +255,11 @@ export function KBSelector({ selectedKbId, onSelect }: KBSelectorProps) {
                     Completed: {crawlJob.stats.scraped} pages scraped
                   </span>
                 )}
+                {crawlJob.status === "completed_with_errors" && (
+                  <span className="text-yellow-400">
+                    Completed with errors: {crawlJob.stats.scraped} scraped, {crawlJob.stats.failed} failed
+                  </span>
+                )}
                 {crawlJob.status === "failed" && (
                   <span className="text-red-400">
                     Failed: {crawlJob.error || "Unknown error"}

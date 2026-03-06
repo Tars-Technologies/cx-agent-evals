@@ -27,7 +27,7 @@ export default defineConfig({
     "@langchain/core",
     "cohere-ai",
     "@mozilla/readability",
-    "jsdom",
+    "linkedom",
     "turndown",
     "unpdf",
   ],
