@@ -1,5 +1,5 @@
 import { expect, describe, it, beforeEach } from "vitest";
-import { setupTest, seedUser, testIdentity, TEST_ORG_ID } from "./helpers";
+import { setupTest, seedUser, seedKB, seedDocument, testIdentity, TEST_ORG_ID } from "./helpers";
 import { api } from "../convex/_generated/api";
 
 describe("knowledgeBases: create with metadata", () => {
@@ -102,5 +102,60 @@ describe("knowledgeBases: listByIndustry", () => {
     );
     expect(results).toHaveLength(1);
     expect(results[0].name).toBe("Finance KB");
+  });
+});
+
+describe("knowledgeBases: listWithDocCounts", () => {
+  let t: ReturnType<typeof import("convex-test").convexTest>;
+  beforeEach(() => { t = setupTest(); });
+
+  it("returns KBs with correct document counts", async () => {
+    const userId = await seedUser(t);
+    const kb1 = await seedKB(t, userId);
+    const kb2Id = await t.run(async (ctx) =>
+      ctx.db.insert("knowledgeBases", {
+        orgId: TEST_ORG_ID,
+        name: "Empty KB",
+        metadata: {},
+        createdBy: userId,
+        createdAt: Date.now(),
+      }),
+    );
+
+    await seedDocument(t, kb1, { title: "Doc 1" });
+    await seedDocument(t, kb1, { title: "Doc 2" });
+    await seedDocument(t, kb1, { title: "Doc 3" });
+
+    const authedT = t.withIdentity(testIdentity);
+    const results = await authedT.query(api.crud.knowledgeBases.listWithDocCounts, {});
+
+    expect(results).toHaveLength(2);
+    const kbWithDocs = results.find((kb) => kb.name === "Test KB");
+    const emptyKb = results.find((kb) => kb.name === "Empty KB");
+    expect(kbWithDocs!.documentCount).toBe(3);
+    expect(emptyKb!.documentCount).toBe(0);
+  });
+
+  it("filters by industry when provided", async () => {
+    const userId = await seedUser(t);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("knowledgeBases", {
+        orgId: TEST_ORG_ID, name: "Finance KB", metadata: {},
+        industry: "finance", createdBy: userId, createdAt: Date.now(),
+      });
+      await ctx.db.insert("knowledgeBases", {
+        orgId: TEST_ORG_ID, name: "Healthcare KB", metadata: {},
+        industry: "healthcare", createdBy: userId, createdAt: Date.now(),
+      });
+    });
+
+    const authedT = t.withIdentity(testIdentity);
+    const results = await authedT.query(
+      api.crud.knowledgeBases.listWithDocCounts,
+      { industry: "finance" },
+    );
+    expect(results).toHaveLength(1);
+    expect(results[0].name).toBe("Finance KB");
+    expect(results[0].documentCount).toBe(0);
   });
 });
