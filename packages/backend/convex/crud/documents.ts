@@ -83,6 +83,21 @@ export const get = query({
   },
 });
 
+export const remove = mutation({
+  args: { id: v.id("documents") },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+    const doc = await ctx.db.get(args.id);
+    if (!doc || doc.orgId !== orgId) {
+      throw new Error("Document not found");
+    }
+    if (doc.fileId) {
+      await ctx.storage.delete(doc.fileId);
+    }
+    await ctx.db.delete(args.id);
+  },
+});
+
 /**
  * Internal query: list all documents in a KB (no auth check).
  * Used by generation/experiment actions.

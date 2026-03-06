@@ -75,3 +75,25 @@ export async function seedDataset(
     });
   });
 }
+
+export async function seedDocument(
+  t: ReturnType<typeof convexTest>,
+  kbId: Id<"knowledgeBases">,
+  overrides?: { title?: string; content?: string; sourceType?: string },
+) {
+  return await t.run(async (ctx) => {
+    const title = overrides?.title ?? "Test Document";
+    const content = overrides?.content ?? "# Test\n\nSample document content.";
+    return await ctx.db.insert("documents", {
+      orgId: TEST_ORG_ID,
+      kbId,
+      docId: title,
+      title,
+      content,
+      contentLength: content.length,
+      metadata: {},
+      sourceType: overrides?.sourceType,
+      createdAt: Date.now(),
+    });
+  });
+}
