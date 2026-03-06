@@ -2,13 +2,16 @@
 
 import Link from "next/link";
 import { OrganizationSwitcher, UserButton } from "@clerk/nextjs";
+import { Id } from "@convex/_generated/dataModel";
+import { buildKbLink } from "@/lib/useKbFromUrl";
 
 interface HeaderProps {
   mode?: "generate" | "retrievers" | "experiments" | "agent";
+  kbId?: Id<"knowledgeBases"> | null;
   onReset?: () => void;
 }
 
-export function Header({ mode, onReset }: HeaderProps) {
+export function Header({ mode, kbId, onReset }: HeaderProps) {
   return (
     <header className="border-b border-border bg-bg-elevated/80 backdrop-blur-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
@@ -24,7 +27,7 @@ export function Header({ mode, onReset }: HeaderProps) {
               <span className="text-text-dim text-xs">/</span>
               <div className="flex gap-1 bg-bg rounded-md p-0.5">
                 <Link
-                  href="/generate"
+                  href={buildKbLink("/generate", kbId ?? null)}
                   className={`px-3 py-1 text-xs rounded transition-colors ${
                     mode === "generate"
                       ? "bg-bg-elevated text-accent"
@@ -34,7 +37,7 @@ export function Header({ mode, onReset }: HeaderProps) {
                   Generate
                 </Link>
                 <Link
-                  href="/retrievers"
+                  href={buildKbLink("/retrievers", kbId ?? null)}
                   className={`px-3 py-1 text-xs rounded transition-colors ${
                     mode === "retrievers"
                       ? "bg-bg-elevated text-accent"
@@ -44,7 +47,7 @@ export function Header({ mode, onReset }: HeaderProps) {
                   Retrievers
                 </Link>
                 <Link
-                  href="/experiments"
+                  href={buildKbLink("/experiments", kbId ?? null)}
                   className={`px-3 py-1 text-xs rounded transition-colors ${
                     mode === "experiments"
                       ? "bg-bg-elevated text-accent"

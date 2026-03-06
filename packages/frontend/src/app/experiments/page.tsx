@@ -1,60 +1,86 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/lib/convex";
 import { Id } from "@convex/_generated/dataModel";
 import { Header } from "@/components/Header";
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
+import { KBSelector } from "@/components/KBSelector";
+import { useKbFromUrl, buildKbLink } from "@/lib/useKbFromUrl";
+import Link from "next/link";
 
 export default function ExperimentsPage() {
-  // --- Retriever selection ---
-  const readyRetrievers = useQuery(api.crud.retrievers.byOrg, { status: "ready" });
-  const [selectedRetrieverId, setSelectedRetrieverId] = useState<Id<"retrievers"> | null>(null);
-
-  const selectedRetriever = readyRetrievers?.find((r) => r._id === selectedRetrieverId) ?? null;
-
-  // --- Dataset selection (filtered by retriever's KB when possible) ---
-  const datasets = useQuery(api.crud.datasets.list);
-  const [selectedDatasetId, setSelectedDatasetId] = useState<Id<"datasets"> | null>(null);
-
-  // Filter datasets to same KB as selected retriever
-  const filteredDatasets = datasets?.filter((ds) => {
-    if (!selectedRetriever) return true;
-    return ds.kbId === selectedRetriever.kbId;
-  });
-
-  // Clear dataset if it no longer matches the selected retriever's KB
-  useEffect(() => {
-    if (!selectedRetriever || !selectedDatasetId || !datasets) return;
-    const ds = datasets.find((d) => d._id === selectedDatasetId);
-    if (ds && ds.kbId !== selectedRetriever.kbId) {
-      setSelectedDatasetId(null);
-    }
-  }, [selectedRetriever, selectedDatasetId, datasets]);
-
-  const experiments = useQuery(
-    api.experiments.orchestration.byDataset,
-    selectedDatasetId ? { datasetId: selectedDatasetId } : "skip",
+  return (
+    <Suspense fallback={<div className="flex flex-col h-screen"><Header mode="experiments" /></div>}>
+      <ExperimentsPageContent />
+    </Suspense>
   );
+}
 
+function ExperimentsPageContent() {
+  // --- KB selection (from URL) ---
+  const [selectedKbId, setSelectedKbId] = useKbFromUrl();
+
+  // --- Datasets for selected KB ---
+  const kbDatasets = useQuery(
+    api.crud.datasets.byKb,
+    selectedKbId ? { kbId: selectedKbId } : "skip",
+  );
+  const [selectedDatasetId, setSelectedDatasetId] = useState<Id<"datasets"> | null>(null);
   const selectedDataset = useQuery(
     api.crud.datasets.get,
     selectedDatasetId ? { id: selectedDatasetId } : "skip",
   );
 
-  // --- Experiment execution state ---
-  const [experimentId, setExperimentId] = useState<Id<"experiments"> | null>(null);
+  // --- Retrievers for selected KB (ready only) ---
+  const kbRetrievers = useQuery(
+    api.crud.retrievers.byKb,
+    selectedKbId ? { kbId: selectedKbId } : "skip",
+  );
+  const readyRetrievers = (kbRetrievers ?? []).filter((r) => r.status === "ready");
+  const [selectedRetrieverIds, setSelectedRetrieverIds] = useState<Set<Id<"retrievers">>>(new Set());
 
-  const currentExperiment = useQuery(
-    api.experiments.orchestration.get,
-    experimentId ? { id: experimentId } : "skip",
+  // --- Progressive experiment queries ---
+  const kbExperiments = useQuery(
+    api.experiments.orchestration.byKb,
+    selectedKbId ? { kbId: selectedKbId } : "skip",
+  );
+  const datasetExperiments = useQuery(
+    api.experiments.orchestration.byDataset,
+    selectedDatasetId ? { datasetId: selectedDatasetId } : "skip",
   );
 
+  // Determine which experiments to display based on selection level
+  const displayExperiments = (() => {
+    if (selectedDatasetId && datasetExperiments) {
+      // Filter by selected retrievers if any
+      if (selectedRetrieverIds.size > 0) {
+        return datasetExperiments.filter(
+          (exp) => exp.retrieverId && selectedRetrieverIds.has(exp.retrieverId),
+        );
+      }
+      return datasetExperiments;
+    }
+    if (selectedKbId && kbExperiments) {
+      return kbExperiments;
+    }
+    return [];
+  })();
+
+  // --- Clear dependent selections when parent changes ---
+  useEffect(() => {
+    setSelectedDatasetId(null);
+    setSelectedRetrieverIds(new Set());
+  }, [selectedKbId]);
+
+  useEffect(() => {
+    setSelectedRetrieverIds(new Set());
+  }, [selectedDatasetId]);
+
+  // --- Experiment execution ---
   const startExperiment = useMutation(api.experiments.orchestration.start);
+  const [runningExperimentIds, setRunningExperimentIds] = useState<Set<Id<"experiments">>>(new Set());
+  const [error, setError] = useState<string | null>(null);
 
   // --- Metrics ---
   const [metrics, setMetrics] = useState({
@@ -64,408 +90,248 @@ export default function ExperimentsPage() {
     f1: true,
   });
 
-  // --- Experiment name ---
-  const [experimentName, setExperimentName] = useState("");
-  const [nameEdited, setNameEdited] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // --- Auto-generate experiment name from retriever + dataset ---
-  useEffect(() => {
-    if (nameEdited) return;
-    const parts: string[] = [];
-    if (selectedRetriever) parts.push(selectedRetriever.name);
-    if (selectedDataset) parts.push(selectedDataset.name);
-    setExperimentName(parts.length > 0 ? parts.join("-") : "");
-  }, [selectedRetriever, selectedDataset, nameEdited]);
-
-  // --- Derive execution status from experiment record ---
-  type ExecStatus = "idle" | "evaluating" | "complete" | "error";
-
-  const execStatus: ExecStatus = !experimentId
-    ? "idle"
-    : currentExperiment?.status === "failed"
-      ? "error"
-      : currentExperiment?.status === "completed" || currentExperiment?.status === "completed_with_errors"
-        ? "complete"
-        : currentExperiment?.status === "canceled"
-          ? "complete"
-          : "evaluating";
-
-  const isRunning = execStatus === "evaluating";
-
-  const experimentProgress = currentExperiment
-    ? {
-        phase: currentExperiment.phase as string | undefined,
-        processed: (currentExperiment.processedQuestions as number) ?? 0,
-        total: (currentExperiment.totalQuestions as number) ?? 0,
-      }
-    : undefined;
-
-  const completedScores = currentExperiment?.scores as
-    | Record<string, number>
-    | undefined;
-
   // --- Handlers ---
+  const toggleRetriever = useCallback((id: Id<"retrievers">) => {
+    setSelectedRetrieverIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
-  async function handleStartExperiment() {
-    if (!selectedDatasetId || !selectedRetrieverId || isRunning) return;
-
+  async function handleRunExperiments() {
+    if (!selectedDatasetId || selectedRetrieverIds.size === 0) return;
     setError(null);
 
     const selectedMetrics = Object.entries(metrics)
       .filter(([, v]) => v)
       .map(([k]) => k);
 
-    try {
-      const result = await startExperiment({
-        datasetId: selectedDatasetId,
-        name: experimentName,
-        retrieverId: selectedRetrieverId,
-        metricNames: selectedMetrics,
-      });
+    const retrieverList = readyRetrievers.filter((r) => selectedRetrieverIds.has(r._id));
+    const datasetName = selectedDataset?.name ?? "dataset";
 
-      setExperimentId(result.experimentId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start experiment");
+    for (const retriever of retrieverList) {
+      try {
+        const name = `${retriever.name}-${datasetName}`;
+        const result = await startExperiment({
+          datasetId: selectedDatasetId,
+          name,
+          retrieverId: retriever._id,
+          metricNames: selectedMetrics,
+        });
+        setRunningExperimentIds((prev) => new Set([...prev, result.experimentId]));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to start experiment");
+        break;
+      }
     }
   }
 
-  const canRun = !!selectedDatasetId && !!selectedRetrieverId && !isRunning;
+  const canRun = !!selectedDatasetId && selectedRetrieverIds.size > 0;
 
   return (
     <div className="flex flex-col h-screen">
-      <Header mode="experiments" />
+      <Header mode="experiments" kbId={selectedKbId} />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Configuration Panel */}
         <div className="w-[420px] flex-shrink-0 border-r border-border bg-bg-elevated overflow-y-auto">
           <div className="p-4 space-y-4">
+            {/* KB Selector */}
             <div className="border border-border rounded-lg bg-bg">
               <div className="px-4 py-2 border-b border-border text-xs text-text-dim uppercase tracking-wider">
-                Configuration
+                Knowledge Base
               </div>
-              <div className="p-4 space-y-4">
-                {/* Retriever Selector */}
-                <div className="space-y-2">
-                  <label className="text-xs text-text-muted uppercase tracking-wide">
-                    Retriever
-                  </label>
-                  {readyRetrievers === undefined ? (
+              <div className="p-4">
+                <KBSelector selectedKbId={selectedKbId} onSelect={setSelectedKbId} />
+              </div>
+            </div>
+
+            {/* Dataset Selector — appears after KB */}
+            {selectedKbId && (
+              <div className="border border-border rounded-lg bg-bg">
+                <div className="px-4 py-2 border-b border-border text-xs text-text-dim uppercase tracking-wider">
+                  Dataset
+                </div>
+                <div className="p-4 space-y-2">
+                  {kbDatasets === undefined ? (
+                    <div className="flex items-center gap-2 text-text-dim text-sm">
+                      <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                      Loading datasets...
+                    </div>
+                  ) : kbDatasets.length === 0 ? (
+                    <div className="text-sm text-text-dim">
+                      No datasets for this KB.{" "}
+                      <Link
+                        href={buildKbLink("/generate", selectedKbId)}
+                        className="text-accent hover:text-accent/80 transition-colors"
+                      >
+                        Create one
+                      </Link>
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        value={selectedDatasetId ?? ""}
+                        onChange={(e) =>
+                          setSelectedDatasetId(
+                            e.target.value ? (e.target.value as Id<"datasets">) : null,
+                          )
+                        }
+                        className="w-full bg-bg-elevated border border-border rounded px-3 py-2 text-sm text-text focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none"
+                      >
+                        <option value="">Select a dataset...</option>
+                        {kbDatasets.map((ds) => (
+                          <option key={ds._id} value={ds._id}>
+                            {ds.name} ({ds.questionCount} questions)
+                          </option>
+                        ))}
+                      </select>
+                      {selectedDataset && (
+                        <div className="border border-border rounded bg-bg-elevated p-3 space-y-1 text-[11px]">
+                          <div className="text-text-dim">Strategy: {selectedDataset.strategy}</div>
+                          <div className="text-text-dim">Questions: {selectedDataset.questionCount}</div>
+                          {selectedDataset.langsmithSyncStatus && (
+                            <div className="text-text-dim">LangSmith: {selectedDataset.langsmithSyncStatus}</div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Retriever Selector — multi-select, appears after KB */}
+            {selectedKbId && (
+              <div className="border border-border rounded-lg bg-bg">
+                <div className="px-4 py-2 border-b border-border text-xs text-text-dim uppercase tracking-wider">
+                  Retrievers {selectedRetrieverIds.size > 0 && `(${selectedRetrieverIds.size} selected)`}
+                </div>
+                <div className="p-4 space-y-2">
+                  {kbRetrievers === undefined ? (
                     <div className="flex items-center gap-2 text-text-dim text-sm">
                       <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
                       Loading retrievers...
                     </div>
                   ) : readyRetrievers.length === 0 ? (
                     <div className="text-sm text-text-dim">
-                      No ready retrievers.{" "}
-                      <a href="/retrievers" className="text-accent hover:text-accent/80 transition-colors">
+                      No ready retrievers for this KB.{" "}
+                      <Link
+                        href={buildKbLink("/retrievers", selectedKbId)}
+                        className="text-accent hover:text-accent/80 transition-colors"
+                      >
                         Create one
-                      </a>
+                      </Link>
                     </div>
                   ) : (
-                    <select
-                      value={selectedRetrieverId ?? ""}
-                      onChange={(e) => {
-                        setSelectedRetrieverId(
-                          e.target.value ? (e.target.value as Id<"retrievers">) : null,
-                        );
-                      }}
-                      className="w-full bg-bg-elevated border border-border rounded px-3 py-2 text-sm text-text focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none"
-                    >
-                      <option value="">Select a retriever...</option>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
                       {readyRetrievers.map((r) => (
-                        <option key={r._id} value={r._id}>
-                          {r.name} ({r.chunkCount ?? "?"} chunks, k={r.defaultK})
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                {/* Retriever Info */}
-                {selectedRetriever && (
-                  <div className="border border-border rounded bg-bg-elevated p-3 space-y-1 text-[11px]">
-                    <div className="text-text-dim uppercase tracking-wide text-[10px]">
-                      Retriever Info
-                    </div>
-                    <div className="text-text-muted">
-                      Chunks: {selectedRetriever.chunkCount ?? "?"}
-                    </div>
-                    <div className="text-text-muted">
-                      k: {selectedRetriever.defaultK}
-                    </div>
-                  </div>
-                )}
-
-                {/* Dataset Picker */}
-                <div className="space-y-2">
-                  <label className="text-xs text-text-muted uppercase tracking-wide">
-                    Dataset
-                  </label>
-                  {datasets === undefined ? (
-                    <div className="flex items-center gap-2 text-text-dim text-sm">
-                      <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-                      Loading datasets...
-                    </div>
-                  ) : (
-                    <select
-                      value={selectedDatasetId ?? ""}
-                      onChange={(e) => {
-                        setSelectedDatasetId(
-                          e.target.value ? (e.target.value as Id<"datasets">) : null,
-                        );
-                      }}
-                      className="w-full bg-bg-elevated border border-border rounded px-3 py-2 text-sm text-text focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none"
-                    >
-                      <option value="">Select a dataset...</option>
-                      {(filteredDatasets ?? []).map((ds) => (
-                        <option key={ds._id} value={ds._id}>
-                          {ds.name} ({ds.questionCount} questions)
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  {selectedRetriever && filteredDatasets && filteredDatasets.length === 0 && (
-                    <div className="text-[11px] text-text-dim">
-                      No datasets found for this retriever&apos;s KB.
-                    </div>
-                  )}
-                </div>
-
-                {/* Dataset Info */}
-                {selectedDataset && (
-                  <div className="border border-border rounded bg-bg-elevated p-3 space-y-2">
-                    <div className="text-xs text-text-dim uppercase tracking-wide">
-                      Dataset Info
-                    </div>
-                    <div className="text-sm text-text-muted">
-                      Strategy: {selectedDataset.strategy}
-                    </div>
-                    <div className="text-sm text-text-muted">
-                      Questions: {selectedDataset.questionCount}
-                    </div>
-                    {selectedDataset.langsmithSyncStatus && (
-                      <div className="text-xs text-text-dim">
-                        LangSmith: {selectedDataset.langsmithSyncStatus}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Metrics */}
-                <div className="border border-border rounded bg-bg-elevated p-3 space-y-3">
-                  <div className="text-xs text-text-dim uppercase tracking-wide">
-                    Metrics
-                  </div>
-                  <div className="flex flex-wrap gap-3">
-                    {(["recall", "precision", "iou", "f1"] as const).map(
-                      (metric) => (
                         <label
-                          key={metric}
-                          className="flex items-center gap-2 cursor-pointer"
+                          key={r._id}
+                          className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors ${
+                            selectedRetrieverIds.has(r._id)
+                              ? "bg-accent/10 border border-accent/30"
+                              : "hover:bg-bg-hover border border-transparent"
+                          }`}
                         >
                           <input
                             type="checkbox"
+                            checked={selectedRetrieverIds.has(r._id)}
+                            onChange={() => toggleRetriever(r._id)}
+                            className="w-4 h-4 rounded border-border bg-bg text-accent focus:ring-accent/50"
+                          />
+                          <div className="text-xs">
+                            <div className="text-text">{r.name}</div>
+                            <div className="text-text-dim text-[10px]">
+                              {r.chunkCount ?? "?"} chunks, k={r.defaultK}
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Metrics + Run */}
+            {selectedKbId && (
+              <div className="border border-border rounded-lg bg-bg">
+                <div className="px-4 py-2 border-b border-border text-xs text-text-dim uppercase tracking-wider">
+                  Configuration
+                </div>
+                <div className="p-4 space-y-4">
+                  {/* Metrics */}
+                  <div className="space-y-2">
+                    <div className="text-xs text-text-dim uppercase tracking-wide">Metrics</div>
+                    <div className="flex flex-wrap gap-3">
+                      {(["recall", "precision", "iou", "f1"] as const).map((metric) => (
+                        <label key={metric} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
                             checked={metrics[metric]}
-                            onChange={(e) =>
-                              setMetrics({
-                                ...metrics,
-                                [metric]: e.target.checked,
-                              })
-                            }
+                            onChange={(e) => setMetrics({ ...metrics, [metric]: e.target.checked })}
                             className="w-4 h-4 rounded border-border bg-bg text-accent focus:ring-accent/50"
                           />
                           <span className="text-sm text-text-muted capitalize">
                             {metric === "iou" ? "IoU" : metric}
                           </span>
                         </label>
-                      ),
-                    )}
-                  </div>
-                </div>
-
-                {/* Experiment Name */}
-                <div className="border border-border rounded bg-bg-elevated p-3 space-y-3">
-                  <div className="text-xs text-text-dim uppercase tracking-wide">
-                    Experiment Name
-                  </div>
-                  <input
-                    type="text"
-                    value={experimentName}
-                    onChange={(e) => {
-                      setExperimentName(e.target.value);
-                      setNameEdited(true);
-                    }}
-                    className="w-full bg-bg border border-border rounded px-2 py-1 text-sm text-text focus:border-accent outline-none"
-                  />
-                  <div className="text-xs text-text-dim">
-                    {nameEdited ? "Custom name" : "Auto-generated from retriever + dataset"}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right: Execution Panel */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-bg">
-          <div className="p-4 space-y-4 overflow-y-auto">
-            {/* Evaluation Phase Card */}
-            <PhaseCard
-              label="Evaluation"
-              status={
-                execStatus === "idle"
-                  ? "pending"
-                  : execStatus === "evaluating"
-                    ? "running"
-                    : execStatus === "error"
-                      ? "error"
-                      : "complete"
-              }
-              pendingText="Select a retriever and dataset, then run the experiment."
-              runningText={
-                experimentProgress?.phase
-                  ? `${experimentProgress.phase}... (${experimentProgress.processed}/${experimentProgress.total})`
-                  : "Evaluating..."
-              }
-              completeContent={
-                completedScores ? (
-                  <div className="space-y-3">
-                    <p className="text-text text-sm font-medium">
-                      {experimentName}
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {Object.entries(completedScores).map(([key, value]) => (
-                        <div key={key} className="bg-bg rounded p-2">
-                          <span className="text-text-dim text-xs capitalize">
-                            {key === "iou" ? "IoU" : key}
-                          </span>
-                          <span className="block text-accent text-lg font-medium">
-                            {(value as number).toFixed(3)}
-                          </span>
-                        </div>
                       ))}
                     </div>
-                    {currentExperiment?.langsmithUrl && (
-                      <a
-                        href={currentExperiment.langsmithUrl as string}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors"
-                      >
-                        View in LangSmith
-                        <ExternalLinkIcon />
-                      </a>
-                    )}
                   </div>
-                ) : (
-                  <p className="text-text-muted text-sm">Experiment complete</p>
-                )
-              }
-              errorText={error || (currentExperiment?.error as string) || "Evaluation failed"}
-            />
 
-            {/* Run button */}
-            <button
-              onClick={handleStartExperiment}
-              disabled={!canRun}
-              className={`w-full py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors ${
-                canRun
-                  ? "bg-accent hover:bg-accent/90 text-bg-elevated cursor-pointer"
-                  : "bg-border text-text-dim cursor-not-allowed"
-              }`}
-            >
-              {isRunning ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-bg-elevated/30 border-t-bg-elevated rounded-full animate-spin" />
-                  Running...
-                </>
-              ) : (
-                <>
-                  <span>Run Experiment</span>
-                  <svg
-                    className="w-4 h-4"
-                    fill="currentColor"
-                    viewBox="0 0 24 24"
+                  {/* Run button */}
+                  <button
+                    onClick={handleRunExperiments}
+                    disabled={!canRun}
+                    className={`w-full py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors ${
+                      canRun
+                        ? "bg-accent hover:bg-accent/90 text-bg-elevated cursor-pointer"
+                        : "bg-border text-text-dim cursor-not-allowed"
+                    }`}
                   >
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </>
-              )}
-            </button>
+                    Run Experiment{selectedRetrieverIds.size > 1 ? "s" : ""}{" "}
+                    {selectedRetrieverIds.size > 1 && `(${selectedRetrieverIds.size})`}
+                  </button>
 
-            {/* Recent Experiments */}
-            {selectedDatasetId && (
-              <div className="border border-border rounded-lg bg-bg-elevated">
-                <div className="px-4 py-2 border-b border-border text-xs text-text-dim uppercase tracking-wider">
-                  Recent Experiments
-                </div>
-                <div className="p-4 space-y-3">
-                  {experiments === undefined ? (
-                    <div className="flex items-center gap-2 text-text-dim text-sm">
-                      <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-                      Loading...
-                    </div>
-                  ) : experiments.length === 0 ? (
-                    <p className="text-text-dim text-sm">
-                      No experiments yet for this dataset
-                    </p>
-                  ) : (
-                    experiments.map((exp) => (
-                      <div
-                        key={exp._id}
-                        className="border border-border rounded-lg p-4 hover:border-border/80 transition-colors"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="font-medium text-text">{exp.name}</div>
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded ${
-                              exp.status === "completed"
-                                ? "bg-accent/10 text-accent"
-                                : exp.status === "failed"
-                                  ? "bg-red-500/10 text-red-400"
-                                  : "bg-text-dim/10 text-text-dim"
-                            }`}
-                          >
-                            {exp.status}
-                          </span>
-                        </div>
-                        {exp.scores &&
-                          typeof exp.scores === "object" &&
-                          Object.keys(exp.scores as Record<string, number>)
-                            .length > 0 && (
-                            <div className="flex gap-4 mt-2 text-sm">
-                              {Object.entries(
-                                exp.scores as Record<string, number>,
-                              )
-                                .slice(0, 4)
-                                .map(([key, value]) => (
-                                  <span key={key} className="text-text-muted">
-                                    {key}:{" "}
-                                    <span className="text-accent">
-                                      {value.toFixed(3)}
-                                    </span>
-                                  </span>
-                                ))}
-                            </div>
-                          )}
-                        {exp.langsmithUrl && (
-                          <a
-                            href={exp.langsmithUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-text-dim hover:text-accent mt-3 transition-colors"
-                          >
-                            View in LangSmith
-                            <ExternalLinkIcon />
-                          </a>
-                        )}
-                      </div>
-                    ))
+                  {error && (
+                    <div className="text-xs text-red-400">{error}</div>
                   )}
                 </div>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Right: Experiment Results */}
+        <div className="flex-1 flex flex-col overflow-hidden bg-bg">
+          <div className="p-4 space-y-4 overflow-y-auto">
+            <div className="border border-border rounded-lg bg-bg-elevated">
+              <div className="px-4 py-2 border-b border-border text-xs text-text-dim uppercase tracking-wider">
+                Experiments
+                {selectedDatasetId
+                  ? " — filtered by dataset"
+                  : selectedKbId
+                    ? " — all for this KB"
+                    : ""}
+              </div>
+              <div className="p-4">
+                {!selectedKbId ? (
+                  <p className="text-text-dim text-sm">Select a knowledge base to see experiments.</p>
+                ) : displayExperiments.length === 0 ? (
+                  <p className="text-text-dim text-sm">No experiments yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {displayExperiments.map((exp) => (
+                      <ExperimentRow key={exp._id} experiment={exp} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -474,90 +340,58 @@ export default function ExperimentsPage() {
 }
 
 // ---------------------------------------------------------------------------
-// PhaseCard component
+// ExperimentRow
 // ---------------------------------------------------------------------------
 
-type PhaseStatus = "pending" | "running" | "complete" | "error";
+function ExperimentRow({ experiment: exp }: { experiment: any }) {
+  const statusColors: Record<string, string> = {
+    completed: "bg-accent/10 text-accent",
+    completed_with_errors: "bg-yellow-500/10 text-yellow-400",
+    failed: "bg-red-500/10 text-red-400",
+    running: "bg-blue-500/10 text-blue-400",
+    pending: "bg-text-dim/10 text-text-dim",
+    canceling: "bg-yellow-500/10 text-yellow-400",
+    canceled: "bg-text-dim/10 text-text-dim",
+  };
 
-function PhaseCard({
-  label,
-  status,
-  pendingText,
-  runningText,
-  completeContent,
-  errorText,
-}: {
-  label: string;
-  status: PhaseStatus;
-  pendingText: string;
-  runningText: string;
-  completeContent: React.ReactNode;
-  errorText: string;
-}) {
-  const borderClass =
-    status === "running"
-      ? "border-accent/30 bg-accent/5"
-      : status === "complete"
-        ? "border-accent/30 bg-accent/5"
-        : status === "error"
-          ? "border-red-500/30 bg-red-500/5"
-          : "border-border bg-bg-elevated";
-
-  const dotClass =
-    status === "running"
-      ? "bg-accent animate-pulse"
-      : status === "complete"
-        ? "bg-accent"
-        : status === "error"
-          ? "bg-red-500"
-          : "bg-text-dim";
-
-  const labelClass =
-    status === "running"
-      ? "text-accent"
-      : status === "complete"
-        ? "text-accent"
-        : status === "error"
-          ? "text-red-500"
-          : "text-text-dim";
-
-  const statusLabel =
-    status === "pending"
-      ? "Pending"
-      : status === "running"
-        ? "Running"
-        : status === "complete"
-          ? "Complete"
-          : "Error";
+  const scores = exp.scores as Record<string, number> | undefined;
 
   return (
-    <div className={`border rounded-lg p-4 ${borderClass}`}>
-      <div className="flex items-center gap-3 mb-2">
-        <span className="text-sm text-text font-medium">{label}</span>
-        <span className={`ml-auto flex items-center gap-1.5 text-xs uppercase tracking-wide ${labelClass}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
-          {statusLabel}
+    <div className="border border-border rounded-lg p-4 hover:border-border/80 transition-colors">
+      <div className="flex items-center justify-between">
+        <div className="font-medium text-text text-sm">{exp.name}</div>
+        <span className={`text-xs px-2 py-0.5 rounded ${statusColors[exp.status] ?? "bg-text-dim/10 text-text-dim"}`}>
+          {exp.status}
         </span>
       </div>
-
-      {status === "pending" && (
-        <p className="text-text-muted text-sm">{pendingText}</p>
-      )}
-
-      {status === "running" && (
-        <div>
-          <p className="text-text-muted text-sm">{runningText}</p>
-          <div className="mt-2 h-1 bg-bg-surface rounded-full overflow-hidden">
-            <div className="h-full bg-accent/60 rounded-full animate-pulse w-2/3" />
-          </div>
+      {exp.status === "running" && exp.processedQuestions != null && (
+        <div className="mt-1 text-xs text-text-dim">
+          {exp.phase ?? "Evaluating"}... ({exp.processedQuestions}/{exp.totalQuestions ?? "?"})
         </div>
       )}
-
-      {status === "complete" && completeContent}
-
-      {status === "error" && (
-        <p className="text-red-400 text-sm">{errorText}</p>
+      {scores && Object.keys(scores).length > 0 && (
+        <div className="flex gap-4 mt-2 text-sm">
+          {Object.entries(scores).slice(0, 4).map(([key, value]) => (
+            <span key={key} className="text-text-muted">
+              {key === "iou" ? "IoU" : key}: <span className="text-accent">{value.toFixed(3)}</span>
+            </span>
+          ))}
+        </div>
       )}
+      {exp.langsmithUrl && (
+        <a
+          href={exp.langsmithUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-text-dim hover:text-accent mt-2 transition-colors"
+        >
+          View in LangSmith
+          <ExternalLinkIcon />
+        </a>
+      )}
+      <div className="text-[10px] text-text-dim mt-1">
+        {new Date(exp.createdAt).toLocaleDateString()}
+      </div>
     </div>
   );
 }
