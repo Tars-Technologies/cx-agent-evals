@@ -15,7 +15,7 @@ const INDUSTRIES = [
 
 export default function KBPage() {
   return (
-    <Suspense fallback={<div className="flex flex-col h-screen"><Header mode={"kb" as any} /></div>}>
+    <Suspense fallback={<div className="flex flex-col h-screen"><Header mode="kb" /></div>}>
       <KBPageContent />
     </Suspense>
   );
@@ -109,7 +109,7 @@ function KBPageContent() {
 
   return (
     <div className="flex flex-col h-screen">
-      <Header mode={"kb" as any} kbId={selectedKbId} />
+      <Header mode="kb" kbId={selectedKbId} />
 
       {/* ── KB Selection & Metadata Bar ── */}
       <div className="border-b border-border bg-bg-elevated px-6 py-3 space-y-2">
