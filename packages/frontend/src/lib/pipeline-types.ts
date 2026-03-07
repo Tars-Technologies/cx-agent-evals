@@ -2,6 +2,8 @@
 // Frontend-side pipeline config types (mirrors eval-lib types without Node.js deps)
 // ---------------------------------------------------------------------------
 
+import { PRESET_REGISTRY } from "rag-evaluation-system/registry";
+
 // Stage 1 — Index
 export interface IndexConfig {
   readonly strategy: "plain";
@@ -87,57 +89,29 @@ export interface PipelineConfig {
 export const DEFAULT_K = 5;
 
 // ---------------------------------------------------------------------------
-// Preset definitions
+// Preset definitions — derived from the eval-lib registry
 // ---------------------------------------------------------------------------
 
+// Derive available preset configs from registry
+const registryPresets = Object.fromEntries(
+  PRESET_REGISTRY
+    .filter(p => p.status === "available")
+    .map(p => [p.id, p.config as PipelineConfig]),
+);
+
 export const PRESET_CONFIGS: Record<string, PipelineConfig> = {
-  "baseline-vector-rag": {
-    name: "baseline-vector-rag",
-    index: { strategy: "plain" },
-    search: { strategy: "dense" },
-    k: DEFAULT_K,
-  },
-  bm25: {
-    name: "bm25",
-    index: { strategy: "plain" },
-    search: { strategy: "bm25" },
-    k: DEFAULT_K,
-  },
-  hybrid: {
-    name: "hybrid",
-    index: { strategy: "plain" },
-    search: {
-      strategy: "hybrid",
-      denseWeight: 0.7,
-      sparseWeight: 0.3,
-      fusionMethod: "weighted",
-      candidateMultiplier: 4,
-    },
-    k: DEFAULT_K,
-  },
-  "hybrid-reranked": {
-    name: "hybrid-reranked",
-    index: { strategy: "plain" },
-    search: {
-      strategy: "hybrid",
-      denseWeight: 0.7,
-      sparseWeight: 0.3,
-      fusionMethod: "weighted",
-      candidateMultiplier: 4,
-    },
-    refinement: [{ type: "rerank" }],
-    k: DEFAULT_K,
-  },
+  ...registryPresets,
 };
 
-export const PRESET_NAMES = Object.keys(PRESET_CONFIGS);
+export const PRESET_NAMES = PRESET_REGISTRY
+  .filter(p => p.status === "available")
+  .map(p => p.id);
 
-export const PRESET_DESCRIPTIONS: Record<string, string> = {
-  "baseline-vector-rag": "Dense vector search",
-  bm25: "BM25 keyword search",
-  hybrid: "Dense + BM25 weighted fusion",
-  "hybrid-reranked": "Hybrid search + reranking",
-};
+export const PRESET_DESCRIPTIONS: Record<string, string> = Object.fromEntries(
+  PRESET_REGISTRY
+    .filter(p => p.status === "available")
+    .map(p => [p.id, p.description]),
+);
 
 // ---------------------------------------------------------------------------
 // Saved config wrapper

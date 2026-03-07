@@ -7,7 +7,7 @@ import { Id } from "@convex/_generated/dataModel";
 import { Header } from "@/components/Header";
 import { useKbFromUrl } from "@/lib/useKbFromUrl";
 import { KBDropdown } from "@/components/KBDropdown";
-import { PipelineConfigModal } from "@/components/PipelineConfigModal";
+import { RetrieverWizard } from "@/components/wizard/RetrieverWizard";
 import {
   PipelineConfigSummary,
   ConfigurePipelineButton,
@@ -449,15 +449,92 @@ function RetrieversPageContent() {
         </div>
       </div>
 
-      {/* Pipeline Config Modal */}
-      {showModal && pipelineConfig && (
-        <PipelineConfigModal
-          initialConfig={pipelineConfig}
-          initialName={configName}
-          basePreset={basePreset}
-          onSave={handleModalSave}
-          onClose={() => setShowModal(false)}
-        />
+      {/* Retriever Wizard Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-[720px] max-h-[85vh] bg-bg-elevated border border-border rounded-lg shadow-2xl overflow-hidden flex flex-col">
+            <RetrieverWizard
+              initialConfig={pipelineConfig ? {
+                name: configName,
+                searchStrategy: pipelineConfig.search?.strategy ?? "dense",
+                searchOptions: pipelineConfig.search ? (() => {
+                  const { strategy, ...rest } = pipelineConfig.search as unknown as Record<string, unknown>;
+                  return rest as Record<string, unknown>;
+                })() : {},
+                queryStrategy: pipelineConfig.query?.strategy ?? "identity",
+                k: pipelineConfig.k ?? DEFAULT_K,
+                refinementSteps: (pipelineConfig.refinement ?? []) as Array<{ type: string; [key: string]: unknown }>,
+                indexStrategy: pipelineConfig.index?.strategy ?? "plain",
+                chunkerType: "recursive-character",
+                chunkerOptions: {
+                  chunkSize: pipelineConfig.index?.chunkSize ?? 1000,
+                  chunkOverlap: pipelineConfig.index?.chunkOverlap ?? 200,
+                },
+                embedderProvider: "openai",
+                embedderOptions: {
+                  model: pipelineConfig.index?.embeddingModel ?? "text-embedding-3-small",
+                },
+              } : undefined}
+              basePreset={basePreset}
+              onSave={(saved) => {
+                // Convert wizard's SavedConfig to the format expected by handleModalSave
+                const pConfig: PipelineConfig = {
+                  name: saved.name,
+                  index: {
+                    strategy: (saved.config.index?.strategy ?? "plain") as "plain",
+                    chunkSize: saved.config.index?.chunkSize as number | undefined,
+                    chunkOverlap: saved.config.index?.chunkOverlap as number | undefined,
+                  },
+                  search: saved.config.search as PipelineConfig["search"],
+                  query: saved.config.query as PipelineConfig["query"],
+                  refinement: saved.config.refinement as PipelineConfig["refinement"],
+                  k: saved.config.k,
+                };
+                handleModalSave({
+                  name: saved.name,
+                  basePreset: saved.basePreset,
+                  config: pConfig,
+                });
+              }}
+              onCreate={async (config, name) => {
+                // Same as handleCreateRetriever but with the wizard's config
+                if (!selectedKbId || isCreating) return;
+                setIsCreating(true);
+                setCreateError(null);
+                setDupMessage(null);
+                setHighlightedId(null);
+                try {
+                  const pConfig: PipelineConfig = {
+                    name,
+                    index: {
+                      strategy: (config.index?.strategy ?? "plain") as "plain",
+                      chunkSize: config.index?.chunkSize as number | undefined,
+                      chunkOverlap: config.index?.chunkOverlap as number | undefined,
+                    },
+                    search: config.search as PipelineConfig["search"],
+                    query: config.query as PipelineConfig["query"],
+                    refinement: config.refinement as PipelineConfig["refinement"],
+                    k: config.k,
+                  };
+                  const result = await createRetriever({
+                    kbId: selectedKbId,
+                    retrieverConfig: pConfig,
+                  });
+                  if (result.existing) {
+                    setDupMessage("A retriever with this configuration already exists.");
+                    setHighlightedId(result.retrieverId);
+                  }
+                  setShowModal(false);
+                } catch (err) {
+                  setCreateError(err instanceof Error ? err.message : "Failed to create retriever");
+                } finally {
+                  setIsCreating(false);
+                }
+              }}
+              onClose={() => setShowModal(false)}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
