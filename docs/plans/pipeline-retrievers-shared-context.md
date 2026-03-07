@@ -179,3 +179,59 @@ These backend files are referenced in impact items and follow-up work. Review ag
 | 12 | New provider entry points | One tsup entry point per provider with optional deps | Tree-shakeable |
 | 13 | `k` in PipelineConfig | Keep `k` out of `PipelineConfig` | Runtime parameter, not config property |
 | 14 | MMR diversity metric | Content overlap ratio (character spans) | Avoids recomputing embeddings at refinement time |
+| 15 | Config registry | `eval-lib/src/registry/` sub-path | Single source of truth for all provider/model/strategy metadata. Frontend reads at build time. |
+| 16 | Registry status field | `"available" \| "coming-soon"` per entry | Allows populating the full registry upfront; unimplemented features show as disabled in the frontend wizard |
+| 17 | Frontend type consolidation | Import from eval-lib, no more duplication | `pipeline-types.ts` no longer duplicates `PipelineConfig` and related types |
+| 18 | Frontend wizard | Guided 6-step wizard replaces `PipelineConfigModal` | Driven by registry data — adding a provider/strategy to the registry auto-surfaces it in the UI |
+
+---
+
+## Config Registry
+
+> Added during the registry + wizard implementation. See design doc: `docs/plans/2026-03-07-pipeline-config-registry-design.md`
+
+**Location:** `packages/eval-lib/src/registry/` — sub-path export: `rag-evaluation-system/registry`
+
+**What it provides:**
+- `EMBEDDER_REGISTRY` — 4 providers with models, descriptions, defaults
+- `RERANKER_REGISTRY` — 3 providers with models
+- `CHUNKER_REGISTRY` — 7 chunker types (4 available, 3 coming-soon)
+- `INDEX_STRATEGY_REGISTRY` — 4 strategies (1 available, 3 coming-soon)
+- `QUERY_STRATEGY_REGISTRY` — 5 strategies (1 available, 4 coming-soon)
+- `SEARCH_STRATEGY_REGISTRY` — 3 strategies (all available)
+- `REFINEMENT_STEP_REGISTRY` — 5 step types (2 available, 3 coming-soon)
+- `PRESET_REGISTRY` — 24 presets as `PresetEntry[]` (8 available, 16 coming-soon)
+
+**When implementing slices 3-6:** After implementing a new strategy/provider, update its `status` from `"coming-soon"` to `"available"` in the corresponding registry file (`src/registry/*.ts`). The frontend wizard will automatically enable it — no frontend code changes needed.
+
+**Registry types:**
+```typescript
+interface RegistryEntry {
+  id: string;
+  name: string;
+  description: string;
+  status: "available" | "coming-soon";
+  tags?: string[];
+  options: OptionDef[];      // configurable fields with labels, descriptions, types, defaults
+  defaults: Record<string, unknown>;
+}
+
+interface PresetEntry extends RegistryEntry {
+  config: PipelineConfig;
+  complexity: "basic" | "intermediate" | "advanced";
+  requiresLLM: boolean;
+  requiresReranker: boolean;
+  stages: { index: string; query: string; search: string; refinement: string };
+}
+```
+
+**Frontend imports:**
+```typescript
+// Types from main package
+import type { PipelineConfig } from "rag-evaluation-system";
+// Registry data from sub-path
+import { PRESET_REGISTRY, EMBEDDER_REGISTRY, ... } from "rag-evaluation-system/registry";
+import type { RegistryEntry, PresetEntry } from "rag-evaluation-system/registry";
+```
+
+**Frontend wizard:** `packages/frontend/src/components/wizard/RetrieverWizard.tsx` — 6-step guided wizard. Reads registry data to render option cards, dropdowns, and form fields dynamically. Replaces the old `PipelineConfigModal`.

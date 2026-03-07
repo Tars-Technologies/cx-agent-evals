@@ -73,16 +73,20 @@ interface RegistryEntry {
   id: string;                    // machine key, e.g., "cohere"
   name: string;                  // display name, e.g., "Cohere"
   description: string;           // 1-2 sentence explanation
+  status: "available" | "coming-soon";  // whether the feature is implemented
   tags?: string[];               // filterable tags, e.g., ["multilingual", "fast"]
   options: OptionDef[];          // configurable fields for this entry
   defaults: Record<string, unknown>;  // default values for all options
 }
+// status: "available" → fully implemented, selectable in the wizard
+// status: "coming-soon" → listed in the UI but disabled, shows "Coming soon" badge
 
 /** A named preset with full config + UI metadata */
 interface PresetEntry {
   id: string;                    // e.g., "hybrid-reranked"
   name: string;                  // display name
   description: string;           // what this preset is good for
+  status: "available" | "coming-soon";  // derived: "coming-soon" if ANY referenced strategy/provider is coming-soon
   complexity: "basic" | "intermediate" | "advanced";
   tags?: string[];               // e.g., ["recommended", "fast", "high-recall"]
   requiresLLM: boolean;
