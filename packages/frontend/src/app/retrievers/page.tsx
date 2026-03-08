@@ -452,7 +452,7 @@ function RetrieversPageContent() {
       {/* Retriever Wizard Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-[720px] max-h-[85vh] bg-bg-elevated border border-border rounded-lg shadow-2xl overflow-hidden flex flex-col">
+          <div className="w-[720px] h-[85vh] bg-bg-elevated border border-border rounded-lg shadow-2xl overflow-hidden flex flex-col">
             <RetrieverWizard
               initialConfig={pipelineConfig ? {
                 name: configName,
