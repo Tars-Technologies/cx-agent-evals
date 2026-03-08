@@ -469,3 +469,54 @@ describe("PipelineRetriever — LLM validation", () => {
     ).not.toThrow();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 11. Index strategy LLM validation
+// ---------------------------------------------------------------------------
+
+describe("PipelineRetriever — index strategy LLM validation", () => {
+  const llmIndexStrategies = ["contextual", "summary"] as const;
+
+  for (const strategy of llmIndexStrategies) {
+    it(`should throw if index strategy "${strategy}" is used without an LLM`, () => {
+      expect(
+        () =>
+          new PipelineRetriever(
+            { name: "test", index: { strategy } as any },
+            defaultDeps(),
+          ),
+      ).toThrow(/requires an LLM/);
+    });
+  }
+
+  it("should NOT throw for parent-child strategy without LLM", () => {
+    expect(
+      () =>
+        new PipelineRetriever(
+          { name: "test", index: { strategy: "parent-child" } as any },
+          defaultDeps(),
+        ),
+    ).not.toThrow();
+  });
+
+  it("should NOT throw for plain strategy without LLM", () => {
+    expect(
+      () =>
+        new PipelineRetriever(
+          { name: "test", index: { strategy: "plain" } },
+          defaultDeps(),
+        ),
+    ).not.toThrow();
+  });
+
+  it("should NOT throw for contextual strategy when LLM is provided", () => {
+    const mockLlm: PipelineLLM = { name: "MockLLM", complete: async () => "response" };
+    expect(
+      () =>
+        new PipelineRetriever(
+          { name: "test", index: { strategy: "contextual" } as any },
+          defaultDeps({ llm: mockLlm }),
+        ),
+    ).not.toThrow();
+  });
+});

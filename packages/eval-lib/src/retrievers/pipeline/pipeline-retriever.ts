@@ -8,9 +8,11 @@ import { InMemoryVectorStore } from "../../vector-stores/in-memory.js";
 import type { Retriever } from "../retriever.interface.js";
 import {
   type PipelineConfig,
+  type IndexConfig,
   type SearchConfig,
   type QueryConfig,
   type RefinementStepConfig,
+  DEFAULT_INDEX_CONFIG,
   DEFAULT_SEARCH_CONFIG,
   DEFAULT_QUERY_CONFIG,
   computeIndexConfigHash,
@@ -105,6 +107,7 @@ export class PipelineRetriever implements Retriever {
   private readonly _reranker: Reranker | undefined;
   private readonly _queryConfig: QueryConfig;
   private readonly _llm: PipelineLLM | undefined;
+  private readonly _indexConfig: IndexConfig;
 
   private readonly _searchStrategy: SearchStrategy;
   private readonly _searchStrategyDeps: SearchStrategyDeps;
@@ -124,6 +127,7 @@ export class PipelineRetriever implements Retriever {
     this._reranker = deps.reranker;
     this._queryConfig = config.query ?? DEFAULT_QUERY_CONFIG;
     this._llm = deps.llm;
+    this._indexConfig = config.index ?? DEFAULT_INDEX_CONFIG;
     const batchSize = deps.embeddingBatchSize ?? 100;
 
     // Build the strategy object from declarative config
@@ -148,6 +152,14 @@ export class PipelineRetriever implements Retriever {
     if (llmStrategies.includes(this._queryConfig.strategy) && !this._llm) {
       throw new Error(
         `PipelineRetriever: query strategy "${this._queryConfig.strategy}" requires an LLM but none was provided in deps.`,
+      );
+    }
+
+    // Validate: LLM-requiring index strategies need an LLM dependency
+    const llmIndexStrategies = ["contextual", "summary"];
+    if (llmIndexStrategies.includes(this._indexConfig.strategy) && !this._llm) {
+      throw new Error(
+        `PipelineRetriever: index strategy "${this._indexConfig.strategy}" requires an LLM but none was provided in deps.`,
       );
     }
   }
