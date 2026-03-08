@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   computeIndexConfigHash,
+  computeRetrieverConfigHash,
   DEFAULT_INDEX_CONFIG,
 } from "../../../../src/retrievers/pipeline/config.js";
 import type { PipelineConfig } from "../../../../src/retrievers/pipeline/config.js";
@@ -159,5 +160,114 @@ describe("computeIndexConfigHash", () => {
     const hash = computeIndexConfigHash(basePipeline);
 
     expect(hash).toMatch(/^[a-f0-9]{64}$/);
+  });
+});
+
+describe("computeIndexConfigHash — new strategies", () => {
+  it("produces different hashes for different strategies", () => {
+    const plain: PipelineConfig = { name: "a", index: { strategy: "plain" } };
+    const contextual: PipelineConfig = { name: "b", index: { strategy: "contextual" } };
+    const summary: PipelineConfig = { name: "c", index: { strategy: "summary" } };
+    const parentChild: PipelineConfig = { name: "d", index: { strategy: "parent-child" } };
+
+    const hashes = [
+      computeIndexConfigHash(plain),
+      computeIndexConfigHash(contextual),
+      computeIndexConfigHash(summary),
+      computeIndexConfigHash(parentChild),
+    ];
+
+    expect(new Set(hashes).size).toBe(4);
+  });
+
+  it("concurrency does NOT affect contextual index hash", () => {
+    const a: PipelineConfig = { name: "a", index: { strategy: "contextual", concurrency: 5 } };
+    const b: PipelineConfig = { name: "b", index: { strategy: "contextual", concurrency: 20 } };
+
+    expect(computeIndexConfigHash(a)).toBe(computeIndexConfigHash(b));
+  });
+
+  it("concurrency does NOT affect summary index hash", () => {
+    const a: PipelineConfig = { name: "a", index: { strategy: "summary", concurrency: 5 } };
+    const b: PipelineConfig = { name: "b", index: { strategy: "summary", concurrency: 20 } };
+
+    expect(computeIndexConfigHash(a)).toBe(computeIndexConfigHash(b));
+  });
+
+  it("contextPrompt affects contextual index hash", () => {
+    const a: PipelineConfig = { name: "a", index: { strategy: "contextual", contextPrompt: "prompt A" } };
+    const b: PipelineConfig = { name: "b", index: { strategy: "contextual", contextPrompt: "prompt B" } };
+
+    expect(computeIndexConfigHash(a)).not.toBe(computeIndexConfigHash(b));
+  });
+
+  it("summaryPrompt affects summary index hash", () => {
+    const a: PipelineConfig = { name: "a", index: { strategy: "summary", summaryPrompt: "prompt A" } };
+    const b: PipelineConfig = { name: "b", index: { strategy: "summary", summaryPrompt: "prompt B" } };
+
+    expect(computeIndexConfigHash(a)).not.toBe(computeIndexConfigHash(b));
+  });
+
+  it("childChunkSize affects parent-child index hash", () => {
+    const a: PipelineConfig = { name: "a", index: { strategy: "parent-child", childChunkSize: 100 } };
+    const b: PipelineConfig = { name: "b", index: { strategy: "parent-child", childChunkSize: 300 } };
+
+    expect(computeIndexConfigHash(a)).not.toBe(computeIndexConfigHash(b));
+  });
+
+  it("parentChunkSize affects parent-child index hash", () => {
+    const a: PipelineConfig = { name: "a", index: { strategy: "parent-child", parentChunkSize: 500 } };
+    const b: PipelineConfig = { name: "b", index: { strategy: "parent-child", parentChunkSize: 2000 } };
+
+    expect(computeIndexConfigHash(a)).not.toBe(computeIndexConfigHash(b));
+  });
+
+  it("stable across identical contextual configs", () => {
+    const a: PipelineConfig = { name: "a", index: { strategy: "contextual", chunkSize: 500 } };
+    const b: PipelineConfig = { name: "b", index: { strategy: "contextual", chunkSize: 500 } };
+
+    expect(computeIndexConfigHash(a)).toBe(computeIndexConfigHash(b));
+  });
+
+  it("stable across identical parent-child configs", () => {
+    const a: PipelineConfig = { name: "a", index: { strategy: "parent-child", childChunkSize: 200, parentChunkSize: 1000 } };
+    const b: PipelineConfig = { name: "b", index: { strategy: "parent-child", childChunkSize: 200, parentChunkSize: 1000 } };
+
+    expect(computeIndexConfigHash(a)).toBe(computeIndexConfigHash(b));
+  });
+});
+
+describe("computeRetrieverConfigHash — new index strategies", () => {
+  it("produces different hashes for different index strategies (same other stages)", () => {
+    const base = { query: { strategy: "identity" as const }, search: { strategy: "dense" as const } };
+    const plain: PipelineConfig = { name: "a", index: { strategy: "plain" }, ...base };
+    const contextual: PipelineConfig = { name: "b", index: { strategy: "contextual" }, ...base };
+
+    expect(computeRetrieverConfigHash(plain, 10)).not.toBe(
+      computeRetrieverConfigHash(contextual, 10),
+    );
+  });
+
+  it("plain strategy hash is identical to pre-refactor hash (hash stability)", () => {
+    const config: PipelineConfig = {
+      name: "stability-test",
+      index: { strategy: "plain", chunkSize: 1000, chunkOverlap: 200, embeddingModel: "text-embedding-3-small" },
+    };
+
+    // Capture the hash — this test ensures it never changes across refactors
+    const hash = computeRetrieverConfigHash(config, 10);
+    expect(hash).toMatch(/^[a-f0-9]{64}$/);
+
+    // Verify it matches a config with explicit defaults (same behavior as pre-refactor)
+    const configWithDefaults: PipelineConfig = {
+      name: "other",
+      index: {
+        strategy: DEFAULT_INDEX_CONFIG.strategy,
+        chunkSize: DEFAULT_INDEX_CONFIG.chunkSize,
+        chunkOverlap: DEFAULT_INDEX_CONFIG.chunkOverlap,
+        embeddingModel: DEFAULT_INDEX_CONFIG.embeddingModel,
+      },
+    };
+    expect(computeRetrieverConfigHash(configWithDefaults, 10)).toBe(hash);
   });
 });

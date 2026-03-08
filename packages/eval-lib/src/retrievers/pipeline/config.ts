@@ -1,4 +1,8 @@
 import { createHash } from "node:crypto";
+import {
+  DEFAULT_CONTEXT_PROMPT,
+  DEFAULT_SUMMARY_PROMPT,
+} from "./query/prompts.js";
 
 /** Deterministic JSON serialization — recursively sorts object keys at every level. */
 function stableStringify(value: unknown): string {
@@ -190,12 +194,46 @@ export interface PipelineConfig {
 // Index config hashing — deterministic SHA-256 of index-relevant fields
 // ---------------------------------------------------------------------------
 
-interface IndexHashPayload {
-  readonly strategy: string;
-  readonly chunkSize: number;
-  readonly chunkOverlap: number;
-  readonly separators: readonly string[] | undefined;
-  readonly embeddingModel: string;
+/**
+ * Build the strategy-aware index payload for hashing.
+ * Excludes runtime-only fields (concurrency) that don't affect output.
+ */
+function buildIndexPayload(index: IndexConfig): Record<string, unknown> {
+  switch (index.strategy) {
+    case "plain":
+      return {
+        strategy: "plain",
+        chunkSize: index.chunkSize ?? 1000,
+        chunkOverlap: index.chunkOverlap ?? 200,
+        separators: index.separators,
+        embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
+      };
+    case "contextual":
+      return {
+        strategy: "contextual",
+        chunkSize: index.chunkSize ?? 1000,
+        chunkOverlap: index.chunkOverlap ?? 200,
+        embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
+        contextPrompt: index.contextPrompt ?? DEFAULT_CONTEXT_PROMPT,
+      };
+    case "summary":
+      return {
+        strategy: "summary",
+        chunkSize: index.chunkSize ?? 1000,
+        chunkOverlap: index.chunkOverlap ?? 200,
+        embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
+        summaryPrompt: index.summaryPrompt ?? DEFAULT_SUMMARY_PROMPT,
+      };
+    case "parent-child":
+      return {
+        strategy: "parent-child",
+        childChunkSize: index.childChunkSize ?? 200,
+        parentChunkSize: index.parentChunkSize ?? 1000,
+        childOverlap: index.childOverlap ?? 0,
+        parentOverlap: index.parentOverlap ?? 100,
+        embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
+      };
+  }
 }
 
 /**
@@ -209,13 +247,7 @@ export function computeRetrieverConfigHash(config: PipelineConfig, k: number): s
   const refinement = config.refinement ?? [];
 
   const payload = {
-    index: {
-      strategy: index.strategy,
-      chunkSize: index.chunkSize ?? DEFAULT_INDEX_CONFIG.chunkSize!,
-      chunkOverlap: index.chunkOverlap ?? DEFAULT_INDEX_CONFIG.chunkOverlap!,
-      separators: index.separators,
-      embeddingModel: index.embeddingModel ?? DEFAULT_INDEX_CONFIG.embeddingModel!,
-    },
+    index: buildIndexPayload(index),
     k,
     query,
     refinement,
@@ -228,14 +260,7 @@ export function computeRetrieverConfigHash(config: PipelineConfig, k: number): s
 
 export function computeIndexConfigHash(config: PipelineConfig): string {
   const index = config.index ?? DEFAULT_INDEX_CONFIG;
-
-  const payload: IndexHashPayload = {
-    strategy: index.strategy,
-    chunkSize: index.chunkSize ?? DEFAULT_INDEX_CONFIG.chunkSize!,
-    chunkOverlap: index.chunkOverlap ?? DEFAULT_INDEX_CONFIG.chunkOverlap!,
-    separators: index.separators,
-    embeddingModel: index.embeddingModel ?? DEFAULT_INDEX_CONFIG.embeddingModel!,
-  };
+  const payload = buildIndexPayload(index);
 
   const json = stableStringify(payload);
   return createHash("sha256").update(json).digest("hex");
