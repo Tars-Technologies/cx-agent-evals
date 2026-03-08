@@ -99,14 +99,9 @@ describe("QUERY_STRATEGY_REGISTRY", () => {
     ]);
   });
 
-  it("only identity is available", () => {
-    expect(
-      QUERY_STRATEGY_REGISTRY.find((e) => e.id === "identity")!.status,
-    ).toBe("available");
-    for (const entry of QUERY_STRATEGY_REGISTRY.filter(
-      (e) => e.id !== "identity",
-    )) {
-      expect(entry.status).toBe("coming-soon");
+  it("all 5 query strategies are available", () => {
+    for (const entry of QUERY_STRATEGY_REGISTRY) {
+      expect(entry.status).toBe("available");
     }
   });
 

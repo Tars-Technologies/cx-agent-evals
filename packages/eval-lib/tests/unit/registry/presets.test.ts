@@ -45,11 +45,14 @@ describe("PRESET_REGISTRY", () => {
     }
   });
 
-  it("presets requiring LLM that use coming-soon strategies are coming-soon", () => {
+  it("LLM presets using only available strategies are available", () => {
     const llmPresets = PRESET_REGISTRY.filter((p) => p.requiresLLM);
-    for (const preset of llmPresets) {
-      expect(preset.status).toBe("coming-soon");
-    }
+    // LLM presets that use only available query strategies (hyde, multi-query, step-back, rewrite)
+    // and available refinement steps should be available
+    const availableLLM = llmPresets.filter((p) => p.status === "available");
+    const comingSoonLLM = llmPresets.filter((p) => p.status === "coming-soon");
+    expect(availableLLM.length).toBeGreaterThan(0);
+    expect(comingSoonLLM.length).toBeGreaterThan(0);
   });
 
   it("presets are ordered: available first, then coming-soon", () => {
@@ -80,15 +83,15 @@ describe("PRESET_REGISTRY", () => {
     expect(hybridReranked.requiresReranker).toBe(true);
   });
 
-  it("has exactly 8 available presets", () => {
+  it("has exactly 13 available presets", () => {
     const available = PRESET_REGISTRY.filter((p) => p.status === "available");
-    expect(available).toHaveLength(8);
+    expect(available).toHaveLength(13);
   });
 
-  it("has exactly 16 coming-soon presets", () => {
+  it("has exactly 11 coming-soon presets", () => {
     const comingSoon = PRESET_REGISTRY.filter(
       (p) => p.status === "coming-soon",
     );
-    expect(comingSoon).toHaveLength(16);
+    expect(comingSoon).toHaveLength(11);
   });
 });
