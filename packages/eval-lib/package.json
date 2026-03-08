@@ -44,6 +44,10 @@
       "types": "./dist/pipeline/internals.d.ts",
       "import": "./dist/pipeline/internals.js"
     },
+    "./pipeline/llm-openai": {
+      "types": "./dist/pipeline/llm-openai.d.ts",
+      "import": "./dist/pipeline/llm-openai.js"
+    },
     "./utils": {
       "types": "./dist/utils/index.d.ts",
       "import": "./dist/utils/index.js"

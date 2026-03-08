@@ -7,16 +7,17 @@ import type { PresetEntry } from "./types.js";
 
 /**
  * Coming-soon presets use index/query/refinement strategies that are not yet
- * in the PipelineConfig discriminated unions (e.g. "contextual", "hyde",
- * "dedup", "mmr"). This helper performs the cast so the preset array remains
- * fully typed for available presets while allowing forward-declared configs.
+ * in the PipelineConfig discriminated unions (e.g. "contextual", "dedup",
+ * "mmr", "parent-child", "summary"). This helper performs the cast so the
+ * preset array remains fully typed for available presets while allowing
+ * forward-declared configs.
  */
 function comingSoonConfig(config: Record<string, unknown>): PipelineConfig {
   return config as unknown as PipelineConfig;
 }
 
 // ---------------------------------------------------------------------------
-// Available presets (8)
+// Available presets (13)
 // ---------------------------------------------------------------------------
 
 const baselineVectorRag: PresetEntry = {
@@ -236,7 +237,7 @@ const hybridRrfReranked: PresetEntry = {
 };
 
 // ---------------------------------------------------------------------------
-// Coming-soon presets (16)
+// Coming-soon presets (11)
 // ---------------------------------------------------------------------------
 
 const openclawStyle: PresetEntry = {
@@ -275,18 +276,18 @@ const hydeDense: PresetEntry = {
   name: "HyDE + Dense",
   description:
     "Generates a hypothetical answer to the query and uses its embedding for dense retrieval. Bridges the vocabulary gap between questions and documents.",
-  status: "coming-soon",
+  status: "available",
   complexity: "intermediate",
   requiresLLM: true,
   requiresReranker: false,
   options: [],
   defaults: {},
-  config: comingSoonConfig({
+  config: {
     name: "hyde-dense",
     index: { strategy: "plain" },
     query: { strategy: "hyde" },
     search: { strategy: "dense" },
-  }),
+  },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "HyDE (hypothetical document)",
@@ -300,13 +301,13 @@ const hydeHybrid: PresetEntry = {
   name: "HyDE + Hybrid",
   description:
     "Combines HyDE query transformation with hybrid dense+sparse search. Uses the hypothetical answer embedding alongside keyword matching for broader coverage.",
-  status: "coming-soon",
+  status: "available",
   complexity: "intermediate",
   requiresLLM: true,
   requiresReranker: false,
   options: [],
   defaults: {},
-  config: comingSoonConfig({
+  config: {
     name: "hyde-hybrid",
     index: { strategy: "plain" },
     query: { strategy: "hyde" },
@@ -316,7 +317,7 @@ const hydeHybrid: PresetEntry = {
       sparseWeight: 0.3,
       candidateMultiplier: 4,
     },
-  }),
+  },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "HyDE (hypothetical document)",
@@ -330,13 +331,13 @@ const hydeHybridReranked: PresetEntry = {
   name: "HyDE + Hybrid + Rerank",
   description:
     "Full HyDE pipeline: hypothetical document embedding, hybrid search, and cross-encoder reranking. High quality but higher latency and cost due to multiple LLM calls.",
-  status: "coming-soon",
+  status: "available",
   complexity: "advanced",
   requiresLLM: true,
   requiresReranker: true,
   options: [],
   defaults: {},
-  config: comingSoonConfig({
+  config: {
     name: "hyde-hybrid-reranked",
     index: { strategy: "plain" },
     query: { strategy: "hyde" },
@@ -347,7 +348,7 @@ const hydeHybridReranked: PresetEntry = {
       candidateMultiplier: 4,
     },
     refinement: [{ type: "rerank" }],
-  }),
+  },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "HyDE (hypothetical document)",
@@ -590,13 +591,13 @@ const rewriteHybrid: PresetEntry = {
   name: "Rewrite + Hybrid",
   description:
     "LLM-based query rewriting followed by hybrid search. Fixes typos, expands abbreviations, and improves query specificity before retrieval.",
-  status: "coming-soon",
+  status: "available",
   complexity: "intermediate",
   requiresLLM: true,
   requiresReranker: false,
   options: [],
   defaults: {},
-  config: comingSoonConfig({
+  config: {
     name: "rewrite-hybrid",
     index: { strategy: "plain" },
     query: { strategy: "rewrite" },
@@ -606,7 +607,7 @@ const rewriteHybrid: PresetEntry = {
       sparseWeight: 0.3,
       candidateMultiplier: 4,
     },
-  }),
+  },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Rewrite (LLM-refined query)",
@@ -620,13 +621,13 @@ const rewriteHybridReranked: PresetEntry = {
   name: "Rewrite + Hybrid + Rerank",
   description:
     "Query rewriting with hybrid search and reranking. Improves both the query and the result ordering for high-quality retrieval at the cost of additional LLM calls.",
-  status: "coming-soon",
+  status: "available",
   complexity: "advanced",
   requiresLLM: true,
   requiresReranker: true,
   options: [],
   defaults: {},
-  config: comingSoonConfig({
+  config: {
     name: "rewrite-hybrid-reranked",
     index: { strategy: "plain" },
     query: { strategy: "rewrite" },
@@ -637,7 +638,7 @@ const rewriteHybridReranked: PresetEntry = {
       candidateMultiplier: 4,
     },
     refinement: [{ type: "rerank" }],
-  }),
+  },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Rewrite (LLM-refined query)",
@@ -715,22 +716,23 @@ export const PRESET_REGISTRY: readonly PresetEntry[] = [
   hybridReranked,
   hybridRrf,
   hybridRrfReranked,
-  // Coming-soon — intermediate
-  openclawStyle,
   hydeDense,
   hydeHybrid,
+  rewriteHybrid,
+  // Available — advanced
+  hydeHybridReranked,
+  rewriteHybridReranked,
+  // Coming-soon — intermediate
+  openclawStyle,
   multiQueryDense,
   contextualDense,
   contextualHybrid,
   parentChildDense,
   diverseHybrid,
-  rewriteHybrid,
   summaryDense,
   // Coming-soon — advanced
-  hydeHybridReranked,
   multiQueryHybrid,
   anthropicBest,
   stepBackHybrid,
-  rewriteHybridReranked,
   premium,
 ] as const;

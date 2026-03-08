@@ -15,7 +15,7 @@ export const QUERY_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
     name: "HyDE",
     description:
       "Hypothetical Document Embeddings: generates a hypothetical answer to the query, then uses that answer's embedding for retrieval. Bridges the vocabulary gap between questions and documents.",
-    status: "coming-soon",
+    status: "available",
     tags: ["requires-llm"],
     options: [
       {
@@ -44,7 +44,7 @@ export const QUERY_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
     name: "Multi-Query",
     description:
       "Generates multiple reformulations of the original query, retrieves for each, and fuses the results. Improves recall by covering different phrasings.",
-    status: "coming-soon",
+    status: "available",
     tags: ["requires-llm"],
     options: [
       {
@@ -95,7 +95,7 @@ export const QUERY_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
     name: "Step-Back",
     description:
       "Generates a more abstract 'step-back' question, retrieves for both the original and abstract query, and merges results. Helps when specific queries miss relevant broader context.",
-    status: "coming-soon",
+    status: "available",
     tags: ["requires-llm"],
     options: [
       {
@@ -123,7 +123,7 @@ export const QUERY_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
     name: "Rewrite",
     description:
       "Uses an LLM to rewrite the user query for better retrieval performance. Fixes typos, expands abbreviations, and improves query specificity.",
-    status: "coming-soon",
+    status: "available",
     tags: ["requires-llm"],
     options: [
       {

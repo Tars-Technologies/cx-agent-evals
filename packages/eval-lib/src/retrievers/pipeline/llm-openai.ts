@@ -46,7 +46,9 @@ export class OpenAIPipelineLLM implements PipelineLLM {
   }): Promise<OpenAIPipelineLLM> {
     const { default: OpenAI } = await import("openai");
     const client = new OpenAI({ apiKey: options?.apiKey });
-    return new OpenAIPipelineLLM(client, options);
+    // Cast needed: OpenAI SDK types are stricter than our structural interface,
+    // but the runtime shapes are compatible for the subset we use.
+    return new OpenAIPipelineLLM(client as unknown as OpenAIChatClient, options);
   }
 
   async complete(prompt: string): Promise<string> {

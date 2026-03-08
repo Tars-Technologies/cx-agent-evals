@@ -11,6 +11,7 @@ export default defineConfig({
     "src/rerankers/jina.ts",
     "src/rerankers/voyage.ts",
     "src/pipeline/internals.ts",
+    "src/pipeline/llm-openai.ts",
     "src/utils/index.ts",
     "src/langsmith/index.ts",
     "src/llm/index.ts",

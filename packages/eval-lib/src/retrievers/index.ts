@@ -13,6 +13,7 @@ export {
   BM25SearchIndex,
   weightedScoreFusion,
   reciprocalRankFusion,
+  rrfFuseMultiple,
   applyThresholdFilter,
 } from "./pipeline/index.js";
 export type {
@@ -20,10 +21,16 @@ export type {
   PipelineConfig,
   IndexConfig,
   QueryConfig,
+  IdentityQueryConfig,
+  HydeQueryConfig,
+  MultiQueryConfig,
+  StepBackQueryConfig,
+  RewriteQueryConfig,
   SearchConfig,
   DenseSearchConfig,
   BM25SearchConfig,
   HybridSearchConfig,
   RefinementStepConfig,
   ScoredChunk,
+  PipelineLLM,
 } from "./pipeline/index.js";

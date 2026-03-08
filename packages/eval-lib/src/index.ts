@@ -80,12 +80,18 @@ export type {
   PipelineConfig,
   IndexConfig,
   QueryConfig,
+  IdentityQueryConfig,
+  HydeQueryConfig,
+  MultiQueryConfig,
+  StepBackQueryConfig,
+  RewriteQueryConfig,
   SearchConfig,
   DenseSearchConfig,
   BM25SearchConfig,
   HybridSearchConfig,
   RefinementStepConfig,
   ScoredChunk,
+  PipelineLLM,
 } from "./retrievers/index.js";
 
 // Experiment Presets
