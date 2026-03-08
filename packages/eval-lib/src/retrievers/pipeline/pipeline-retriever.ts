@@ -34,6 +34,7 @@ import {
 import { parseVariants } from "./query/utils.js";
 import { rrfFuseMultiple } from "./search/fusion.js";
 import { mapWithConcurrency } from "../../utils/concurrency.js";
+import { RecursiveCharacterChunker } from "../../chunkers/recursive-character.js";
 
 // ---------------------------------------------------------------------------
 // Dependencies — runtime instances that can't be serialized in config
@@ -111,6 +112,7 @@ export class PipelineRetriever implements Retriever {
   private readonly _queryConfig: QueryConfig;
   private readonly _llm: PipelineLLM | undefined;
   private readonly _indexConfig: IndexConfig;
+  private _childToParentMap: Map<string, PositionAwareChunk> | null = null;
 
   private readonly _searchStrategy: SearchStrategy;
   private readonly _searchStrategyDeps: SearchStrategyDeps;
@@ -226,13 +228,42 @@ export class PipelineRetriever implements Retriever {
         break;
       }
 
-      default:
-        // parent-child handled in subsequent task
-        chunks = [];
+      case "parent-child": {
+        const childChunkSize = this._indexConfig.childChunkSize ?? 200;
+        const parentChunkSize = this._indexConfig.parentChunkSize ?? 1000;
+        const childOverlap = this._indexConfig.childOverlap ?? 0;
+        const parentOverlap = this._indexConfig.parentOverlap ?? 100;
+
+        const childChunker = new RecursiveCharacterChunker({
+          chunkSize: childChunkSize,
+          chunkOverlap: childOverlap,
+        });
+        const parentChunker = new RecursiveCharacterChunker({
+          chunkSize: parentChunkSize,
+          chunkOverlap: parentOverlap,
+        });
+
+        const childChunks: PositionAwareChunk[] = [];
+        const parentMap = new Map<string, PositionAwareChunk>();
+
         for (const doc of corpus.documents) {
-          chunks.push(...this._chunker.chunkWithPositions(doc));
+          const parents = parentChunker.chunkWithPositions(doc);
+          const children = childChunker.chunkWithPositions(doc);
+
+          for (const child of children) {
+            childChunks.push(child);
+            // Find the enclosing parent (child spans are fully within parent spans)
+            const enclosingParent = parents.find(
+              (p) => p.start <= child.start && p.end >= child.end,
+            );
+            parentMap.set(String(child.id), enclosingParent ?? child);
+          }
         }
+
+        this._childToParentMap = parentMap;
+        chunks = childChunks;
         break;
+      }
     }
 
     await this._searchStrategy.init(chunks, this._searchStrategyDeps);
@@ -268,6 +299,21 @@ export class PipelineRetriever implements Retriever {
       scoredResults = rrfFuseMultiple(perQueryResults);
     }
 
+    // PARENT-CHILD swap — replace child chunks with their parent chunks
+    if (this._childToParentMap) {
+      const seen = new Set<string>();
+      const deduped: ScoredChunk[] = [];
+      for (const scored of scoredResults) {
+        const parent = this._childToParentMap.get(String(scored.chunk.id)) ?? scored.chunk;
+        const parentId = String(parent.id);
+        if (!seen.has(parentId)) {
+          seen.add(parentId);
+          deduped.push({ chunk: parent, score: scored.score });
+        }
+      }
+      scoredResults = deduped;
+    }
+
     // REFINEMENT stage — always uses the ORIGINAL user query
     scoredResults = await this._applyRefinements(query, scoredResults, k);
 
@@ -283,6 +329,7 @@ export class PipelineRetriever implements Retriever {
     await this._vectorStore.clear();
     // Let the strategy clean up its own internal state (e.g. BM25 index)
     await this._searchStrategy.cleanup(this._searchStrategyDeps);
+    this._childToParentMap = null;
     this._initialized = false;
   }
 

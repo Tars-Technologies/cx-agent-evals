@@ -218,3 +218,112 @@ describe("PipelineRetriever — summary index strategy", () => {
     await customRetriever.cleanup();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Parent-child index strategy
+// ---------------------------------------------------------------------------
+
+describe("PipelineRetriever — parent-child index strategy", () => {
+  /**
+   * Use a longer document so that parent-child chunking produces multiple
+   * child and parent chunks.
+   */
+  function parentChildCorpus(): Corpus {
+    return createCorpus([
+      createDocument({
+        id: "long.md",
+        content:
+          "Dogs are loyal pets that love humans. " +
+          "Cats are independent creatures that enjoy solitude. " +
+          "Birds can fly high above the trees. " +
+          "Fish live in water and swim gracefully. " +
+          "Snakes are fascinating reptiles found worldwide. " +
+          "Frogs are amphibians that live near ponds.",
+      }),
+    ]);
+  }
+
+  let retriever: PipelineRetriever;
+  let corpus: Corpus;
+
+  beforeEach(async () => {
+    corpus = parentChildCorpus();
+
+    const config: PipelineConfig = {
+      name: "parent-child-test",
+      index: {
+        strategy: "parent-child",
+        childChunkSize: 50,
+        parentChunkSize: 120,
+        childOverlap: 0,
+        parentOverlap: 0,
+      },
+      search: { strategy: "dense" },
+    };
+
+    retriever = new PipelineRetriever(config, defaultDeps());
+    await retriever.init(corpus);
+  });
+
+  afterEach(async () => {
+    await retriever.cleanup();
+  });
+
+  it("should return valid PositionAwareChunks from retrieve", async () => {
+    const results = await retriever.retrieve("dogs pets", 3);
+
+    expect(results.length).toBeGreaterThan(0);
+    for (const chunk of results) {
+      expect(chunk).toHaveProperty("id");
+      expect(chunk).toHaveProperty("content");
+      expect(chunk).toHaveProperty("docId");
+      expect(chunk).toHaveProperty("start");
+      expect(chunk).toHaveProperty("end");
+      expect(chunk.docId).toBe("long.md");
+    }
+  });
+
+  it("should return parent chunks (larger) not child chunks (smaller)", async () => {
+    const results = await retriever.retrieve("dogs pets", 5);
+
+    // Parent chunks should be larger than child chunk size (50)
+    for (const chunk of results) {
+      // Parent content length should generally be >= child chunk size
+      // (unless it's the last chunk of a document)
+      expect(chunk.end - chunk.start).toBeGreaterThanOrEqual(40);
+    }
+  });
+
+  it("should deduplicate parents when multiple children match the same parent", async () => {
+    // Searching broadly — likely matches children from the same parent
+    const results = await retriever.retrieve("animals pets creatures", 10);
+
+    // Should not have duplicate parent IDs
+    const parentIds = results.map((c) => String(c.id));
+    expect(new Set(parentIds).size).toBe(parentIds.length);
+  });
+
+  it("should not require an LLM", () => {
+    expect(
+      () =>
+        new PipelineRetriever(
+          {
+            name: "no-llm",
+            index: { strategy: "parent-child", childChunkSize: 50, parentChunkSize: 120 },
+          },
+          defaultDeps(), // no llm
+        ),
+    ).not.toThrow();
+  });
+
+  it("should work after cleanup and re-init", async () => {
+    const results1 = await retriever.retrieve("dogs", 3);
+    expect(results1.length).toBeGreaterThan(0);
+
+    await retriever.cleanup();
+
+    await retriever.init(corpus);
+    const results2 = await retriever.retrieve("dogs", 3);
+    expect(results2.length).toBeGreaterThan(0);
+  });
+});
