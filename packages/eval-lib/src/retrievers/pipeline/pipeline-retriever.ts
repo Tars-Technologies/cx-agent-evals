@@ -1,5 +1,7 @@
-import type { Corpus, PositionAwareChunk } from "../../types/index.js";
+import type { Corpus, Document, PositionAwareChunk } from "../../types/index.js";
 import type { PositionAwareChunker } from "../../chunkers/chunker.interface.js";
+import type { AsyncPositionAwareChunker } from "../../chunkers/chunker.interface.js";
+import { isAsyncPositionAwareChunker } from "../../chunkers/chunker.interface.js";
 import type { Embedder } from "../../embedders/embedder.interface.js";
 import type { VectorStore } from "../../vector-stores/vector-store.interface.js";
 import type { Reranker } from "../../rerankers/reranker.interface.js";
@@ -23,6 +25,9 @@ import { DenseSearchStrategy, assignRankScores } from "./search/dense.js";
 import { BM25SearchStrategy } from "./search/bm25.js";
 import { HybridSearchStrategy } from "./search/hybrid.js";
 import { applyThresholdFilter } from "./refinement/threshold.js";
+import { applyDedup } from "./refinement/dedup.js";
+import { applyMmr } from "./refinement/mmr.js";
+import { applyExpandContext } from "./refinement/expand-context.js";
 import {
   DEFAULT_HYDE_PROMPT,
   DEFAULT_MULTI_QUERY_PROMPT,
@@ -41,7 +46,7 @@ import { RecursiveCharacterChunker } from "../../chunkers/recursive-character.js
 // ---------------------------------------------------------------------------
 
 export interface PipelineRetrieverDeps {
-  readonly chunker: PositionAwareChunker;
+  readonly chunker: PositionAwareChunker | AsyncPositionAwareChunker;
   readonly embedder: Embedder;
   readonly vectorStore?: VectorStore;
   readonly reranker?: Reranker;
@@ -106,12 +111,13 @@ export class PipelineRetriever implements Retriever {
   readonly indexConfigHash: string;
 
   private readonly _refinementSteps: readonly RefinementStepConfig[];
-  private readonly _chunker: PositionAwareChunker;
+  private readonly _chunker: PositionAwareChunker | AsyncPositionAwareChunker;
   private readonly _vectorStore: VectorStore;
   private readonly _reranker: Reranker | undefined;
   private readonly _queryConfig: QueryConfig;
   private readonly _llm: PipelineLLM | undefined;
   private readonly _indexConfig: IndexConfig;
+  private _corpus: Corpus | null = null;
   private _childToParentMap: Map<string, PositionAwareChunk> | null = null;
 
   private readonly _searchStrategy: SearchStrategy;
@@ -170,17 +176,32 @@ export class PipelineRetriever implements Retriever {
   }
 
   // -------------------------------------------------------------------------
+  // Chunking helper (sync or async)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Chunk a document, handling both sync and async chunkers.
+   */
+  private async _chunkDocument(doc: Document): Promise<PositionAwareChunk[]> {
+    if (isAsyncPositionAwareChunker(this._chunker)) {
+      return this._chunker.chunkWithPositions(doc);
+    }
+    return this._chunker.chunkWithPositions(doc);
+  }
+
+  // -------------------------------------------------------------------------
   // INDEX stage
   // -------------------------------------------------------------------------
 
   async init(corpus: Corpus): Promise<void> {
+    this._corpus = corpus;
     let chunks: PositionAwareChunk[];
 
     switch (this._indexConfig.strategy) {
       case "plain": {
         chunks = [];
         for (const doc of corpus.documents) {
-          chunks.push(...this._chunker.chunkWithPositions(doc));
+          chunks.push(...(await this._chunkDocument(doc)));
         }
         break;
       }
@@ -191,7 +212,7 @@ export class PipelineRetriever implements Retriever {
 
         chunks = [];
         for (const doc of corpus.documents) {
-          const rawChunks = this._chunker.chunkWithPositions(doc);
+          const rawChunks = await this._chunkDocument(doc);
           const enriched = await mapWithConcurrency(
             rawChunks,
             async (chunk) => {
@@ -214,7 +235,7 @@ export class PipelineRetriever implements Retriever {
 
         chunks = [];
         for (const doc of corpus.documents) {
-          const rawChunks = this._chunker.chunkWithPositions(doc);
+          const rawChunks = await this._chunkDocument(doc);
           const summarized = await mapWithConcurrency(
             rawChunks,
             async (chunk) => {
@@ -329,6 +350,7 @@ export class PipelineRetriever implements Retriever {
     await this._vectorStore.clear();
     // Let the strategy clean up its own internal state (e.g. BM25 index)
     await this._searchStrategy.cleanup(this._searchStrategyDeps);
+    this._corpus = null;
     this._childToParentMap = null;
     this._initialized = false;
   }
@@ -403,6 +425,34 @@ export class PipelineRetriever implements Retriever {
 
         case "threshold": {
           current = applyThresholdFilter(current, step.minScore);
+          break;
+        }
+
+        case "dedup": {
+          current = applyDedup(
+            current,
+            step.method ?? "overlap",
+            step.overlapThreshold ?? 0.5,
+          );
+          break;
+        }
+
+        case "mmr": {
+          current = applyMmr(current, k, step.lambda ?? 0.7);
+          break;
+        }
+
+        case "expand-context": {
+          if (!this._corpus) {
+            throw new Error(
+              "expand-context refinement requires corpus (not available after cleanup)",
+            );
+          }
+          current = applyExpandContext(
+            current,
+            this._corpus,
+            step.windowChars ?? 500,
+          );
           break;
         }
 
