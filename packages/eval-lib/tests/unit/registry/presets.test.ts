@@ -85,13 +85,44 @@ describe("PRESET_REGISTRY", () => {
 
   it("has exactly 13 available presets", () => {
     const available = PRESET_REGISTRY.filter((p) => p.status === "available");
-    expect(available).toHaveLength(13);
+    expect(available).toHaveLength(19);
   });
 
   it("has exactly 11 coming-soon presets", () => {
     const comingSoon = PRESET_REGISTRY.filter(
       (p) => p.status === "coming-soon",
     );
-    expect(comingSoon).toHaveLength(11);
+    expect(comingSoon).toHaveLength(5);
+  });
+
+  it("newly available presets from Slice 4 index strategies", () => {
+    const newlyAvailable = [
+      "openclaw-style",
+      "contextual-dense",
+      "contextual-hybrid",
+      "anthropic-best",
+      "parent-child-dense",
+      "summary-dense",
+    ];
+    for (const id of newlyAvailable) {
+      const preset = PRESET_REGISTRY.find((p) => p.id === id)!;
+      expect(preset).toBeDefined();
+      expect(preset.status).toBe("available");
+    }
+  });
+
+  it("remaining coming-soon presets depend on dedup or mmr refinement", () => {
+    const comingSoon = PRESET_REGISTRY.filter((p) => p.status === "coming-soon");
+    const ids = comingSoon.map((p) => p.id);
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        "multi-query-dense",
+        "multi-query-hybrid",
+        "diverse-hybrid",
+        "step-back-hybrid",
+        "premium",
+      ]),
+    );
+    expect(comingSoon).toHaveLength(5);
   });
 });

@@ -17,7 +17,7 @@ function comingSoonConfig(config: Record<string, unknown>): PipelineConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Available presets (13)
+// Available presets (19)
 // ---------------------------------------------------------------------------
 
 const baselineVectorRag: PresetEntry = {
@@ -236,41 +236,6 @@ const hybridRrfReranked: PresetEntry = {
   },
 };
 
-// ---------------------------------------------------------------------------
-// Coming-soon presets (11)
-// ---------------------------------------------------------------------------
-
-const openclawStyle: PresetEntry = {
-  id: "openclaw-style",
-  name: "OpenClaw Style",
-  description:
-    "Hybrid weighted retrieval with small chunks and a score threshold filter. Inspired by the OpenClaw legal retrieval pipeline -- good for precision-focused use cases.",
-  status: "coming-soon",
-  complexity: "intermediate",
-  requiresLLM: false,
-  requiresReranker: false,
-  options: [],
-  defaults: {},
-  config: comingSoonConfig({
-    name: "openclaw-style",
-    index: { strategy: "plain", chunkSize: 400, chunkOverlap: 80 },
-    search: {
-      strategy: "hybrid",
-      denseWeight: 0.7,
-      sparseWeight: 0.3,
-      fusionMethod: "weighted",
-      candidateMultiplier: 4,
-    },
-    refinement: [{ type: "threshold", minScore: 0.35 }],
-  }),
-  stages: {
-    index: "Plain (400 chars, 80 overlap)",
-    query: "Identity (passthrough)",
-    search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "Threshold (0.35)",
-  },
-};
-
 const hydeDense: PresetEntry = {
   id: "hyde-dense",
   name: "HyDE + Dense",
@@ -326,6 +291,172 @@ const hydeHybrid: PresetEntry = {
   },
 };
 
+const rewriteHybrid: PresetEntry = {
+  id: "rewrite-hybrid",
+  name: "Rewrite + Hybrid",
+  description:
+    "LLM-based query rewriting followed by hybrid search. Fixes typos, expands abbreviations, and improves query specificity before retrieval.",
+  status: "available",
+  complexity: "intermediate",
+  requiresLLM: true,
+  requiresReranker: false,
+  options: [],
+  defaults: {},
+  config: {
+    name: "rewrite-hybrid",
+    index: { strategy: "plain" },
+    query: { strategy: "rewrite" },
+    search: {
+      strategy: "hybrid",
+      denseWeight: 0.7,
+      sparseWeight: 0.3,
+      candidateMultiplier: 4,
+    },
+  },
+  stages: {
+    index: "Plain (1000 chars, 200 overlap)",
+    query: "Rewrite (LLM-refined query)",
+    search: "Hybrid (weighted, 0.7/0.3)",
+    refinement: "None",
+  },
+};
+
+const openclawStyle: PresetEntry = {
+  id: "openclaw-style",
+  name: "OpenClaw Style",
+  description:
+    "Hybrid weighted retrieval with small chunks and a score threshold filter. Inspired by the OpenClaw legal retrieval pipeline -- good for precision-focused use cases.",
+  status: "available",
+  complexity: "intermediate",
+  requiresLLM: false,
+  requiresReranker: false,
+  options: [],
+  defaults: {},
+  config: {
+    name: "openclaw-style",
+    index: { strategy: "plain", chunkSize: 400, chunkOverlap: 80 },
+    search: {
+      strategy: "hybrid",
+      denseWeight: 0.7,
+      sparseWeight: 0.3,
+      fusionMethod: "weighted",
+      candidateMultiplier: 4,
+    },
+    refinement: [{ type: "threshold", minScore: 0.35 }],
+  },
+  stages: {
+    index: "Plain (400 chars, 80 overlap)",
+    query: "Identity (passthrough)",
+    search: "Hybrid (weighted, 0.7/0.3)",
+    refinement: "Threshold (0.35)",
+  },
+};
+
+const contextualDense: PresetEntry = {
+  id: "contextual-dense",
+  name: "Contextual + Dense",
+  description:
+    "Prepends LLM-generated context to each chunk before embedding, improving retrieval by capturing broader document context. Higher indexing cost but better semantic matching.",
+  status: "available",
+  complexity: "intermediate",
+  requiresLLM: true,
+  requiresReranker: false,
+  options: [],
+  defaults: {},
+  config: {
+    name: "contextual-dense",
+    index: { strategy: "contextual" },
+    search: { strategy: "dense" },
+  },
+  stages: {
+    index: "Contextual (LLM-enhanced chunks)",
+    query: "Identity (passthrough)",
+    search: "Dense vector search",
+    refinement: "None",
+  },
+};
+
+const contextualHybrid: PresetEntry = {
+  id: "contextual-hybrid",
+  name: "Contextual + Hybrid",
+  description:
+    "Contextual chunking with hybrid dense+sparse search. LLM-enhanced chunks improve both semantic and keyword matching for well-rounded retrieval.",
+  status: "available",
+  complexity: "intermediate",
+  requiresLLM: true,
+  requiresReranker: false,
+  options: [],
+  defaults: {},
+  config: {
+    name: "contextual-hybrid",
+    index: { strategy: "contextual" },
+    search: {
+      strategy: "hybrid",
+      denseWeight: 0.7,
+      sparseWeight: 0.3,
+      candidateMultiplier: 4,
+    },
+  },
+  stages: {
+    index: "Contextual (LLM-enhanced chunks)",
+    query: "Identity (passthrough)",
+    search: "Hybrid (weighted, 0.7/0.3)",
+    refinement: "None",
+  },
+};
+
+const parentChildDense: PresetEntry = {
+  id: "parent-child-dense",
+  name: "Parent-Child + Dense",
+  description:
+    "Two-level chunking: small child chunks for precise matching, larger parent chunks for context. Returns parent chunks when child chunks match, providing broader context.",
+  status: "available",
+  complexity: "intermediate",
+  requiresLLM: false,
+  requiresReranker: false,
+  options: [],
+  defaults: {},
+  config: {
+    name: "parent-child-dense",
+    index: {
+      strategy: "parent-child",
+      childChunkSize: 200,
+      parentChunkSize: 1000,
+    },
+    search: { strategy: "dense" },
+  },
+  stages: {
+    index: "Parent-child (200/1000 chunks)",
+    query: "Identity (passthrough)",
+    search: "Dense vector search",
+    refinement: "None",
+  },
+};
+
+const summaryDense: PresetEntry = {
+  id: "summary-dense",
+  name: "Summary + Dense",
+  description:
+    "Generates LLM summaries for each chunk and indexes both summary and original text embeddings. Helps match high-level queries to specific content.",
+  status: "available",
+  complexity: "intermediate",
+  requiresLLM: true,
+  requiresReranker: false,
+  options: [],
+  defaults: {},
+  config: {
+    name: "summary-dense",
+    index: { strategy: "summary" },
+    search: { strategy: "dense" },
+  },
+  stages: {
+    index: "Summary (LLM-generated summaries)",
+    query: "Identity (passthrough)",
+    search: "Dense vector search",
+    refinement: "None",
+  },
+};
+
 const hydeHybridReranked: PresetEntry = {
   id: "hyde-hybrid-reranked",
   name: "HyDE + Hybrid + Rerank",
@@ -354,265 +485,6 @@ const hydeHybridReranked: PresetEntry = {
     query: "HyDE (hypothetical document)",
     search: "Hybrid (weighted, 0.7/0.3)",
     refinement: "Rerank",
-  },
-};
-
-const multiQueryDense: PresetEntry = {
-  id: "multi-query-dense",
-  name: "Multi-Query + Dense",
-  description:
-    "Generates multiple query reformulations and retrieves for each, then deduplicates. Improves recall by covering different phrasings of the same question.",
-  status: "coming-soon",
-  complexity: "intermediate",
-  requiresLLM: true,
-  requiresReranker: false,
-  options: [],
-  defaults: {},
-  config: comingSoonConfig({
-    name: "multi-query-dense",
-    index: { strategy: "plain" },
-    query: { strategy: "multi-query", numQueries: 3 },
-    search: { strategy: "dense" },
-    refinement: [{ type: "dedup" }],
-  }),
-  stages: {
-    index: "Plain (1000 chars, 200 overlap)",
-    query: "Multi-query (3 queries)",
-    search: "Dense vector search",
-    refinement: "Dedup",
-  },
-};
-
-const multiQueryHybrid: PresetEntry = {
-  id: "multi-query-hybrid",
-  name: "Multi-Query + Hybrid + Rerank",
-  description:
-    "Multi-query expansion with hybrid search, deduplication, and reranking. A comprehensive pipeline for maximum recall with precision refinement.",
-  status: "coming-soon",
-  complexity: "advanced",
-  requiresLLM: true,
-  requiresReranker: true,
-  options: [],
-  defaults: {},
-  config: comingSoonConfig({
-    name: "multi-query-hybrid",
-    index: { strategy: "plain" },
-    query: { strategy: "multi-query", numQueries: 3 },
-    search: {
-      strategy: "hybrid",
-      denseWeight: 0.7,
-      sparseWeight: 0.3,
-      candidateMultiplier: 4,
-    },
-    refinement: [{ type: "dedup" }, { type: "rerank" }],
-  }),
-  stages: {
-    index: "Plain (1000 chars, 200 overlap)",
-    query: "Multi-query (3 queries)",
-    search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "Dedup \u2192 Rerank",
-  },
-};
-
-const contextualDense: PresetEntry = {
-  id: "contextual-dense",
-  name: "Contextual + Dense",
-  description:
-    "Prepends LLM-generated context to each chunk before embedding, improving retrieval by capturing broader document context. Higher indexing cost but better semantic matching.",
-  status: "coming-soon",
-  complexity: "intermediate",
-  requiresLLM: true,
-  requiresReranker: false,
-  options: [],
-  defaults: {},
-  config: comingSoonConfig({
-    name: "contextual-dense",
-    index: { strategy: "contextual" },
-    search: { strategy: "dense" },
-  }),
-  stages: {
-    index: "Contextual (LLM-enhanced chunks)",
-    query: "Identity (passthrough)",
-    search: "Dense vector search",
-    refinement: "None",
-  },
-};
-
-const contextualHybrid: PresetEntry = {
-  id: "contextual-hybrid",
-  name: "Contextual + Hybrid",
-  description:
-    "Contextual chunking with hybrid dense+sparse search. LLM-enhanced chunks improve both semantic and keyword matching for well-rounded retrieval.",
-  status: "coming-soon",
-  complexity: "intermediate",
-  requiresLLM: true,
-  requiresReranker: false,
-  options: [],
-  defaults: {},
-  config: comingSoonConfig({
-    name: "contextual-hybrid",
-    index: { strategy: "contextual" },
-    search: {
-      strategy: "hybrid",
-      denseWeight: 0.7,
-      sparseWeight: 0.3,
-      candidateMultiplier: 4,
-    },
-  }),
-  stages: {
-    index: "Contextual (LLM-enhanced chunks)",
-    query: "Identity (passthrough)",
-    search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "None",
-  },
-};
-
-const anthropicBest: PresetEntry = {
-  id: "anthropic-best",
-  name: "Anthropic Best",
-  description:
-    "Anthropic's recommended RAG pipeline: contextual chunking, hybrid search, and reranking. Based on their published best practices for production RAG systems.",
-  status: "coming-soon",
-  complexity: "advanced",
-  requiresLLM: true,
-  requiresReranker: true,
-  options: [],
-  defaults: {},
-  config: comingSoonConfig({
-    name: "anthropic-best",
-    index: { strategy: "contextual" },
-    search: {
-      strategy: "hybrid",
-      denseWeight: 0.7,
-      sparseWeight: 0.3,
-      candidateMultiplier: 4,
-    },
-    refinement: [{ type: "rerank" }],
-  }),
-  stages: {
-    index: "Contextual (LLM-enhanced chunks)",
-    query: "Identity (passthrough)",
-    search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "Rerank",
-  },
-};
-
-const parentChildDense: PresetEntry = {
-  id: "parent-child-dense",
-  name: "Parent-Child + Dense",
-  description:
-    "Two-level chunking: small child chunks for precise matching, larger parent chunks for context. Returns parent chunks when child chunks match, providing broader context.",
-  status: "coming-soon",
-  complexity: "intermediate",
-  requiresLLM: false,
-  requiresReranker: false,
-  options: [],
-  defaults: {},
-  config: comingSoonConfig({
-    name: "parent-child-dense",
-    index: {
-      strategy: "parent-child",
-      childChunkSize: 200,
-      parentChunkSize: 1000,
-    },
-    search: { strategy: "dense" },
-  }),
-  stages: {
-    index: "Parent-child (200/1000 chunks)",
-    query: "Identity (passthrough)",
-    search: "Dense vector search",
-    refinement: "None",
-  },
-};
-
-const diverseHybrid: PresetEntry = {
-  id: "diverse-hybrid",
-  name: "Diverse Hybrid",
-  description:
-    "Hybrid search with Maximal Marginal Relevance for result diversity. Reduces redundancy by penalizing chunks similar to already-selected ones.",
-  status: "coming-soon",
-  complexity: "intermediate",
-  requiresLLM: false,
-  requiresReranker: false,
-  options: [],
-  defaults: {},
-  config: comingSoonConfig({
-    name: "diverse-hybrid",
-    index: { strategy: "plain" },
-    search: {
-      strategy: "hybrid",
-      denseWeight: 0.7,
-      sparseWeight: 0.3,
-      candidateMultiplier: 4,
-    },
-    refinement: [{ type: "mmr", lambda: 0.5 }],
-  }),
-  stages: {
-    index: "Plain (1000 chars, 200 overlap)",
-    query: "Identity (passthrough)",
-    search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "MMR (lambda=0.5)",
-  },
-};
-
-const stepBackHybrid: PresetEntry = {
-  id: "step-back-hybrid",
-  name: "Step-Back + Hybrid + Rerank",
-  description:
-    "Generates a more abstract step-back question, retrieves for both original and abstract queries, deduplicates, and reranks. Helps when specific queries miss broader context.",
-  status: "coming-soon",
-  complexity: "advanced",
-  requiresLLM: true,
-  requiresReranker: true,
-  options: [],
-  defaults: {},
-  config: comingSoonConfig({
-    name: "step-back-hybrid",
-    index: { strategy: "plain" },
-    query: { strategy: "step-back", includeOriginal: true },
-    search: {
-      strategy: "hybrid",
-      denseWeight: 0.7,
-      sparseWeight: 0.3,
-      candidateMultiplier: 4,
-    },
-    refinement: [{ type: "dedup" }, { type: "rerank" }],
-  }),
-  stages: {
-    index: "Plain (1000 chars, 200 overlap)",
-    query: "Step-back (with original)",
-    search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "Dedup \u2192 Rerank",
-  },
-};
-
-const rewriteHybrid: PresetEntry = {
-  id: "rewrite-hybrid",
-  name: "Rewrite + Hybrid",
-  description:
-    "LLM-based query rewriting followed by hybrid search. Fixes typos, expands abbreviations, and improves query specificity before retrieval.",
-  status: "available",
-  complexity: "intermediate",
-  requiresLLM: true,
-  requiresReranker: false,
-  options: [],
-  defaults: {},
-  config: {
-    name: "rewrite-hybrid",
-    index: { strategy: "plain" },
-    query: { strategy: "rewrite" },
-    search: {
-      strategy: "hybrid",
-      denseWeight: 0.7,
-      sparseWeight: 0.3,
-      candidateMultiplier: 4,
-    },
-  },
-  stages: {
-    index: "Plain (1000 chars, 200 overlap)",
-    query: "Rewrite (LLM-refined query)",
-    search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "None",
   },
 };
 
@@ -647,11 +519,45 @@ const rewriteHybridReranked: PresetEntry = {
   },
 };
 
-const summaryDense: PresetEntry = {
-  id: "summary-dense",
-  name: "Summary + Dense",
+const anthropicBest: PresetEntry = {
+  id: "anthropic-best",
+  name: "Anthropic Best",
   description:
-    "Generates LLM summaries for each chunk and indexes both summary and original text embeddings. Helps match high-level queries to specific content.",
+    "Anthropic's recommended RAG pipeline: contextual chunking, hybrid search, and reranking. Based on their published best practices for production RAG systems.",
+  status: "available",
+  complexity: "advanced",
+  requiresLLM: true,
+  requiresReranker: true,
+  options: [],
+  defaults: {},
+  config: {
+    name: "anthropic-best",
+    index: { strategy: "contextual" },
+    search: {
+      strategy: "hybrid",
+      denseWeight: 0.7,
+      sparseWeight: 0.3,
+      candidateMultiplier: 4,
+    },
+    refinement: [{ type: "rerank" }],
+  },
+  stages: {
+    index: "Contextual (LLM-enhanced chunks)",
+    query: "Identity (passthrough)",
+    search: "Hybrid (weighted, 0.7/0.3)",
+    refinement: "Rerank",
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Coming-soon presets (5)
+// ---------------------------------------------------------------------------
+
+const multiQueryDense: PresetEntry = {
+  id: "multi-query-dense",
+  name: "Multi-Query + Dense",
+  description:
+    "Generates multiple query reformulations and retrieves for each, then deduplicates. Improves recall by covering different phrasings of the same question.",
   status: "coming-soon",
   complexity: "intermediate",
   requiresLLM: true,
@@ -659,15 +565,109 @@ const summaryDense: PresetEntry = {
   options: [],
   defaults: {},
   config: comingSoonConfig({
-    name: "summary-dense",
-    index: { strategy: "summary" },
+    name: "multi-query-dense",
+    index: { strategy: "plain" },
+    query: { strategy: "multi-query", numQueries: 3 },
     search: { strategy: "dense" },
+    refinement: [{ type: "dedup" }],
   }),
   stages: {
-    index: "Summary (LLM-generated summaries)",
-    query: "Identity (passthrough)",
+    index: "Plain (1000 chars, 200 overlap)",
+    query: "Multi-query (3 queries)",
     search: "Dense vector search",
-    refinement: "None",
+    refinement: "Dedup",
+  },
+};
+
+const diverseHybrid: PresetEntry = {
+  id: "diverse-hybrid",
+  name: "Diverse Hybrid",
+  description:
+    "Hybrid search with Maximal Marginal Relevance for result diversity. Reduces redundancy by penalizing chunks similar to already-selected ones.",
+  status: "coming-soon",
+  complexity: "intermediate",
+  requiresLLM: false,
+  requiresReranker: false,
+  options: [],
+  defaults: {},
+  config: comingSoonConfig({
+    name: "diverse-hybrid",
+    index: { strategy: "plain" },
+    search: {
+      strategy: "hybrid",
+      denseWeight: 0.7,
+      sparseWeight: 0.3,
+      candidateMultiplier: 4,
+    },
+    refinement: [{ type: "mmr", lambda: 0.5 }],
+  }),
+  stages: {
+    index: "Plain (1000 chars, 200 overlap)",
+    query: "Identity (passthrough)",
+    search: "Hybrid (weighted, 0.7/0.3)",
+    refinement: "MMR (lambda=0.5)",
+  },
+};
+
+const multiQueryHybrid: PresetEntry = {
+  id: "multi-query-hybrid",
+  name: "Multi-Query + Hybrid + Rerank",
+  description:
+    "Multi-query expansion with hybrid search, deduplication, and reranking. A comprehensive pipeline for maximum recall with precision refinement.",
+  status: "coming-soon",
+  complexity: "advanced",
+  requiresLLM: true,
+  requiresReranker: true,
+  options: [],
+  defaults: {},
+  config: comingSoonConfig({
+    name: "multi-query-hybrid",
+    index: { strategy: "plain" },
+    query: { strategy: "multi-query", numQueries: 3 },
+    search: {
+      strategy: "hybrid",
+      denseWeight: 0.7,
+      sparseWeight: 0.3,
+      candidateMultiplier: 4,
+    },
+    refinement: [{ type: "dedup" }, { type: "rerank" }],
+  }),
+  stages: {
+    index: "Plain (1000 chars, 200 overlap)",
+    query: "Multi-query (3 queries)",
+    search: "Hybrid (weighted, 0.7/0.3)",
+    refinement: "Dedup \u2192 Rerank",
+  },
+};
+
+const stepBackHybrid: PresetEntry = {
+  id: "step-back-hybrid",
+  name: "Step-Back + Hybrid + Rerank",
+  description:
+    "Generates a more abstract step-back question, retrieves for both original and abstract queries, deduplicates, and reranks. Helps when specific queries miss broader context.",
+  status: "coming-soon",
+  complexity: "advanced",
+  requiresLLM: true,
+  requiresReranker: true,
+  options: [],
+  defaults: {},
+  config: comingSoonConfig({
+    name: "step-back-hybrid",
+    index: { strategy: "plain" },
+    query: { strategy: "step-back", includeOriginal: true },
+    search: {
+      strategy: "hybrid",
+      denseWeight: 0.7,
+      sparseWeight: 0.3,
+      candidateMultiplier: 4,
+    },
+    refinement: [{ type: "dedup" }, { type: "rerank" }],
+  }),
+  stages: {
+    index: "Plain (1000 chars, 200 overlap)",
+    query: "Step-back (with original)",
+    search: "Hybrid (weighted, 0.7/0.3)",
+    refinement: "Dedup \u2192 Rerank",
   },
 };
 
@@ -719,20 +719,19 @@ export const PRESET_REGISTRY: readonly PresetEntry[] = [
   hydeDense,
   hydeHybrid,
   rewriteHybrid,
-  // Available — advanced
-  hydeHybridReranked,
-  rewriteHybridReranked,
-  // Coming-soon — intermediate
   openclawStyle,
-  multiQueryDense,
   contextualDense,
   contextualHybrid,
   parentChildDense,
-  diverseHybrid,
   summaryDense,
-  // Coming-soon — advanced
-  multiQueryHybrid,
+  // Available — advanced
+  hydeHybridReranked,
+  rewriteHybridReranked,
   anthropicBest,
+  // Coming-soon (blocked on Slice 5: dedup/mmr refinement)
+  multiQueryDense,
+  diverseHybrid,
+  multiQueryHybrid,
   stepBackHybrid,
   premium,
 ] as const;
