@@ -40,20 +40,15 @@ describe("CHUNKER_REGISTRY", () => {
     ]);
   });
 
-  it("sync chunkers are available, async are coming-soon", () => {
+  it("all chunkers are available", () => {
     const available = CHUNKER_REGISTRY.filter(
       (e) => e.status === "available",
-    ).map((e) => e.id);
-    const comingSoon = CHUNKER_REGISTRY.filter(
-      (e) => e.status === "coming-soon",
     ).map((e) => e.id);
     expect(available).toEqual([
       "recursive-character",
       "sentence",
       "token",
       "markdown",
-    ]);
-    expect(comingSoon).toEqual([
       "semantic",
       "cluster-semantic",
       "llm-semantic",
@@ -139,22 +134,10 @@ describe("REFINEMENT_STEP_REGISTRY", () => {
     ]);
   });
 
-  it("rerank and threshold are available, others coming-soon", () => {
-    expect(
-      REFINEMENT_STEP_REGISTRY.find((e) => e.id === "rerank")!.status,
-    ).toBe("available");
-    expect(
-      REFINEMENT_STEP_REGISTRY.find((e) => e.id === "threshold")!.status,
-    ).toBe("available");
-    expect(
-      REFINEMENT_STEP_REGISTRY.find((e) => e.id === "dedup")!.status,
-    ).toBe("coming-soon");
-    expect(
-      REFINEMENT_STEP_REGISTRY.find((e) => e.id === "mmr")!.status,
-    ).toBe("coming-soon");
-    expect(
-      REFINEMENT_STEP_REGISTRY.find((e) => e.id === "expand-context")!.status,
-    ).toBe("coming-soon");
+  it("all refinement steps are available", () => {
+    for (const entry of REFINEMENT_STEP_REGISTRY) {
+      expect(entry.status).toBe("available");
+    }
   });
 
   it("all entries are structurally valid", () => {
