@@ -1,6 +1,52 @@
 import type { PresetEntry } from "./types.js";
 
 // ---------------------------------------------------------------------------
+// Adding new "coming-soon" presets
+// ---------------------------------------------------------------------------
+//
+// The registry supports `status: "coming-soon"` entries. The frontend wizard
+// shows them disabled with a "Coming soon" badge (see StatusBadge, StrategyCard).
+// The `createPresetRetriever` factory excludes them automatically.
+//
+// When a preset references strategies not yet in the PipelineConfig union
+// (e.g. a future `{ type: "colbert" }` refinement step), use this helper
+// to cast the config so TypeScript doesn't complain:
+//
+//   function comingSoonConfig(config: Record<string, unknown>): PipelineConfig {
+//     return config as unknown as PipelineConfig;
+//   }
+//
+// Example coming-soon entry:
+//
+//   const colbertDense: PresetEntry = {
+//     id: "colbert-dense",
+//     name: "ColBERT Dense",
+//     description: "Late-interaction retrieval with ColBERT embeddings.",
+//     status: "coming-soon",
+//     complexity: "advanced",
+//     requiresLLM: false,
+//     requiresReranker: false,
+//     options: [],
+//     defaults: {},
+//     config: comingSoonConfig({
+//       name: "colbert-dense",
+//       index: { strategy: "plain" },
+//       search: { strategy: "colbert" },  // not yet in SearchConfig union
+//     }),
+//     stages: {
+//       index: "Plain (1000 chars, 200 overlap)",
+//       query: "Identity (passthrough)",
+//       search: "ColBERT late-interaction",
+//       refinement: "None",
+//     },
+//   };
+//
+// Then add it to the PRESET_REGISTRY array at the bottom of this file.
+// When the strategy is implemented, change status to "available", remove
+// the comingSoonConfig() wrapper, and uncomment the helper above.
+//
+
+// ---------------------------------------------------------------------------
 // Available presets (24)
 // ---------------------------------------------------------------------------
 
