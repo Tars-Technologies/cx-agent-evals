@@ -45,14 +45,11 @@ describe("PRESET_REGISTRY", () => {
     }
   });
 
-  it("LLM presets using only available strategies are available", () => {
+  it("all LLM presets are available", () => {
     const llmPresets = PRESET_REGISTRY.filter((p) => p.requiresLLM);
-    // LLM presets that use only available query strategies (hyde, multi-query, step-back, rewrite)
-    // and available refinement steps should be available
-    const availableLLM = llmPresets.filter((p) => p.status === "available");
-    const comingSoonLLM = llmPresets.filter((p) => p.status === "coming-soon");
-    expect(availableLLM.length).toBeGreaterThan(0);
-    expect(comingSoonLLM.length).toBeGreaterThan(0);
+    for (const p of llmPresets) {
+      expect(p.status).toBe("available");
+    }
   });
 
   it("presets are ordered: available first, then coming-soon", () => {
@@ -83,16 +80,16 @@ describe("PRESET_REGISTRY", () => {
     expect(hybridReranked.requiresReranker).toBe(true);
   });
 
-  it("has exactly 13 available presets", () => {
+  it("all 24 presets are available", () => {
     const available = PRESET_REGISTRY.filter((p) => p.status === "available");
-    expect(available).toHaveLength(19);
+    expect(available).toHaveLength(24);
   });
 
-  it("has exactly 11 coming-soon presets", () => {
+  it("no coming-soon presets remain", () => {
     const comingSoon = PRESET_REGISTRY.filter(
       (p) => p.status === "coming-soon",
     );
-    expect(comingSoon).toHaveLength(5);
+    expect(comingSoon).toHaveLength(0);
   });
 
   it("newly available presets from Slice 4 index strategies", () => {
@@ -111,18 +108,18 @@ describe("PRESET_REGISTRY", () => {
     }
   });
 
-  it("remaining coming-soon presets depend on dedup or mmr refinement", () => {
-    const comingSoon = PRESET_REGISTRY.filter((p) => p.status === "coming-soon");
-    const ids = comingSoon.map((p) => p.id);
-    expect(ids).toEqual(
-      expect.arrayContaining([
-        "multi-query-dense",
-        "multi-query-hybrid",
-        "diverse-hybrid",
-        "step-back-hybrid",
-        "premium",
-      ]),
-    );
-    expect(comingSoon).toHaveLength(5);
+  it("dedup/mmr presets are now available after Slice 5", () => {
+    const dedupMmrPresets = [
+      "multi-query-dense",
+      "multi-query-hybrid",
+      "diverse-hybrid",
+      "step-back-hybrid",
+      "premium",
+    ];
+    for (const id of dedupMmrPresets) {
+      const preset = PRESET_REGISTRY.find((p) => p.id === id)!;
+      expect(preset).toBeDefined();
+      expect(preset.status).toBe("available");
+    }
   });
 });

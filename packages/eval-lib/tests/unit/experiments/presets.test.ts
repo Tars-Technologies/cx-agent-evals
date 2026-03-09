@@ -254,6 +254,7 @@ describe("createPresetRetriever (registry-backed factory)", () => {
     "hybrid-rrf",
     "openclaw-style",
     "parent-child-dense",
+    "diverse-hybrid",
   ] as const;
 
   // Presets that need reranker only
@@ -272,6 +273,7 @@ describe("createPresetRetriever (registry-backed factory)", () => {
     "contextual-hybrid",
     "summary-dense",
     "rewrite-hybrid",
+    "multi-query-dense",
   ] as const;
 
   // Presets that need both LLM and reranker
@@ -279,6 +281,9 @@ describe("createPresetRetriever (registry-backed factory)", () => {
     "hyde-hybrid-reranked",
     "anthropic-best",
     "rewrite-hybrid-reranked",
+    "multi-query-hybrid",
+    "step-back-hybrid",
+    "premium",
   ] as const;
 
   const allPresetNames = [
@@ -288,8 +293,8 @@ describe("createPresetRetriever (registry-backed factory)", () => {
     ...llmAndRerankerPresets,
   ];
 
-  it("factory serves exactly 19 available presets", () => {
-    expect(allPresetNames).toHaveLength(19);
+  it("factory serves all 24 available presets", () => {
+    expect(allPresetNames).toHaveLength(24);
   });
 
   it.each(basicPresets.map((n) => ({ name: n })))(
@@ -350,8 +355,9 @@ describe("createPresetRetriever (registry-backed factory)", () => {
     expect(() => createPresetRetriever("nonexistent", baseDeps)).toThrow(/Unknown or unavailable/);
   });
 
-  it("throws for coming-soon preset name", () => {
-    expect(() => createPresetRetriever("premium", fullDeps)).toThrow(/Unknown or unavailable/);
+  it("premium preset creates a retriever with full deps", () => {
+    const retriever = createPresetRetriever("premium", fullDeps);
+    expect(retriever.name).toBe("premium");
   });
 
   it("name override works via overrides parameter", () => {

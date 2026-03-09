@@ -1,23 +1,7 @@
-import type { PipelineConfig } from "../retrievers/pipeline/config.js";
 import type { PresetEntry } from "./types.js";
 
 // ---------------------------------------------------------------------------
-// Helper — cast coming-soon configs that reference not-yet-typed strategies
-// ---------------------------------------------------------------------------
-
-/**
- * Coming-soon presets use index/query/refinement strategies that are not yet
- * in the PipelineConfig discriminated unions (e.g. "contextual", "dedup",
- * "mmr", "parent-child", "summary"). This helper performs the cast so the
- * preset array remains fully typed for available presets while allowing
- * forward-declared configs.
- */
-function comingSoonConfig(config: Record<string, unknown>): PipelineConfig {
-  return config as unknown as PipelineConfig;
-}
-
-// ---------------------------------------------------------------------------
-// Available presets (19)
+// Available presets (24)
 // ---------------------------------------------------------------------------
 
 const baselineVectorRag: PresetEntry = {
@@ -550,7 +534,7 @@ const anthropicBest: PresetEntry = {
 };
 
 // ---------------------------------------------------------------------------
-// Coming-soon presets (5)
+// Presets using multi-query/step-back + dedup/mmr (now available after Slice 5)
 // ---------------------------------------------------------------------------
 
 const multiQueryDense: PresetEntry = {
@@ -558,19 +542,19 @@ const multiQueryDense: PresetEntry = {
   name: "Multi-Query + Dense",
   description:
     "Generates multiple query reformulations and retrieves for each, then deduplicates. Improves recall by covering different phrasings of the same question.",
-  status: "coming-soon",
+  status: "available",
   complexity: "intermediate",
   requiresLLM: true,
   requiresReranker: false,
   options: [],
   defaults: {},
-  config: comingSoonConfig({
+  config: {
     name: "multi-query-dense",
     index: { strategy: "plain" },
     query: { strategy: "multi-query", numQueries: 3 },
     search: { strategy: "dense" },
     refinement: [{ type: "dedup" }],
-  }),
+  },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Multi-query (3 queries)",
@@ -584,13 +568,13 @@ const diverseHybrid: PresetEntry = {
   name: "Diverse Hybrid",
   description:
     "Hybrid search with Maximal Marginal Relevance for result diversity. Reduces redundancy by penalizing chunks similar to already-selected ones.",
-  status: "coming-soon",
+  status: "available",
   complexity: "intermediate",
   requiresLLM: false,
   requiresReranker: false,
   options: [],
   defaults: {},
-  config: comingSoonConfig({
+  config: {
     name: "diverse-hybrid",
     index: { strategy: "plain" },
     search: {
@@ -600,7 +584,7 @@ const diverseHybrid: PresetEntry = {
       candidateMultiplier: 4,
     },
     refinement: [{ type: "mmr", lambda: 0.5 }],
-  }),
+  },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Identity (passthrough)",
@@ -614,13 +598,13 @@ const multiQueryHybrid: PresetEntry = {
   name: "Multi-Query + Hybrid + Rerank",
   description:
     "Multi-query expansion with hybrid search, deduplication, and reranking. A comprehensive pipeline for maximum recall with precision refinement.",
-  status: "coming-soon",
+  status: "available",
   complexity: "advanced",
   requiresLLM: true,
   requiresReranker: true,
   options: [],
   defaults: {},
-  config: comingSoonConfig({
+  config: {
     name: "multi-query-hybrid",
     index: { strategy: "plain" },
     query: { strategy: "multi-query", numQueries: 3 },
@@ -631,7 +615,7 @@ const multiQueryHybrid: PresetEntry = {
       candidateMultiplier: 4,
     },
     refinement: [{ type: "dedup" }, { type: "rerank" }],
-  }),
+  },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Multi-query (3 queries)",
@@ -645,13 +629,13 @@ const stepBackHybrid: PresetEntry = {
   name: "Step-Back + Hybrid + Rerank",
   description:
     "Generates a more abstract step-back question, retrieves for both original and abstract queries, deduplicates, and reranks. Helps when specific queries miss broader context.",
-  status: "coming-soon",
+  status: "available",
   complexity: "advanced",
   requiresLLM: true,
   requiresReranker: true,
   options: [],
   defaults: {},
-  config: comingSoonConfig({
+  config: {
     name: "step-back-hybrid",
     index: { strategy: "plain" },
     query: { strategy: "step-back", includeOriginal: true },
@@ -662,7 +646,7 @@ const stepBackHybrid: PresetEntry = {
       candidateMultiplier: 4,
     },
     refinement: [{ type: "dedup" }, { type: "rerank" }],
-  }),
+  },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Step-back (with original)",
@@ -676,13 +660,13 @@ const premium: PresetEntry = {
   name: "Premium",
   description:
     "The most comprehensive pipeline: contextual chunking, multi-query expansion, hybrid search, deduplication, reranking, and threshold filtering. Maximum quality at maximum cost.",
-  status: "coming-soon",
+  status: "available",
   complexity: "advanced",
   requiresLLM: true,
   requiresReranker: true,
   options: [],
   defaults: {},
-  config: comingSoonConfig({
+  config: {
     name: "premium",
     index: { strategy: "contextual" },
     query: { strategy: "multi-query", numQueries: 3 },
@@ -692,7 +676,7 @@ const premium: PresetEntry = {
       { type: "rerank" },
       { type: "threshold", minScore: 0.3 },
     ],
-  }),
+  },
   stages: {
     index: "Contextual (LLM-enhanced chunks)",
     query: "Multi-query (3 queries)",
@@ -702,7 +686,7 @@ const premium: PresetEntry = {
 };
 
 // ---------------------------------------------------------------------------
-// Registry — available first, then coming-soon
+// Registry — all 24 presets available
 // ---------------------------------------------------------------------------
 
 export const PRESET_REGISTRY: readonly PresetEntry[] = [
@@ -728,7 +712,7 @@ export const PRESET_REGISTRY: readonly PresetEntry[] = [
   hydeHybridReranked,
   rewriteHybridReranked,
   anthropicBest,
-  // Coming-soon (blocked on Slice 5: dedup/mmr refinement)
+  // Available — multi-query/step-back + dedup/mmr (after Slice 5)
   multiQueryDense,
   diverseHybrid,
   multiQueryHybrid,
