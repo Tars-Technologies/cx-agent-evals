@@ -18,6 +18,7 @@ export {
   HYBRID_RERANKED_CONFIG,
 } from "./presets.js";
 export type {
+  PresetName,
   PipelinePresetDeps,
   BaselineVectorRagPresetDeps,
   BM25PresetDeps,

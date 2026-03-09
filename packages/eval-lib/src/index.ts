@@ -109,6 +109,7 @@ export type {
 
 // Experiment Presets
 export {
+  createPresetRetriever,
   createBaselineVectorRagRetriever,
   BASELINE_VECTOR_RAG_CONFIG,
   createBM25Retriever,
@@ -119,6 +120,8 @@ export {
   HYBRID_RERANKED_CONFIG,
 } from "./experiments/index.js";
 export type {
+  PresetName,
+  PipelinePresetDeps,
   BaselineVectorRagPresetDeps,
   BM25PresetDeps,
   HybridPresetDeps,
