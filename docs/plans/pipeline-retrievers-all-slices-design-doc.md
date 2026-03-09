@@ -1,4 +1,4 @@
-# Updated Pipeline Retrievers Implementation Plan
+# Pipeline Retrievers All Slices - Detailed Design Doc (Formerly Implementation Plan)
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
