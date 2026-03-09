@@ -1357,6 +1357,33 @@ export function applyDedup(
 //   If overlap / min(chunk1.length, chunk2.length) > threshold, keep higher-scored.
 ```
 
+**What it does in plain English:** When you search (especially with hybrid or multi-query), the same chunk often appears multiple times from different search paths. Dedup removes these redundant copies.
+
+- **Exact mode** — removes chunks with identical text content, keeping the highest-scored copy:
+  ```
+  Search results:
+    #1 (score 0.95): "Dogs are loyal companions that love their owners."
+    #2 (score 0.88): "Cats are independent creatures."
+    #3 (score 0.72): "Dogs are loyal companions that love their owners."  <-- duplicate of #1
+
+  After dedup (exact):
+    #1 (score 0.95): "Dogs are loyal companions that love their owners."
+    #2 (score 0.88): "Cats are independent creatures."
+    <-- #3 removed (identical text)
+  ```
+
+- **Overlap mode** — smarter. Two chunks from the same document that share too many character positions are considered near-duplicates:
+  ```
+  Document: "The quick brown fox jumps over the lazy dog near the river."
+
+  Chunk A (chars 0-40):  "The quick brown fox jumps over the lazy "   score=0.9
+  Chunk B (chars 20-55): "fox jumps over the lazy dog near the riv"   score=0.7
+                           ^^^^^^^^^^^^^^^^^^^^
+                           20 chars overlap / min(40,35) = 57% > 50% threshold
+
+  After dedup (overlap): Chunk B removed (too much overlap with higher-scored Chunk A)
+  ```
+
 #### MMR (`type: "mmr"`)
 
 **File**: `packages/eval-lib/src/retrievers/pipeline/refinement/mmr.ts`
@@ -1389,6 +1416,38 @@ export function applyMmr(
 // Reuses spanOverlapChars() from utils/span.ts.
 ```
 
+**What it does in plain English:** Search results tend to cluster around the same topic. If your top 5 results all say basically the same thing, you waste the LLM's context window. MMR selects results that are both **relevant** AND **diverse** — covering different aspects of the answer.
+
+It's a greedy algorithm that picks one chunk at a time, balancing relevance (search score) against similarity to already-picked chunks. The `lambda` parameter controls this trade-off: `1.0` = pure relevance, `0.0` = pure diversity, `0.7` (default) = mostly relevance with a redundancy penalty.
+
+```
+Candidates after search:
+  A (score 0.95): "Python is a popular programming language"
+  B (score 0.90): "Python is widely used in programming"       <-- similar to A
+  C (score 0.85): "JavaScript dominates web development"       <-- different topic
+  D (score 0.80): "Python's syntax is beginner-friendly"       <-- similar to A
+
+MMR selection (lambda=0.7), picking k=3:
+
+  Round 1: Pick A (highest score, nothing selected yet)
+    Selected: [A]
+
+  Round 2: Score each remaining candidate:
+    B: 0.7 * 0.90  -  0.3 * 0.8 (high overlap with A)  = 0.39
+    C: 0.7 * 0.85  -  0.3 * 0.0 (no overlap with A)    = 0.595  <-- winner
+    D: 0.7 * 0.80  -  0.3 * 0.3 (some overlap with A)   = 0.47
+    Pick C
+
+  Round 3: Score remaining candidates:
+    B: 0.7*0.90 - 0.3*max(overlap_A=0.8, overlap_C=0.0) = 0.39
+    D: 0.7*0.80 - 0.3*max(overlap_A=0.3, overlap_C=0.0) = 0.47  <-- winner
+    Pick D
+
+  Final: [A, C, D] -- covers Python AND JavaScript, avoids redundant B
+```
+
+**Key design choice:** Instead of using embedding cosine similarity (which would require storing embeddings at refinement time), this implementation uses **character span overlap** as the diversity proxy. Chunks from different documents always have 0 overlap (maximally diverse).
+
 #### Expand-Context (`type: "expand-context"`)
 
 **File**: `packages/eval-lib/src/retrievers/pipeline/refinement/expand-context.ts`
@@ -1413,6 +1472,29 @@ export function applyExpandContext(
 //
 // Requires corpus reference (stored during init()).
 ```
+
+**What it does in plain English:** Chunks are small slices of a document. Sometimes the answer sits right at the boundary — the chunk contains part of the relevant passage but cuts off mid-sentence. Expand-context goes back to the source document and widens each chunk's window by `windowChars` (default 500) in each direction.
+
+```
+Original document:
+"...earlier text about climate. [CHUNK START] Rising sea levels threaten
+coastal cities. Studies show a 3mm annual rise. [CHUNK END] This has led
+to increased flooding in low-lying areas. Government responses vary..."
+
+Retrieved chunk (chars 100-200):
+"Rising sea levels threaten coastal cities. Studies show a 3mm annual rise."
+
+After expand-context (windowChars=100):
+  newStart = max(0, 100-100) = 0
+  newEnd   = min(docLength, 200+100) = 300
+
+Expanded chunk (chars 0-300):
+"...earlier text about climate. Rising sea levels threaten coastal cities.
+Studies show a 3mm annual rise. This has led to increased flooding in
+low-lying areas. Government responses vary..."
+```
+
+This is similar to "sentence-window retrieval" — you search on small precise chunks but return larger context windows to the LLM.
 
 **Pipeline change**: Store `this._corpus = corpus` during `init()`. The expand-context refinement step receives it.
 
@@ -1483,7 +1565,53 @@ private async _applyRefinements(
 }
 ```
 
+**How refinement steps chain together:** Steps are composable — you stack them in any order in the `refinement` array. The output of one step feeds into the next:
+
+```
+Search results (e.g. 20 candidates)
+    |
+    v
+  dedup            --> remove redundant/overlapping chunks
+    |
+    v
+  rerank           --> re-score with cross-encoder model
+    |
+    v
+  threshold        --> drop anything below score cutoff
+    |
+    v
+  mmr              --> pick diverse top-K
+    |
+    v
+  expand-context   --> widen each chunk's text window
+    |
+    v
+  Final k results to the LLM
+```
+
+Order matters — e.g. dedup before rerank avoids wasting the reranker's budget on duplicates. The "premium" preset uses `dedup -> rerank -> threshold`. The "diverse-hybrid" preset uses just `mmr`.
+
 ### 5b. AsyncPositionAwareChunker Interface
+
+**Why async chunkers?** The existing chunkers (RecursiveCharacter, Sentence, Token, Markdown) are all **synchronous** — they split text using simple rules (character count, regex, token count) and return immediately. But smarter chunking strategies need to **call external services** during chunking: the Semantic Chunker calls an **embedding API** to compare sentence similarity, the Cluster Semantic Chunker does the same with a DP optimization, and the LLM Semantic Chunker calls an **LLM** to ask "where are the topic boundaries?". These are inherently async (network I/O), so the sync `PositionAwareChunker.chunkWithPositions()` signature can't accommodate them.
+
+**Design choice:** A **separate interface** rather than changing the existing one. This avoids a breaking change — all existing sync chunkers keep working unchanged. A discriminator property (`readonly async = true`) and type guard distinguish the two at runtime.
+
+```
+                     PipelineRetrieverDeps.chunker
+                              |
+                     is it async?
+                      /          \
+                    no            yes
+                    |              |
+            call sync          await async
+        chunkWithPositions   chunkWithPositions
+                    \              /
+                     \            /
+                   same PositionAwareChunk[] output
+                              |
+                     continue pipeline...
+```
 
 **File**: `packages/eval-lib/src/chunkers/chunker.interface.ts` — add:
 
@@ -1556,6 +1684,43 @@ export class SemanticChunker implements AsyncPositionAwareChunker {
 }
 ```
 
+**How it works in plain English:** Instead of splitting every N characters, split where the **topic changes**. Detect topic shifts by measuring embedding similarity between consecutive sentences.
+
+```
+Document: "Dogs are loyal. Cats are independent. | Python is popular. JS is for web."
+                                                 ^
+                                          similarity drops here
+                                          (pets --> programming)
+
+Step 1: Split into sentences
+  S1: "Dogs are loyal."
+  S2: "Cats are independent."
+  S3: "Python is popular."
+  S4: "JS is for web."
+
+Step 2: Embed each sentence (API call -- this is why it's async)
+  S1 -> [0.9, 0.1, ...]   (pet-like vector)
+  S2 -> [0.85, 0.12, ...]  (pet-like vector)
+  S3 -> [0.1, 0.8, ...]    (programming-like vector)
+  S4 -> [0.15, 0.75, ...]  (programming-like vector)
+
+Step 3: Cosine similarity between consecutive pairs
+  sim(S1, S2) = 0.95   (high -- same topic)
+  sim(S2, S3) = 0.20   (low -- topic changed!)
+  sim(S3, S4) = 0.92   (high -- same topic)
+
+Step 4: 95th percentile threshold of similarities ~ 0.94
+
+Step 5: Split where similarity < threshold
+  sim(S2, S3) = 0.20 < 0.94  -->  split here!
+
+Result:
+  Chunk 1: "Dogs are loyal. Cats are independent."          (about pets)
+  Chunk 2: "Python is popular. JS is for web."              (about programming)
+```
+
+If any resulting chunk exceeds `maxChunkSize`, it falls back to `RecursiveCharacterChunker` to sub-split.
+
 ### 5d. Cluster Semantic Chunker
 
 **File**: `packages/eval-lib/src/chunkers/cluster-semantic.ts`
@@ -1594,6 +1759,36 @@ export class ClusterSemanticChunker implements AsyncPositionAwareChunker {
   // Reference: github.com/brandonstarxel/chunking_evaluation
 }
 ```
+
+**How it works in plain English:** Instead of just looking at consecutive sentence pairs (like Semantic Chunker), this finds the **globally optimal** chunk boundaries using dynamic programming. It looks at the similarity of ALL segments within a potential chunk, not just neighbors.
+
+```
+Step 1: Split into micro-segments (~50 chars each)
+  seg0: "Dogs are loyal. Cats"          (chars 0-20)
+  seg1: "are independent. Python"        (chars 20-43)
+  seg2: "is popular. JavaScript"         (chars 43-65)
+  seg3: "is used for web dev."           (chars 65-85)
+
+Step 2: Embed all segments (API call)
+
+Step 3: Build similarity matrix (all pairs):
+          seg0   seg1   seg2   seg3
+  seg0  [ 1.0    0.6    0.1    0.1  ]
+  seg1  [ 0.6    1.0    0.4    0.3  ]
+  seg2  [ 0.1    0.4    1.0    0.9  ]
+  seg3  [ 0.1    0.3    0.9    1.0  ]
+
+Step 4: DP finds optimal boundaries (maximize intra-chunk similarity)
+  Option A: [seg0,seg1] [seg2,seg3]  -> avg_sim(0,1)=0.6 + avg_sim(2,3)=0.9 = 1.5
+  Option B: [seg0] [seg1,seg2,seg3]  -> avg_sim(0)=1.0 + avg_sim(1,2,3)=0.53 = 1.53
+  Option C: [seg0,seg1,seg2] [seg3]  -> avg_sim(0,1,2)=0.37 + avg_sim(3)=1.0 = 1.37
+
+  Best: Option B (highest total intra-chunk similarity)
+
+Step 5: Merge segments at boundaries, track char offsets
+```
+
+More expensive than Semantic Chunker (O(n^2) on segment count) but finds better boundaries because it considers global similarity patterns, not just pairwise neighbors.
 
 ### 5e. cosineSimilarity Utility
 
@@ -1635,6 +1830,43 @@ export class LLMSemanticChunker implements AsyncPositionAwareChunker {
   // Reference: github.com/brandonstarxel/chunking_evaluation
 }
 ```
+
+**How it works in plain English:** Instead of using math (embeddings + similarity), just **ask the LLM** where the topic boundaries are. The LLM understands semantics directly.
+
+```
+Step 1: Split into micro-segments, wrap with tags:
+  "<|start_chunk_0|>Dogs are loyal. Cats<|end_chunk_0|>
+   <|start_chunk_1|>are independent. Python<|end_chunk_1|>
+   <|start_chunk_2|>is popular. JavaScript<|end_chunk_2|>
+   <|start_chunk_3|>is used for web dev.<|end_chunk_3|>"
+
+Step 2: Send to LLM with prompt:
+  "Identify thematic boundaries in the following tagged text.
+   Return split points in format: split_after: X, Y"
+
+Step 3: LLM responds:  "split_after: 1"
+  (split after chunk 1 -- topic changes from pets to programming)
+
+Step 4: Merge segments based on split points:
+  Chunk 1: segments 0-1 = "Dogs are loyal. Cats are independent."
+  Chunk 2: segments 2-3 = "Python is popular. JavaScript is used for web dev."
+```
+
+Slowest and most expensive (LLM call per batch), but potentially the most accurate since the LLM truly understands meaning. Best for small corpora where quality matters more than speed.
+
+#### Async Chunker Comparison
+
+```
+                     Speed    Cost     Quality   How it decides where to split
+                     -----    ----     -------   ----------------------------
+RecursiveCharacter   fast     free     basic     fixed character count
+Sentence             fast     free     basic     regex (sentence boundaries)
+Semantic             medium   $$       good      embedding similarity drops
+Cluster Semantic     slow     $$       better    DP-optimal embedding clusters
+LLM Semantic         slowest  $$$      best      LLM judgment
+```
+
+All async chunkers produce the same `PositionAwareChunk[]` output with accurate character offsets — they just take different (smarter) approaches to deciding where to cut.
 
 ---
 
