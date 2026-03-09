@@ -34,3 +34,26 @@ export function isPositionAwareChunker(
 ): chunker is PositionAwareChunker {
   return "chunkWithPositions" in chunker;
 }
+
+/**
+ * Async variant of PositionAwareChunker for chunkers that need
+ * async operations (embedding, LLM calls) during chunking.
+ *
+ * Implementations must set `readonly async = true as const` as a
+ * discriminator property for the type guard.
+ */
+export interface AsyncPositionAwareChunker {
+  readonly name: string;
+  readonly async: true;
+  chunkWithPositions(doc: Document): Promise<PositionAwareChunk[]>;
+}
+
+/**
+ * Type guard to distinguish async chunkers from sync chunkers.
+ * Checks for the `async: true` discriminator property.
+ */
+export function isAsyncPositionAwareChunker(
+  chunker: PositionAwareChunker | AsyncPositionAwareChunker,
+): chunker is AsyncPositionAwareChunker {
+  return "async" in chunker && (chunker as any).async === true;
+}

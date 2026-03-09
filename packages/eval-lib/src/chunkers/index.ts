@@ -1,5 +1,5 @@
-export type { Chunker, PositionAwareChunker } from "./chunker.interface.js";
-export { isPositionAwareChunker } from "./chunker.interface.js";
+export type { Chunker, PositionAwareChunker, AsyncPositionAwareChunker } from "./chunker.interface.js";
+export { isPositionAwareChunker, isAsyncPositionAwareChunker } from "./chunker.interface.js";
 export { RecursiveCharacterChunker } from "./recursive-character.js";
 export type { RecursiveCharacterChunkerOptions } from "./recursive-character.js";
 export { SentenceChunker } from "./sentence.js";

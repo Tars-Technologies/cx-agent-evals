@@ -1,6 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { RecursiveCharacterChunker } from "../../../src/chunkers/recursive-character.js";
-import { isPositionAwareChunker } from "../../../src/chunkers/chunker.interface.js";
+import {
+  isPositionAwareChunker,
+  isAsyncPositionAwareChunker,
+} from "../../../src/chunkers/chunker.interface.js";
 import { createDocument } from "../../../src/types/documents.js";
 import type { Chunker } from "../../../src/chunkers/chunker.interface.js";
 
@@ -60,5 +63,33 @@ describe("RecursiveCharacterChunker", () => {
     expect(chunks).toContain("First paragraph here.");
     expect(chunks).toContain("Second paragraph here.");
     expect(chunks).toContain("Third paragraph here.");
+  });
+});
+
+describe("isAsyncPositionAwareChunker", () => {
+  it("returns true for chunker with async discriminator", () => {
+    const chunker = {
+      name: "test-async",
+      async: true as const,
+      chunkWithPositions: vi.fn(),
+    };
+    expect(isAsyncPositionAwareChunker(chunker as any)).toBe(true);
+  });
+
+  it("returns false for sync chunker without async property", () => {
+    const chunker = {
+      name: "test-sync",
+      chunkWithPositions: vi.fn(),
+    };
+    expect(isAsyncPositionAwareChunker(chunker as any)).toBe(false);
+  });
+
+  it("returns false for chunker with async=false", () => {
+    const chunker = {
+      name: "test",
+      async: false,
+      chunkWithPositions: vi.fn(),
+    };
+    expect(isAsyncPositionAwareChunker(chunker as any)).toBe(false);
   });
 });
