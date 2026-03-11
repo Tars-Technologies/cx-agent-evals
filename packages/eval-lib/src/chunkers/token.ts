@@ -88,7 +88,7 @@ export class TokenChunker implements Chunker, PositionAwareChunker {
    * position in originalText where token i starts.
    *
    * Uses per-token decode with a roundtrip verification. Falls back to
-   * prefix-decode at chunk boundaries for multi-byte character safety.
+   * an O(N) byte-level scan for multi-byte character safety.
    */
   private _buildCharOffsets(
     enc: Tiktoken,
@@ -110,11 +110,123 @@ export class TokenChunker implements Chunker, PositionAwareChunker {
       return offsets;
     }
 
-    // Slow fallback: decode prefixes for accuracy with multi-byte chars
-    const safeOffsets: number[] = [0];
-    for (let i = 1; i <= tokens.length; i++) {
-      safeOffsets.push(enc.decode(tokens.slice(0, i)).length);
+    // Fallback: O(N) byte-level offset computation for multi-byte chars.
+    //
+    // When tokens split a multi-byte UTF-8 character, decoding individual
+    // tokens produces replacement chars whose lengths don't sum to the
+    // original text length. We fix this by mapping token boundaries to byte
+    // boundaries, then converting byte offsets to character offsets via a
+    // single scan through the original text's UTF-8 bytes.
+    return this._buildCharOffsetsFromBytes(enc, tokens, originalText);
+  }
+
+  /**
+   * O(N) fallback for _buildCharOffsets when multi-byte characters span
+   * token boundaries.
+   *
+   * Algorithm:
+   * 1. Look up each token's raw byte length from the encoder's internal
+   *    byte map to build cumulative byte offsets.
+   * 2. Encode originalText to UTF-8 bytes.
+   * 3. Walk through the UTF-8 bytes one character at a time, mapping each
+   *    token's byte boundary to a JS string character position. For byte
+   *    offsets that fall mid-character (incomplete UTF-8 sequence), account
+   *    for the replacement character that TextDecoder would produce.
+   */
+  private _buildCharOffsetsFromBytes(
+    enc: Tiktoken,
+    tokens: number[],
+    originalText: string,
+  ): number[] {
+    // Access the encoder's internal token-to-bytes map. This is a public
+    // runtime property on js-tiktoken's Tiktoken class (Map<number, Uint8Array>)
+    // but is not exposed in the type definitions.
+    const textMap = (enc as unknown as { textMap: Map<number, Uint8Array> })
+      .textMap;
+
+    // Step 1: cumulative byte offsets per token boundary
+    const byteOffsets: number[] = [0];
+    let bytePos = 0;
+    for (let i = 0; i < tokens.length; i++) {
+      const tokenBytes = textMap.get(tokens[i]);
+      bytePos += tokenBytes ? tokenBytes.length : 0;
+      byteOffsets.push(bytePos);
     }
-    return safeOffsets;
+
+    // Step 2: encode original text to UTF-8
+    const textBytes = new TextEncoder().encode(originalText);
+
+    // Step 3: single-pass scan converting byte offsets to char offsets.
+    //
+    // For each character in the original text we know its UTF-8 byte length
+    // and its JS string width (1 code unit for BMP, 2 for supplementary).
+    // We walk byte-by-byte through the text and, for each token boundary
+    // byte offset, compute the corresponding JS string position:
+    //   - At a character start boundary: the current char index
+    //   - At a character end boundary: the next char index
+    //   - Mid-character (incomplete UTF-8): charCount + 1, matching the
+    //     single U+FFFD replacement character that TextDecoder produces
+    const charOffsets = new Array<number>(byteOffsets.length);
+    let charCount = 0;
+    let nextIdx = 0;
+
+    // Fill any leading zero byte offsets
+    while (nextIdx < byteOffsets.length && byteOffsets[nextIdx] === 0) {
+      charOffsets[nextIdx] = 0;
+      nextIdx++;
+    }
+
+    let b = 0;
+    while (b < textBytes.length && nextIdx < byteOffsets.length) {
+      // Determine UTF-8 sequence length and JS string width from lead byte
+      const lead = textBytes[b];
+      let seqLen: number;
+      let jsWidth: number;
+      if ((lead & 0x80) === 0) {
+        seqLen = 1;
+        jsWidth = 1;
+      } else if ((lead & 0xe0) === 0xc0) {
+        seqLen = 2;
+        jsWidth = 1;
+      } else if ((lead & 0xf0) === 0xe0) {
+        seqLen = 3;
+        jsWidth = 1;
+      } else {
+        seqLen = 4;
+        jsWidth = 2; // supplementary character = surrogate pair
+      }
+
+      const charEndByte = b + seqLen;
+
+      // Resolve all byte offsets that fall within this character's range
+      while (
+        nextIdx < byteOffsets.length &&
+        byteOffsets[nextIdx] <= charEndByte
+      ) {
+        const bo = byteOffsets[nextIdx];
+        if (bo === b) {
+          // Exactly at character start
+          charOffsets[nextIdx] = charCount;
+        } else if (bo === charEndByte) {
+          // Exactly at character end (= next character start)
+          charOffsets[nextIdx] = charCount + jsWidth;
+        } else {
+          // Mid-character: incomplete UTF-8 produces one replacement char
+          charOffsets[nextIdx] = charCount + 1;
+        }
+        nextIdx++;
+      }
+
+      charCount += jsWidth;
+      b = charEndByte;
+    }
+
+    // Handle any remaining offsets at or past the end of the byte stream
+    while (nextIdx < byteOffsets.length) {
+      charOffsets[nextIdx] = charCount;
+      nextIdx++;
+    }
+
+    return charOffsets;
   }
 }

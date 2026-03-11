@@ -1,3 +1,4 @@
+import { postJSON } from "../utils/fetch-json.js";
 import type { Embedder } from "./embedder.interface.js";
 
 interface VoyageEmbedClient {
@@ -44,32 +45,18 @@ export class VoyageEmbedder implements Embedder {
 
     const client: VoyageEmbedClient = {
       async embed(opts) {
-        const response = await fetch(
-          "https://api.voyageai.com/v1/embeddings",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-              model: opts.model,
-              input: opts.input,
-              input_type: opts.input_type,
-            }),
-          },
-        );
-
-        if (!response.ok) {
-          const body = await response.text();
-          throw new Error(
-            `Voyage API error: ${response.status} ${response.statusText} — ${body}`,
-          );
-        }
-
-        return (await response.json()) as {
+        return postJSON<{
           data: Array<{ embedding: number[]; index: number }>;
-        };
+        }>({
+          url: "https://api.voyageai.com/v1/embeddings",
+          provider: "Voyage",
+          headers: { Authorization: `Bearer ${apiKey}` },
+          body: {
+            model: opts.model,
+            input: opts.input,
+            input_type: opts.input_type,
+          },
+        });
       },
     };
 

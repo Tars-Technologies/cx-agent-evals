@@ -1,4 +1,5 @@
 import type { PositionAwareChunk } from "../types/index.js";
+import { postJSON } from "../utils/fetch-json.js";
 import type { Reranker } from "./reranker.interface.js";
 
 interface JinaRerankClient {
@@ -42,30 +43,19 @@ export class JinaReranker implements Reranker {
 
     const client: JinaRerankClient = {
       async rerank(opts) {
-        const response = await fetch("https://api.jina.ai/v1/rerank", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
+        return postJSON<{
+          results: Array<{ index: number; relevance_score: number }>;
+        }>({
+          url: "https://api.jina.ai/v1/rerank",
+          provider: "Jina Rerank",
+          headers: { Authorization: `Bearer ${apiKey}` },
+          body: {
             model: opts.model,
             query: opts.query,
             documents: opts.documents,
             top_n: opts.top_n,
-          }),
+          },
         });
-
-        if (!response.ok) {
-          const body = await response.text();
-          throw new Error(
-            `Jina Rerank API error: ${response.status} ${response.statusText} — ${body}`,
-          );
-        }
-
-        return (await response.json()) as {
-          results: Array<{ index: number; relevance_score: number }>;
-        };
       },
     };
 

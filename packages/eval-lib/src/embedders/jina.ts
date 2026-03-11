@@ -1,3 +1,4 @@
+import { postJSON } from "../utils/fetch-json.js";
 import type { Embedder } from "./embedder.interface.js";
 
 interface JinaEmbedClient {
@@ -45,30 +46,19 @@ export class JinaEmbedder implements Embedder {
 
     const client: JinaEmbedClient = {
       async embed(opts) {
-        const response = await fetch("https://api.jina.ai/v1/embeddings", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
+        return postJSON<{
+          data: Array<{ embedding: number[]; index: number }>;
+        }>({
+          url: "https://api.jina.ai/v1/embeddings",
+          provider: "Jina",
+          headers: { Authorization: `Bearer ${apiKey}` },
+          body: {
             model: opts.model,
             input: opts.input,
             task: opts.task,
             dimensions: opts.dimensions,
-          }),
+          },
         });
-
-        if (!response.ok) {
-          const body = await response.text();
-          throw new Error(
-            `Jina API error: ${response.status} ${response.statusText} — ${body}`,
-          );
-        }
-
-        return (await response.json()) as {
-          data: Array<{ embedding: number[]; index: number }>;
-        };
       },
     };
 

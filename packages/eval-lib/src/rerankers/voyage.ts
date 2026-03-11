@@ -1,4 +1,5 @@
 import type { PositionAwareChunk } from "../types/index.js";
+import { postJSON } from "../utils/fetch-json.js";
 import type { Reranker } from "./reranker.interface.js";
 
 interface VoyageRerankClient {
@@ -42,33 +43,19 @@ export class VoyageReranker implements Reranker {
 
     const client: VoyageRerankClient = {
       async rerank(opts) {
-        const response = await fetch(
-          "https://api.voyageai.com/v1/rerank",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-              model: opts.model,
-              query: opts.query,
-              documents: opts.documents,
-              top_k: opts.top_k,
-            }),
-          },
-        );
-
-        if (!response.ok) {
-          const body = await response.text();
-          throw new Error(
-            `Voyage Rerank API error: ${response.status} ${response.statusText} — ${body}`,
-          );
-        }
-
-        return (await response.json()) as {
+        return postJSON<{
           data: Array<{ index: number; relevance_score: number }>;
-        };
+        }>({
+          url: "https://api.voyageai.com/v1/rerank",
+          provider: "Voyage Rerank",
+          headers: { Authorization: `Bearer ${apiKey}` },
+          body: {
+            model: opts.model,
+            query: opts.query,
+            documents: opts.documents,
+            top_k: opts.top_k,
+          },
+        });
       },
     };
 

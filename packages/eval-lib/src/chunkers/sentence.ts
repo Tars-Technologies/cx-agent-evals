@@ -2,6 +2,7 @@ import type { Document, PositionAwareChunk } from "../types/index.js";
 import { generatePaChunkId } from "../utils/hashing.js";
 import { createDocument } from "../types/documents.js";
 import type { Chunker, PositionAwareChunker } from "./chunker.interface.js";
+import { splitSentences } from "./segment-utils.js";
 
 export interface SentenceChunkerOptions {
   /**
@@ -40,7 +41,7 @@ export class SentenceChunker implements Chunker, PositionAwareChunker {
   chunkWithPositions(doc: Document): PositionAwareChunk[] {
     if (doc.content.trim().length === 0) return [];
 
-    const sentences = this._splitSentences(doc.content);
+    const sentences = splitSentences(doc.content);
     if (sentences.length === 0) return [];
 
     const results: PositionAwareChunk[] = [];
@@ -89,23 +90,4 @@ export class SentenceChunker implements Chunker, PositionAwareChunker {
     });
   }
 
-  private _splitSentences(
-    text: string,
-  ): Array<{ text: string; start: number; end: number }> {
-    if (text.trim().length === 0) return [];
-
-    const parts = text.split(/(?<=[.!?])\s+(?=[A-Z])/);
-    const result: Array<{ text: string; start: number; end: number }> = [];
-    let searchFrom = 0;
-
-    for (const part of parts) {
-      if (part.trim().length === 0) continue;
-      const idx = text.indexOf(part, searchFrom);
-      if (idx === -1) continue;
-      result.push({ text: part, start: idx, end: idx + part.length });
-      searchFrom = idx + part.length;
-    }
-
-    return result;
-  }
 }

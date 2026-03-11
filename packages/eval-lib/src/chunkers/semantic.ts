@@ -5,18 +5,13 @@ import type { Embedder } from "../embedders/embedder.interface.js";
 import { RecursiveCharacterChunker } from "./recursive-character.js";
 import { cosineSimilarity } from "../utils/similarity.js";
 import { generatePaChunkId } from "../utils/hashing.js";
+import { splitSentences, type TextSegment } from "./segment-utils.js";
 
 export interface SemanticChunkerOptions {
   /** Percentile threshold for split detection. @default 95 */
   readonly percentileThreshold?: number;
   /** Maximum chunk size in characters. Chunks exceeding this are sub-split. @default 2000 */
   readonly maxChunkSize?: number;
-}
-
-interface Sentence {
-  readonly text: string;
-  readonly start: number;
-  readonly end: number;
 }
 
 /**
@@ -65,7 +60,7 @@ export class SemanticChunker implements AsyncPositionAwareChunker {
 
   private _buildChunks(
     doc: Document,
-    groups: readonly Sentence[][],
+    groups: readonly TextSegment[][],
   ): PositionAwareChunk[] {
     const chunks: PositionAwareChunk[] = [];
     const subSplitter = new RecursiveCharacterChunker({
@@ -108,25 +103,6 @@ export class SemanticChunker implements AsyncPositionAwareChunker {
   }
 }
 
-/** Split text into sentences using punctuation + capital-letter boundaries. */
-function splitSentences(text: string): Sentence[] {
-  if (text.trim().length === 0) return [];
-
-  const parts = text.split(/(?<=[.!?])\s+(?=[A-Z])/);
-  const result: Sentence[] = [];
-  let searchFrom = 0;
-
-  for (const part of parts) {
-    if (part.trim().length === 0) continue;
-    const idx = text.indexOf(part, searchFrom);
-    if (idx === -1) continue;
-    result.push({ text: part, start: idx, end: idx + part.length });
-    searchFrom = idx + part.length;
-  }
-
-  return result;
-}
-
 /** Compute cosine similarity between each pair of consecutive embeddings. */
 function computeConsecutiveSimilarities(
   embeddings: readonly number[][],
@@ -143,12 +119,12 @@ function computeConsecutiveSimilarities(
  * below the threshold. Lower similarity = bigger topic shift.
  */
 function groupSentencesBySimilarity(
-  sentences: readonly Sentence[],
+  sentences: readonly TextSegment[],
   similarities: readonly number[],
   threshold: number,
-): Sentence[][] {
-  const groups: Sentence[][] = [];
-  let currentGroup: Sentence[] = [sentences[0]!];
+): TextSegment[][] {
+  const groups: TextSegment[][] = [];
+  let currentGroup: TextSegment[] = [sentences[0]!];
 
   for (let i = 0; i < similarities.length; i++) {
     if (similarities[i]! < threshold) {

@@ -1,7 +1,6 @@
 import type { Corpus, Document, PositionAwareChunk } from "../../types/index.js";
 import type { PositionAwareChunker } from "../../chunkers/chunker.interface.js";
 import type { AsyncPositionAwareChunker } from "../../chunkers/chunker.interface.js";
-import { isAsyncPositionAwareChunker } from "../../chunkers/chunker.interface.js";
 import type { Embedder } from "../../embedders/embedder.interface.js";
 import type { VectorStore } from "../../vector-stores/vector-store.interface.js";
 import type { Reranker } from "../../rerankers/reranker.interface.js";
@@ -183,9 +182,6 @@ export class PipelineRetriever implements Retriever {
    * Chunk a document, handling both sync and async chunkers.
    */
   private async _chunkDocument(doc: Document): Promise<PositionAwareChunk[]> {
-    if (isAsyncPositionAwareChunker(this._chunker)) {
-      return this._chunker.chunkWithPositions(doc);
-    }
     return this._chunker.chunkWithPositions(doc);
   }
 
