@@ -30,6 +30,7 @@ import type * as lib_workpool from "../lib/workpool.js";
 import type * as retrieval_chunks from "../retrieval/chunks.js";
 import type * as retrieval_indexing from "../retrieval/indexing.js";
 import type * as retrieval_indexingActions from "../retrieval/indexingActions.js";
+import type * as retrieval_pipelineActions from "../retrieval/pipelineActions.js";
 import type * as retrieval_retrieverActions from "../retrieval/retrieverActions.js";
 import type * as scraping_actions from "../scraping/actions.js";
 import type * as scraping_orchestration from "../scraping/orchestration.js";
@@ -63,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   "retrieval/chunks": typeof retrieval_chunks;
   "retrieval/indexing": typeof retrieval_indexing;
   "retrieval/indexingActions": typeof retrieval_indexingActions;
+  "retrieval/pipelineActions": typeof retrieval_pipelineActions;
   "retrieval/retrieverActions": typeof retrieval_retrieverActions;
   "scraping/actions": typeof scraping_actions;
   "scraping/orchestration": typeof scraping_orchestration;

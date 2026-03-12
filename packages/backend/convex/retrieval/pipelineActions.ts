@@ -1068,3 +1068,244 @@ export const refine = action({
     };
   },
 });
+
+// ===========================================================================
+// Retrieve With Trace (full pipeline — single action)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Core search logic (extracted from searchWithQueries handler)
+// ---------------------------------------------------------------------------
+
+interface SearchTraceResult {
+  readonly searchConfig: {
+    readonly strategy: string;
+    readonly denseWeight?: number;
+    readonly sparseWeight?: number;
+    readonly fusionMethod?: string;
+    readonly candidateMultiplier?: number;
+    readonly k: number;
+  };
+  readonly perQueryResults: ReadonlyArray<{
+    readonly query: string;
+    readonly chunks: ChunkResult[];
+  }>;
+  readonly fusedResults: ChunkResult[];
+  readonly latencyMs: number;
+}
+
+/**
+ * Core search logic shared by `searchWithQueries` action and
+ * `retrieveWithTrace`. Executes the configured search strategy for each
+ * query, fuses results across queries, and returns the trace.
+ */
+async function executeSearch(
+  ctx: ActionCtx,
+  queries: string[],
+  kbId: Id<"knowledgeBases">,
+  indexConfigHash: string,
+  embeddingModel: string,
+  searchConfig: SearchConfig,
+  topK: number,
+): Promise<SearchTraceResult> {
+  const start = performance.now();
+
+  // Pre-build BM25 index if needed (reused across all queries)
+  let bm25Index: BM25Index | null = null;
+  if (searchConfig.strategy === "bm25" || searchConfig.strategy === "hybrid") {
+    bm25Index = await buildBM25Index(ctx, kbId, indexConfigHash);
+  }
+
+  // Execute search for each query
+  const perQueryResults: Array<{ query: string; chunks: ChunkResult[] }> = [];
+
+  for (const queryText of queries) {
+    const chunks = await searchSingleQuery(
+      ctx,
+      queryText,
+      kbId,
+      indexConfigHash,
+      embeddingModel,
+      searchConfig,
+      topK,
+      bm25Index,
+    );
+    perQueryResults.push({ query: queryText, chunks });
+  }
+
+  // Fuse across queries if multiple
+  let fusedResults: ChunkResult[];
+  if (perQueryResults.length === 1) {
+    fusedResults = perQueryResults[0].chunks;
+  } else {
+    const allChunkLists = perQueryResults.map((r) => r.chunks);
+    fusedResults = rrfFuse(allChunkLists).slice(0, topK);
+  }
+
+  const latencyMs = Math.round(performance.now() - start);
+
+  // Build search config metadata
+  const searchConfigMeta: {
+    strategy: string;
+    denseWeight?: number;
+    sparseWeight?: number;
+    fusionMethod?: string;
+    candidateMultiplier?: number;
+    k: number;
+  } = {
+    strategy: searchConfig.strategy,
+    k: topK,
+  };
+  if (searchConfig.strategy === "hybrid") {
+    searchConfigMeta.denseWeight = searchConfig.denseWeight ?? 0.7;
+    searchConfigMeta.sparseWeight = searchConfig.sparseWeight ?? 0.3;
+    searchConfigMeta.fusionMethod = searchConfig.fusionMethod ?? "rrf";
+    searchConfigMeta.candidateMultiplier = searchConfig.candidateMultiplier ?? 3;
+  }
+
+  return {
+    searchConfig: searchConfigMeta,
+    perQueryResults,
+    fusedResults,
+    latencyMs,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Core refinement logic (extracted from refine handler)
+// ---------------------------------------------------------------------------
+
+interface RefinementTraceResult {
+  readonly stages: StageResult[];
+  readonly finalChunks: ChunkResult[];
+}
+
+/**
+ * Core refinement logic shared by `refine` action and `retrieveWithTrace`.
+ * Runs each refinement stage sequentially on the input chunks.
+ */
+async function executeRefinement(
+  ctx: ActionCtx,
+  chunks: ChunkResult[],
+  refinementSteps: RefinementStepConfig[],
+  query: string,
+  kbId: Id<"knowledgeBases">,
+  k: number,
+): Promise<RefinementTraceResult> {
+  let currentChunks = chunks;
+
+  if (refinementSteps.length === 0) {
+    return { stages: [], finalChunks: currentChunks };
+  }
+
+  const stages: StageResult[] = [];
+  for (const step of refinementSteps) {
+    const stageResult = await runRefinementStage(
+      ctx,
+      step,
+      currentChunks,
+      query,
+      kbId,
+      k,
+    );
+    stages.push(stageResult);
+    currentChunks = stageResult.outputChunks;
+  }
+
+  return { stages, finalChunks: currentChunks };
+}
+
+// ---------------------------------------------------------------------------
+// Public action — retrieveWithTrace
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute the full retrieval pipeline and return all intermediate results.
+ *
+ * Composes query rewriting, search, and refinement into a single action call
+ * (no extra HTTP round-trips). Each stage's output and latency are captured
+ * in the returned trace so the caller can inspect every step.
+ *
+ * Returns: `{ rewriting, search, refinement, finalChunks, totalLatencyMs }`.
+ */
+export const retrieveWithTrace = action({
+  args: {
+    retrieverId: v.id("retrievers"),
+    query: v.string(),
+    k: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const totalStart = performance.now();
+    const { orgId } = await getAuthContext(ctx);
+
+    // Load and validate retriever
+    const retriever = await ctx.runQuery(
+      internal.crud.retrievers.getInternal,
+      { id: args.retrieverId },
+    );
+
+    if (retriever.orgId !== orgId) {
+      throw new Error("Retriever not found");
+    }
+
+    if (retriever.status !== "ready") {
+      throw new Error(
+        `Retriever is not ready (status: ${retriever.status}). Index the KB first.`,
+      );
+    }
+
+    const config = retriever.retrieverConfig as PipelineConfig;
+    const k = args.k ?? retriever.defaultK;
+
+    // ----- Step 1: Query rewriting -----
+    const queryConfig = config.query as QueryConfig | undefined;
+    const rewriting = await dispatchQueryStrategy(args.query, queryConfig);
+
+    // ----- Step 2: Search -----
+    const searchConfig: SearchConfig = (config.search as SearchConfig | undefined) ?? {
+      strategy: "dense",
+    };
+    const indexSettings = (config.index ?? {}) as Record<string, unknown>;
+    const embeddingModel =
+      (indexSettings.embeddingModel as string) ?? "text-embedding-3-small";
+
+    const search = await executeSearch(
+      ctx,
+      rewriting.rewrittenQueries,
+      retriever.kbId,
+      retriever.indexConfigHash,
+      embeddingModel,
+      searchConfig,
+      k,
+    );
+
+    // ----- Step 3: Refinement -----
+    const refinementSteps =
+      (config.refinement as RefinementStepConfig[] | undefined) ?? [];
+
+    const refinementStart = performance.now();
+    const refinementResult = await executeRefinement(
+      ctx,
+      search.fusedResults,
+      refinementSteps,
+      args.query,
+      retriever.kbId,
+      k,
+    );
+    const refinementLatencyMs = Math.round(performance.now() - refinementStart);
+
+    const totalLatencyMs = Math.round(performance.now() - totalStart);
+
+    return {
+      rewriting,
+      search,
+      refinement: {
+        stages: refinementResult.stages,
+        finalChunks: refinementResult.finalChunks,
+        latencyMs: refinementLatencyMs,
+      },
+      finalChunks: refinementResult.finalChunks,
+      totalLatencyMs,
+    };
+  },
+});
