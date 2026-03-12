@@ -53,11 +53,11 @@ describe("shared/types", () => {
 
 describe("shared/constants", () => {
   it("EMBED_BATCH_SIZE is a positive number", () => {
-    expect(EMBED_BATCH_SIZE).toBe(200);
+    expect(EMBED_BATCH_SIZE).toBe(50);
   });
 
   it("CLEANUP_BATCH_SIZE is a positive number", () => {
-    expect(CLEANUP_BATCH_SIZE).toBe(500);
+    expect(CLEANUP_BATCH_SIZE).toBe(100);
   });
 
   it("QUESTION_INSERT_BATCH_SIZE is a positive number", () => {

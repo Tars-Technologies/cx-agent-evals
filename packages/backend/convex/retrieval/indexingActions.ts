@@ -10,6 +10,26 @@ import {
 import { EMBED_BATCH_SIZE, CLEANUP_BATCH_SIZE } from "rag-evaluation-system/shared";
 import { createEmbedder } from "rag-evaluation-system/llm";
 
+/** Retry a mutation that may fail with TooManyWrites under concurrent load. */
+async function retryOnWriteLimit<T>(
+  fn: () => Promise<T>,
+  maxRetries = 4,
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const msg = typeof err?.message === "string" ? err.message : String(err);
+      if (attempt < maxRetries && msg.includes("TooManyWrites")) {
+        // Exponential backoff: 500ms, 1s, 2s, 4s
+        await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 // ─── Two-Phase Document Indexing Action ───
 
 /**
@@ -124,13 +144,16 @@ export const indexDocument = internalAction({
       // but Phase A is skipped and completed batches are skipped
       const embeddings = await embedder.embed(texts);
 
-      // Patch this batch's embeddings — checkpoint saved
-      await ctx.runMutation(internal.retrieval.chunks.patchChunkEmbeddings, {
-        patches: batch.map((c: any, idx: number) => ({
-          chunkId: c._id,
-          embedding: embeddings[idx],
-        })),
-      });
+      // Patch this batch's embeddings — checkpoint saved.
+      // Retry with backoff if concurrent actions saturate write throughput.
+      await retryOnWriteLimit(() =>
+        ctx.runMutation(internal.retrieval.chunks.patchChunkEmbeddings, {
+          patches: batch.map((c: any, idx: number) => ({
+            chunkId: c._id,
+            embedding: embeddings[idx],
+          })),
+        }),
+      );
 
       totalEmbedded += batch.length;
     }
