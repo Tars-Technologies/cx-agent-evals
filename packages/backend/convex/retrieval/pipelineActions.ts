@@ -11,6 +11,7 @@ import type {
   MultiQueryConfig,
   StepBackQueryConfig,
   RewriteQueryConfig,
+  RefinementStepConfig,
 } from "rag-evaluation-system";
 import { createLLMClient, createEmbedder } from "rag-evaluation-system/llm";
 import { getAuthContext } from "../lib/auth";
@@ -706,6 +707,364 @@ export const searchWithQueries = action({
       perQueryResults,
       fusedResults,
       latencyMs,
+    };
+  },
+});
+
+// ===========================================================================
+// Refine (Stage 4 — post-retrieval refinement)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Refinement helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute the ratio of character-span overlap between two chunks from the
+ * same document. Returns 0 when chunks are from different documents.
+ */
+function computeOverlapRatio(a: ChunkResult, b: ChunkResult): number {
+  if (a.docId !== b.docId) return 0;
+  const overlapStart = Math.max(a.start, b.start);
+  const overlapEnd = Math.min(a.end, b.end);
+  const overlap = Math.max(0, overlapEnd - overlapStart);
+  const minLen = Math.min(a.end - a.start, b.end - b.start);
+  return minLen === 0 ? 0 : overlap / minLen;
+}
+
+function applyThreshold(chunks: ChunkResult[], minScore: number): ChunkResult[] {
+  return chunks.filter((c) => c.score >= minScore);
+}
+
+function applyDedup(
+  chunks: ChunkResult[],
+  method: "exact" | "overlap",
+  threshold: number,
+): ChunkResult[] {
+  if (method === "exact") {
+    const seen = new Set<string>();
+    return chunks.filter((c) => {
+      if (seen.has(c.content)) return false;
+      seen.add(c.content);
+      return true;
+    });
+  }
+
+  // Overlap method: greedily keep chunks that don't overlap with already-kept ones
+  const kept: ChunkResult[] = [];
+  for (const chunk of chunks) {
+    const isDuplicate = kept.some(
+      (existing) =>
+        existing.docId === chunk.docId &&
+        computeOverlapRatio(existing, chunk) >= threshold,
+    );
+    if (!isDuplicate) kept.push(chunk);
+  }
+  return kept;
+}
+
+/**
+ * Maximal Marginal Relevance: iteratively select chunks that balance
+ * relevance (score) against diversity (low overlap with already-selected).
+ */
+function applyMmr(
+  chunks: ChunkResult[],
+  k: number,
+  lambda: number,
+): ChunkResult[] {
+  if (chunks.length === 0) return [];
+
+  const candidates = [...chunks];
+  const selected: ChunkResult[] = [];
+
+  while (selected.length < k && candidates.length > 0) {
+    let bestIdx = 0;
+    let bestScore = -Infinity;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i];
+      const relevance = c.score;
+
+      let maxSim = 0;
+      for (const s of selected) {
+        const sim = computeOverlapRatio(s, c);
+        if (sim > maxSim) maxSim = sim;
+      }
+
+      const mmrScore = lambda * relevance - (1 - lambda) * maxSim;
+      if (mmrScore > bestScore) {
+        bestScore = mmrScore;
+        bestIdx = i;
+      }
+    }
+
+    selected.push(candidates.splice(bestIdx, 1)[0]);
+  }
+
+  return selected;
+}
+
+/**
+ * Rerank chunks using the Cohere rerank API (direct HTTP — no SDK dependency).
+ * Falls back to the original order if `COHERE_API_KEY` is not set.
+ */
+async function applyRerank(
+  query: string,
+  chunks: ChunkResult[],
+  topK: number,
+): Promise<ChunkResult[]> {
+  const apiKey = process.env.COHERE_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "COHERE_API_KEY not set — required for the rerank refinement step",
+    );
+  }
+
+  const response = await fetch("https://api.cohere.com/v1/rerank", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "rerank-english-v3.0",
+      query,
+      documents: chunks.map((c) => c.content),
+      top_n: topK,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Cohere rerank failed (${response.status}): ${body}`);
+  }
+
+  const data = (await response.json()) as {
+    results: Array<{ index: number; relevance_score: number }>;
+  };
+
+  return data.results.map((r) => ({
+    ...chunks[r.index],
+    score: r.relevance_score,
+  }));
+}
+
+/**
+ * Expand each chunk's character window by `windowChars` in both directions,
+ * clamped to the source document boundaries.
+ *
+ * Requires fetching document content from Convex to produce the expanded text.
+ */
+async function applyExpandContext(
+  ctx: ActionCtx,
+  chunks: ChunkResult[],
+  kbId: Id<"knowledgeBases">,
+  windowChars: number,
+): Promise<ChunkResult[]> {
+  // Fetch all documents in the KB so we can look up content by docId
+  const docs: Array<{ docId: string; content: string }> = await ctx.runQuery(
+    internal.crud.documents.listByKbInternal,
+    { kbId },
+  );
+
+  const docContentMap = new Map<string, string>();
+  for (const doc of docs) {
+    docContentMap.set(doc.docId, doc.content);
+  }
+
+  return chunks.map((chunk) => {
+    const fullContent = docContentMap.get(chunk.docId);
+    if (!fullContent) return chunk; // Document not found — return unchanged
+
+    const newStart = Math.max(0, chunk.start - windowChars);
+    const newEnd = Math.min(fullContent.length, chunk.end + windowChars);
+    const expandedContent = fullContent.slice(newStart, newEnd);
+
+    return {
+      ...chunk,
+      content: expandedContent,
+      start: newStart,
+      end: newEnd,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Stage runner
+// ---------------------------------------------------------------------------
+
+interface StageResult {
+  readonly name: string;
+  readonly config: Record<string, unknown>;
+  readonly inputCount: number;
+  readonly outputCount: number;
+  readonly outputChunks: ChunkResult[];
+  readonly latencyMs: number;
+}
+
+/**
+ * Run a single refinement stage and return its result with timing.
+ */
+async function runRefinementStage(
+  ctx: ActionCtx,
+  step: RefinementStepConfig,
+  chunks: ChunkResult[],
+  query: string,
+  kbId: Id<"knowledgeBases">,
+  k: number,
+): Promise<StageResult> {
+  const inputCount = chunks.length;
+  const start = performance.now();
+  let outputChunks: ChunkResult[];
+  let config: Record<string, unknown>;
+
+  switch (step.type) {
+    case "threshold": {
+      config = { type: "threshold", minScore: step.minScore };
+      outputChunks = applyThreshold(chunks, step.minScore);
+      break;
+    }
+
+    case "dedup": {
+      const method = step.method ?? "overlap";
+      const overlapThreshold = step.overlapThreshold ?? 0.5;
+      config = { type: "dedup", method, overlapThreshold };
+      outputChunks = applyDedup(chunks, method, overlapThreshold);
+      break;
+    }
+
+    case "mmr": {
+      const lambda = step.lambda ?? 0.7;
+      config = { type: "mmr", lambda, k };
+      outputChunks = applyMmr(chunks, k, lambda);
+      break;
+    }
+
+    case "rerank": {
+      config = { type: "rerank", model: "rerank-english-v3.0", topK: k };
+      outputChunks = await applyRerank(query, chunks, k);
+      break;
+    }
+
+    case "expand-context": {
+      const windowChars = step.windowChars ?? 500;
+      config = { type: "expand-context", windowChars };
+      outputChunks = await applyExpandContext(ctx, chunks, kbId, windowChars);
+      break;
+    }
+
+    default: {
+      const _exhaustive: never = step;
+      config = { type: "unknown" };
+      outputChunks = chunks;
+    }
+  }
+
+  const latencyMs = Math.round(performance.now() - start);
+
+  return {
+    name: step.type,
+    config,
+    inputCount,
+    outputCount: outputChunks.length,
+    outputChunks,
+    latencyMs,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Public action — refine
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply the retriever's refinement pipeline to a set of search result chunks.
+ *
+ * Takes a retriever ID, the original query, and an array of chunk results
+ * (typically from the `searchWithQueries` action). Runs each refinement
+ * stage (threshold, dedup, MMR, rerank, expand-context) sequentially,
+ * capturing per-stage input/output counts and timing.
+ *
+ * Returns per-stage details and the final refined chunks.
+ */
+export const refine = action({
+  args: {
+    retrieverId: v.id("retrievers"),
+    query: v.string(),
+    chunks: v.array(
+      v.object({
+        chunkId: v.string(),
+        content: v.string(),
+        docId: v.string(),
+        start: v.number(),
+        end: v.number(),
+        score: v.number(),
+        metadata: v.any(),
+      }),
+    ),
+    k: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+
+    // Load and validate retriever
+    const retriever = await ctx.runQuery(
+      internal.crud.retrievers.getInternal,
+      { id: args.retrieverId },
+    );
+
+    if (retriever.orgId !== orgId) {
+      throw new Error("Retriever not found");
+    }
+
+    if (retriever.status !== "ready") {
+      throw new Error(
+        `Retriever is not ready (status: ${retriever.status}). Index the KB first.`,
+      );
+    }
+
+    const config = retriever.retrieverConfig as PipelineConfig;
+    const refinementSteps =
+      (config.refinement as RefinementStepConfig[] | undefined) ?? [];
+
+    const k = args.k ?? retriever.defaultK;
+
+    // Cast input chunks to ChunkResult (validator guarantees shape)
+    let currentChunks: ChunkResult[] = args.chunks.map((c) => ({
+      chunkId: c.chunkId,
+      content: c.content,
+      docId: c.docId,
+      start: c.start,
+      end: c.end,
+      score: c.score,
+      metadata: (c.metadata ?? {}) as Record<string, unknown>,
+    }));
+
+    // No refinement configured — return input unchanged
+    if (refinementSteps.length === 0) {
+      return {
+        stages: [] as StageResult[],
+        finalChunks: currentChunks,
+      };
+    }
+
+    // Run each refinement stage sequentially
+    const stages: StageResult[] = [];
+    for (const step of refinementSteps) {
+      const stageResult = await runRefinementStage(
+        ctx,
+        step,
+        currentChunks,
+        args.query,
+        retriever.kbId,
+        k,
+      );
+      stages.push(stageResult);
+      currentChunks = stageResult.outputChunks;
+    }
+
+    return {
+      stages,
+      finalChunks: currentChunks,
     };
   },
 });
