@@ -1,5 +1,6 @@
-import { internalMutation, internalQuery } from "../_generated/server";
+import { internalMutation, internalQuery, query } from "../_generated/server";
 import { v } from "convex/values";
+import { getAuthContext } from "../lib/auth";
 
 // ─── Batch Mutations (new — for two-phase indexing) ───
 
@@ -168,6 +169,64 @@ export const getChunksByDocConfigPage = internalQuery({
 
     return {
       chunks: page.page,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
+/**
+ * Public paginated query for Index tab — fetches chunks by (kbId, indexConfigHash, documentId?).
+ * Optionally filters by documentId for narrower browsing.
+ */
+export const getChunksByRetrieverPage = query({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    indexConfigHash: v.string(),
+    documentId: v.optional(v.id("documents")),
+    cursor: v.union(v.string(), v.null()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+
+    // Verify KB belongs to org
+    const kb = await ctx.db.get(args.kbId);
+    if (!kb || kb.orgId !== orgId) throw new Error("KB not found");
+
+    const numItems = args.pageSize ?? 50;
+
+    const baseQuery = args.documentId
+      ? ctx.db
+          .query("documentChunks")
+          .withIndex("by_doc_config", (q) =>
+            q
+              .eq("documentId", args.documentId!)
+              .eq("indexConfigHash", args.indexConfigHash),
+          )
+      : ctx.db
+          .query("documentChunks")
+          .withIndex("by_kb_config", (q) =>
+            q
+              .eq("kbId", args.kbId)
+              .eq("indexConfigHash", args.indexConfigHash),
+          );
+
+    const page = await baseQuery.paginate({
+      numItems,
+      cursor: args.cursor as any ?? null,
+    });
+
+    return {
+      chunks: page.page.map((c) => ({
+        _id: c._id,
+        chunkId: c.chunkId,
+        documentId: c.documentId,
+        content: c.content,
+        start: c.start,
+        end: c.end,
+        metadata: c.metadata ?? {},
+      })),
       isDone: page.isDone,
       continueCursor: page.continueCursor,
     };
