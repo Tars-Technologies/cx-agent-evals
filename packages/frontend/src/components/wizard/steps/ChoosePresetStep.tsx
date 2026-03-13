@@ -108,6 +108,28 @@ export function ChoosePresetStep({
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Start from scratch — now at the top */}
+      <button
+        type="button"
+        onClick={() => onSelectPreset(null)}
+        className={`
+          w-full text-center text-sm py-2 rounded-lg border transition-colors cursor-pointer
+          ${selectedPresetId === null
+            ? "border-accent text-accent bg-accent-dim/10"
+            : "border-border text-text-muted bg-bg-surface hover:bg-bg-hover hover:border-border-bright"
+          }
+        `}
+      >
+        Start from scratch
+      </button>
+
+      {/* Divider */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-border" />
+        <span className="text-text-dim text-xs">or</span>
+        <div className="flex-1 h-px bg-border" />
+      </div>
+
       {/* Filters */}
       <div className="flex flex-col gap-3">
         {/* Complexity checkboxes */}
@@ -169,28 +191,6 @@ export function ChoosePresetStep({
           No presets match the current filters.
         </p>
       )}
-
-      {/* Divider */}
-      <div className="flex items-center gap-3">
-        <div className="flex-1 h-px bg-border" />
-        <span className="text-text-dim text-xs">or</span>
-        <div className="flex-1 h-px bg-border" />
-      </div>
-
-      {/* Start from scratch */}
-      <button
-        type="button"
-        onClick={() => onSelectPreset(null)}
-        className={`
-          w-full text-center text-sm py-2 rounded-lg border transition-colors cursor-pointer
-          ${selectedPresetId === null
-            ? "border-accent text-accent bg-accent-dim/10"
-            : "border-border text-text-muted bg-bg-surface hover:bg-bg-hover hover:border-border-bright"
-          }
-        `}
-      >
-        Start from scratch
-      </button>
     </div>
   );
 }
