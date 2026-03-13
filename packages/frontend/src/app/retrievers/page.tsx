@@ -239,6 +239,17 @@ function RetrieversPageContent() {
                 )}
               </div>
             </>
+          ) : selectedRetrieverId ? (
+            /* Loading state — retriever selected but data still loading */
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+              <div className="flex-1 flex items-center justify-center">
+                <div className="flex items-center gap-2 text-text-dim text-sm">
+                  <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                  Loading...
+                </div>
+              </div>
+            </div>
           ) : (
             <EmptyState onNewRetriever={() => setShowWizard(true)} />
           )}
