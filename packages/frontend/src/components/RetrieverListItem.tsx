@@ -247,15 +247,7 @@ export function RetrieverListItem({
   const style = STATUS_STYLES[retriever.status] ?? STATUS_STYLES.configuring;
 
   const handleHeaderClick = () => {
-    if (isCheckboxMode) {
-      // In checkbox mode, clicking the row still expands/selects, but
-      // checking is handled by the checkbox itself.
-      onSelect();
-      onToggleExpand();
-      return;
-    }
     onSelect();
-    onToggleExpand();
   };
 
   const summary = isExpanded
