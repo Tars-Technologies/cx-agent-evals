@@ -120,14 +120,7 @@ export function RetrieverSidebar({
 
   // --- Local UI state ---
   const [expandedId, setExpandedId] = useState<Id<"retrievers"> | null>(null);
-  const [detailRetriever, setDetailRetriever] = useState<{
-    name: string;
-    retrieverConfig: unknown;
-    defaultK: number;
-    status: string;
-    chunkCount?: number;
-    createdAt: number;
-  } | null>(null);
+  const [detailRetrieverId, setDetailRetrieverId] = useState<Id<"retrievers"> | null>(null);
 
   // --- Action handlers ---
 
@@ -257,16 +250,7 @@ export function RetrieverSidebar({
               }
               onDeleteIndex={() => handleDeleteIndex(r._id)}
               onDelete={() => handleDelete(r._id)}
-              onViewFullConfig={() =>
-                setDetailRetriever({
-                  name: r.name,
-                  retrieverConfig: r.retrieverConfig,
-                  defaultK: r.defaultK,
-                  status: r.status,
-                  chunkCount: r.chunkCount,
-                  createdAt: r._creationTime,
-                })
-              }
+              onViewFullConfig={() => setDetailRetrieverId(r._id)}
               isCheckboxMode={isPlaygroundMode}
               isChecked={selectedRetrieverIds.has(r._id)}
               onToggleCheck={() => onToggleRetrieverCheck(r._id)}
@@ -276,12 +260,39 @@ export function RetrieverSidebar({
       </div>
 
       {/* Detail modal */}
-      {detailRetriever && (
-        <RetrieverDetailModal
-          retriever={detailRetriever}
-          onClose={() => setDetailRetriever(null)}
-        />
-      )}
+      {detailRetrieverId && (() => {
+        const r = retrievers?.find((ret) => ret._id === detailRetrieverId);
+        if (!r) return null;
+        const sharingRetrievers = (retrievers ?? [])
+          .filter(
+            (other) =>
+              other._id !== r._id &&
+              other.indexConfigHash === r.indexConfigHash,
+          )
+          .map((other) => ({ name: other.name }));
+        return (
+          <RetrieverDetailModal
+            retriever={{
+              name: r.name,
+              retrieverConfig: r.retrieverConfig,
+              defaultK: r.defaultK,
+              status: r.status,
+              chunkCount: r.chunkCount,
+              createdAt: r._creationTime,
+            }}
+            sharingRetrievers={sharingRetrievers}
+            onDeleteIndex={async () => {
+              await handleDeleteIndex(r._id);
+              setDetailRetrieverId(null);
+            }}
+            onDeleteRetriever={async () => {
+              await handleDelete(r._id);
+              setDetailRetrieverId(null);
+            }}
+            onClose={() => setDetailRetrieverId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

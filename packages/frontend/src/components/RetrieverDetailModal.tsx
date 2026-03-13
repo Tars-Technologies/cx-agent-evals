@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   INDEX_STRATEGY_REGISTRY,
   QUERY_STRATEGY_REGISTRY,
@@ -9,10 +10,15 @@ import {
   EMBEDDER_REGISTRY,
   RERANKER_REGISTRY,
 } from "rag-evaluation-system/registry";
+import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+interface SharingRetriever {
+  name: string;
+}
 
 interface RetrieverDetailModalProps {
   retriever: {
@@ -23,6 +29,9 @@ interface RetrieverDetailModalProps {
     chunkCount?: number;
     createdAt: number;
   };
+  sharingRetrievers: SharingRetriever[];
+  onDeleteIndex: () => void;
+  onDeleteRetriever: () => void;
   onClose: () => void;
 }
 
@@ -265,11 +274,81 @@ function RefinementSection({ config }: { config: ParsedConfig }) {
 }
 
 // ---------------------------------------------------------------------------
+// DangerZone
+// ---------------------------------------------------------------------------
+
+function DangerZone({
+  retrieverName,
+  status,
+  sharingRetrievers,
+  onDeleteIndex,
+  onDeleteRetriever,
+}: {
+  retrieverName: string;
+  status: string;
+  sharingRetrievers: SharingRetriever[];
+  onDeleteIndex: () => void;
+  onDeleteRetriever: () => void;
+}) {
+  const [confirmAction, setConfirmAction] = useState<
+    null | "retriever" | "index"
+  >(null);
+  const hasIndex = status === "ready" || status === "error";
+
+  return (
+    <>
+      <section className="border border-red-500/20 rounded-lg p-4 bg-red-500/[0.02]">
+        <h4 className="text-xs font-medium text-red-400 uppercase tracking-wider mb-3">
+          Danger Zone
+        </h4>
+        <div className="flex items-center gap-2">
+          {hasIndex && (
+            <button
+              onClick={() => setConfirmAction("index")}
+              className="text-xs px-3 py-1.5 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+            >
+              Delete Index
+            </button>
+          )}
+          <button
+            onClick={() => setConfirmAction("retriever")}
+            className="text-xs px-3 py-1.5 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+          >
+            Delete Retriever
+          </button>
+        </div>
+      </section>
+
+      {confirmAction && (
+        <ConfirmDeleteModal
+          action={confirmAction}
+          retrieverName={retrieverName}
+          sharingRetrievers={sharingRetrievers}
+          hasIndex={hasIndex}
+          onConfirm={() => {
+            if (confirmAction === "index") {
+              onDeleteIndex();
+            } else {
+              onDeleteRetriever();
+            }
+            setConfirmAction(null);
+          }}
+          onClose={() => setConfirmAction(null)}
+        />
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
 export function RetrieverDetailModal({
   retriever,
+  sharingRetrievers,
+  onDeleteIndex,
+  onDeleteRetriever,
   onClose,
 }: RetrieverDetailModalProps) {
   const config = (retriever.retrieverConfig ?? {}) as ParsedConfig;
@@ -335,6 +414,15 @@ export function RetrieverDetailModal({
           <QuerySection config={config} />
           <SearchSection config={config} />
           <RefinementSection config={config} />
+
+          {/* Danger Zone */}
+          <DangerZone
+            retrieverName={retriever.name}
+            status={retriever.status}
+            sharingRetrievers={sharingRetrievers}
+            onDeleteIndex={onDeleteIndex}
+            onDeleteRetriever={onDeleteRetriever}
+          />
         </div>
       </div>
     </div>
