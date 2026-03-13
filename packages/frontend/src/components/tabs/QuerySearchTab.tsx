@@ -451,23 +451,6 @@ export function QuerySearchTab({
     searchAction,
   ]);
 
-  // Non-ready state
-  if (retriever.status !== "ready") {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center space-y-2">
-          <p className="text-sm text-text-dim">
-            This retriever hasn&apos;t been indexed yet.
-          </p>
-          <p className="text-[11px] text-text-dim/60">
-            Start indexing from the retriever card to inspect the query
-            pipeline.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-full">
       {/* Query bar */}
@@ -485,7 +468,7 @@ export function QuerySearchTab({
         <button
           type="button"
           onClick={handleRun}
-          disabled={!query.trim() || isRewriting || isSearching}
+          disabled={!query.trim() || isRewriting || isSearching || retriever.status !== "ready"}
           className="px-4 py-2 rounded-lg text-sm font-medium bg-accent hover:bg-accent/90 text-bg-elevated disabled:bg-border disabled:text-text-dim transition-colors cursor-pointer"
         >
           {isRewriting || isSearching ? (
