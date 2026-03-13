@@ -9,7 +9,6 @@ import { QueryStep } from "./steps/QueryStep";
 import { SearchStep } from "./steps/SearchStep";
 import { RefinementStep } from "./steps/RefinementStep";
 import { ReviewStep } from "./steps/ReviewStep";
-import { configHash } from "@/lib/pipeline-storage";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,22 +64,69 @@ function extractSearchOptions(
 }
 
 /**
- * Build an auto-generated name from the current wizard state.
- * Uses the preset id when matching, otherwise appends a short hash.
+ * Build a human-readable sentence-style name from config.
+ * Priority: search strategy > query rewriting > refinement > k > chunking.
  */
 function buildAutoName(presetId: string | null, config: BuiltConfig): string {
-  if (!presetId) return `custom-${shortHash(config)}`;
+  // If a preset is selected and name matches, use the preset id
+  if (presetId) {
+    const preset = PRESET_REGISTRY.find((p) => p.id === presetId);
+    if (preset) return presetId;
+  }
 
-  // Check if the current config exactly matches the selected preset
-  const preset = PRESET_REGISTRY.find((p) => p.id === presetId);
-  if (!preset) return `custom-${shortHash(config)}`;
+  const parts: string[] = [];
 
-  return presetId;
-}
+  // Chunking prefix (only if non-default)
+  const chunkSize = config.index?.chunkSize;
+  const strategy = config.index?.strategy;
+  if (strategy === "parent-child") {
+    parts.push("Parent-child,");
+  } else if (chunkSize && chunkSize !== 1000) {
+    parts.push(`Recursive-${chunkSize},`);
+  }
 
-function shortHash(config: BuiltConfig): string {
-  const { name: _, ...withoutName } = config;
-  return configHash(JSON.stringify(withoutName));
+  // Search strategy (always — this is the lead)
+  const searchStrategy = config.search?.strategy ?? "dense";
+  const searchLabel =
+    searchStrategy.charAt(0).toUpperCase() + searchStrategy.slice(1);
+  parts.push(`${searchLabel} search`);
+
+  // Query rewriting (if non-default)
+  const queryStrategy = config.query?.strategy;
+  if (queryStrategy && queryStrategy !== "identity") {
+    const queryLabel = queryStrategy.replace(/_/g, " ");
+    parts.push(`${queryLabel} rewriting`);
+  }
+
+  // Refinement
+  const refinement = config.refinement;
+  if (refinement && refinement.length > 0) {
+    const types = refinement.map((s) => s.type);
+    if (types.length === 1) {
+      parts.push(`with ${types[0]}`);
+    } else {
+      parts.push(`with ${types.join(" + ")}`);
+    }
+  }
+
+  // k value
+  const k = config.k ?? 5;
+  parts.push(`(k=${k})`);
+
+  // Join with appropriate separators
+  // "Dense search with reranking (k=5)"
+  // "Parent-child, Hybrid search, HyDE rewriting, with rerank + threshold (k=10)"
+  let name = parts[0];
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.startsWith("with ") || part.startsWith("(")) {
+      name += ` ${part}`;
+    } else {
+      name += `, ${part}`;
+    }
+  }
+
+  return name;
 }
 
 // ---------------------------------------------------------------------------
