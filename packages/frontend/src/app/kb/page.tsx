@@ -8,6 +8,7 @@ import { Header } from "@/components/Header";
 import { useKbFromUrl } from "@/lib/useKbFromUrl";
 import { FileUploader } from "@/components/FileUploader";
 import { CreateKBModal } from "@/components/CreateKBModal";
+import { MarkdownViewer } from "@/components/MarkdownViewer";
 
 const INDUSTRIES = [
   "finance", "insurance", "healthcare", "telecom", "education", "government",
@@ -30,6 +31,7 @@ function KBPageContent() {
   // --- Document state ---
   const [selectedDocId, setSelectedDocId] = useState<Id<"documents"> | null>(null);
   const [docSearchQuery, setDocSearchQuery] = useState("");
+  const [docViewMode, setDocViewMode] = useState<"raw" | "rendered">("rendered");
 
   // --- Crawl state ---
   const [showImportUrl, setShowImportUrl] = useState(false);
@@ -386,12 +388,45 @@ function KBPageContent() {
                       {selectedDoc.sourceType}
                     </span>
                   )}
+                  {/* Raw/Rendered toggle */}
+                  <div className="flex items-center bg-bg-surface rounded-full p-0.5 gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setDocViewMode("raw")}
+                      className={`text-[10px] px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
+                        docViewMode === "raw"
+                          ? "bg-accent/20 text-accent"
+                          : "text-text-dim hover:text-text"
+                      }`}
+                    >
+                      raw
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDocViewMode("rendered")}
+                      className={`text-[10px] px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
+                        docViewMode === "rendered"
+                          ? "bg-accent/20 text-accent"
+                          : "text-text-dim hover:text-text"
+                      }`}
+                    >
+                      rendered
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-4">
-                <pre className="text-xs text-text-muted leading-[1.8] whitespace-pre-wrap break-all font-[inherit]">
-                  {selectedDoc.content}
-                </pre>
+                {docViewMode === "raw" ? (
+                  <pre className="text-xs text-text-muted leading-[1.8] whitespace-pre-wrap break-all font-[inherit]">
+                    {selectedDoc.content}
+                  </pre>
+                ) : (
+                  <MarkdownViewer
+                    content={selectedDoc.content}
+                    showToggle={false}
+                    defaultMode="rendered"
+                  />
+                )}
               </div>
             </>
           ) : (

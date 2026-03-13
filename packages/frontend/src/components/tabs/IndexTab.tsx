@@ -19,6 +19,7 @@ interface IndexTabProps {
     status: string;
     chunkCount?: number;
   };
+  onStartIndexing: () => void;
 }
 
 /** A chunk as returned by the paginated query (no embedding). */
@@ -272,19 +273,26 @@ function DocumentViewerPanel({
   documentId,
   selectedChunkIndex,
   onSelectChunk,
+  isReady,
 }: {
   kbId: Id<"knowledgeBases">;
   indexConfigHash: string;
   documentId: Id<"documents">;
   selectedChunkIndex: number | null;
   onSelectChunk: (index: number) => void;
+  /** Whether the retriever has been indexed (chunks exist). */
+  isReady: boolean;
 }) {
+  const [viewMode, setViewMode] = useState<"raw" | "rendered">(
+    isReady ? "raw" : "rendered",
+  );
+
   // Load document content
   const docContent = useQuery(api.crud.documents.getContent, {
     id: documentId,
   });
 
-  // Load first page of chunks
+  // Load first page of chunks (skip when not ready)
   const [allChunks, setAllChunks] = useState<Chunk[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -292,13 +300,15 @@ function DocumentViewerPanel({
 
   const firstPage = useQuery(
     api.retrieval.chunks.getChunksByRetrieverPage,
-    {
-      kbId,
-      indexConfigHash,
-      documentId,
-      cursor: null,
-      pageSize: 100,
-    },
+    isReady
+      ? {
+          kbId,
+          indexConfigHash,
+          documentId,
+          cursor: null,
+          pageSize: 100,
+        }
+      : "skip",
   );
 
   // Reset when document changes
@@ -353,7 +363,7 @@ function DocumentViewerPanel({
     return buildSegments(docContent.content, sortedChunks);
   }, [docContent, sortedChunks]);
 
-  if (docContent === undefined || firstPage === undefined) {
+  if (docContent === undefined || (isReady && firstPage === undefined)) {
     return (
       <div className="flex items-center justify-center h-full">
         <Spinner />
@@ -370,6 +380,7 @@ function DocumentViewerPanel({
   }
 
   const hasMore = cursor !== null;
+  const hasChunks = sortedChunks.length > 0;
 
   return (
     <div className="h-full flex flex-col">
@@ -379,45 +390,91 @@ function DocumentViewerPanel({
           {docContent.docId}
         </span>
         <div className="flex items-center gap-3">
-          <span className="text-[10px] text-text-muted">
-            {sortedChunks.length} chunk{sortedChunks.length !== 1 ? "s" : ""}
-            {hasMore ? "+" : ""}
-          </span>
+          {hasChunks && (
+            <span className="text-[10px] text-text-muted">
+              {sortedChunks.length} chunk{sortedChunks.length !== 1 ? "s" : ""}
+              {hasMore ? "+" : ""}
+            </span>
+          )}
           <span className="text-[10px] text-text-dim">
             {docContent.content.length.toLocaleString()} chars
           </span>
+          {/* Raw/Rendered toggle */}
+          <div className="flex items-center bg-bg-surface rounded-full p-0.5 gap-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode("raw")}
+              className={`text-[10px] px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
+                viewMode === "raw"
+                  ? "bg-accent/20 text-accent"
+                  : "text-text-dim hover:text-text"
+              }`}
+            >
+              raw
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("rendered")}
+              className={`text-[10px] px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
+                viewMode === "rendered"
+                  ? "bg-accent/20 text-accent"
+                  : "text-text-dim hover:text-text"
+              }`}
+            >
+              rendered
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Annotated content */}
+      {/* Content area */}
       <div className="flex-1 overflow-y-auto p-4">
-        <pre className="text-xs text-text-muted leading-[1.8] whitespace-pre-wrap break-words font-mono max-w-full">
-          {renderAnnotatedContent(
-            segments,
-            sortedChunks,
-            selectedChunkIndex,
-            onSelectChunk,
-          )}
-        </pre>
+        {viewMode === "raw" ? (
+          <>
+            <pre className="text-xs text-text-muted leading-[1.8] whitespace-pre-wrap break-words font-mono max-w-full">
+              {hasChunks
+                ? renderAnnotatedContent(
+                    segments,
+                    sortedChunks,
+                    selectedChunkIndex,
+                    onSelectChunk,
+                  )
+                : docContent.content}
+            </pre>
 
-        {/* Load More */}
-        {hasMore && (
-          <div className="mt-4 flex justify-center">
-            <button
-              type="button"
-              onClick={handleLoadMore}
-              disabled={loadingMore}
-              className="text-[11px] px-3 py-1.5 rounded border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50 cursor-pointer"
-            >
-              {loadingMore ? (
-                <span className="flex items-center gap-1.5">
-                  <Spinner className="w-3 h-3" /> Loading...
-                </span>
-              ) : (
-                "Load More Chunks"
-              )}
-            </button>
-          </div>
+            {/* Load More */}
+            {hasMore && (
+              <div className="mt-4 flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="text-[11px] px-3 py-1.5 rounded border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {loadingMore ? (
+                    <span className="flex items-center gap-1.5">
+                      <Spinner className="w-3 h-3" /> Loading...
+                    </span>
+                  ) : (
+                    "Load More Chunks"
+                  )}
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <MarkdownViewer
+              content={docContent.content}
+              showToggle={false}
+              defaultMode="rendered"
+            />
+            {hasChunks && (
+              <p className="mt-2 text-[10px] text-text-dim italic">
+                Switch to raw mode to see chunk boundary annotations.
+              </p>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -736,7 +793,7 @@ function ChunkInspectorPanel({
 // Main component
 // ---------------------------------------------------------------------------
 
-export function IndexTab({ retriever }: IndexTabProps) {
+export function IndexTab({ retriever, onStartIndexing }: IndexTabProps) {
   const [selectedDocId, setSelectedDocId] = useState<Id<"documents"> | null>(
     null,
   );
@@ -749,21 +806,8 @@ export function IndexTab({ retriever }: IndexTabProps) {
     setSelectedChunkIndex(null);
   }, [selectedDocId]);
 
-  // Non-ready state
-  if (retriever.status !== "ready") {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center space-y-2">
-          <p className="text-sm text-text-dim">
-            This retriever hasn&apos;t been indexed yet.
-          </p>
-          <p className="text-[11px] text-text-dim/60">
-            Start indexing from the retriever card to inspect chunks.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const isReady = retriever.status === "ready";
+  const isIndexing = retriever.status === "indexing";
 
   return (
     <div className="flex h-full border-t border-border">
@@ -781,7 +825,7 @@ export function IndexTab({ retriever }: IndexTabProps) {
         />
       </div>
 
-      {/* Center: Document viewer with chunk annotations */}
+      {/* Center: Document viewer */}
       <div className="flex-1 min-w-0 overflow-hidden">
         {selectedDocId ? (
           <DocumentViewerPanel
@@ -790,17 +834,25 @@ export function IndexTab({ retriever }: IndexTabProps) {
             documentId={selectedDocId}
             selectedChunkIndex={selectedChunkIndex}
             onSelectChunk={setSelectedChunkIndex}
+            isReady={isReady}
           />
         ) : (
           <div className="flex items-center justify-center h-full text-xs text-text-dim">
-            Select a document to view its chunks.
+            Select a document to view its content.
           </div>
         )}
       </div>
 
-      {/* Right: Chunk inspector */}
+      {/* Right: Chunk inspector OR Start Indexing panel */}
       <div className="w-[300px] flex-shrink-0 border-l border-border overflow-hidden">
-        {selectedDocId ? (
+        {!isReady ? (
+          <IndexingActionPanel
+            status={retriever.status}
+            isIndexing={isIndexing}
+            chunkCount={retriever.chunkCount}
+            onStartIndexing={onStartIndexing}
+          />
+        ) : selectedDocId ? (
           <ChunkInspectorWrapper
             kbId={retriever.kbId}
             indexConfigHash={retriever.indexConfigHash}
@@ -813,6 +865,101 @@ export function IndexTab({ retriever }: IndexTabProps) {
             Select a document and click a chunk pill to inspect.
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Indexing Action Panel (right side for non-ready retrievers)
+// ---------------------------------------------------------------------------
+
+function IndexingActionPanel({
+  status,
+  isIndexing,
+  chunkCount,
+  onStartIndexing,
+}: {
+  status: string;
+  isIndexing: boolean;
+  chunkCount?: number;
+  onStartIndexing: () => void;
+}) {
+  return (
+    <div className="h-full flex flex-col">
+      <div className="px-3 py-2 border-b border-border bg-bg-elevated/50 flex-shrink-0">
+        <span className="text-[11px] text-text-muted font-medium">
+          {isIndexing ? "Indexing in Progress" : "Indexing"}
+        </span>
+      </div>
+      <div className="flex-1 flex items-center justify-center px-6">
+        <div className="text-center space-y-4">
+          {isIndexing ? (
+            <>
+              <div className="flex justify-center">
+                <Spinner className="w-6 h-6" />
+              </div>
+              <p className="text-sm text-text-muted">Indexing documents...</p>
+              {chunkCount != null && chunkCount > 0 && (
+                <p className="text-[11px] text-accent">
+                  {chunkCount} chunk{chunkCount !== 1 ? "s" : ""} created so far
+                </p>
+              )}
+              <p className="text-[10px] text-text-dim">
+                Chunks will appear once indexing completes. You can browse
+                documents on the left while indexing runs.
+              </p>
+            </>
+          ) : status === "error" ? (
+            <>
+              <div className="w-8 h-8 mx-auto rounded-full bg-red-500/10 flex items-center justify-center">
+                <span className="text-red-400 text-lg">!</span>
+              </div>
+              <p className="text-sm text-text-muted">
+                Indexing failed. You can retry.
+              </p>
+              <button
+                type="button"
+                onClick={onStartIndexing}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-accent hover:bg-accent/90 text-bg-elevated transition-colors cursor-pointer"
+              >
+                Retry Indexing
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="w-8 h-8 mx-auto rounded-full bg-accent/10 flex items-center justify-center">
+                <svg
+                  className="w-4 h-4 text-accent"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  />
+                </svg>
+              </div>
+              <p className="text-sm text-text-muted">
+                This retriever hasn&apos;t been indexed yet.
+              </p>
+              <p className="text-[10px] text-text-dim leading-relaxed">
+                Start indexing to chunk documents and generate embeddings. You
+                can browse documents on the left in the meantime.
+              </p>
+              <button
+                type="button"
+                onClick={onStartIndexing}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-accent hover:bg-accent/90 text-bg-elevated transition-colors cursor-pointer"
+              >
+                Start Indexing
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -135,8 +135,22 @@ function RetrieversPageContent() {
   // --- Wizard modal ---
   const [showWizard, setShowWizard] = useState(false);
 
-  // --- Actions ---
+  // --- Actions & mutations ---
   const createRetriever = useAction(api.retrieval.retrieverActions.create);
+  const startIndexingAction = useAction(
+    api.retrieval.retrieverActions.startIndexing,
+  );
+
+  const handleStartIndexing = useCallback(
+    async (id: Id<"retrievers">) => {
+      try {
+        await startIndexingAction({ retrieverId: id });
+      } catch (err) {
+        console.error("Failed to start indexing:", err);
+      }
+    },
+    [startIndexingAction],
+  );
 
   // --- Handlers ---
 
@@ -196,7 +210,12 @@ function RetrieversPageContent() {
               {/* Tab content */}
               <div className="flex-1 overflow-auto">
                 {activeTab === "index" && (
-                  <IndexTab retriever={selectedRetriever} />
+                  <IndexTab
+                    retriever={selectedRetriever}
+                    onStartIndexing={() =>
+                      handleStartIndexing(selectedRetriever._id)
+                    }
+                  />
                 )}
                 {activeTab === "query-search" && (
                   <QuerySearchTab
