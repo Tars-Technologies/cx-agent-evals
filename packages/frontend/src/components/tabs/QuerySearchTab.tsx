@@ -4,6 +4,8 @@ import { useState, useCallback } from "react";
 import { useAction } from "convex/react";
 import { api } from "@/lib/convex";
 import { ChunkCard } from "@/components/ChunkCard";
+import { resolveConfig } from "@/lib/pipeline-types";
+import type { PipelineConfig } from "@/lib/pipeline-types";
 import type { Id } from "@convex/_generated/dataModel";
 
 // ---------------------------------------------------------------------------
@@ -88,34 +90,15 @@ function QueryRewritingPanel({
   selectedQueryIndex,
   onSelectQueryIndex,
   isRewriting,
+  queryStrategy,
 }: {
   rewriteResult: RewriteResult | null;
   selectedQueryIndex: number | null;
   onSelectQueryIndex: (index: number | null) => void;
   isRewriting: boolean;
+  queryStrategy: string;
 }) {
   const [hydeExpanded, setHydeExpanded] = useState(false);
-
-  if (isRewriting) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-2">
-        <Spinner />
-        <span className="text-[11px] text-text-dim">Rewriting query...</span>
-      </div>
-    );
-  }
-
-  if (!rewriteResult) {
-    return (
-      <div className="flex items-center justify-center h-full text-xs text-text-dim px-4 text-center">
-        Run a query to see rewriting results.
-      </div>
-    );
-  }
-
-  const { strategy, original, rewrittenQueries, hypotheticalAnswer, latencyMs } =
-    rewriteResult;
-  const isIdentity = strategy === "identity";
 
   return (
     <div className="h-full flex flex-col">
@@ -127,65 +110,92 @@ function QueryRewritingPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {/* Strategy name */}
-        <div>
-          <span className="text-[10px] text-text-dim uppercase tracking-wider">
-            Strategy
-          </span>
-          <p className="text-xs text-text mt-0.5">{strategyLabel(strategy)}</p>
-        </div>
-
-        {/* Radio options */}
-        <div className="space-y-1">
-          {/* Fused / Original option — always first */}
-          <RadioOption
-            label={
-              isIdentity || rewrittenQueries.length === 1
-                ? "Original"
-                : "Original (fused results)"
-            }
-            sublabel={original}
-            isSelected={selectedQueryIndex === null}
-            onSelect={() => onSelectQueryIndex(null)}
-          />
-
-          {/* Rewritten query options (skip for identity) */}
-          {!isIdentity &&
-            rewrittenQueries.map((q, i) => (
-              <RadioOption
-                key={i}
-                label={`${i + 1}. "${truncate(q, 60)}"`}
-                isSelected={selectedQueryIndex === i}
-                onSelect={() => onSelectQueryIndex(i)}
-              />
-            ))}
-        </div>
-
-        {/* HyDE: hypothetical answer */}
-        {strategy === "hyde" && hypotheticalAnswer && (
-          <div className="space-y-1">
-            <span className="text-[10px] text-text-dim uppercase tracking-wider">
-              Hypothetical Answer
+        {/* Static config box — always visible */}
+        <div className="bg-bg-surface border border-border rounded-lg p-2">
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-text-dim">
+            <span>
+              Strategy: <span className="text-text-muted">{strategyLabel(queryStrategy)}</span>
             </span>
-            <div className="bg-bg-surface border border-border rounded-lg p-2 text-xs text-text-muted">
-              <p className={hydeExpanded ? "" : "line-clamp-3"}>
-                {hypotheticalAnswer}
-              </p>
-              <button
-                type="button"
-                onClick={() => setHydeExpanded((prev) => !prev)}
-                className="text-[10px] text-accent hover:text-accent-bright mt-1 cursor-pointer"
-              >
-                {hydeExpanded ? "Show less" : "Show more"}
-              </button>
-            </div>
+          </div>
+        </div>
+
+        {/* Spinner while rewriting */}
+        {isRewriting && (
+          <div className="flex items-center gap-2 py-4 justify-center">
+            <Spinner />
+            <span className="text-[11px] text-text-dim">Rewriting query...</span>
           </div>
         )}
 
-        {/* Latency */}
-        <p className="text-[11px] text-text-dim">
-          Latency: {latencyMs}ms
-        </p>
+        {/* Rewrite results (after running) */}
+        {rewriteResult && !isRewriting && (() => {
+          const { strategy, original, rewrittenQueries, hypotheticalAnswer, latencyMs } =
+            rewriteResult;
+          const isIdentity = strategy === "identity";
+
+          return (
+            <>
+              {/* Radio options */}
+              <div className="space-y-1">
+                {/* Fused / Original option — always first */}
+                <RadioOption
+                  label={
+                    isIdentity || rewrittenQueries.length === 1
+                      ? "Original"
+                      : "Original (fused results)"
+                  }
+                  sublabel={original}
+                  isSelected={selectedQueryIndex === null}
+                  onSelect={() => onSelectQueryIndex(null)}
+                />
+
+                {/* Rewritten query options (skip for identity) */}
+                {!isIdentity &&
+                  rewrittenQueries.map((q, i) => (
+                    <RadioOption
+                      key={i}
+                      label={`${i + 1}. "${truncate(q, 60)}"`}
+                      isSelected={selectedQueryIndex === i}
+                      onSelect={() => onSelectQueryIndex(i)}
+                    />
+                  ))}
+              </div>
+
+              {/* HyDE: hypothetical answer */}
+              {strategy === "hyde" && hypotheticalAnswer && (
+                <div className="space-y-1">
+                  <span className="text-[10px] text-text-dim uppercase tracking-wider">
+                    Hypothetical Answer
+                  </span>
+                  <div className="bg-bg-surface border border-border rounded-lg p-2 text-xs text-text-muted">
+                    <p className={hydeExpanded ? "" : "line-clamp-3"}>
+                      {hypotheticalAnswer}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setHydeExpanded((prev) => !prev)}
+                      className="text-[10px] text-accent hover:text-accent-bright mt-1 cursor-pointer"
+                    >
+                      {hydeExpanded ? "Show less" : "Show more"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Latency */}
+              <p className="text-[11px] text-text-dim">
+                Latency: {latencyMs}ms
+              </p>
+            </>
+          );
+        })()}
+
+        {/* Empty state (before running) */}
+        {!rewriteResult && !isRewriting && (
+          <div className="text-xs text-text-dim text-center py-4">
+            Run a query to see rewriting results.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -242,44 +252,13 @@ function SearchResultsPanel({
   searchResult,
   selectedQueryIndex,
   isSearching,
+  staticSearchConfig,
 }: {
   searchResult: SearchResult | null;
   selectedQueryIndex: number | null;
   isSearching: boolean;
+  staticSearchConfig: { strategy: string; k: number; denseWeight?: number; sparseWeight?: number; fusionMethod?: string };
 }) {
-  if (isSearching) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-2">
-        <Spinner />
-        <span className="text-[11px] text-text-dim">Searching...</span>
-      </div>
-    );
-  }
-
-  if (!searchResult) {
-    return (
-      <div className="flex items-center justify-center h-full text-xs text-text-dim px-4 text-center">
-        Run a query to see search results.
-      </div>
-    );
-  }
-
-  const { searchConfig, perQueryResults, fusedResults, latencyMs } =
-    searchResult;
-
-  // Determine which chunks to display
-  const showingFused = selectedQueryIndex === null;
-  const displayChunks = showingFused
-    ? fusedResults
-    : perQueryResults[selectedQueryIndex]?.chunks ?? [];
-
-  // Result header text
-  const resultHeader = showingFused
-    ? perQueryResults.length > 1
-      ? `Showing: fused results (${fusedResults.length} chunks from ${perQueryResults.length} queries)`
-      : `Showing: results (${fusedResults.length} chunks)`
-    : `Showing: results for query ${selectedQueryIndex + 1} (${displayChunks.length} chunks)`;
-
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -290,59 +269,93 @@ function SearchResultsPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* Search config banner */}
+        {/* Static config box — always visible */}
         <div className="m-3 bg-bg-surface border border-border rounded-lg p-2">
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-text-dim">
             <span>
-              Strategy: <span className="text-text-muted">{String(searchConfig.strategy ?? "dense")}</span>
+              Strategy: <span className="text-text-muted">{staticSearchConfig.strategy}</span>
             </span>
-            {searchConfig.denseWeight != null && (
+            {staticSearchConfig.denseWeight != null && (
               <span>
-                Dense: <span className="text-text-muted">{String(searchConfig.denseWeight)}</span>
+                Dense: <span className="text-text-muted">{staticSearchConfig.denseWeight}</span>
               </span>
             )}
-            {searchConfig.sparseWeight != null && (
+            {staticSearchConfig.sparseWeight != null && (
               <span>
-                Sparse: <span className="text-text-muted">{String(searchConfig.sparseWeight)}</span>
+                Sparse: <span className="text-text-muted">{staticSearchConfig.sparseWeight}</span>
               </span>
             )}
-            {searchConfig.fusionMethod != null && (
+            {staticSearchConfig.fusionMethod != null && (
               <span>
-                Fusion: <span className="text-text-muted">{String(searchConfig.fusionMethod)}</span>
+                Fusion: <span className="text-text-muted">{staticSearchConfig.fusionMethod}</span>
               </span>
             )}
             <span>
-              k: <span className="text-text-muted">{String(searchConfig.k ?? "?")}</span>
-            </span>
-            <span>
-              Latency: <span className="text-text-muted">{latencyMs}ms</span>
+              k: <span className="text-text-muted">{staticSearchConfig.k}</span>
             </span>
           </div>
         </div>
 
-        {/* Result header */}
-        <div className="px-3 pb-2">
-          <p className="text-[11px] text-text-dim">{resultHeader}</p>
-        </div>
-
-        {/* Chunk list */}
-        {displayChunks.length === 0 ? (
-          <div className="px-3 py-6 text-center text-xs text-text-dim">
-            No results found.
+        {/* Spinner */}
+        {isSearching && (
+          <div className="flex items-center gap-2 py-4 justify-center">
+            <Spinner />
+            <span className="text-[11px] text-text-dim">Searching...</span>
           </div>
-        ) : (
-          <div className="px-3 pb-3 space-y-2">
-            {displayChunks.map((chunk, i) => (
-              <ChunkCard
-                key={`${chunk.chunkId}-${i}`}
-                rank={i + 1}
-                score={chunk.score}
-                docId={chunk.docId}
-                start={chunk.start}
-                end={chunk.end}
-                content={chunk.content}
-              />
-            ))}
+        )}
+
+        {/* Results (after running) — include latency in result header */}
+        {searchResult && !isSearching && (() => {
+          const { perQueryResults, fusedResults, latencyMs } = searchResult;
+
+          // Determine which chunks to display
+          const showingFused = selectedQueryIndex === null;
+          const displayChunks = showingFused
+            ? fusedResults
+            : perQueryResults[selectedQueryIndex]?.chunks ?? [];
+
+          // Result header text
+          const resultHeader = showingFused
+            ? perQueryResults.length > 1
+              ? `Showing: fused results (${fusedResults.length} chunks from ${perQueryResults.length} queries)`
+              : `Showing: results (${fusedResults.length} chunks)`
+            : `Showing: results for query ${selectedQueryIndex + 1} (${displayChunks.length} chunks)`;
+
+          return (
+            <>
+              {/* Result header with latency */}
+              <div className="px-3 pb-2">
+                <p className="text-[11px] text-text-dim">{resultHeader} &middot; {latencyMs}ms</p>
+              </div>
+
+              {/* Chunk list */}
+              {displayChunks.length === 0 ? (
+                <div className="px-3 py-6 text-center text-xs text-text-dim">
+                  No results found.
+                </div>
+              ) : (
+                <div className="px-3 pb-3 space-y-2">
+                  {displayChunks.map((chunk, i) => (
+                    <ChunkCard
+                      key={`${chunk.chunkId}-${i}`}
+                      rank={i + 1}
+                      score={chunk.score}
+                      docId={chunk.docId}
+                      start={chunk.start}
+                      end={chunk.end}
+                      content={chunk.content}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          );
+        })()}
+
+        {/* Empty state */}
+        {!searchResult && !isSearching && (
+          <div className="text-xs text-text-dim text-center py-4">
+            Run a query to see search results.
           </div>
         )}
       </div>
@@ -368,6 +381,19 @@ export function QuerySearchTab({
   query,
   onQueryChange,
 }: QuerySearchTabProps) {
+  // Resolve static config for always-visible config boxes
+  const resolved = resolveConfig(retriever.retrieverConfig as PipelineConfig);
+
+  const staticSearchConfig = {
+    strategy: resolved.search.strategy,
+    k: resolved.k,
+    ...(resolved.search.strategy === "hybrid" ? {
+      denseWeight: (resolved.search as any).denseWeight as number | undefined,
+      sparseWeight: (resolved.search as any).sparseWeight as number | undefined,
+      fusionMethod: (resolved.search as any).fusionMethod as string | undefined,
+    } : {}),
+  };
+
   const [rewriteResult, setRewriteResult] = useState<RewriteResult | null>(
     null,
   );
@@ -489,6 +515,7 @@ export function QuerySearchTab({
             selectedQueryIndex={selectedQueryIndex}
             onSelectQueryIndex={setSelectedQueryIndex}
             isRewriting={isRewriting}
+            queryStrategy={resolved.query.strategy}
           />
         </div>
 
@@ -498,6 +525,7 @@ export function QuerySearchTab({
             searchResult={searchResult}
             selectedQueryIndex={selectedQueryIndex}
             isSearching={isSearching}
+            staticSearchConfig={staticSearchConfig}
           />
         </div>
       </div>
