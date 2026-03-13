@@ -4,6 +4,8 @@ import { useState, useCallback } from "react";
 import { useAction } from "convex/react";
 import { api } from "@/lib/convex";
 import { ChunkCard } from "@/components/ChunkCard";
+import { resolveConfig } from "@/lib/pipeline-types";
+import type { PipelineConfig, RefinementStepConfig, ThresholdRefinementStep } from "@/lib/pipeline-types";
 import type { Id } from "@convex/_generated/dataModel";
 
 // ---------------------------------------------------------------------------
@@ -67,6 +69,47 @@ function Spinner({ className }: { className?: string }) {
     <div
       className={`w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin ${className ?? ""}`}
     />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Static Refinement Config (always visible)
+// ---------------------------------------------------------------------------
+
+function StaticRefinementConfig({
+  steps,
+}: {
+  steps: readonly RefinementStepConfig[];
+}) {
+  if (steps.length === 0) {
+    return (
+      <div className="bg-bg-surface border border-border rounded-lg p-2 text-[11px] text-text-dim">
+        No refinement stages configured. Search results are the final output.
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-bg-surface border border-border rounded-lg p-3">
+      <p className="text-[10px] text-text-dim uppercase tracking-wider mb-2">
+        Refinement Pipeline
+      </p>
+      <div className="flex items-center gap-1 flex-wrap">
+        {steps.map((step, i) => (
+          <div key={i} className="flex items-center gap-1">
+            {i > 0 && (
+              <span className="text-text-dim text-xs select-none">{"\u2192"}</span>
+            )}
+            <span className="px-2.5 py-1 rounded-full text-xs bg-bg-elevated text-text-muted border border-border">
+              {step.type}
+              {step.type === "threshold" && "minScore" in step && (
+                <span className="text-text-dim"> &middot; min={String((step as ThresholdRefinementStep).minScore)}</span>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -260,6 +303,8 @@ export function RefineTab({
   );
   const refineAction = useAction(api.retrieval.pipelineActions.refine);
 
+  const resolved = resolveConfig(retriever.retrieverConfig as PipelineConfig);
+
   const handleRun = useCallback(async () => {
     if (!query.trim()) return;
 
@@ -302,23 +347,6 @@ export function RefineTab({
     refineAction,
   ]);
 
-  // Non-ready state
-  if (retriever.status !== "ready") {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center space-y-2">
-          <p className="text-sm text-text-dim">
-            This retriever hasn&apos;t been indexed yet.
-          </p>
-          <p className="text-[11px] text-text-dim/60">
-            Start indexing from the retriever card to inspect the refinement
-            pipeline.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   // Build stage nodes from the pipeline result
   const stageNodes: StageNode[] = buildStageNodes(pipelineResult);
 
@@ -339,7 +367,7 @@ export function RefineTab({
         <button
           type="button"
           onClick={handleRun}
-          disabled={!query.trim() || isLoading}
+          disabled={!query.trim() || isLoading || retriever.status !== "ready"}
           className="px-4 py-2 rounded-lg text-sm font-medium bg-accent hover:bg-accent/90 text-bg-elevated disabled:bg-border disabled:text-text-dim transition-colors cursor-pointer"
         >
           {isLoading ? (
@@ -351,6 +379,11 @@ export function RefineTab({
             "Run"
           )}
         </button>
+      </div>
+
+      {/* Static refinement config — always visible */}
+      <div className="px-3 pt-3">
+        <StaticRefinementConfig steps={resolved.refinement} />
       </div>
 
       {/* Error banner */}
