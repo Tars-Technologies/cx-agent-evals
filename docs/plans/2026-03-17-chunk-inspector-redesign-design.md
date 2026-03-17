@@ -59,7 +59,7 @@ When selecting a chunk from the right panel's list, the document auto-scrolls to
 
 ### View modes
 
-Keep Raw/Rendered toggle. In Rendered mode (markdown), chunk highlighting still works via character position mapping. The hairline markers are hidden in rendered mode (markdown rendering changes positions).
+Keep Raw/Rendered toggle. In Rendered mode (markdown), click-to-highlight is **disabled** — markdown rendering fundamentally changes character positions (syntax removed, HTML inserted), making position mapping unreliable. The hairline markers are also hidden. A "Switch to raw mode to highlight chunks" note appears instead. In Raw mode, all click-to-highlight features work.
 
 ---
 
@@ -145,26 +145,40 @@ Use `metadata` field on `documentChunks` (no schema migration needed since `meta
 - Parent chunks: `metadata.level = "parent"`, no embedding
 - Child chunks: `metadata.level = "child"`, `metadata.parentChunkId = <convex_id_of_parent>`, has embedding
 
-### Backend indexing (`retrieverActions.ts`)
+### Backend indexing
 
-When `strategy === "parent-child"`:
+Three files involved:
+
+**`retrieverActions.ts:startIndexing`** — resolves `indexConfig` from the retriever's config. Currently hardcodes `strategy: "plain"`. Must detect `strategy === "parent-child"` and pass parent-child fields (`childChunkSize`, `parentChunkSize`, `childOverlap`, `parentOverlap`) into the indexConfig.
+
+**`indexing.ts:startIndexing`** — orchestration layer that fans out one WorkPool action per document. Currently extracts only `chunkSize`, `chunkOverlap`, `embeddingModel` from indexConfig for the WorkPool enqueue (lines 132-148). Must also pass `strategy`, `childChunkSize`, `parentChunkSize`, `childOverlap`, `parentOverlap` through to `indexDocument`.
+
+**`indexingActions.ts:indexDocument`** — the per-document action. When `strategy === "parent-child"`:
 1. Create parent chunks with `RecursiveCharacterChunker(parentChunkSize, parentOverlap)`
 2. Create child chunks with `RecursiveCharacterChunker(childChunkSize, childOverlap)`
-3. Insert parent chunks first (to get Convex `_id`s back)
-4. Map each child to its enclosing parent (containment check: `parent.start <= child.start && parent.end >= child.end`)
+3. Insert parent chunks first (to get Convex `_id`s back — `insertChunkBatch` already returns `{ inserted, ids }`)
+4. Map each child to its enclosing parent. Primary check: `parent.start <= child.start && parent.end >= child.end`. **Fallback for boundary children**: if no parent fully contains the child, assign to the parent with maximum character overlap.
 5. Insert child chunks with `metadata.parentChunkId` set
-6. Embed only child chunks (parents skip embedding)
+6. In Phase B, skip embedding parent chunks (filter by `metadata.level !== "parent"`)
 
-### Backend retrieval (`experiments/actions.ts`)
+### Backend retrieval (`vectorSearch.ts` + both callers)
 
-After vector search returns scored child chunks:
+The parent-child swap is best implemented in the shared `vectorSearchWithFilter` helper (`lib/vectorSearch.ts`), which is called by both `retrieverActions.ts:retrieve` (playground) and `experiments/actions.ts:runEvaluation` (experiment runner). The helper receives `indexConfigHash` and can accept an additional `indexStrategy` parameter.
+
+After vector search returns scored child chunks and the strategy is `parent-child`:
 1. For each child, read `metadata.parentChunkId` and fetch parent chunk
 2. Deduplicate by parent `_id` (keep highest child score)
 3. Return parent chunks with child's score
 
+This keeps both retrieval paths consistent without code duplication.
+
 ### Chunk count
 
 Store both `childChunkCount` and `parentChunkCount` on the retriever record, or compute from metadata at display time.
+
+### Frontend type updates
+
+`pipeline-types.ts` defines `IndexConfig` with only `strategy: "plain"`. Must add a `ParentChildIndexConfig` variant with `strategy: "parent-child"`, `childChunkSize`, `parentChunkSize`, `childOverlap`, `parentOverlap`. Update `PipelineConfig.index` to accept both types. Update `resolveConfig()` to handle both strategies. This is required for StatsBanner, ChunkDetailPanel, and SearchStep notes to work correctly.
 
 ---
 
@@ -174,7 +188,7 @@ Store both `childChunkCount` and `parentChunkCount` on the retriever record, or 
 
 ### Solution
 
-Add a contextual info box below the search strategy selector in the wizard's Search step and the QuerySearchTab. The note changes based on the selected index strategy:
+Add a contextual info box below the search strategy selector in the wizard's Search step and the QuerySearchTab. The `SearchStep` component currently doesn't receive the index strategy — `RetrieverWizard` must thread `indexStrategy` as a new prop. The note changes based on the selected index strategy:
 
 | Index Strategy | Note |
 |---|---|
@@ -207,12 +221,14 @@ The chunker determines *where* to split. The index strategy determines *what to 
 |---|---|---|
 | `packages/frontend/src/components/tabs/IndexTab.tsx` | Major rewrite | Stats banner, click-to-highlight, chunk list/details |
 | `packages/frontend/src/components/MarkdownViewer.tsx` | Minor | Add rehype-sanitize |
+| `packages/frontend/src/lib/pipeline-types.ts` | Feature | Add parent-child IndexConfig variant, update resolveConfig |
 | `packages/eval-lib/src/chunkers/recursive-character.ts` | Bug fix | Fix overlap duplication |
-| `packages/eval-lib/tests/unit/chunkers/recursive-character.test.ts` | Test update | Test overlap fix |
-| `packages/backend/convex/retrieval/retrieverActions.ts` | Feature | Parent-child indexing |
-| `packages/backend/convex/retrieval/indexingActions.ts` | Feature | Parent-child chunk insertion |
-| `packages/backend/convex/experiments/actions.ts` | Feature | Parent-child retrieval swap |
-| `packages/frontend/src/components/wizard/steps/*.tsx` | Minor | Index→search notes |
+| `packages/eval-lib/tests/unit/chunkers/chunkers.test.ts` | Test update | Test overlap fix |
+| `packages/backend/convex/retrieval/retrieverActions.ts` | Feature | Parent-child indexing config resolution |
+| `packages/backend/convex/retrieval/indexing.ts` | Feature | Pass parent-child args through WorkPool |
+| `packages/backend/convex/retrieval/indexingActions.ts` | Feature | Parent-child two-level chunk insertion |
+| `packages/backend/convex/lib/vectorSearch.ts` | Feature | Parent-child retrieval swap (shared helper) |
+| `packages/frontend/src/components/wizard/steps/SearchStep.tsx` | Minor | Index→search notes + new indexStrategy prop |
 | `packages/frontend/src/components/tabs/QuerySearchTab.tsx` | Minor | Index→search notes |
 
 ---

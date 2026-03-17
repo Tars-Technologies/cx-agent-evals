@@ -4,7 +4,7 @@
 
 **Goal:** Redesign the Chunk Inspector for clarity (clean doc view, stats banner, click-to-highlight, parent-child support), fix two bugs (MarkdownViewer `<last>` tag, RecursiveCharacterChunker overlap duplication), and add index→search interaction notes.
 
-**Architecture:** The IndexTab.tsx (~1100 lines) gets a major rewrite: `IndexConfigBanner` → `StatsBanner` with metric cards, `buildSegments`/`renderAnnotatedContent`/`ChunkPill` → click-to-highlight with margin hairlines, `ChunkInspectorPanel` → searchable chunk list + revised detail panel. Backend gets parent-child indexing (metadata-based) and retrieval (child→parent swap). Two independent bug fixes in MarkdownViewer and RecursiveCharacterChunker.
+**Architecture:** The IndexTab.tsx (~1100 lines) gets a major rewrite: `IndexConfigBanner` → `StatsBanner` with metric cards, `buildSegments`/`renderAnnotatedContent`/`ChunkPill` → click-to-highlight with margin hairlines, `ChunkInspectorPanel` → searchable chunk list + revised detail panel. Backend gets parent-child indexing (metadata-based) and retrieval (child→parent swap in the shared `vectorSearchWithFilter` helper). Two independent bug fixes in MarkdownViewer and RecursiveCharacterChunker.
 
 **Tech Stack:** React, TypeScript, Tailwind CSS, Convex (existing); `rehype-sanitize` (new)
 
@@ -65,7 +65,7 @@ Expected: Compiles successfully.
 **Step 4: Commit**
 
 ```bash
-git add packages/frontend/src/components/MarkdownViewer.tsx packages/frontend/package.json packages/frontend/pnpm-lock.yaml
+git add packages/frontend/src/components/MarkdownViewer.tsx packages/frontend/package.json pnpm-lock.yaml
 git commit -m "fix(frontend): add rehype-sanitize to strip unknown HTML tags in MarkdownViewer"
 ```
 
@@ -75,13 +75,13 @@ git commit -m "fix(frontend): add rehype-sanitize to strip unknown HTML tags in 
 
 **Files:**
 - Modify: `packages/eval-lib/src/chunkers/recursive-character.ts:128-139`
-- Modify: `packages/eval-lib/tests/unit/chunkers/recursive-character.test.ts`
+- Modify: `packages/eval-lib/tests/unit/chunkers/chunkers.test.ts`
 
 **Context:** When paragraph sizes are near `chunkSize` (e.g., 400/80 config), the overlap retention keeps entire paragraphs, causing merged content to exceed `chunkSize`, triggering recursive re-splitting of already-emitted content — producing duplicate chunks. With 400/80 on 10 docs, this causes 14,109 chunks instead of ~4,500.
 
 **Step 1: Add a failing test**
 
-In `packages/eval-lib/tests/unit/chunkers/recursive-character.test.ts`, add:
+In `packages/eval-lib/tests/unit/chunkers/chunkers.test.ts`, add after the existing `RecursiveCharacterChunker` describe block:
 
 ```typescript
 describe("overlap duplication bug", () => {
@@ -124,6 +124,38 @@ describe("overlap duplication bug", () => {
     expect(ratio).toBeGreaterThan(1.5);
     expect(ratio).toBeLessThan(5);
   });
+
+  it("should produce valid positions with no content loss after overlap fix", () => {
+    const chunker = new RecursiveCharacterChunker({
+      chunkSize: 400,
+      chunkOverlap: 80,
+    });
+    const content = Array.from({ length: 20 }, (_, i) =>
+      String.fromCharCode(65 + (i % 26)).repeat(200 + (i * 13) % 300)
+    ).join("\n\n");
+
+    const doc = createDocument({ id: "test-overlap.md", content });
+    const chunks = chunker.chunkWithPositions(doc);
+
+    // Every chunk's content must match its span in the source
+    for (const chunk of chunks) {
+      expect(chunk.start).toBeGreaterThanOrEqual(0);
+      expect(chunk.end).toBeLessThanOrEqual(content.length);
+      expect(content.slice(chunk.start, chunk.end)).toBe(chunk.content);
+    }
+
+    // All source content is covered (union of all chunk spans covers full text)
+    const covered = new Set<number>();
+    for (const chunk of chunks) {
+      for (let i = chunk.start; i < chunk.end; i++) covered.add(i);
+    }
+    // Non-whitespace chars should all be covered
+    for (let i = 0; i < content.length; i++) {
+      if (content[i].trim()) {
+        expect(covered.has(i)).toBe(true);
+      }
+    }
+  });
 });
 ```
 
@@ -134,7 +166,7 @@ Expected: FAIL — duplicate chunks or count > 3.
 
 **Step 3: Fix the overlap retention logic**
 
-In `packages/eval-lib/src/chunkers/recursive-character.ts`, replace lines 128-139:
+In `packages/eval-lib/src/chunkers/recursive-character.ts`, find lines 128-139 (the overlap retention block inside `_splitTextWithPositions`):
 
 ```typescript
         // Keep overlap: drop from front until under overlap threshold
@@ -151,7 +183,7 @@ In `packages/eval-lib/src/chunkers/recursive-character.ts`, replace lines 128-13
         }
 ```
 
-With:
+Replace with:
 
 ```typescript
         // Keep overlap: retain at most chunkOverlap characters from the tail
@@ -185,7 +217,7 @@ Expected: All tests pass, including the new overlap duplication tests.
 **Step 5: Commit**
 
 ```bash
-git add packages/eval-lib/src/chunkers/recursive-character.ts packages/eval-lib/tests/unit/chunkers/recursive-character.test.ts
+git add packages/eval-lib/src/chunkers/recursive-character.ts packages/eval-lib/tests/unit/chunkers/chunkers.test.ts
 git commit -m "fix(eval-lib): prevent RecursiveCharacterChunker overlap from producing duplicate chunks"
 ```
 
@@ -195,10 +227,16 @@ git commit -m "fix(eval-lib): prevent RecursiveCharacterChunker overlap from pro
 
 **Files:**
 - Modify: `packages/backend/convex/retrieval/retrieverActions.ts:103-112`
-- Modify: `packages/backend/convex/retrieval/indexingActions.ts:68-98`
-- Create: `packages/backend/tests/parent-child-indexing.test.ts` (optional — if time permits)
+- Modify: `packages/backend/convex/retrieval/indexing.ts:127-156` (WorkPool orchestration)
+- Modify: `packages/backend/convex/retrieval/indexingActions.ts:42-99` (per-document action)
+- Modify: `packages/backend/convex/retrieval/chunks.ts` (verify insertChunkBatch returns ids)
 
-**Context:** Backend always uses `strategy: "plain"` for indexing. For parent-child, it needs to create two levels of chunks: parents (large, no embedding) and children (small, embedded) with `metadata.parentChunkId` linking children to parents.
+**Context:** Backend always uses `strategy: "plain"` for indexing. Three files are involved in the indexing pipeline:
+1. `retrieverActions.ts:startIndexing` — resolves config, calls `indexing.startIndexing`
+2. `indexing.ts:startIndexing` — creates job, fans out WorkPool actions per document
+3. `indexingActions.ts:indexDocument` — per-document chunking + embedding
+
+All three must be updated for parent-child support.
 
 **Step 1: Update retrieverActions.ts to detect parent-child strategy**
 
@@ -223,6 +261,8 @@ With:
     // Resolve index config for the indexing service
     const indexSettings = (config.index ?? {}) as Record<string, unknown>;
     const strategy = (indexSettings.strategy as string) ?? "plain";
+    const embeddingModel =
+      (indexSettings.embeddingModel as string) ?? "text-embedding-3-small";
 
     const indexConfig = strategy === "parent-child"
       ? {
@@ -231,32 +271,75 @@ With:
           parentChunkSize: (indexSettings.parentChunkSize as number) ?? 1000,
           childOverlap: (indexSettings.childOverlap as number) ?? 0,
           parentOverlap: (indexSettings.parentOverlap as number) ?? 100,
-          embeddingModel:
-            (indexSettings.embeddingModel as string) ?? "text-embedding-3-small",
+          embeddingModel,
         }
       : {
           strategy: "plain" as const,
           chunkSize: (indexSettings.chunkSize as number) ?? 1000,
           chunkOverlap: (indexSettings.chunkOverlap as number) ?? 200,
           separators: indexSettings.separators as string[] | undefined,
-          embeddingModel:
-            (indexSettings.embeddingModel as string) ?? "text-embedding-3-small",
+          embeddingModel,
         };
 ```
 
-Also update the `startIndexing` call to pass the full indexConfig (the type will need to be updated in `indexing.ts` to accept both shapes — or pass the strategy-specific fields as separate args).
+**Step 2: Update indexing.ts WorkPool orchestration to pass parent-child args**
 
-**Step 2: Update indexingActions.ts to handle parent-child chunking**
-
-In `packages/backend/convex/retrieval/indexingActions.ts`, update the Phase A section (lines 68-98) to detect the strategy and create both parent and child chunks.
-
-Add after the existing `RecursiveCharacterChunker` import:
+In `packages/backend/convex/retrieval/indexing.ts`, find the WorkPool enqueue loop (lines 132-148). Currently it passes only `chunkSize`, `chunkOverlap`, `embeddingModel`. Update to pass all strategy-specific fields:
 
 ```typescript
-import { RecursiveCharacterChunker } from "rag-evaluation-system";
+    // Enqueue one action per document and collect workIds for selective cancellation
+    const workIds: WorkId[] = [];
+    for (const doc of docs) {
+      const wId = await pool.enqueueAction(
+        ctx,
+        internal.retrieval.indexingActions.indexDocument,
+        {
+          documentId: doc._id,
+          kbId: args.kbId,
+          indexConfigHash: args.indexConfigHash,
+          // Pass all strategy-specific fields
+          strategy: indexConfig.strategy,
+          chunkSize: indexConfig.chunkSize,
+          chunkOverlap: indexConfig.chunkOverlap,
+          embeddingModel: indexConfig.embeddingModel,
+          childChunkSize: indexConfig.childChunkSize,
+          parentChunkSize: indexConfig.parentChunkSize,
+          childOverlap: indexConfig.childOverlap,
+          parentOverlap: indexConfig.parentOverlap,
+        },
+        {
+          context: { jobId, documentId: doc._id },
+          onComplete: internal.retrieval.indexing.onDocumentIndexed,
+        },
+      );
+      workIds.push(wId);
+    }
 ```
 
-Then replace the chunking section:
+Note: The `indexConfig` is typed as `v.any()` in `startIndexing` args, so all fields pass through. The WorkPool action args need updating (next step).
+
+**Step 3: Update indexingActions.ts args validator and Phase A**
+
+In `packages/backend/convex/retrieval/indexingActions.ts`, update the `indexDocument` args validator to include parent-child fields:
+
+```typescript
+export const indexDocument = internalAction({
+  args: {
+    documentId: v.id("documents"),
+    kbId: v.id("knowledgeBases"),
+    indexConfigHash: v.string(),
+    strategy: v.optional(v.string()),
+    chunkSize: v.optional(v.number()),
+    chunkOverlap: v.optional(v.number()),
+    embeddingModel: v.optional(v.string()),
+    childChunkSize: v.optional(v.number()),
+    parentChunkSize: v.optional(v.number()),
+    childOverlap: v.optional(v.number()),
+    parentOverlap: v.optional(v.number()),
+  },
+```
+
+Then update Phase A (lines 68-98) to handle both strategies:
 
 ```typescript
     } else {
@@ -286,24 +369,43 @@ Then replace the chunking section:
         }
 
         // Insert parent chunks (no embedding — level: "parent")
-        const parentIds = await ctx.runMutation(internal.retrieval.chunks.insertChunkBatch, {
-          chunks: parentChunks.map((c) => ({
-            documentId: args.documentId,
-            kbId: args.kbId,
-            indexConfigHash: args.indexConfigHash,
-            chunkId: c.id,
-            content: c.content,
-            start: c.start,
-            end: c.end,
-            metadata: { level: "parent" },
-          })),
-        });
+        const parentResult = await ctx.runMutation(
+          internal.retrieval.chunks.insertChunkBatch,
+          {
+            chunks: parentChunks.map((c) => ({
+              documentId: args.documentId,
+              kbId: args.kbId,
+              indexConfigHash: args.indexConfigHash,
+              chunkId: c.id,
+              content: c.content,
+              start: c.start,
+              end: c.end,
+              metadata: { level: "parent" },
+            })),
+          },
+        );
 
         // Map each child to its enclosing parent
         const childChunksMapped = childChunks.map((child) => {
-          const parentIndex = parentChunks.findIndex(
+          // Primary: find parent that fully contains this child
+          let parentIndex = parentChunks.findIndex(
             (p) => p.start <= child.start && p.end >= child.end,
           );
+
+          // Fallback for boundary children: find parent with max overlap
+          if (parentIndex < 0) {
+            let maxOverlap = 0;
+            for (let pi = 0; pi < parentChunks.length; pi++) {
+              const overlapStart = Math.max(parentChunks[pi].start, child.start);
+              const overlapEnd = Math.min(parentChunks[pi].end, child.end);
+              const overlap = Math.max(0, overlapEnd - overlapStart);
+              if (overlap > maxOverlap) {
+                maxOverlap = overlap;
+                parentIndex = pi;
+              }
+            }
+          }
+
           return {
             documentId: args.documentId,
             kbId: args.kbId,
@@ -314,9 +416,8 @@ Then replace the chunking section:
             end: child.end,
             metadata: {
               level: "child" as const,
-              parentChunkId: parentIndex >= 0 && parentIds
-                ? parentIds[parentIndex]
-                : undefined,
+              parentChunkId:
+                parentIndex >= 0 ? parentResult.ids[parentIndex] : undefined,
             },
           };
         });
@@ -326,7 +427,7 @@ Then replace the chunking section:
           chunks: childChunksMapped,
         });
       } else {
-        // Plain: standard single-level chunking
+        // Plain: standard single-level chunking (existing code, unchanged)
         const chunker = new RecursiveCharacterChunker({
           chunkSize: args.chunkSize ?? 1000,
           chunkOverlap: args.chunkOverlap ?? 200,
@@ -354,41 +455,40 @@ Then replace the chunking section:
     }
 ```
 
-**Important:** The `insertChunkBatch` mutation needs to return the inserted `_id`s so parent IDs can be passed to children. Check if it already returns IDs — if not, update it to return them.
+**Step 4: Update Phase B to skip embedding parent chunks**
 
-**Step 3: Update Phase B to skip embedding parent chunks**
-
-In the Phase B embedding loop, add a filter to skip chunks with `metadata.level === "parent"`:
+In Phase B (lines 101-159), after collecting unembedded chunks in the paginated loop, filter out parent chunks before embedding:
 
 ```typescript
-// In the paginated unembedded chunk collection loop:
-// Filter out parent chunks (they don't get embedded)
-const toEmbed = unembedded.filter(
-  (c) => !c.metadata?.level || c.metadata.level !== "parent"
-);
+    // Filter out parent chunks — they don't get embedded
+    const toEmbed = unembedded.filter(
+      (c: any) => !(c.metadata?.level === "parent"),
+    );
+
+    if (toEmbed.length === 0) {
+      return { skipped: true, chunksInserted: 0, chunksEmbedded: 0 };
+    }
+
+    const embedder = createEmbedder(args.embeddingModel);
+    let totalEmbedded = 0;
+
+    for (let i = 0; i < toEmbed.length; i += EMBED_BATCH_SIZE) {
+      // ... existing embedding loop, using toEmbed instead of unembedded
 ```
 
-**Step 4: Update args validator for the indexing action**
+**Step 5: Verify insertChunkBatch returns IDs**
 
-Update the `args` validator in `indexingActions.ts` to accept the new parent-child fields:
+Check `packages/backend/convex/retrieval/chunks.ts:11-34`. The `insertChunkBatch` mutation already returns `{ inserted: ids.length, ids }` where `ids` is the array of Convex `_id`s. No change needed — just verify it's there.
 
-```typescript
-strategy: v.optional(v.string()),
-childChunkSize: v.optional(v.number()),
-parentChunkSize: v.optional(v.number()),
-childOverlap: v.optional(v.number()),
-parentOverlap: v.optional(v.number()),
-```
-
-**Step 5: Typecheck and test**
+**Step 6: Typecheck and test**
 
 Run: `pnpm typecheck:backend && pnpm -C packages/backend test`
 Expected: All pass.
 
-**Step 6: Commit**
+**Step 7: Commit**
 
 ```bash
-git add packages/backend/convex/retrieval/retrieverActions.ts packages/backend/convex/retrieval/indexingActions.ts packages/backend/convex/retrieval/chunks.ts
+git add packages/backend/convex/retrieval/retrieverActions.ts packages/backend/convex/retrieval/indexing.ts packages/backend/convex/retrieval/indexingActions.ts
 git commit -m "feat(backend): implement parent-child indexing with two-level chunking"
 ```
 
@@ -397,84 +497,287 @@ git commit -m "feat(backend): implement parent-child indexing with two-level chu
 ### Task 4: Parent-child backend retrieval
 
 **Files:**
-- Modify: `packages/backend/convex/experiments/actions.ts:243-266`
-- Modify: `packages/backend/convex/retrieval/retrieverActions.ts` (standalone retrieve action)
+- Modify: `packages/backend/convex/lib/vectorSearch.ts`
+- Modify: `packages/backend/convex/retrieval/chunks.ts`
 
-**Context:** After vector search returns scored child chunks, look up their parents and deduplicate. The child→parent mapping uses `metadata.parentChunkId`.
+**Context:** After vector search returns scored child chunks, look up their parents and deduplicate. The swap is implemented in the shared `vectorSearchWithFilter` helper so both `retrieverActions.ts:retrieve` (playground) and `experiments/actions.ts:runEvaluation` (experiment runner) get parent-child support automatically.
 
-**Step 1: Add parent-child swap to experiment retrieval**
+**Step 1: Add getChunkById query to chunks.ts**
 
-In `packages/backend/convex/experiments/actions.ts`, after the `vectorSearchWithFilter` call returns `filtered` chunks, add parent-child swap logic:
-
-```typescript
-    // Parent-child swap: replace child chunks with their parent chunks
-    const indexStrategy = (retrieverConfig?.index as Record<string, unknown>)?.strategy;
-    if (indexStrategy === "parent-child") {
-      const parentIds = new Set<string>();
-      const deduped: typeof filtered = [];
-
-      for (const child of filtered) {
-        const parentId = child.metadata?.parentChunkId;
-        if (parentId && !parentIds.has(parentId)) {
-          parentIds.add(parentId);
-          // Fetch parent chunk
-          const parent = await ctx.runQuery(internal.retrieval.chunks.getChunkById, {
-            chunkId: parentId,
-          });
-          if (parent) {
-            deduped.push({
-              ...parent,
-              score: child.score, // Keep child's relevance score
-            });
-          } else {
-            deduped.push(child); // Fallback to child if parent not found
-          }
-        } else if (!parentId) {
-          deduped.push(child); // No parent mapping, keep as-is
-        }
-        // Skip if parent already added (deduplication)
-      }
-      filtered = deduped;
-    }
-```
-
-**Step 2: Add getChunkById query to chunks.ts**
-
-In `packages/backend/convex/retrieval/chunks.ts`, add:
+In `packages/backend/convex/retrieval/chunks.ts`, add a new internal query:
 
 ```typescript
+/** Fetch a single chunk by ID. Used for parent-child retrieval swap. */
 export const getChunkById = internalQuery({
   args: { chunkId: v.id("documentChunks") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.chunkId);
+    const chunk = await ctx.db.get(args.chunkId);
+    if (!chunk) return null;
+    const doc = await ctx.db.get(chunk.documentId);
+    return { ...chunk, docId: doc?.docId ?? "" };
   },
 });
 ```
 
-**Step 3: Typecheck and test**
+**Step 2: Update vectorSearchWithFilter to accept and handle index strategy**
+
+In `packages/backend/convex/lib/vectorSearch.ts`, add an optional `indexStrategy` parameter and implement the parent-child swap after post-filtering:
+
+```typescript
+export async function vectorSearchWithFilter(
+  ctx: ActionCtx,
+  opts: {
+    queryEmbedding: number[];
+    kbId: Id<"knowledgeBases">;
+    indexConfigHash: string;
+    topK: number;
+    indexStrategy?: string; // NEW: "plain" | "parent-child"
+  },
+) {
+  const overFetch = Math.min(opts.topK * 4, 256);
+
+  const results = await ctx.vectorSearch("documentChunks", "by_embedding", {
+    vector: opts.queryEmbedding,
+    limit: overFetch,
+    filter: (q: any) => q.eq("kbId", opts.kbId),
+  });
+
+  const chunks: any[] = await ctx.runQuery(
+    internal.retrieval.chunks.fetchChunksWithDocs,
+    { ids: results.map((r: any) => r._id) },
+  );
+
+  // Build score map
+  const scoreMap = new Map<string, number>();
+  for (const r of results) {
+    scoreMap.set(r._id.toString(), r._score);
+  }
+
+  // Post-filter by indexConfigHash and take topK
+  let filtered = chunks
+    .filter((c: any) => c.indexConfigHash === opts.indexConfigHash)
+    .slice(0, opts.topK);
+
+  // Parent-child swap: replace child chunks with their parent chunks
+  if (opts.indexStrategy === "parent-child") {
+    const parentIdsSeen = new Set<string>();
+    const swapped: any[] = [];
+
+    for (const child of filtered) {
+      const parentId = child.metadata?.parentChunkId;
+      if (parentId && !parentIdsSeen.has(parentId)) {
+        parentIdsSeen.add(parentId);
+        const parent = await ctx.runQuery(
+          internal.retrieval.chunks.getChunkById,
+          { chunkId: parentId },
+        );
+        if (parent) {
+          swapped.push({
+            ...parent,
+            _score: scoreMap.get(child._id.toString()) ?? 0,
+          });
+        } else {
+          swapped.push(child); // Fallback if parent not found
+        }
+      } else if (!parentId) {
+        swapped.push(child); // Not a child chunk, keep as-is
+      }
+      // Skip if parent already added (deduplication)
+    }
+    filtered = swapped;
+  }
+
+  return { chunks: filtered, scoreMap };
+}
+```
+
+**Step 3: Update callers to pass indexStrategy**
+
+In `retrieverActions.ts:retrieve` (line 209), update the `vectorSearchWithFilter` call:
+
+```typescript
+    const indexStrategy = (indexSettings.strategy as string) ?? "plain";
+
+    const { chunks: filtered, scoreMap } = await vectorSearchWithFilter(ctx, {
+      queryEmbedding,
+      kbId: retriever.kbId,
+      indexConfigHash: retriever.indexConfigHash,
+      topK,
+      indexStrategy,
+    });
+```
+
+In `experiments/actions.ts:runEvaluation`, inside the `CallbackRetriever.retrieveFn` closure (line 248), pass the strategy:
+
+```typescript
+        const retConfig = (experiment.retrieverConfig ?? {}) as Record<string, any>;
+        const idxSettings = (retConfig.index ?? {}) as Record<string, any>;
+        const indexStrategy = (idxSettings.strategy as string) ?? "plain";
+
+        // Inside retrieveFn:
+        const { chunks: filtered } = await vectorSearchWithFilter(ctx, {
+          queryEmbedding,
+          kbId: args.kbId,
+          indexConfigHash: args.indexConfigHash,
+          topK,
+          indexStrategy,
+        });
+```
+
+**Step 4: Typecheck and test**
 
 Run: `pnpm typecheck:backend && pnpm -C packages/backend test`
 Expected: All pass.
 
-**Step 4: Commit**
+**Step 5: Commit**
 
 ```bash
-git add packages/backend/convex/experiments/actions.ts packages/backend/convex/retrieval/chunks.ts
-git commit -m "feat(backend): add parent-child retrieval swap in experiment execution"
+git add packages/backend/convex/lib/vectorSearch.ts packages/backend/convex/retrieval/chunks.ts packages/backend/convex/retrieval/retrieverActions.ts packages/backend/convex/experiments/actions.ts
+git commit -m "feat(backend): add parent-child retrieval swap in shared vectorSearch helper"
 ```
 
 ---
 
-### Task 5: Stats Banner component
+### Task 5: Frontend type updates for parent-child support
+
+**Files:**
+- Modify: `packages/frontend/src/lib/pipeline-types.ts`
+
+**Context:** The `IndexConfig` type only allows `strategy: "plain"`. The `resolveConfig()` function only returns plain fields. For the StatsBanner, ChunkDetailPanel, and SearchStep notes to work with parent-child, the frontend types must support it. This is a prerequisite for Tasks 6-9.
+
+**Step 1: Add ParentChildIndexConfig type**
+
+In `packages/frontend/src/lib/pipeline-types.ts`, update the index config types:
+
+Replace:
+
+```typescript
+export interface IndexConfig {
+  readonly strategy: "plain";
+  readonly chunkSize?: number;
+  readonly chunkOverlap?: number;
+  readonly separators?: readonly string[];
+  readonly embeddingModel?: string;
+}
+
+export const DEFAULT_INDEX_CONFIG: IndexConfig = {
+  strategy: "plain",
+  chunkSize: 1000,
+  chunkOverlap: 200,
+  embeddingModel: "text-embedding-3-small",
+};
+```
+
+With:
+
+```typescript
+export interface PlainIndexConfig {
+  readonly strategy: "plain";
+  readonly chunkSize?: number;
+  readonly chunkOverlap?: number;
+  readonly separators?: readonly string[];
+  readonly embeddingModel?: string;
+}
+
+export interface ParentChildIndexConfig {
+  readonly strategy: "parent-child";
+  readonly childChunkSize?: number;
+  readonly parentChunkSize?: number;
+  readonly childOverlap?: number;
+  readonly parentOverlap?: number;
+  readonly embeddingModel?: string;
+}
+
+export type IndexConfig = PlainIndexConfig | ParentChildIndexConfig;
+
+export const DEFAULT_INDEX_CONFIG: PlainIndexConfig = {
+  strategy: "plain",
+  chunkSize: 1000,
+  chunkOverlap: 200,
+  embeddingModel: "text-embedding-3-small",
+};
+```
+
+**Step 2: Update resolveConfig**
+
+Update `resolveConfig()` to handle both strategies. The returned type should expose all fields so consumers can check strategy and access the right fields:
+
+```typescript
+export function resolveConfig(config: PipelineConfig): {
+  index: {
+    strategy: string;
+    chunkSize: number;
+    chunkOverlap: number;
+    embeddingModel: string;
+    separators?: readonly string[];
+    childChunkSize?: number;
+    parentChunkSize?: number;
+    childOverlap?: number;
+    parentOverlap?: number;
+  };
+  query: QueryConfig;
+  search: SearchConfig;
+  refinement: readonly RefinementStepConfig[];
+  k: number;
+  name: string;
+} {
+  const index = config.index ?? DEFAULT_INDEX_CONFIG;
+  const strategy = index.strategy ?? "plain";
+
+  return {
+    name: config.name,
+    index: strategy === "parent-child"
+      ? {
+          strategy,
+          chunkSize: 0, // Not used for parent-child, but keeps type consistent
+          chunkOverlap: 0,
+          embeddingModel: index.embeddingModel ?? DEFAULT_INDEX_CONFIG.embeddingModel!,
+          childChunkSize: (index as ParentChildIndexConfig).childChunkSize ?? 200,
+          parentChunkSize: (index as ParentChildIndexConfig).parentChunkSize ?? 1000,
+          childOverlap: (index as ParentChildIndexConfig).childOverlap ?? 0,
+          parentOverlap: (index as ParentChildIndexConfig).parentOverlap ?? 100,
+        }
+      : {
+          strategy,
+          chunkSize: (index as PlainIndexConfig).chunkSize ?? DEFAULT_INDEX_CONFIG.chunkSize!,
+          chunkOverlap: (index as PlainIndexConfig).chunkOverlap ?? DEFAULT_INDEX_CONFIG.chunkOverlap!,
+          embeddingModel: index.embeddingModel ?? DEFAULT_INDEX_CONFIG.embeddingModel!,
+          ...((index as PlainIndexConfig).separators ? { separators: (index as PlainIndexConfig).separators } : {}),
+        },
+    query: config.query ?? DEFAULT_QUERY_CONFIG,
+    search: config.search ?? DEFAULT_SEARCH_CONFIG,
+    refinement: config.refinement ?? [],
+    k: config.k ?? DEFAULT_K,
+  };
+}
+```
+
+**Step 3: Fix any type errors in consumers**
+
+Consumers like `RetrieverDetailModal.tsx:IndexSection` already handle parent-child via `ParsedConfig` (a loose type with optional fields), so they shouldn't break. Verify:
+
+Run: `pnpm -C packages/frontend build`
+Expected: Compiles successfully.
+
+**Step 4: Commit**
+
+```bash
+git add packages/frontend/src/lib/pipeline-types.ts
+git commit -m "feat(frontend): add parent-child IndexConfig variant and update resolveConfig"
+```
+
+---
+
+### Task 6: Stats Banner component
 
 **Files:**
 - Modify: `packages/frontend/src/components/tabs/IndexTab.tsx:798-821`
 
-**Context:** Replace the `IndexConfigBanner` (which hardcodes "recursive") with a `StatsBanner` that shows actual chunker name, metric cards (total chunks, avg size, min/max, overlap %), and a collapsible histogram.
+**Context:** Replace the `IndexConfigBanner` (which hardcodes "recursive") with a `StatsBanner` that shows actual chunker info, metric cards (total chunks, avg size, min/max, overlap %), and a collapsible histogram. Depends on Task 5 for parent-child type support in `resolveConfig`.
 
 **Step 1: Replace IndexConfigBanner with StatsBanner**
 
-Replace the `IndexConfigBanner` component (lines 798-821) with a new `StatsBanner` component. It takes `retrieverConfig`, `chunks` (the loaded chunks array), and `chunkCount` (from retriever). The stats are computed client-side from the chunks array.
+Replace the `IndexConfigBanner` component (lines 798-821) with a new `StatsBanner` component. It takes `retrieverConfig`, `chunks` (the loaded chunks array), and `chunkCount` (from retriever). Stats are computed client-side from the chunks array.
 
 ```tsx
 function StatsBanner({
@@ -491,8 +794,7 @@ function StatsBanner({
   const { embeddingModel } = config.index;
   const embedShort = embeddingModel.replace("text-embedding-", "");
 
-  // Resolve actual chunker name from index strategy
-  const strategy = config.index.strategy ?? "plain";
+  const strategy = config.index.strategy;
   const isParentChild = strategy === "parent-child";
   const chunkerLabel = isParentChild
     ? `Parent-child (${config.index.childChunkSize ?? 200}/${config.index.parentChunkSize ?? 1000})`
@@ -594,11 +896,17 @@ function StatsBanner({
 }
 ```
 
-**Step 2: Update IndexTab to pass chunks to StatsBanner**
+**Step 2: Wire StatsBanner into IndexTab**
 
-The `StatsBanner` needs access to loaded chunks. The chunks are currently loaded inside `ChunkInspectorWrapper`. We need to lift the chunk loading to `IndexTab` level so both the banner and the inspector can use them. This will be done alongside Task 6/7 when the main component is restructured.
+In the main `IndexTab` component, replace `<IndexConfigBanner>` usage (line 845) with `<StatsBanner>`. Initially pass `chunks={[]}` — full stats will work after Task 8 lifts chunk loading.
 
-For now, pass `chunks={[]}` and `chunkCount={retriever.chunkCount}` — the stats will show total count from the retriever record. Full stats become available after Task 7 lifts chunk loading.
+```tsx
+<StatsBanner
+  retrieverConfig={retriever.retrieverConfig}
+  chunks={[]}
+  chunkCount={retriever.chunkCount}
+/>
+```
 
 **Step 3: Build and verify**
 
@@ -614,24 +922,25 @@ git commit -m "feat(frontend): replace IndexConfigBanner with StatsBanner showin
 
 ---
 
-### Task 6: Click-to-highlight document view
+### Task 7: Click-to-highlight document view
 
 **Files:**
 - Modify: `packages/frontend/src/components/tabs/IndexTab.tsx`
 
-**Context:** Replace the current annotated document view (numbered pills + zebra stripes) with a clean document that highlights chunks on click. This is the largest single change — it replaces `buildSegments`, `renderAnnotatedContent`, `ChunkPill`, and parts of `DocumentViewerPanel`.
+**Context:** Replace the current annotated document view (numbered pills + zebra stripes) with a clean document that highlights chunks on click. This is the largest single change — it replaces `buildSegments`, `renderAnnotatedContent`, `ChunkPill`, and parts of `DocumentViewerPanel`. Click-to-highlight works in Raw mode only; Rendered mode shows a note to switch.
 
 **Step 1: Remove old components**
 
-Delete or replace these components/functions in `IndexTab.tsx`:
+Delete these components/functions from `IndexTab.tsx`:
+- `Segment` interface (lines 38-43)
 - `buildSegments()` (lines 56-136)
-- `detectDiff()` (lines 147-164)
+- `detectDiff()` (lines 147-164) — moved to ChunkDetailPanel in Task 8
 - `ChunkPill` (lines 179-211)
 - `renderAnnotatedContent()` (lines 490-539)
 
-**Step 2: Add click-to-highlight helper**
+**Step 2: Add click-to-highlight helpers**
 
-Add a new function `findChunksAtPosition` that binary-searches sorted chunks to find which chunk(s) contain a given character position:
+Add these new functions/components:
 
 ```tsx
 /** Find chunk(s) that contain the given character position. */
@@ -655,35 +964,251 @@ function findChunksAtPosition(
 
   return { primary, overlap };
 }
+
+/**
+ * Render document content split into per-line spans with data-offset
+ * for character-position detection on click.
+ * When a chunk is selected, its character range is highlighted.
+ */
+function ClickableDocumentContent({
+  content,
+  chunks,
+  selectedChunkIndex,
+  overlapChunkIndex,
+  onSelectChunk,
+}: {
+  content: string;
+  chunks: Chunk[];
+  selectedChunkIndex: number | null;
+  overlapChunkIndex: number | null;
+  onSelectChunk: (index: number | null) => void;
+}) {
+  // Split content into lines, each in a span with data-offset
+  const lines = useMemo(() => {
+    const result: Array<{ text: string; offset: number }> = [];
+    let pos = 0;
+    const parts = content.split("\n");
+    for (let i = 0; i < parts.length; i++) {
+      result.push({ text: parts[i], offset: pos });
+      pos += parts[i].length + 1; // +1 for \n
+    }
+    return result;
+  }, [content]);
+
+  // Click handler: map click to character position, find chunk
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      // Walk up from target to find span with data-offset
+      let el = e.target as HTMLElement | null;
+      while (el && !el.dataset.offset) {
+        el = el.parentElement;
+      }
+      if (!el?.dataset.offset) return;
+
+      const lineOffset = parseInt(el.dataset.offset, 10);
+
+      // Use Selection API to get offset within the text node
+      const selection = window.getSelection();
+      let charOffset = 0;
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        charOffset = range.startOffset;
+      }
+
+      const position = lineOffset + charOffset;
+      const hit = findChunksAtPosition(chunks, position);
+
+      if (hit.primary !== null) {
+        onSelectChunk(hit.primary);
+      } else {
+        onSelectChunk(null);
+      }
+    },
+    [chunks, onSelectChunk],
+  );
+
+  // Escape to clear
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onSelectChunk(null);
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onSelectChunk]);
+
+  // Build highlight ranges
+  const selectedChunk = selectedChunkIndex !== null ? chunks[selectedChunkIndex] : null;
+  const overlapChunk = overlapChunkIndex !== null ? chunks[overlapChunkIndex] : null;
+
+  // Render a line, applying highlights if the line intersects a selected chunk
+  const renderLine = useCallback(
+    (line: { text: string; offset: number }, idx: number) => {
+      const lineEnd = line.offset + line.text.length;
+
+      // Check if this line intersects any highlighted chunk
+      const intersectsSelected =
+        selectedChunk && line.offset < selectedChunk.end && lineEnd > selectedChunk.start;
+      const intersectsOverlap =
+        overlapChunk && line.offset < overlapChunk.end && lineEnd > overlapChunk.start;
+
+      if (!intersectsSelected && !intersectsOverlap) {
+        return (
+          <span key={idx} data-offset={line.offset}>
+            {line.text}
+            {"\n"}
+          </span>
+        );
+      }
+
+      // Build sub-segments within this line for highlighting
+      const segments: React.ReactNode[] = [];
+      let cursor = 0;
+      const text = line.text;
+
+      // Collect highlight ranges within this line
+      type Range = { start: number; end: number; cls: string };
+      const ranges: Range[] = [];
+      if (selectedChunk) {
+        const s = Math.max(0, selectedChunk.start - line.offset);
+        const e = Math.min(text.length, selectedChunk.end - line.offset);
+        if (s < e) ranges.push({ start: s, end: e, cls: "bg-accent/10" });
+      }
+      if (overlapChunk) {
+        const s = Math.max(0, overlapChunk.start - line.offset);
+        const e = Math.min(text.length, overlapChunk.end - line.offset);
+        if (s < e) ranges.push({ start: s, end: e, cls: "bg-blue-400/10" });
+      }
+
+      // Sort ranges by start
+      ranges.sort((a, b) => a.start - b.start);
+
+      for (const range of ranges) {
+        if (range.start > cursor) {
+          segments.push(text.slice(cursor, range.start));
+        }
+        segments.push(
+          <span key={`hl-${range.start}`} className={range.cls}>
+            {text.slice(range.start, range.end)}
+          </span>,
+        );
+        cursor = range.end;
+      }
+      if (cursor < text.length) {
+        segments.push(text.slice(cursor));
+      }
+
+      return (
+        <span key={idx} data-offset={line.offset}>
+          {segments}
+          {"\n"}
+        </span>
+      );
+    },
+    [selectedChunk, overlapChunk],
+  );
+
+  return (
+    <div className="relative">
+      {/* Chunk boundary hairlines (left margin) */}
+      {chunks.length > 0 && (
+        <div className="absolute left-0 top-0 w-1 h-full pointer-events-none">
+          {chunks.map((chunk, i) => {
+            // Approximate position (line-based; exact calc needs layout measurement)
+            const totalLines = lines.length;
+            const chunkLine = lines.findIndex(
+              (l) => l.offset + l.text.length >= chunk.start,
+            );
+            if (chunkLine < 0) return null;
+            const pct = (chunkLine / Math.max(totalLines, 1)) * 100;
+            return (
+              <div
+                key={i}
+                className="absolute w-full bg-accent/20"
+                style={{ top: `${pct}%`, height: "1px" }}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      {/* Document text */}
+      <pre
+        className="text-xs text-text-muted leading-[1.8] whitespace-pre-wrap break-words font-mono max-w-full pl-3 cursor-text"
+        onClick={handleClick}
+      >
+        {lines.map(renderLine)}
+      </pre>
+    </div>
+  );
+}
 ```
 
-**Step 3: Rewrite DocumentViewerPanel**
+**Step 3: Update DocumentViewerPanel to use ClickableDocumentContent**
 
-Replace the center panel rendering. The new approach:
+Replace the `<pre>` block in raw mode (lines 436-445) with `<ClickableDocumentContent>`. The rendered mode shows a note instead:
 
-1. **Raw mode:** Render the document as plain `<pre>` text. On click, determine the character position from the click event (using a `data-offset` attribute on text spans). Highlight the clicked chunk by wrapping its character range in a `<span>` with a highlight class.
+```tsx
+{viewMode === "raw" ? (
+  <>
+    <ClickableDocumentContent
+      content={docContent.content}
+      chunks={sortedChunks}
+      selectedChunkIndex={selectedChunkIndex}
+      overlapChunkIndex={null} // Set when overlap detection logic exists
+      onSelectChunk={onSelectChunk}
+    />
+    {/* Load More */}
+    {hasMore && (
+      /* ... existing Load More button ... */
+    )}
+  </>
+) : (
+  <>
+    <MarkdownViewer
+      content={docContent.content}
+      showToggle={false}
+      defaultMode="rendered"
+    />
+    {hasChunks && (
+      <p className="mt-2 text-[10px] text-text-dim italic">
+        Switch to raw mode to highlight and inspect chunks.
+      </p>
+    )}
+  </>
+)}
+```
 
-2. **Chunk boundary hairlines:** In a narrow left margin, render thin lines at chunk boundary positions.
+Also remove the now-unused `segments` computation (lines 362-366).
 
-3. **Click handler:** `onClick` on the text container determines which chunk was clicked and updates `selectedChunkIndex`.
+**Step 4: Add scroll-to-chunk support**
 
-Implementation approach for character-position detection:
-- Split the document content into fixed-length segments (e.g., per line).
-- Each `<span>` gets a `data-offset` attribute with its starting character position.
-- On click, walk up from `event.target` to find the closest `data-offset`, then compute the exact position using `window.getSelection()`.
+Add a ref to the `<pre>` element and implement scroll-to-chunk when a chunk is selected from the right panel. Use `useEffect` that watches `selectedChunkIndex` and scrolls to the corresponding line:
 
-The full implementation of this component is substantial (~200 lines). The implementer should read the current `DocumentViewerPanel` (lines 272-484) and replace it with the click-to-highlight version, preserving:
-- Document header (doc ID, chunk count, char count)
-- Raw/Rendered toggle
-- Load More Chunks pagination
-- Scroll-to-chunk when selecting from the right panel
+```tsx
+const contentRef = useRef<HTMLPreElement>(null);
 
-**Step 4: Build and verify**
+useEffect(() => {
+  if (selectedChunkIndex === null || !contentRef.current) return;
+  const chunk = sortedChunks[selectedChunkIndex];
+  if (!chunk) return;
+  // Find the span with the matching data-offset
+  const spans = contentRef.current.querySelectorAll("[data-offset]");
+  for (const span of spans) {
+    const offset = parseInt((span as HTMLElement).dataset.offset ?? "0", 10);
+    if (offset >= chunk.start) {
+      span.scrollIntoView({ behavior: "smooth", block: "center" });
+      break;
+    }
+  }
+}, [selectedChunkIndex, sortedChunks]);
+```
+
+**Step 5: Build and verify**
 
 Run: `pnpm -C packages/frontend build`
 Expected: Compiles successfully.
 
-**Step 5: Commit**
+**Step 6: Commit**
 
 ```bash
 git add packages/frontend/src/components/tabs/IndexTab.tsx
@@ -692,21 +1217,105 @@ git commit -m "feat(frontend): replace annotated document view with click-to-hig
 
 ---
 
-### Task 7: Revised chunk list & details panel
+### Task 8: Revised chunk list & details panel + chunk loading lift
 
 **Files:**
 - Modify: `packages/frontend/src/components/tabs/IndexTab.tsx`
 
-**Context:** Replace `ChunkInspectorPanel` (lines 545-792) with a two-section right panel: searchable chunk list (top) + chunk detail (bottom).
+**Context:** Replace `ChunkInspectorPanel` (lines 545-792) and `ChunkInspectorWrapper` (lines 1011-1112) with: searchable chunk list (top) + chunk detail (bottom). Also lift chunk loading from `DocumentViewerPanel` and `ChunkInspectorWrapper` to `IndexTab` level so chunks are shared by StatsBanner, document view, and chunk panel.
 
-**Step 1: Create ChunkListPanel component**
+**Step 1: Lift chunk loading to IndexTab**
 
-Compact scrollable chunk list with:
-- Search box filtering by content text match
-- Jump-to-number input
-- Each row: `#N`, char count, proportional size bar
-- Click to select and highlight in document
-- For parent-child: grouped by parent (collapsible)
+Move the chunk pagination state (`allChunks`, `cursor`, `loadingMore`, `pagesLoaded`, first/next page queries) from `DocumentViewerPanel` to `IndexTab`. Pass `sortedChunks` and `documentContent` down as props to all child panels.
+
+The key change: `IndexTab` owns the chunk state and passes it to:
+- `StatsBanner` — for metric cards and histogram
+- `DocumentViewerPanel` (simplified) — no longer loads its own chunks
+- `ChunkListPanel` — for the searchable list
+- `ChunkDetailPanel` — for detail view
+
+```tsx
+export function IndexTab({ retriever, onStartIndexing }: IndexTabProps) {
+  const [selectedDocId, setSelectedDocId] = useState<Id<"documents"> | null>(null);
+  const [selectedChunkIndex, setSelectedChunkIndex] = useState<number | null>(null);
+
+  const isReady = retriever.status === "ready";
+  const isIndexing = retriever.status === "indexing";
+
+  // ── Chunk loading (lifted from DocumentViewerPanel + ChunkInspectorWrapper) ──
+  const [allChunks, setAllChunks] = useState<Chunk[]>([]);
+  const [chunkCursor, setChunkCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [pagesLoaded, setPagesLoaded] = useState(0);
+
+  const firstPage = useQuery(
+    api.retrieval.chunks.getChunksByRetrieverPage,
+    isReady && selectedDocId
+      ? { kbId: retriever.kbId, indexConfigHash: retriever.indexConfigHash, documentId: selectedDocId, cursor: null, pageSize: 100 }
+      : "skip",
+  );
+
+  // Reset when document changes
+  useEffect(() => {
+    setAllChunks([]);
+    setChunkCursor(null);
+    setPagesLoaded(0);
+    setLoadingMore(false);
+    setSelectedChunkIndex(null);
+  }, [selectedDocId, retriever.indexConfigHash]);
+
+  // Ingest first page
+  useEffect(() => {
+    if (firstPage && pagesLoaded === 0) {
+      setAllChunks(firstPage.chunks as Chunk[]);
+      setChunkCursor(firstPage.isDone ? null : firstPage.continueCursor);
+      setPagesLoaded(1);
+      // Auto-load remaining pages for the chunk list
+      if (!firstPage.isDone) setLoadingMore(true);
+    }
+  }, [firstPage, pagesLoaded]);
+
+  // Auto-load subsequent pages
+  const nextPage = useQuery(
+    api.retrieval.chunks.getChunksByRetrieverPage,
+    loadingMore && chunkCursor
+      ? { kbId: retriever.kbId, indexConfigHash: retriever.indexConfigHash, documentId: selectedDocId!, cursor: chunkCursor, pageSize: 100 }
+      : "skip",
+  );
+
+  useEffect(() => {
+    if (nextPage && loadingMore) {
+      setAllChunks((prev) => [...prev, ...(nextPage.chunks as Chunk[])]);
+      const nextCur = nextPage.isDone ? null : nextPage.continueCursor;
+      setChunkCursor(nextCur);
+      setPagesLoaded((p) => p + 1);
+      setLoadingMore(false);
+      if (!nextPage.isDone) setLoadingMore(true);
+    }
+  }, [nextPage, loadingMore]);
+
+  const sortedChunks = useMemo(
+    () => [...allChunks].sort((a, b) => a.start - b.start),
+    [allChunks],
+  );
+
+  // ── Document content ──
+  const docContent = useQuery(
+    api.crud.documents.getContent,
+    selectedDocId ? { id: selectedDocId } : "skip",
+  );
+
+  // ... render with StatsBanner, DocumentViewerPanel, right panel ...
+}
+```
+
+This removes the need for `ChunkInspectorWrapper` entirely. Delete it.
+
+Update `StatsBanner` to receive the actual `chunks={sortedChunks}` instead of `chunks={[]}`.
+
+**Step 2: Create ChunkListPanel component**
+
+Compact scrollable chunk list. For large chunk counts (1000+), limit the rendered list to a window of ~200 items around the current scroll position using a simple approach:
 
 ```tsx
 function ChunkListPanel({
@@ -720,6 +1329,7 @@ function ChunkListPanel({
 }) {
   const [search, setSearch] = useState("");
   const [jumpTo, setJumpTo] = useState("");
+  const listRef = useRef<HTMLDivElement>(null);
 
   const maxSize = useMemo(
     () => Math.max(...chunks.map((c) => c.end - c.start), 1),
@@ -734,13 +1344,38 @@ function ChunkListPanel({
       .filter(({ chunk }) => chunk.content.toLowerCase().includes(lower));
   }, [chunks, search]);
 
+  // Simple windowed rendering: only render items near viewport
+  // For < 500 chunks, render all; for more, use IntersectionObserver or slice
+  const WINDOW_SIZE = 500;
+  const [visibleStart, setVisibleStart] = useState(0);
+  const displayItems = filtered.length <= WINDOW_SIZE
+    ? filtered
+    : filtered.slice(visibleStart, visibleStart + WINDOW_SIZE);
+
   const handleJump = () => {
     const n = parseInt(jumpTo, 10);
     if (n >= 1 && n <= chunks.length) {
       onSelect(n - 1);
       setJumpTo("");
+      // Scroll the selected item into view
+      if (filtered.length > WINDOW_SIZE) {
+        const targetIdx = filtered.findIndex(f => f.index === n - 1);
+        if (targetIdx >= 0) {
+          setVisibleStart(Math.max(0, targetIdx - WINDOW_SIZE / 2));
+        }
+      }
     }
   };
+
+  // When selected changes from outside, adjust window
+  useEffect(() => {
+    if (selectedIndex !== null && filtered.length > WINDOW_SIZE) {
+      const targetIdx = filtered.findIndex(f => f.index === selectedIndex);
+      if (targetIdx >= 0 && (targetIdx < visibleStart || targetIdx >= visibleStart + WINDOW_SIZE)) {
+        setVisibleStart(Math.max(0, targetIdx - WINDOW_SIZE / 2));
+      }
+    }
+  }, [selectedIndex, filtered, visibleStart]);
 
   return (
     <div className="flex flex-col h-1/2 border-b border-border">
@@ -767,8 +1402,12 @@ function ChunkListPanel({
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto">
-        {filtered.map(({ chunk, index }) => {
+      <div ref={listRef} className="flex-1 overflow-y-auto">
+        {/* Spacer for items above window */}
+        {visibleStart > 0 && (
+          <div style={{ height: visibleStart * 28 }} />
+        )}
+        {displayItems.map(({ chunk, index }) => {
           const size = chunk.end - chunk.start;
           const isSelected = selectedIndex === index;
           return (
@@ -780,6 +1419,7 @@ function ChunkListPanel({
                   ? "bg-accent/10 border-l-2 border-accent"
                   : "hover:bg-bg-hover border-l-2 border-transparent"
               }`}
+              style={{ height: 28 }}
             >
               <span className="text-[10px] text-text-dim w-8 text-right flex-shrink-0">
                 #{index + 1}
@@ -796,15 +1436,19 @@ function ChunkListPanel({
             </button>
           );
         })}
+        {/* Spacer for items below window */}
+        {filtered.length > WINDOW_SIZE && visibleStart + WINDOW_SIZE < filtered.length && (
+          <div style={{ height: (filtered.length - visibleStart - WINDOW_SIZE) * 28 }} />
+        )}
       </div>
     </div>
   );
 }
 ```
 
-**Step 2: Create ChunkDetailPanel component**
+**Step 3: Create ChunkDetailPanel component**
 
-Simplified chunk detail view focused on extra content:
+Simplified chunk detail view focused on extra content (contextual prefix / summary replacement). Uses the `detectDiff` logic from the old `ChunkInspectorPanel`:
 
 ```tsx
 function ChunkDetailPanel({
@@ -839,8 +1483,12 @@ function ChunkDetailPanel({
   const isSummary =
     !hasPrefix && chunk.content !== originalText && chunk.content.length > 0;
 
+  // Parent-child info
+  const isChild = chunk.metadata?.level === "child";
+  const isParent = chunk.metadata?.level === "parent";
+
   const metadataEntries = Object.entries(chunk.metadata ?? {}).filter(
-    ([k]) => k !== "level" && k !== "parentChunkId",
+    ([k]) => !["level", "parentChunkId"].includes(k),
   );
 
   return (
@@ -853,6 +1501,18 @@ function ChunkDetailPanel({
             chars {chunk.start.toLocaleString()}→{chunk.end.toLocaleString()} · {size} chars
           </div>
         </div>
+
+        {/* Parent-child info */}
+        {isChild && chunk.metadata?.parentChunkId && (
+          <div className="text-[10px] text-accent/80 bg-accent/5 border border-accent/20 rounded px-2 py-1">
+            Part of a parent chunk
+          </div>
+        )}
+        {isParent && (
+          <div className="text-[10px] text-accent/80 bg-accent/5 border border-accent/20 rounded px-2 py-1">
+            Parent chunk (not embedded — children are searched)
+          </div>
+        )}
 
         {/* Contextual prefix */}
         {prefix && (
@@ -957,13 +1617,14 @@ function ChunkDetailPanel({
 }
 ```
 
-**Step 3: Wire up the right panel**
+**Step 4: Wire up the right panel in IndexTab**
 
-Replace the current right panel logic in `IndexTab` to use `ChunkListPanel` (top half) + `ChunkDetailPanel` (bottom half) instead of `ChunkInspectorWrapper`.
+Replace the right panel section in `IndexTab` (lines 879-901). The right panel now shows:
+- If not ready: `IndexingActionPanel` (unchanged)
+- If ready with doc selected: `ChunkListPanel` (top half) + `ChunkDetailPanel` (bottom half, when chunk selected)
+- If no doc selected: placeholder text
 
-**Step 4: Lift chunk loading to IndexTab level**
-
-Move chunk pagination loading from `ChunkInspectorWrapper` up to `IndexTab` so both the `StatsBanner` and the right panel can access chunks. Pass chunks down to `StatsBanner`, `DocumentViewerPanel`, and the chunk panels.
+Delete `ChunkInspectorWrapper` and `ChunkInspectorPanel` (they are fully replaced).
 
 **Step 5: Build and verify**
 
@@ -974,31 +1635,32 @@ Expected: Compiles successfully.
 
 ```bash
 git add packages/frontend/src/components/tabs/IndexTab.tsx
-git commit -m "feat(frontend): add searchable chunk list and revised detail panel with extra content focus"
+git commit -m "feat(frontend): add searchable chunk list, revised detail panel, and lift chunk loading to IndexTab"
 ```
 
 ---
 
-### Task 8: Index→search interaction notes
+### Task 9: Index→search interaction notes
 
 **Files:**
 - Modify: `packages/frontend/src/components/tabs/QuerySearchTab.tsx`
-- Modify: `packages/frontend/src/components/wizard/steps/SearchStep.tsx` (if exists, or wherever search strategy is configured in wizard)
+- Modify: `packages/frontend/src/components/wizard/steps/SearchStep.tsx`
+- Modify: `packages/frontend/src/components/wizard/RetrieverWizard.tsx` (thread indexStrategy prop)
 
-**Context:** The search config UI (dense/BM25/hybrid) should communicate what's actually being searched, which varies by index strategy.
+**Context:** The search config UI (dense/BM25/hybrid) should communicate what's actually being searched, which varies by index strategy. `SearchStep` currently doesn't receive the index strategy — the wizard must thread it.
 
 **Step 1: Add IndexSearchNote helper component**
 
-Create a small helper that takes the index strategy and returns a contextual note:
+Create a small reusable component. Can be placed in `QuerySearchTab.tsx` or a shared file:
 
 ```tsx
 function IndexSearchNote({ indexStrategy, indexConfig }: {
   indexStrategy: string;
-  indexConfig: Record<string, unknown>;
+  indexConfig?: Record<string, unknown>;
 }) {
   if (indexStrategy === "parent-child") {
-    const childSize = (indexConfig.childChunkSize as number) ?? 200;
-    const parentSize = (indexConfig.parentChunkSize as number) ?? 1000;
+    const childSize = (indexConfig?.childChunkSize as number) ?? 200;
+    const parentSize = (indexConfig?.parentChunkSize as number) ?? 1000;
     return (
       <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-2 text-[11px] text-blue-400">
         Search runs on child chunks ({childSize} chars). Matching children are
@@ -1022,17 +1684,61 @@ function IndexSearchNote({ indexStrategy, indexConfig }: {
       </div>
     );
   }
-  return null; // Plain — no note needed
+  return null;
 }
 ```
 
 **Step 2: Insert into QuerySearchTab**
 
-In `QuerySearchTab.tsx`, add the `IndexSearchNote` below the search strategy selector, passing the retriever's index strategy from its config.
+In `QuerySearchTab.tsx`, add the `IndexSearchNote` below the search strategy selector. Extract the index strategy from `retriever.retrieverConfig`:
 
-**Step 3: Insert into wizard SearchStep**
+```tsx
+const indexConfig = (retriever.retrieverConfig?.index ?? {}) as Record<string, unknown>;
+const indexStrategy = (indexConfig.strategy as string) ?? "plain";
 
-In the wizard's search configuration step, add the same note below the search strategy buttons.
+// ... then in JSX, after search strategy UI:
+<IndexSearchNote indexStrategy={indexStrategy} indexConfig={indexConfig} />
+```
+
+**Step 3: Thread indexStrategy to SearchStep in wizard**
+
+In `packages/frontend/src/components/wizard/RetrieverWizard.tsx`, pass the currently selected index strategy to `SearchStep`:
+
+```tsx
+// In the wizard, the index strategy is part of the wizard state
+// Thread it as a new prop to SearchStep:
+<SearchStep
+  searchStrategy={searchStrategy}
+  searchOptions={searchOptions}
+  k={k}
+  onSearchChange={handleSearchChange}
+  onKChange={handleKChange}
+  indexStrategy={indexStrategy}  // NEW
+  indexConfig={indexConfig}       // NEW
+/>
+```
+
+Update `SearchStep` props:
+
+```typescript
+interface SearchStepProps {
+  searchStrategy: string;
+  searchOptions: Record<string, unknown>;
+  k: number;
+  onSearchChange: (strategy: string, options: Record<string, unknown>) => void;
+  onKChange: (k: number) => void;
+  indexStrategy?: string;    // NEW
+  indexConfig?: Record<string, unknown>;  // NEW
+}
+```
+
+Then add `<IndexSearchNote>` in the SearchStep JSX, after the strategy cards:
+
+```tsx
+{indexStrategy && (
+  <IndexSearchNote indexStrategy={indexStrategy} indexConfig={indexConfig ?? {}} />
+)}
+```
 
 **Step 4: Build and verify**
 
@@ -1042,13 +1748,13 @@ Expected: Compiles successfully.
 **Step 5: Commit**
 
 ```bash
-git add packages/frontend/src/components/tabs/QuerySearchTab.tsx packages/frontend/src/components/wizard/steps/
+git add packages/frontend/src/components/tabs/QuerySearchTab.tsx packages/frontend/src/components/wizard/steps/SearchStep.tsx packages/frontend/src/components/wizard/RetrieverWizard.tsx
 git commit -m "feat(frontend): add index→search interaction notes to search config UI"
 ```
 
 ---
 
-### Task 9: End-to-end verification
+### Task 10: End-to-end verification
 
 **Step 1: Full build**
 
@@ -1063,24 +1769,27 @@ Expected: All tests pass.
 **Step 3: Manual E2E checklist**
 
 - [ ] Open a retriever → Index tab shows StatsBanner with metric cards
+- [ ] Metric cards show total chunks, avg size, min/max, overlap %
 - [ ] Click "Show distribution" → histogram appears
 - [ ] Select a document → clean text renders without pills or stripes
-- [ ] Click anywhere in the document → chunk highlights with accent background
+- [ ] Click anywhere in the document text (raw mode) → chunk highlights with accent background
 - [ ] Click on overlap region → both chunks highlight in different colors
-- [ ] Click Escape or elsewhere → highlight clears
+- [ ] Click Escape or on non-chunk area → highlight clears
+- [ ] In rendered mode, clicking shows "switch to raw mode" note
 - [ ] Right panel shows searchable chunk list with size bars
 - [ ] Type in search box → chunks filter by content
-- [ ] Type a number in jump-to → selects that chunk
+- [ ] Type a number in jump-to → selects that chunk and scrolls doc
 - [ ] Click a chunk in list → document scrolls to and highlights that chunk
 - [ ] Chunk detail shows contextual prefix (if contextual indexing)
 - [ ] Chunk detail shows summary (if summary indexing)
 - [ ] Chunk text is collapsible (collapsed by default)
 - [ ] Metadata is collapsible
-- [ ] MarkdownViewer no longer shows `<last>` tag error
+- [ ] MarkdownViewer no longer shows `<last>` tag error in browser console
 - [ ] OpenClaw chunking (400/80) produces reasonable chunk counts (~4,500 not 14,000)
 - [ ] Parent-child retriever shows "Searched: child → Returns: parent" in stats banner
-- [ ] Search config shows interaction note for parent-child/contextual/summary
+- [ ] Search config shows interaction note for parent-child/contextual/summary strategies
 - [ ] Prev/Next navigation works in chunk detail
+- [ ] With 1000+ chunks, the chunk list doesn't freeze the browser
 
 **Step 4: Commit**
 
