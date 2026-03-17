@@ -4,6 +4,17 @@ import { useState, type ComponentPropsWithoutRef } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+
+/** Allow all standard HTML + GFM elements but strip unknown tags like <last>, <party> */
+const sanitizeSchema = {
+  ...defaultSchema,
+  // Keep rehype-raw's permissiveness for standard elements
+  tagNames: [
+    ...(defaultSchema.tagNames ?? []),
+    "details", "summary", "mark", "abbr", "sub", "sup",
+  ],
+};
 
 interface MarkdownViewerProps {
   content: string;
@@ -293,7 +304,7 @@ export function MarkdownViewer({
         <div className="p-4 pr-24">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeRaw]}
+            rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
             components={markdownComponents}
           >
             {content}
