@@ -5,7 +5,7 @@
 import { PRESET_REGISTRY } from "rag-evaluation-system/registry";
 
 // Stage 1 — Index
-export interface IndexConfig {
+export interface PlainIndexConfig {
   readonly strategy: "plain";
   readonly chunkSize?: number;
   readonly chunkOverlap?: number;
@@ -13,7 +13,18 @@ export interface IndexConfig {
   readonly embeddingModel?: string;
 }
 
-export const DEFAULT_INDEX_CONFIG: IndexConfig = {
+export interface ParentChildIndexConfig {
+  readonly strategy: "parent-child";
+  readonly childChunkSize?: number;
+  readonly parentChunkSize?: number;
+  readonly childOverlap?: number;
+  readonly parentOverlap?: number;
+  readonly embeddingModel?: string;
+}
+
+export type IndexConfig = PlainIndexConfig | ParentChildIndexConfig;
+
+export const DEFAULT_INDEX_CONFIG: PlainIndexConfig = {
   strategy: "plain",
   chunkSize: 1000,
   chunkOverlap: 200,
@@ -131,7 +142,17 @@ export interface SavedPipelineConfig {
 
 /** Resolve a PipelineConfig's fields to their effective values (with defaults). */
 export function resolveConfig(config: PipelineConfig): {
-  index: Required<Omit<IndexConfig, "separators">> & { separators?: readonly string[] };
+  index: {
+    strategy: string;
+    chunkSize: number;
+    chunkOverlap: number;
+    embeddingModel: string;
+    separators?: readonly string[];
+    childChunkSize?: number;
+    parentChunkSize?: number;
+    childOverlap?: number;
+    parentOverlap?: number;
+  };
   query: QueryConfig;
   search: SearchConfig;
   refinement: readonly RefinementStepConfig[];
@@ -139,15 +160,28 @@ export function resolveConfig(config: PipelineConfig): {
   name: string;
 } {
   const index = config.index ?? DEFAULT_INDEX_CONFIG;
+  const strategy = index.strategy ?? "plain";
+
   return {
     name: config.name,
-    index: {
-      strategy: index.strategy,
-      chunkSize: index.chunkSize ?? DEFAULT_INDEX_CONFIG.chunkSize!,
-      chunkOverlap: index.chunkOverlap ?? DEFAULT_INDEX_CONFIG.chunkOverlap!,
-      embeddingModel: index.embeddingModel ?? DEFAULT_INDEX_CONFIG.embeddingModel!,
-      ...(index.separators ? { separators: index.separators } : {}),
-    },
+    index: strategy === "parent-child"
+      ? {
+          strategy,
+          chunkSize: 0, // Not used for parent-child, but keeps type consistent
+          chunkOverlap: 0,
+          embeddingModel: index.embeddingModel ?? DEFAULT_INDEX_CONFIG.embeddingModel!,
+          childChunkSize: (index as ParentChildIndexConfig).childChunkSize ?? 200,
+          parentChunkSize: (index as ParentChildIndexConfig).parentChunkSize ?? 1000,
+          childOverlap: (index as ParentChildIndexConfig).childOverlap ?? 0,
+          parentOverlap: (index as ParentChildIndexConfig).parentOverlap ?? 100,
+        }
+      : {
+          strategy,
+          chunkSize: (index as PlainIndexConfig).chunkSize ?? DEFAULT_INDEX_CONFIG.chunkSize!,
+          chunkOverlap: (index as PlainIndexConfig).chunkOverlap ?? DEFAULT_INDEX_CONFIG.chunkOverlap!,
+          embeddingModel: index.embeddingModel ?? DEFAULT_INDEX_CONFIG.embeddingModel!,
+          ...((index as PlainIndexConfig).separators ? { separators: (index as PlainIndexConfig).separators } : {}),
+        },
     query: config.query ?? DEFAULT_QUERY_CONFIG,
     search: config.search ?? DEFAULT_SEARCH_CONFIG,
     refinement: config.refinement ?? [],
