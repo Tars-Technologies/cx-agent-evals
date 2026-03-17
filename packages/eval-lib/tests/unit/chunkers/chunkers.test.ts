@@ -66,6 +66,80 @@ describe("RecursiveCharacterChunker", () => {
   });
 });
 
+describe("overlap duplication bug", () => {
+  it("should not produce duplicate chunks with paragraph sizes near chunkSize", () => {
+    const chunker = new RecursiveCharacterChunker({
+      chunkSize: 400,
+      chunkOverlap: 80,
+    });
+
+    // Two paragraphs of ~300 chars each, separated by \n\n
+    const paraA = "A".repeat(298);
+    const paraB = "B".repeat(298);
+    const text = paraA + "\n\n" + paraB;
+
+    const chunks = chunker.chunk(text);
+
+    // Should be 2-3 chunks (one per paragraph, maybe one overlap), NOT 4+
+    expect(chunks.length).toBeLessThanOrEqual(3);
+
+    // No exact duplicates
+    const unique = new Set(chunks);
+    expect(unique.size).toBe(chunks.length);
+  });
+
+  it("should produce roughly proportional chunk counts for smaller chunkSize", () => {
+    const large = new RecursiveCharacterChunker({ chunkSize: 1000, chunkOverlap: 200 });
+    const small = new RecursiveCharacterChunker({ chunkSize: 400, chunkOverlap: 80 });
+
+    // Generate a document with many paragraphs of varied sizes
+    const paragraphs = Array.from({ length: 50 }, (_, i) =>
+      String.fromCharCode(65 + (i % 26)).repeat(150 + (i * 7) % 200)
+    );
+    const text = paragraphs.join("\n\n");
+
+    const largeChunks = large.chunk(text);
+    const smallChunks = small.chunk(text);
+
+    // With 2.5x smaller chunks, expect roughly 2-4x more chunks, not 8x
+    const ratio = smallChunks.length / largeChunks.length;
+    expect(ratio).toBeGreaterThan(1.5);
+    expect(ratio).toBeLessThan(5);
+  });
+
+  it("should produce valid positions with no content loss after overlap fix", () => {
+    const chunker = new RecursiveCharacterChunker({
+      chunkSize: 400,
+      chunkOverlap: 80,
+    });
+    const content = Array.from({ length: 20 }, (_, i) =>
+      String.fromCharCode(65 + (i % 26)).repeat(200 + (i * 13) % 300)
+    ).join("\n\n");
+
+    const doc = createDocument({ id: "test-overlap.md", content });
+    const chunks = chunker.chunkWithPositions(doc);
+
+    // Every chunk's content must match its span in the source
+    for (const chunk of chunks) {
+      expect(chunk.start).toBeGreaterThanOrEqual(0);
+      expect(chunk.end).toBeLessThanOrEqual(content.length);
+      expect(content.slice(chunk.start, chunk.end)).toBe(chunk.content);
+    }
+
+    // All source content is covered (union of all chunk spans covers full text)
+    const covered = new Set<number>();
+    for (const chunk of chunks) {
+      for (let i = chunk.start; i < chunk.end; i++) covered.add(i);
+    }
+    // Non-whitespace chars should all be covered
+    for (let i = 0; i < content.length; i++) {
+      if (content[i].trim()) {
+        expect(covered.has(i)).toBe(true);
+      }
+    }
+  });
+});
+
 describe("isAsyncPositionAwareChunker", () => {
   it("returns true for chunker with async discriminator", () => {
     const chunker = {
