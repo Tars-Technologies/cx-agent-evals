@@ -310,6 +310,17 @@ export const isIndexed = internalQuery({
   },
 });
 
+/** Fetch a single chunk by ID. Used for parent-child retrieval swap. */
+export const getChunkById = internalQuery({
+  args: { chunkId: v.id("documentChunks") },
+  handler: async (ctx, args) => {
+    const chunk = await ctx.db.get(args.chunkId);
+    if (!chunk) return null;
+    const doc = await ctx.db.get(chunk.documentId);
+    return { ...chunk, docId: doc?.docId ?? "" };
+  },
+});
+
 /**
  * Fetch full chunk records by IDs, including parent document's docId.
  * Used after vector search to hydrate results.

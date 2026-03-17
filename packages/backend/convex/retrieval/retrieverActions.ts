@@ -218,11 +218,14 @@ export const retrieve = action({
     const queryEmbedding = await embedder.embedQuery(args.query);
 
     // Vector search with post-filtering by indexConfigHash
+    const indexStrategy = (indexSettings.strategy as string) ?? "plain";
+
     const { chunks: filtered, scoreMap } = await vectorSearchWithFilter(ctx, {
       queryEmbedding,
       kbId: retriever.kbId,
       indexConfigHash: retriever.indexConfigHash,
       topK,
+      indexStrategy,
     });
 
     return filtered.map((c: any) => ({
