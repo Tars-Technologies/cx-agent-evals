@@ -792,29 +792,136 @@ function ChunkInspectorPanel({
 }
 
 // ---------------------------------------------------------------------------
-// Index Config Banner
+// Stats Banner
 // ---------------------------------------------------------------------------
 
-function IndexConfigBanner({ retrieverConfig }: { retrieverConfig: unknown }) {
+function StatsBanner({
+  retrieverConfig,
+  chunks,
+  chunkCount,
+}: {
+  retrieverConfig: unknown;
+  chunks: Chunk[];
+  chunkCount?: number;
+}) {
+  const [showHistogram, setShowHistogram] = useState(false);
   const config = resolveConfig(retrieverConfig as PipelineConfig);
-  const { chunkSize, chunkOverlap, embeddingModel } = config.index;
+  const { embeddingModel } = config.index;
   const embedShort = embeddingModel.replace("text-embedding-", "");
+
+  const strategy = config.index.strategy;
+  const isParentChild = strategy === "parent-child";
+  const chunkerLabel = isParentChild
+    ? `Parent-child (${config.index.childChunkSize ?? 200}/${config.index.parentChunkSize ?? 1000})`
+    : `Recursive (${config.index.chunkSize}/${config.index.chunkOverlap})`;
+
+  // Compute stats from loaded chunks
+  const stats = useMemo(() => {
+    if (chunks.length === 0) return null;
+    const sizes = chunks.map((c) => c.end - c.start);
+    const total = chunkCount ?? chunks.length;
+    const avg = Math.round(sizes.reduce((a, b) => a + b, 0) / sizes.length);
+    const min = Math.min(...sizes);
+    const max = Math.max(...sizes);
+
+    // Compute overlap %
+    let overlapChars = 0;
+    const sorted = [...chunks].sort((a, b) => a.start - b.start);
+    for (let i = 1; i < sorted.length; i++) {
+      const overlap = sorted[i - 1].end - sorted[i].start;
+      if (overlap > 0) overlapChars += overlap;
+    }
+    const overlapPct =
+      avg > 0 ? Math.round((overlapChars / sorted.length / avg) * 100) : 0;
+
+    // Histogram buckets (100-char width)
+    const bucketWidth = 100;
+    const buckets = new Map<number, number>();
+    for (const s of sizes) {
+      const bucket = Math.floor(s / bucketWidth) * bucketWidth;
+      buckets.set(bucket, (buckets.get(bucket) ?? 0) + 1);
+    }
+    const sortedBuckets = [...buckets.entries()].sort((a, b) => a[0] - b[0]);
+    const maxCount = Math.max(...sortedBuckets.map(([, c]) => c));
+
+    return { total, avg, min, max, overlapPct, sortedBuckets, maxCount };
+  }, [chunks, chunkCount]);
 
   return (
     <div className="px-3 py-2 border-b border-border flex-shrink-0">
-      <div className="bg-bg-surface border border-border rounded-lg p-2">
+      <div className="bg-bg-surface border border-border rounded-lg p-2 space-y-2">
+        {/* Config row */}
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-text-dim">
           <span className="text-text-muted font-medium">Index</span>
           <span>
-            Chunking: <span className="text-text-muted">recursive</span>
-          </span>
-          <span>
-            Size: <span className="text-text-muted">{chunkSize}/{chunkOverlap}</span>
+            Chunking: <span className="text-text-muted">{chunkerLabel}</span>
           </span>
           <span>
             Embedding: <span className="text-text-muted">{embedShort}</span>
           </span>
+          {isParentChild && (
+            <span className="text-blue-400">
+              Searched: child → Returns: parent
+            </span>
+          )}
         </div>
+
+        {/* Metric cards */}
+        {stats && (
+          <div className="flex gap-3">
+            {[
+              { label: "chunks", value: stats.total.toLocaleString() },
+              { label: "avg size", value: `${stats.avg}` },
+              { label: "min/max", value: `${stats.min}\u2013${stats.max}` },
+              { label: "overlap", value: `${stats.overlapPct}%` },
+            ].map((card) => (
+              <div
+                key={card.label}
+                className="flex-1 bg-bg-elevated/50 rounded px-2 py-1 text-center"
+              >
+                <div className="text-sm text-text font-medium">
+                  {card.value}
+                </div>
+                <div className="text-[10px] text-text-dim">{card.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Histogram toggle */}
+        {stats && (
+          <button
+            onClick={() => setShowHistogram(!showHistogram)}
+            className="text-[10px] text-accent hover:text-accent-bright transition-colors cursor-pointer"
+          >
+            {showHistogram ? "\u25B2 Hide" : "\u25BC Show"} distribution
+          </button>
+        )}
+
+        {/* Histogram */}
+        {showHistogram && stats && (
+          <div className="space-y-0.5 pt-1">
+            {stats.sortedBuckets.map(([bucket, count]) => (
+              <div
+                key={bucket}
+                className="flex items-center gap-2 text-[10px]"
+              >
+                <span className="w-16 text-right text-text-dim">
+                  {bucket}\u2013{bucket + 100}
+                </span>
+                <div className="flex-1 h-3 bg-bg-elevated rounded overflow-hidden">
+                  <div
+                    className="h-full bg-accent/40 rounded"
+                    style={{
+                      width: `${(count / stats.maxCount) * 100}%`,
+                    }}
+                  />
+                </div>
+                <span className="w-8 text-text-dim">{count}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -842,7 +949,11 @@ export function IndexTab({ retriever, onStartIndexing }: IndexTabProps) {
 
   return (
     <div className="flex flex-col h-full border-t border-border">
-      <IndexConfigBanner retrieverConfig={retriever.retrieverConfig} />
+      <StatsBanner
+        retrieverConfig={retriever.retrieverConfig}
+        chunks={[]}
+        chunkCount={retriever.chunkCount}
+      />
       <div className="flex flex-1 min-h-0">
         {/* Left: Document list */}
         <div className="w-[200px] flex-shrink-0 border-r border-border overflow-hidden">
