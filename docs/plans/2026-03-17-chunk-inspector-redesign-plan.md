@@ -572,9 +572,12 @@ export async function vectorSearchWithFilter(
           { chunkId: parentId },
         );
         if (parent) {
+          const childScore = scoreMap.get(child._id.toString()) ?? 0;
+          // Update scoreMap so callers can look up score by parent ID
+          scoreMap.set(parent._id.toString(), childScore);
           swapped.push({
             ...parent,
-            _score: scoreMap.get(child._id.toString()) ?? 0,
+            _score: childScore,
           });
         } else {
           swapped.push(child); // Fallback if parent not found
