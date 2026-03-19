@@ -10,7 +10,16 @@ export {
 export type {
   PipelineConfig,
   IndexConfig,
+  PlainIndexConfig,
+  ContextualIndexConfig,
+  SummaryIndexConfig,
+  ParentChildIndexConfig,
   QueryConfig,
+  IdentityQueryConfig,
+  HydeQueryConfig,
+  MultiQueryConfig,
+  StepBackQueryConfig,
+  RewriteQueryConfig,
   SearchConfig,
   DenseSearchConfig,
   BM25SearchConfig,
@@ -18,6 +27,9 @@ export type {
   RefinementStepConfig,
   RerankRefinementStep,
   ThresholdRefinementStep,
+  DedupRefinementStep,
+  MmrRefinementStep,
+  ExpandContextRefinementStep,
 } from "./config.js";
 export { BM25SearchIndex, BM25SearchStrategy } from "./search/index.js";
 export { DenseSearchStrategy, assignRankScores } from "./search/index.js";
@@ -27,5 +39,20 @@ export type { ScoredChunk } from "./types.js";
 export {
   weightedScoreFusion,
   reciprocalRankFusion,
+  rrfFuseMultiple,
 } from "./search/index.js";
 export { applyThresholdFilter } from "./refinement/index.js";
+export { applyDedup, applyMmr, applyExpandContext } from "./refinement/index.js";
+
+// LLM interface
+export type { PipelineLLM } from "./llm.interface.js";
+
+// Query stage
+export {
+  DEFAULT_HYDE_PROMPT,
+  DEFAULT_MULTI_QUERY_PROMPT,
+  DEFAULT_STEP_BACK_PROMPT,
+  DEFAULT_REWRITE_PROMPT,
+  DEFAULT_SUMMARY_PROMPT,
+  DEFAULT_CONTEXT_PROMPT,
+} from "./query/index.js";

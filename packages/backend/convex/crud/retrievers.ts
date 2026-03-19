@@ -259,10 +259,14 @@ export const deleteIndex = mutation({
         r.indexConfigHash === retriever.indexConfigHash,
     );
 
-    if (sharingChunks.length > 0) {
-      throw new Error(
-        `Cannot delete index: ${sharingChunks.length} other retriever(s) share the same index. Delete them first.`,
-      );
+    // Reset any other retrievers sharing this index to "configuring"
+    for (const sharer of sharingChunks) {
+      await ctx.db.patch(sharer._id, {
+        status: "configuring",
+        chunkCount: undefined,
+        indexingJobId: undefined,
+        error: undefined,
+      });
     }
 
     if (retriever.indexingJobId) {

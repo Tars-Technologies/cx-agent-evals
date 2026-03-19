@@ -10,6 +10,26 @@ import {
 import { EMBED_BATCH_SIZE, CLEANUP_BATCH_SIZE } from "rag-evaluation-system/shared";
 import { createEmbedder } from "rag-evaluation-system/llm";
 
+/** Retry a mutation that may fail with TooManyWrites under concurrent load. */
+async function retryOnWriteLimit<T>(
+  fn: () => Promise<T>,
+  maxRetries = 4,
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const msg = typeof err?.message === "string" ? err.message : String(err);
+      if (attempt < maxRetries && msg.includes("TooManyWrites")) {
+        // Exponential backoff: 500ms, 1s, 2s, 4s
+        await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 // ─── Two-Phase Document Indexing Action ───
 
 /**
@@ -24,107 +44,215 @@ export const indexDocument = internalAction({
     documentId: v.id("documents"),
     kbId: v.id("knowledgeBases"),
     indexConfigHash: v.string(),
+    strategy: v.optional(v.string()),
     chunkSize: v.optional(v.number()),
     chunkOverlap: v.optional(v.number()),
     embeddingModel: v.optional(v.string()),
+    childChunkSize: v.optional(v.number()),
+    parentChunkSize: v.optional(v.number()),
+    childOverlap: v.optional(v.number()),
+    parentOverlap: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<{
     skipped: boolean;
     chunksInserted: number;
     chunksEmbedded: number;
   }> => {
-    // ── Idempotency check: query existing chunks ──
-    const existingChunks: any[] = await ctx.runQuery(
-      internal.retrieval.chunks.getChunksByDocConfig,
+    // ── Idempotency check: single-row probe (avoids 16MB read limit) ──
+    const { exists } = await ctx.runQuery(
+      internal.retrieval.chunks.hasChunksForDocConfig,
       {
         documentId: args.documentId,
         indexConfigHash: args.indexConfigHash,
       },
     );
 
-    if (existingChunks.length > 0) {
-      const allEmbedded = existingChunks.every(
-        (c: any) => c.embedding !== undefined,
-      );
-      if (allEmbedded) {
-        return { skipped: true, chunksInserted: 0, chunksEmbedded: 0 };
-      }
-      // Some chunks exist but not all embedded — skip to Phase B
+    if (exists) {
+      // Chunks exist — skip Phase A, go to Phase B.
+      // If all are already embedded, Phase B finds nothing and returns early.
     } else {
       // ── PHASE A: Chunk & Store (pure compute, atomic) ──
       const doc = await ctx.runQuery(internal.crud.documents.getInternal, {
         id: args.documentId,
       });
 
-      const chunker = new RecursiveCharacterChunker({
-        chunkSize: args.chunkSize ?? 1000,
-        chunkOverlap: args.chunkOverlap ?? 200,
-      });
-
       const evalDoc = createDocument({ id: doc.docId, content: doc.content });
-      const chunks = chunker.chunkWithPositions(evalDoc);
 
-      if (chunks.length === 0) {
-        return { skipped: false, chunksInserted: 0, chunksEmbedded: 0 };
+      if (args.strategy === "parent-child") {
+        // Parent-child: two-level chunking
+        const parentChunker = new RecursiveCharacterChunker({
+          chunkSize: args.parentChunkSize ?? 1000,
+          chunkOverlap: args.parentOverlap ?? 100,
+        });
+        const childChunker = new RecursiveCharacterChunker({
+          chunkSize: args.childChunkSize ?? 200,
+          chunkOverlap: args.childOverlap ?? 0,
+        });
+
+        const parentChunks = parentChunker.chunkWithPositions(evalDoc);
+        const childChunks = childChunker.chunkWithPositions(evalDoc);
+
+        if (parentChunks.length === 0 || childChunks.length === 0) {
+          // Both must be non-empty for parent-child to work; if document is
+          // too short for either level, skip rather than create orphans
+          return { skipped: false, chunksInserted: 0, chunksEmbedded: 0 };
+        }
+
+        // Insert parent chunks (no embedding — level: "parent")
+        const parentResult = await ctx.runMutation(
+          internal.retrieval.chunks.insertChunkBatch,
+          {
+            chunks: parentChunks.map((c) => ({
+              documentId: args.documentId,
+              kbId: args.kbId,
+              indexConfigHash: args.indexConfigHash,
+              chunkId: c.id,
+              content: c.content,
+              start: c.start,
+              end: c.end,
+              metadata: { level: "parent" },
+            })),
+          },
+        );
+
+        // Map each child to its enclosing parent
+        const childChunksMapped = childChunks.map((child) => {
+          // Primary: find parent that fully contains this child
+          let parentIndex = parentChunks.findIndex(
+            (p) => p.start <= child.start && p.end >= child.end,
+          );
+
+          // Fallback for boundary children: find parent with max overlap
+          if (parentIndex < 0) {
+            let maxOverlap = 0;
+            for (let pi = 0; pi < parentChunks.length; pi++) {
+              const overlapStart = Math.max(parentChunks[pi].start, child.start);
+              const overlapEnd = Math.min(parentChunks[pi].end, child.end);
+              const overlap = Math.max(0, overlapEnd - overlapStart);
+              if (overlap > maxOverlap) {
+                maxOverlap = overlap;
+                parentIndex = pi;
+              }
+            }
+          }
+
+          return {
+            documentId: args.documentId,
+            kbId: args.kbId,
+            indexConfigHash: args.indexConfigHash,
+            chunkId: child.id,
+            content: child.content,
+            start: child.start,
+            end: child.end,
+            metadata: {
+              level: "child" as const,
+              parentChunkId:
+                parentIndex >= 0 ? parentResult.ids[parentIndex] : undefined,
+            },
+          };
+        });
+
+        // Insert child chunks (will be embedded in Phase B)
+        await ctx.runMutation(internal.retrieval.chunks.insertChunkBatch, {
+          chunks: childChunksMapped,
+        });
+      } else {
+        // Plain: standard single-level chunking
+        const chunker = new RecursiveCharacterChunker({
+          chunkSize: args.chunkSize ?? 1000,
+          chunkOverlap: args.chunkOverlap ?? 200,
+        });
+
+        const chunks = chunker.chunkWithPositions(evalDoc);
+
+        if (chunks.length === 0) {
+          return { skipped: false, chunksInserted: 0, chunksEmbedded: 0 };
+        }
+
+        // Insert ALL chunks WITHOUT embeddings in one atomic mutation
+        await ctx.runMutation(internal.retrieval.chunks.insertChunkBatch, {
+          chunks: chunks.map((c) => ({
+            documentId: args.documentId,
+            kbId: args.kbId,
+            indexConfigHash: args.indexConfigHash,
+            chunkId: c.id,
+            content: c.content,
+            start: c.start,
+            end: c.end,
+            metadata: c.metadata ?? {},
+          })),
+        });
       }
-
-      // Insert ALL chunks WITHOUT embeddings in one atomic mutation
-      await ctx.runMutation(internal.retrieval.chunks.insertChunkBatch, {
-        chunks: chunks.map((c) => ({
-          documentId: args.documentId,
-          kbId: args.kbId,
-          indexConfigHash: args.indexConfigHash,
-          chunkId: c.id,
-          content: c.content,
-          start: c.start,
-          end: c.end,
-          metadata: c.metadata ?? {},
-        })),
-      });
     }
 
     // ── PHASE B: Embed in Batches (API calls, resumable) ──
-    const unembedded = await ctx.runQuery(internal.retrieval.chunks.getUnembeddedChunks, {
-      documentId: args.documentId,
-      indexConfigHash: args.indexConfigHash,
-    });
+    //
+    // Collect unembedded chunks via paginated queries — each ctx.runQuery()
+    // gets its own 16MB read budget, avoiding the limit that .collect() hits
+    // on large documents where embedded chunks carry 12KB vectors each.
+    const unembedded: any[] = [];
+    let totalChunks = 0;
+    let pageCursor: string | null = null;
+    let pageDone = false;
 
-    if (unembedded.length === 0) {
-      // All chunks already embedded (possible if Phase A was from a previous run)
-      return { skipped: false, chunksInserted: 0, chunksEmbedded: 0 };
+    while (!pageDone) {
+      const page: any = await ctx.runQuery(
+        internal.retrieval.chunks.getChunksByDocConfigPage,
+        {
+          documentId: args.documentId,
+          indexConfigHash: args.indexConfigHash,
+          cursor: pageCursor,
+          pageSize: 100,
+        },
+      );
+      totalChunks += page.chunks.length;
+      for (const chunk of page.chunks) {
+        if (chunk.embedding === undefined) {
+          unembedded.push(chunk);
+        }
+      }
+      pageDone = page.isDone;
+      pageCursor = page.continueCursor;
+    }
+
+    // Filter out parent chunks — they don't get embedded
+    const toEmbed = unembedded.filter(
+      (c: any) => !(c.metadata?.level === "parent"),
+    );
+
+    if (toEmbed.length === 0) {
+      // All embeddable chunks already embedded (fully indexed on a previous run)
+      return { skipped: true, chunksInserted: 0, chunksEmbedded: 0 };
     }
 
     const embedder = createEmbedder(args.embeddingModel);
     let totalEmbedded = 0;
 
-    for (let i = 0; i < unembedded.length; i += EMBED_BATCH_SIZE) {
-      const batch = unembedded.slice(i, i + EMBED_BATCH_SIZE);
+    for (let i = 0; i < toEmbed.length; i += EMBED_BATCH_SIZE) {
+      const batch = toEmbed.slice(i, i + EMBED_BATCH_SIZE);
       const texts = batch.map((c: any) => c.content);
 
       // This is the failure point — WorkPool retries the whole action,
       // but Phase A is skipped and completed batches are skipped
       const embeddings = await embedder.embed(texts);
 
-      // Patch this batch's embeddings — checkpoint saved
-      await ctx.runMutation(internal.retrieval.chunks.patchChunkEmbeddings, {
-        patches: batch.map((c: any, idx: number) => ({
-          chunkId: c._id,
-          embedding: embeddings[idx],
-        })),
-      });
+      // Patch this batch's embeddings — checkpoint saved.
+      // Retry with backoff if concurrent actions saturate write throughput.
+      await retryOnWriteLimit(() =>
+        ctx.runMutation(internal.retrieval.chunks.patchChunkEmbeddings, {
+          patches: batch.map((c: any, idx: number) => ({
+            chunkId: c._id,
+            embedding: embeddings[idx],
+          })),
+        }),
+      );
 
       totalEmbedded += batch.length;
     }
 
-    // Count total chunks for this document (including previously embedded)
-    const allChunks: any[] = await ctx.runQuery(internal.retrieval.chunks.getChunksByDocConfig, {
-      documentId: args.documentId,
-      indexConfigHash: args.indexConfigHash,
-    });
-
     return {
       skipped: false,
-      chunksInserted: allChunks.length,
+      chunksInserted: totalChunks,
       chunksEmbedded: totalEmbedded,
     };
   },

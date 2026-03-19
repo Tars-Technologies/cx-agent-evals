@@ -84,6 +84,23 @@ export const get = query({
   },
 });
 
+/**
+ * Public query that returns a document's content fields with auth check.
+ * Used by the Index tab to display document source text alongside chunks.
+ */
+export const getContent = query({
+  args: { id: v.id("documents") },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+    const doc = await ctx.db.get(args.id);
+    if (!doc) throw new Error("Document not found");
+    // Verify org access via KB
+    const kb = await ctx.db.get(doc.kbId);
+    if (!kb || kb.orgId !== orgId) throw new Error("Access denied");
+    return { docId: doc.docId, content: doc.content, kbId: doc.kbId };
+  },
+});
+
 export const remove = mutation({
   args: { id: v.id("documents") },
   handler: async (ctx, args) => {

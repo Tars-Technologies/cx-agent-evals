@@ -2,8 +2,10 @@ import type { PositionAwareChunker } from "../chunkers/chunker.interface.js";
 import type { Embedder } from "../embedders/embedder.interface.js";
 import type { VectorStore } from "../vector-stores/vector-store.interface.js";
 import type { Reranker } from "../rerankers/reranker.interface.js";
+import type { PipelineLLM } from "../retrievers/pipeline/llm.interface.js";
 import type { PipelineConfig } from "../retrievers/pipeline/config.js";
 import { PipelineRetriever } from "../retrievers/pipeline/pipeline-retriever.js";
+import { PRESET_REGISTRY } from "../registry/presets.js";
 
 // --- Shared deps interface ---
 
@@ -12,6 +14,7 @@ export interface PipelinePresetDeps {
   readonly embedder: Embedder;
   readonly vectorStore?: VectorStore;
   readonly reranker?: Reranker;
+  readonly llm?: PipelineLLM;
 }
 
 // --- Preset configs ---
@@ -53,21 +56,26 @@ export const HYBRID_RERANKED_CONFIG: PipelineConfig = {
   refinement: [{ type: "rerank" }],
 };
 
-// --- Generic factory ---
+// --- Registry-backed factory ---
 
-const PRESET_CONFIGS = {
-  "baseline-vector-rag": BASELINE_VECTOR_RAG_CONFIG,
-  "bm25": BM25_CONFIG,
-  "hybrid": HYBRID_CONFIG,
-  "hybrid-reranked": HYBRID_RERANKED_CONFIG,
-} as const;
+const AVAILABLE_PRESET_MAP = new Map(
+  PRESET_REGISTRY
+    .filter((p) => p.status === "available")
+    .map((p) => [p.id, p.config]),
+);
+
+/** Union of all available preset names, derived from the registry. */
+export type PresetName = string & {};
 
 export function createPresetRetriever(
-  presetName: keyof typeof PRESET_CONFIGS,
+  presetName: string,
   deps: PipelinePresetDeps,
   overrides?: Partial<PipelineConfig>,
 ): PipelineRetriever {
-  const base = PRESET_CONFIGS[presetName];
+  const base = AVAILABLE_PRESET_MAP.get(presetName);
+  if (!base) {
+    throw new Error(`Unknown or unavailable preset: "${presetName}"`);
+  }
   const config: PipelineConfig = {
     ...base,
     ...overrides,

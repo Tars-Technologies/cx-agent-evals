@@ -34,8 +34,12 @@ export {
 } from "./types/index.js";
 
 // Chunkers
-export type { Chunker, PositionAwareChunker, RecursiveCharacterChunkerOptions } from "./chunkers/index.js";
-export { isPositionAwareChunker, RecursiveCharacterChunker } from "./chunkers/index.js";
+export type { Chunker, PositionAwareChunker, RecursiveCharacterChunkerOptions, SentenceChunkerOptions, TokenChunkerOptions, MarkdownChunkerOptions } from "./chunkers/index.js";
+export { isPositionAwareChunker, RecursiveCharacterChunker, SentenceChunker, TokenChunker, MarkdownChunker } from "./chunkers/index.js";
+
+// Async chunkers
+export type { AsyncPositionAwareChunker, SemanticChunkerOptions, ClusterSemanticChunkerOptions, LLMSemanticChunkerOptions } from "./chunkers/index.js";
+export { isAsyncPositionAwareChunker, SemanticChunker, ClusterSemanticChunker, LLMSemanticChunker } from "./chunkers/index.js";
 
 // Embedder
 export type { Embedder } from "./embedders/index.js";
@@ -79,17 +83,33 @@ export type {
   PipelineRetrieverDeps,
   PipelineConfig,
   IndexConfig,
+  PlainIndexConfig,
+  ContextualIndexConfig,
+  SummaryIndexConfig,
+  ParentChildIndexConfig,
   QueryConfig,
+  IdentityQueryConfig,
+  HydeQueryConfig,
+  MultiQueryConfig,
+  StepBackQueryConfig,
+  RewriteQueryConfig,
   SearchConfig,
   DenseSearchConfig,
   BM25SearchConfig,
   HybridSearchConfig,
   RefinementStepConfig,
+  RerankRefinementStep,
+  ThresholdRefinementStep,
+  DedupRefinementStep,
+  MmrRefinementStep,
+  ExpandContextRefinementStep,
   ScoredChunk,
+  PipelineLLM,
 } from "./retrievers/index.js";
 
 // Experiment Presets
 export {
+  createPresetRetriever,
   createBaselineVectorRagRetriever,
   BASELINE_VECTOR_RAG_CONFIG,
   createBM25Retriever,
@@ -100,6 +120,8 @@ export {
   HYBRID_RERANKED_CONFIG,
 } from "./experiments/index.js";
 export type {
+  PresetName,
+  PipelinePresetDeps,
   BaselineVectorRagPresetDeps,
   BM25PresetDeps,
   HybridPresetDeps,

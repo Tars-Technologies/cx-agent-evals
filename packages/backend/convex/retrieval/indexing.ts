@@ -137,9 +137,15 @@ export const startIndexing = internalMutation({
           documentId: doc._id,
           kbId: args.kbId,
           indexConfigHash: args.indexConfigHash,
+          // Pass all strategy-specific fields
+          strategy: indexConfig.strategy,
           chunkSize: indexConfig.chunkSize,
           chunkOverlap: indexConfig.chunkOverlap,
           embeddingModel: indexConfig.embeddingModel,
+          childChunkSize: indexConfig.childChunkSize,
+          parentChunkSize: indexConfig.parentChunkSize,
+          childOverlap: indexConfig.childOverlap,
+          parentOverlap: indexConfig.parentOverlap,
         },
         {
           context: { jobId, documentId: doc._id },

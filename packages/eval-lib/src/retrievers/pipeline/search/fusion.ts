@@ -134,3 +134,48 @@ export function reciprocalRankFusion(
 
   return sortDescending(fused);
 }
+
+// ---------------------------------------------------------------------------
+// Generalized Multi-List RRF (for cross-query fusion)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fuses results from N ranked lists using Reciprocal Rank Fusion.
+ *
+ * For each unique chunk, the score is:
+ *   `sum(1 / (k + rank))` across every list in which the chunk appears.
+ *
+ * Used by multi-query, HyDE (multi-doc), and step-back strategies to merge
+ * results from multiple search queries.
+ */
+export function rrfFuseMultiple(
+  resultLists: readonly (readonly ScoredChunk[])[],
+  k: number = 60,
+): ScoredChunk[] {
+  if (resultLists.length === 0) return [];
+
+  const scores = new Map<string, { chunk: PositionAwareChunk; score: number }>();
+
+  for (const results of resultLists) {
+    for (let i = 0; i < results.length; i++) {
+      const { chunk } = results[i];
+      const key = chunkKey(chunk);
+      const rank = i + 1; // 1-based
+      const rrfContribution = 1 / (k + rank);
+
+      const existing = scores.get(key);
+      if (existing) {
+        existing.score += rrfContribution;
+      } else {
+        scores.set(key, { chunk, score: rrfContribution });
+      }
+    }
+  }
+
+  const fused: ScoredChunk[] = [];
+  for (const { chunk, score } of scores.values()) {
+    fused.push({ chunk, score });
+  }
+
+  return sortDescending(fused);
+}

@@ -7,6 +7,7 @@ import type { PositionAwareChunk } from "../../../../../src/types/index.js";
 import {
   weightedScoreFusion,
   reciprocalRankFusion,
+  rrfFuseMultiple,
 } from "../../../../../src/retrievers/pipeline/search/fusion.js";
 import type { ScoredChunk } from "../../../../../src/retrievers/pipeline/search/fusion.js";
 
@@ -238,5 +239,61 @@ describe("reciprocalRankFusion", () => {
     });
 
     expect(results).toEqual([]);
+  });
+});
+
+describe("rrfFuseMultiple", () => {
+  it("should fuse results from multiple ranked lists", () => {
+    const list1: ScoredChunk[] = [scored("A", 1.0), scored("B", 0.8)];
+    const list2: ScoredChunk[] = [scored("B", 1.0), scored("C", 0.7)];
+    const list3: ScoredChunk[] = [scored("C", 1.0), scored("A", 0.5)];
+
+    const result = rrfFuseMultiple([list1, list2, list3]);
+
+    expect(result.length).toBe(3);
+    const ids = result.map((r) => String(r.chunk.id));
+    expect(ids).toContain("A");
+    expect(ids).toContain("B");
+    expect(ids).toContain("C");
+  });
+
+  it("should handle a single list (identity)", () => {
+    const list: ScoredChunk[] = [scored("X", 1.0), scored("Y", 0.5)];
+    const result = rrfFuseMultiple([list]);
+
+    expect(result.length).toBe(2);
+    expect(String(result[0].chunk.id)).toBe("X");
+    expect(String(result[1].chunk.id)).toBe("Y");
+  });
+
+  it("should handle empty input", () => {
+    expect(rrfFuseMultiple([])).toEqual([]);
+  });
+
+  it("should handle lists with no overlap", () => {
+    const list1: ScoredChunk[] = [scored("A", 1.0)];
+    const list2: ScoredChunk[] = [scored("B", 1.0)];
+    const result = rrfFuseMultiple([list1, list2]);
+
+    expect(result.length).toBe(2);
+    expect(result[0].score).toBeCloseTo(result[1].score);
+  });
+
+  it("should rank chunks appearing in more lists higher", () => {
+    const list1: ScoredChunk[] = [scored("A", 1.0), scored("B", 0.5)];
+    const list2: ScoredChunk[] = [scored("A", 1.0), scored("C", 0.5)];
+    const list3: ScoredChunk[] = [scored("A", 1.0), scored("D", 0.5)];
+    const result = rrfFuseMultiple([list1, list2, list3]);
+
+    expect(String(result[0].chunk.id)).toBe("A");
+  });
+
+  it("should accept custom k parameter", () => {
+    const list1: ScoredChunk[] = [scored("A", 1.0)];
+    const list2: ScoredChunk[] = [scored("A", 1.0)];
+    const resultK1 = rrfFuseMultiple([list1, list2], 1);
+    const resultK60 = rrfFuseMultiple([list1, list2], 60);
+
+    expect(resultK1[0].score).toBeGreaterThan(resultK60[0].score);
   });
 });

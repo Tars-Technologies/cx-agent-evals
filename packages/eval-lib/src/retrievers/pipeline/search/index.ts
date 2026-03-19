@@ -6,6 +6,7 @@ export type { ScoredChunk } from "../types.js";
 export {
   weightedScoreFusion,
   reciprocalRankFusion,
+  rrfFuseMultiple,
 } from "./fusion.js";
 export type {
   WeightedScoreFusionParams,

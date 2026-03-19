@@ -2,8 +2,10 @@
 // Frontend-side pipeline config types (mirrors eval-lib types without Node.js deps)
 // ---------------------------------------------------------------------------
 
+import { PRESET_REGISTRY } from "rag-evaluation-system/registry";
+
 // Stage 1 — Index
-export interface IndexConfig {
+export interface PlainIndexConfig {
   readonly strategy: "plain";
   readonly chunkSize?: number;
   readonly chunkOverlap?: number;
@@ -11,7 +13,18 @@ export interface IndexConfig {
   readonly embeddingModel?: string;
 }
 
-export const DEFAULT_INDEX_CONFIG: IndexConfig = {
+export interface ParentChildIndexConfig {
+  readonly strategy: "parent-child";
+  readonly childChunkSize?: number;
+  readonly parentChunkSize?: number;
+  readonly childOverlap?: number;
+  readonly parentOverlap?: number;
+  readonly embeddingModel?: string;
+}
+
+export type IndexConfig = PlainIndexConfig | ParentChildIndexConfig;
+
+export const DEFAULT_INDEX_CONFIG: PlainIndexConfig = {
   strategy: "plain",
   chunkSize: 1000,
   chunkOverlap: 200,
@@ -87,57 +100,29 @@ export interface PipelineConfig {
 export const DEFAULT_K = 5;
 
 // ---------------------------------------------------------------------------
-// Preset definitions
+// Preset definitions — derived from the eval-lib registry
 // ---------------------------------------------------------------------------
 
+// Derive available preset configs from registry
+const registryPresets = Object.fromEntries(
+  PRESET_REGISTRY
+    .filter(p => p.status === "available")
+    .map(p => [p.id, p.config as PipelineConfig]),
+);
+
 export const PRESET_CONFIGS: Record<string, PipelineConfig> = {
-  "baseline-vector-rag": {
-    name: "baseline-vector-rag",
-    index: { strategy: "plain" },
-    search: { strategy: "dense" },
-    k: DEFAULT_K,
-  },
-  bm25: {
-    name: "bm25",
-    index: { strategy: "plain" },
-    search: { strategy: "bm25" },
-    k: DEFAULT_K,
-  },
-  hybrid: {
-    name: "hybrid",
-    index: { strategy: "plain" },
-    search: {
-      strategy: "hybrid",
-      denseWeight: 0.7,
-      sparseWeight: 0.3,
-      fusionMethod: "weighted",
-      candidateMultiplier: 4,
-    },
-    k: DEFAULT_K,
-  },
-  "hybrid-reranked": {
-    name: "hybrid-reranked",
-    index: { strategy: "plain" },
-    search: {
-      strategy: "hybrid",
-      denseWeight: 0.7,
-      sparseWeight: 0.3,
-      fusionMethod: "weighted",
-      candidateMultiplier: 4,
-    },
-    refinement: [{ type: "rerank" }],
-    k: DEFAULT_K,
-  },
+  ...registryPresets,
 };
 
-export const PRESET_NAMES = Object.keys(PRESET_CONFIGS);
+export const PRESET_NAMES = PRESET_REGISTRY
+  .filter(p => p.status === "available")
+  .map(p => p.id);
 
-export const PRESET_DESCRIPTIONS: Record<string, string> = {
-  "baseline-vector-rag": "Dense vector search",
-  bm25: "BM25 keyword search",
-  hybrid: "Dense + BM25 weighted fusion",
-  "hybrid-reranked": "Hybrid search + reranking",
-};
+export const PRESET_DESCRIPTIONS: Record<string, string> = Object.fromEntries(
+  PRESET_REGISTRY
+    .filter(p => p.status === "available")
+    .map(p => [p.id, p.description]),
+);
 
 // ---------------------------------------------------------------------------
 // Saved config wrapper
@@ -157,7 +142,17 @@ export interface SavedPipelineConfig {
 
 /** Resolve a PipelineConfig's fields to their effective values (with defaults). */
 export function resolveConfig(config: PipelineConfig): {
-  index: Required<Omit<IndexConfig, "separators">> & { separators?: readonly string[] };
+  index: {
+    strategy: string;
+    chunkSize: number;
+    chunkOverlap: number;
+    embeddingModel: string;
+    separators?: readonly string[];
+    childChunkSize?: number;
+    parentChunkSize?: number;
+    childOverlap?: number;
+    parentOverlap?: number;
+  };
   query: QueryConfig;
   search: SearchConfig;
   refinement: readonly RefinementStepConfig[];
@@ -165,15 +160,28 @@ export function resolveConfig(config: PipelineConfig): {
   name: string;
 } {
   const index = config.index ?? DEFAULT_INDEX_CONFIG;
+  const strategy = index.strategy ?? "plain";
+
   return {
     name: config.name,
-    index: {
-      strategy: index.strategy,
-      chunkSize: index.chunkSize ?? DEFAULT_INDEX_CONFIG.chunkSize!,
-      chunkOverlap: index.chunkOverlap ?? DEFAULT_INDEX_CONFIG.chunkOverlap!,
-      embeddingModel: index.embeddingModel ?? DEFAULT_INDEX_CONFIG.embeddingModel!,
-      ...(index.separators ? { separators: index.separators } : {}),
-    },
+    index: strategy === "parent-child"
+      ? {
+          strategy,
+          chunkSize: 0, // Not used for parent-child, but keeps type consistent
+          chunkOverlap: 0,
+          embeddingModel: index.embeddingModel ?? DEFAULT_INDEX_CONFIG.embeddingModel!,
+          childChunkSize: (index as ParentChildIndexConfig).childChunkSize ?? 200,
+          parentChunkSize: (index as ParentChildIndexConfig).parentChunkSize ?? 1000,
+          childOverlap: (index as ParentChildIndexConfig).childOverlap ?? 0,
+          parentOverlap: (index as ParentChildIndexConfig).parentOverlap ?? 100,
+        }
+      : {
+          strategy,
+          chunkSize: (index as PlainIndexConfig).chunkSize ?? DEFAULT_INDEX_CONFIG.chunkSize!,
+          chunkOverlap: (index as PlainIndexConfig).chunkOverlap ?? DEFAULT_INDEX_CONFIG.chunkOverlap!,
+          embeddingModel: index.embeddingModel ?? DEFAULT_INDEX_CONFIG.embeddingModel!,
+          ...((index as PlainIndexConfig).separators ? { separators: (index as PlainIndexConfig).separators } : {}),
+        },
     query: config.query ?? DEFAULT_QUERY_CONFIG,
     search: config.search ?? DEFAULT_SEARCH_CONFIG,
     refinement: config.refinement ?? [],

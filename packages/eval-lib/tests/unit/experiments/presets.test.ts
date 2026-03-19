@@ -8,11 +8,13 @@ import {
   HYBRID_CONFIG,
   createHybridRerankedRetriever,
   HYBRID_RERANKED_CONFIG,
+  createPresetRetriever,
 } from "../../../src/experiments/presets.js";
+import type { PipelinePresetDeps } from "../../../src/experiments/presets.js";
 import { RecursiveCharacterChunker } from "../../../src/chunkers/recursive-character.js";
 import { InMemoryVectorStore } from "../../../src/vector-stores/in-memory.js";
 import { createCorpus, createDocument } from "../../../src/types/documents.js";
-import { mockEmbedder } from "../../fixtures.js";
+import { mockEmbedder, mockLLM } from "../../fixtures.js";
 import type { Reranker } from "../../../src/rerankers/reranker.interface.js";
 import type { PositionAwareChunk } from "../../../src/types/index.js";
 
@@ -230,5 +232,138 @@ describe("createHybridRerankedRetriever", () => {
     const rerankStep = HYBRID_RERANKED_CONFIG.refinement!.find((step) => step.type === "rerank");
     expect(rerankStep).toBeDefined();
     expect(rerankStep!.type).toBe("rerank");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createPresetRetriever — registry-backed factory (all available presets)
+// ---------------------------------------------------------------------------
+
+describe("createPresetRetriever (registry-backed factory)", () => {
+  const baseDeps: PipelinePresetDeps = { chunker, embedder };
+  const depsWithReranker: PipelinePresetDeps = { ...baseDeps, reranker: mockReranker };
+  const llm = mockLLM();
+  const depsWithLlm: PipelinePresetDeps = { ...baseDeps, llm };
+  const fullDeps: PipelinePresetDeps = { ...baseDeps, reranker: mockReranker, llm };
+
+  // Presets that need NO LLM and NO reranker
+  const basicPresets = [
+    "baseline-vector-rag",
+    "bm25",
+    "hybrid",
+    "hybrid-rrf",
+    "openclaw-style",
+    "parent-child-dense",
+    "diverse-hybrid",
+  ] as const;
+
+  // Presets that need reranker only
+  const rerankerOnlyPresets = [
+    "dense-reranked",
+    "bm25-reranked",
+    "hybrid-reranked",
+    "hybrid-rrf-reranked",
+  ] as const;
+
+  // Presets that need LLM only
+  const llmOnlyPresets = [
+    "hyde-dense",
+    "hyde-hybrid",
+    "contextual-dense",
+    "contextual-hybrid",
+    "summary-dense",
+    "rewrite-hybrid",
+    "multi-query-dense",
+  ] as const;
+
+  // Presets that need both LLM and reranker
+  const llmAndRerankerPresets = [
+    "hyde-hybrid-reranked",
+    "anthropic-best",
+    "rewrite-hybrid-reranked",
+    "multi-query-hybrid",
+    "step-back-hybrid",
+    "premium",
+  ] as const;
+
+  const allPresetNames = [
+    ...basicPresets,
+    ...rerankerOnlyPresets,
+    ...llmOnlyPresets,
+    ...llmAndRerankerPresets,
+  ];
+
+  it("factory serves all 24 available presets", () => {
+    expect(allPresetNames).toHaveLength(24);
+  });
+
+  it.each(basicPresets.map((n) => ({ name: n })))(
+    "$name creates a retriever with base deps",
+    ({ name }) => {
+      const retriever = createPresetRetriever(name, baseDeps);
+      expect(retriever.name).toBe(name);
+    },
+  );
+
+  it.each(rerankerOnlyPresets.map((n) => ({ name: n })))(
+    "$name creates a retriever with reranker deps",
+    ({ name }) => {
+      const retriever = createPresetRetriever(name, depsWithReranker);
+      expect(retriever.name).toBe(name);
+    },
+  );
+
+  it.each(llmOnlyPresets.map((n) => ({ name: n })))(
+    "$name creates a retriever with llm deps",
+    ({ name }) => {
+      const retriever = createPresetRetriever(name, depsWithLlm);
+      expect(retriever.name).toBe(name);
+    },
+  );
+
+  it.each(llmAndRerankerPresets.map((n) => ({ name: n })))(
+    "$name creates a retriever with full deps",
+    ({ name }) => {
+      const retriever = createPresetRetriever(name, fullDeps);
+      expect(retriever.name).toBe(name);
+    },
+  );
+
+  // Dependency validation
+  it.each(rerankerOnlyPresets.map((n) => ({ name: n })))(
+    "$name throws without reranker",
+    ({ name }) => {
+      expect(() => createPresetRetriever(name, baseDeps)).toThrow(/reranker/i);
+    },
+  );
+
+  it.each(llmOnlyPresets.map((n) => ({ name: n })))(
+    "$name throws without llm",
+    ({ name }) => {
+      expect(() => createPresetRetriever(name, baseDeps)).toThrow(/LLM/i);
+    },
+  );
+
+  it.each(llmAndRerankerPresets.map((n) => ({ name: n })))(
+    "$name throws without llm (even with reranker)",
+    ({ name }) => {
+      expect(() => createPresetRetriever(name, depsWithReranker)).toThrow(/LLM/i);
+    },
+  );
+
+  it("throws for unknown preset name", () => {
+    expect(() => createPresetRetriever("nonexistent", baseDeps)).toThrow(/Unknown or unavailable/);
+  });
+
+  it("premium preset creates a retriever with full deps", () => {
+    const retriever = createPresetRetriever("premium", fullDeps);
+    expect(retriever.name).toBe("premium");
+  });
+
+  it("name override works via overrides parameter", () => {
+    const retriever = createPresetRetriever("hybrid-rrf", baseDeps, {
+      name: "custom-name",
+    });
+    expect(retriever.name).toBe("custom-name");
   });
 });

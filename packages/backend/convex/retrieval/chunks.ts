@@ -1,5 +1,6 @@
-import { internalMutation, internalQuery } from "../_generated/server";
+import { internalMutation, internalQuery, query } from "../_generated/server";
 import { v } from "convex/values";
+import { getAuthContext } from "../lib/auth";
 
 // ─── Batch Mutations (new — for two-phase indexing) ───
 
@@ -117,8 +118,129 @@ export const getChunksByDocConfig = internalQuery({
 });
 
 /**
+ * Check if any chunks exist for a (documentId, indexConfigHash).
+ * Reads at most 1 row — avoids the 16MB limit entirely.
+ */
+export const hasChunksForDocConfig = internalQuery({
+  args: {
+    documentId: v.id("documents"),
+    indexConfigHash: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const first = await ctx.db
+      .query("documentChunks")
+      .withIndex("by_doc_config", (q) =>
+        q
+          .eq("documentId", args.documentId)
+          .eq("indexConfigHash", args.indexConfigHash),
+      )
+      .first();
+    return { exists: first !== null };
+  },
+});
+
+/**
+ * Read one page of chunks for a (documentId, indexConfigHash).
+ *
+ * Returns the chunks in the page, whether more pages exist, and a cursor
+ * for the next page. Designed to be called in a loop from an ACTION so that
+ * each ctx.runQuery() call gets its own 16MB read budget.
+ *
+ * Page size is kept small (default 100) so that even pages full of embedded
+ * chunks (each ~13KB with the 1536-dim vector) stay well under 16MB.
+ */
+export const getChunksByDocConfigPage = internalQuery({
+  args: {
+    documentId: v.id("documents"),
+    indexConfigHash: v.string(),
+    cursor: v.union(v.string(), v.null()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const numItems = args.pageSize ?? 100;
+    const page = await ctx.db
+      .query("documentChunks")
+      .withIndex("by_doc_config", (q) =>
+        q
+          .eq("documentId", args.documentId)
+          .eq("indexConfigHash", args.indexConfigHash),
+      )
+      .paginate({ numItems, cursor: args.cursor as any ?? null });
+
+    return {
+      chunks: page.page,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
+/**
+ * Public paginated query for Index tab — fetches chunks by (kbId, indexConfigHash, documentId?).
+ * Optionally filters by documentId for narrower browsing.
+ */
+export const getChunksByRetrieverPage = query({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    indexConfigHash: v.string(),
+    documentId: v.optional(v.id("documents")),
+    cursor: v.union(v.string(), v.null()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+
+    // Verify KB belongs to org
+    const kb = await ctx.db.get(args.kbId);
+    if (!kb || kb.orgId !== orgId) throw new Error("KB not found");
+
+    const numItems = args.pageSize ?? 50;
+
+    const baseQuery = args.documentId
+      ? ctx.db
+          .query("documentChunks")
+          .withIndex("by_doc_config", (q) =>
+            q
+              .eq("documentId", args.documentId!)
+              .eq("indexConfigHash", args.indexConfigHash),
+          )
+      : ctx.db
+          .query("documentChunks")
+          .withIndex("by_kb_config", (q) =>
+            q
+              .eq("kbId", args.kbId)
+              .eq("indexConfigHash", args.indexConfigHash),
+          );
+
+    const page = await baseQuery.paginate({
+      numItems,
+      cursor: args.cursor as any ?? null,
+    });
+
+    return {
+      chunks: page.page.map((c) => ({
+        _id: c._id,
+        chunkId: c.chunkId,
+        documentId: c.documentId,
+        content: c.content,
+        start: c.start,
+        end: c.end,
+        metadata: c.metadata ?? {},
+      })),
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
+/**
  * Get chunks for a (documentId, indexConfigHash) where embedding is not set.
  * Used to resume Phase B after a crash.
+ *
+ * @deprecated Use getChunksByDocConfigPage from an action loop instead,
+ * filtering for unembedded chunks at the action level. This query can hit
+ * the 16MB read limit on large documents because it scans all chunks
+ * (including embedded ones with 12KB vectors) within a single execution.
  */
 export const getUnembeddedChunks = internalQuery({
   args: {
@@ -185,6 +307,17 @@ export const isIndexed = internalQuery({
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
       .first();
     return first !== null;
+  },
+});
+
+/** Fetch a single chunk by ID. Used for parent-child retrieval swap. */
+export const getChunkById = internalQuery({
+  args: { chunkId: v.id("documentChunks") },
+  handler: async (ctx, args) => {
+    const chunk = await ctx.db.get(args.chunkId);
+    if (!chunk) return null;
+    const doc = await ctx.db.get(chunk.documentId);
+    return { ...chunk, docId: doc?.docId ?? "" };
   },
 });
 

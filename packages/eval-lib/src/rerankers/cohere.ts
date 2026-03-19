@@ -23,6 +23,13 @@ export class CohereReranker implements Reranker {
     this.name = `Cohere(${this._model})`;
   }
 
+  /**
+   * Create a CohereReranker using the official Cohere SDK.
+   * @param options.model - Cohere reranker model. Available models:
+   *   - "rerank-english-v3.0" (default) — English-only, proven stable
+   *   - "rerank-v3.5" — Latest multilingual model
+   *   - "rerank-english-v2.0" — Legacy
+   */
   static async create(
     options: { model?: string } = {},
   ): Promise<CohereReranker> {

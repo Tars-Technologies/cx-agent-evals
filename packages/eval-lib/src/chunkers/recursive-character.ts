@@ -125,13 +125,20 @@ export class RecursiveCharacterChunker implements Chunker, PositionAwareChunker 
       if (currentLen + addLen > this._chunkSize && currentParts.length > 0) {
         emitCurrent();
 
-        // Keep overlap: drop from front until under overlap threshold
+        // Keep overlap: retain at most chunkOverlap characters from the tail
         if (this._chunkOverlap > 0) {
+          // Drop parts from the front until the remaining fits within chunkOverlap
           while (currentParts.length > 0) {
             const dropLen = currentParts[0].text.length + separator.length;
             if (currentLen - dropLen <= this._chunkOverlap) break;
             currentLen -= dropLen;
             currentParts.shift();
+          }
+          // Safety: if a single part alone exceeds chunkOverlap (large paragraph),
+          // clear it to prevent duplicate emission on the next cycle.
+          if (currentParts.length === 1 && currentLen > this._chunkOverlap) {
+            currentParts = [];
+            currentLen = 0;
           }
         } else {
           currentParts = [];

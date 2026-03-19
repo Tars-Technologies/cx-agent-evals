@@ -119,17 +119,42 @@ export async function runLangSmithExperiment(
 
     const { evaluate } = await import("langsmith/evaluation");
 
-    await evaluate(target, {
-      data: datasetName,
-      evaluators,
-      experimentPrefix: experimentPrefix ?? retriever.name,
-      metadata: {
-        retriever: retriever.name,
-        k,
-        corpusSize: corpus.documents.length,
-        ...metadata,
-      },
-    });
+    // Log LangSmith connection details for debugging auth issues
+    const apiUrl = process.env.LANGCHAIN_ENDPOINT ?? process.env.LANGSMITH_ENDPOINT ?? "https://api.smith.langchain.com";
+    const hasApiKey = !!process.env.LANGSMITH_API_KEY;
+    const keyPrefix = process.env.LANGSMITH_API_KEY
+      ? process.env.LANGSMITH_API_KEY.slice(0, 8) + "..."
+      : "(not set)";
+    console.log(
+      `[LangSmith] Connecting to ${apiUrl} | API key present: ${hasApiKey} (${keyPrefix}) | Dataset: "${datasetName}"`,
+    );
+
+    try {
+      await evaluate(target, {
+        data: datasetName,
+        evaluators,
+        experimentPrefix: experimentPrefix ?? retriever.name,
+        metadata: {
+          retriever: retriever.name,
+          k,
+          corpusSize: corpus.documents.length,
+          ...metadata,
+        },
+      });
+    } catch (error: unknown) {
+      // Log full error details for LangSmith API failures
+      const err = error as Error & { statusCode?: number; body?: string };
+      console.error("[LangSmith] evaluate() failed:", {
+        message: err.message,
+        statusCode: err.statusCode,
+        body: err.body,
+        apiUrl,
+        datasetName,
+        keyPrefix,
+        stack: err.stack,
+      });
+      throw error;
+    }
   } finally {
     await retriever.cleanup();
   }

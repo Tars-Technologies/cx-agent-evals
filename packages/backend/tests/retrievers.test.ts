@@ -79,7 +79,7 @@ describe("retrievers: deleteIndex", () => {
     t = setupTest();
   });
 
-  it("throws when another retriever shares the same indexConfigHash", async () => {
+  it("auto-resets other retrievers sharing the same indexConfigHash", async () => {
     const userId = await seedUser(t);
     const kbId = await seedKB(t, userId);
     const jobId = await seedIndexingJob(t, userId, kbId);
@@ -90,16 +90,28 @@ describe("retrievers: deleteIndex", () => {
       indexingJobId: jobId,
       chunkCount: 10,
     });
-    await seedRetriever(t, userId, kbId, {
+    const retriever2Id = await seedRetriever(t, userId, kbId, {
       status: "ready",
       indexingJobId: jobId,
       chunkCount: 10,
     });
 
     const authedT = t.withIdentity(testIdentity);
-    await expect(
-      authedT.mutation(api.crud.retrievers.deleteIndex, { id: retriever1Id }),
-    ).rejects.toThrow(/other retriever/);
+    const result = await authedT.mutation(api.crud.retrievers.deleteIndex, { id: retriever1Id });
+    expect(result).toEqual({ deleted: true });
+
+    // The requesting retriever should be reset to "configuring"
+    const retriever1 = await t.run(async (ctx) => ctx.db.get(retriever1Id));
+    expect(retriever1!.status).toBe("configuring");
+    expect(retriever1!.chunkCount).toBeUndefined();
+    expect(retriever1!.indexingJobId).toBeUndefined();
+
+    // The sharing retriever should also be reset to "configuring"
+    const retriever2 = await t.run(async (ctx) => ctx.db.get(retriever2Id));
+    expect(retriever2!.status).toBe("configuring");
+    expect(retriever2!.chunkCount).toBeUndefined();
+    expect(retriever2!.indexingJobId).toBeUndefined();
+    expect(retriever2!.error).toBeUndefined();
   });
 
   it("succeeds when no shared index", async () => {

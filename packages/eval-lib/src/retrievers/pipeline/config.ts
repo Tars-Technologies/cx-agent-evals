@@ -1,4 +1,8 @@
 import { createHash } from "node:crypto";
+import {
+  DEFAULT_CONTEXT_PROMPT,
+  DEFAULT_SUMMARY_PROMPT,
+} from "./query/prompts.js";
 
 /** Deterministic JSON serialization — recursively sorts object keys at every level. */
 function stableStringify(value: unknown): string {
@@ -12,10 +16,10 @@ function stableStringify(value: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
-// Stage 1 — Index configuration
+// Stage 1 — Index configuration (discriminated union on strategy)
 // ---------------------------------------------------------------------------
 
-export interface IndexConfig {
+export interface PlainIndexConfig {
   readonly strategy: "plain";
   readonly chunkSize?: number;
   readonly chunkOverlap?: number;
@@ -23,7 +27,46 @@ export interface IndexConfig {
   readonly embeddingModel?: string;
 }
 
-export const DEFAULT_INDEX_CONFIG: IndexConfig = {
+export interface ContextualIndexConfig {
+  readonly strategy: "contextual";
+  readonly chunkSize?: number;
+  readonly chunkOverlap?: number;
+  readonly embeddingModel?: string;
+  readonly contextPrompt?: string;
+  /** Number of parallel LLM calls during indexing. @default 5 */
+  readonly concurrency?: number;
+}
+
+export interface SummaryIndexConfig {
+  readonly strategy: "summary";
+  readonly chunkSize?: number;
+  readonly chunkOverlap?: number;
+  readonly embeddingModel?: string;
+  readonly summaryPrompt?: string;
+  /** Number of parallel LLM calls during indexing. @default 5 */
+  readonly concurrency?: number;
+}
+
+export interface ParentChildIndexConfig {
+  readonly strategy: "parent-child";
+  readonly embeddingModel?: string;
+  /** Small chunk size for retrieval matching. @default 200 */
+  readonly childChunkSize?: number;
+  /** Large chunk size for context return. @default 1000 */
+  readonly parentChunkSize?: number;
+  /** @default 0 */
+  readonly childOverlap?: number;
+  /** @default 100 */
+  readonly parentOverlap?: number;
+}
+
+export type IndexConfig =
+  | PlainIndexConfig
+  | ContextualIndexConfig
+  | SummaryIndexConfig
+  | ParentChildIndexConfig;
+
+export const DEFAULT_INDEX_CONFIG: PlainIndexConfig = {
   strategy: "plain",
   chunkSize: 1000,
   chunkOverlap: 200,
@@ -38,7 +81,52 @@ export interface IdentityQueryConfig {
   readonly strategy: "identity";
 }
 
-export type QueryConfig = IdentityQueryConfig;
+export interface HydeQueryConfig {
+  readonly strategy: "hyde";
+  /** Custom prompt for generating hypothetical documents. */
+  readonly hydePrompt?: string;
+  /**
+   * Number of hypothetical documents to generate.
+   * Each produces a separate search query whose results are fused via RRF.
+   * @default 1
+   */
+  readonly numHypotheticalDocs?: number;
+}
+
+export interface MultiQueryConfig {
+  readonly strategy: "multi-query";
+  /**
+   * Number of query variants to generate.
+   * @default 3
+   */
+  readonly numQueries?: number;
+  /** Custom prompt for generating query variants. Use `{n}` as placeholder for count. */
+  readonly generationPrompt?: string;
+}
+
+export interface StepBackQueryConfig {
+  readonly strategy: "step-back";
+  /** Custom prompt for generating the abstract step-back question. */
+  readonly stepBackPrompt?: string;
+  /**
+   * Whether to also search with the original query.
+   * @default true
+   */
+  readonly includeOriginal?: boolean;
+}
+
+export interface RewriteQueryConfig {
+  readonly strategy: "rewrite";
+  /** Custom prompt for rewriting the query. */
+  readonly rewritePrompt?: string;
+}
+
+export type QueryConfig =
+  | IdentityQueryConfig
+  | HydeQueryConfig
+  | MultiQueryConfig
+  | StepBackQueryConfig
+  | RewriteQueryConfig;
 
 export const DEFAULT_QUERY_CONFIG: QueryConfig = {
   strategy: "identity",
@@ -88,7 +176,32 @@ export interface ThresholdRefinementStep {
   readonly minScore: number;
 }
 
-export type RefinementStepConfig = RerankRefinementStep | ThresholdRefinementStep;
+export interface DedupRefinementStep {
+  readonly type: "dedup";
+  /** @default "overlap" */
+  readonly method?: "exact" | "overlap";
+  /** Minimum overlap ratio to consider chunks duplicates. @default 0.5 */
+  readonly overlapThreshold?: number;
+}
+
+export interface MmrRefinementStep {
+  readonly type: "mmr";
+  /** Trade-off: 1.0 = pure relevance, 0.0 = pure diversity. @default 0.7 */
+  readonly lambda?: number;
+}
+
+export interface ExpandContextRefinementStep {
+  readonly type: "expand-context";
+  /** Characters to include before and after each chunk. @default 500 */
+  readonly windowChars?: number;
+}
+
+export type RefinementStepConfig =
+  | RerankRefinementStep
+  | ThresholdRefinementStep
+  | DedupRefinementStep
+  | MmrRefinementStep
+  | ExpandContextRefinementStep;
 
 // ---------------------------------------------------------------------------
 // Pipeline configuration (composes all four stages)
@@ -106,12 +219,46 @@ export interface PipelineConfig {
 // Index config hashing — deterministic SHA-256 of index-relevant fields
 // ---------------------------------------------------------------------------
 
-interface IndexHashPayload {
-  readonly strategy: string;
-  readonly chunkSize: number;
-  readonly chunkOverlap: number;
-  readonly separators: readonly string[] | undefined;
-  readonly embeddingModel: string;
+/**
+ * Build the strategy-aware index payload for hashing.
+ * Excludes runtime-only fields (concurrency) that don't affect output.
+ */
+function buildIndexPayload(index: IndexConfig): Record<string, unknown> {
+  switch (index.strategy) {
+    case "plain":
+      return {
+        strategy: "plain",
+        chunkSize: index.chunkSize ?? 1000,
+        chunkOverlap: index.chunkOverlap ?? 200,
+        separators: index.separators,
+        embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
+      };
+    case "contextual":
+      return {
+        strategy: "contextual",
+        chunkSize: index.chunkSize ?? 1000,
+        chunkOverlap: index.chunkOverlap ?? 200,
+        embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
+        contextPrompt: index.contextPrompt ?? DEFAULT_CONTEXT_PROMPT,
+      };
+    case "summary":
+      return {
+        strategy: "summary",
+        chunkSize: index.chunkSize ?? 1000,
+        chunkOverlap: index.chunkOverlap ?? 200,
+        embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
+        summaryPrompt: index.summaryPrompt ?? DEFAULT_SUMMARY_PROMPT,
+      };
+    case "parent-child":
+      return {
+        strategy: "parent-child",
+        childChunkSize: index.childChunkSize ?? 200,
+        parentChunkSize: index.parentChunkSize ?? 1000,
+        childOverlap: index.childOverlap ?? 0,
+        parentOverlap: index.parentOverlap ?? 100,
+        embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
+      };
+  }
 }
 
 /**
@@ -125,13 +272,7 @@ export function computeRetrieverConfigHash(config: PipelineConfig, k: number): s
   const refinement = config.refinement ?? [];
 
   const payload = {
-    index: {
-      strategy: index.strategy,
-      chunkSize: index.chunkSize ?? DEFAULT_INDEX_CONFIG.chunkSize!,
-      chunkOverlap: index.chunkOverlap ?? DEFAULT_INDEX_CONFIG.chunkOverlap!,
-      separators: index.separators,
-      embeddingModel: index.embeddingModel ?? DEFAULT_INDEX_CONFIG.embeddingModel!,
-    },
+    index: buildIndexPayload(index),
     k,
     query,
     refinement,
@@ -144,14 +285,7 @@ export function computeRetrieverConfigHash(config: PipelineConfig, k: number): s
 
 export function computeIndexConfigHash(config: PipelineConfig): string {
   const index = config.index ?? DEFAULT_INDEX_CONFIG;
-
-  const payload: IndexHashPayload = {
-    strategy: index.strategy,
-    chunkSize: index.chunkSize ?? DEFAULT_INDEX_CONFIG.chunkSize!,
-    chunkOverlap: index.chunkOverlap ?? DEFAULT_INDEX_CONFIG.chunkOverlap!,
-    separators: index.separators,
-    embeddingModel: index.embeddingModel ?? DEFAULT_INDEX_CONFIG.embeddingModel!,
-  };
+  const payload = buildIndexPayload(index);
 
   const json = stableStringify(payload);
   return createHash("sha256").update(json).digest("hex");

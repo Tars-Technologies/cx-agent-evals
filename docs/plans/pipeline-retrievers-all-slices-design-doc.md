@@ -1,4 +1,4 @@
-# Updated Pipeline Retrievers Implementation Plan
+# Pipeline Retrievers All Slices - Detailed Design Doc (Formerly Implementation Plan)
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -10,7 +10,11 @@
 
 Organized into **6 vertical slices** — each slice unlocks a new set of runnable experiments. Scope: **eval-lib only** (no backend/frontend changes).
 
-**Updated 2026-03-01**: Synced with the eval-lib codebase refactor (PR #24, `va_evallib_refactor`). Major changes: experiments collapsed from 4 subdirectories into single `presets.ts`, `ChromaVectorStore` removed, exports reorganized into 5 entry points, all LangSmith code migrated to backend. See [Impact of Codebase Refactor](#impact-of-codebase-refactor) for details.
+**Updated 2026-03-05**: Accuracy pass — verified all "Current Codebase State" sections against actual source files. Fixes: updated dependency versions to current (langsmith `^0.5.0`, @langchain/core `^1.1.0`), removed `similarity.ts` from new files (already exists), fixed constructor pattern descriptions (new providers follow CohereReranker private-constructor pattern, not OpenAIEmbedder), fixed `computeRetrieverConfigHash` to preserve inline index payload structure for hash stability, added hash stability guarantee for existing "plain" retrievers, updated test counts (27 files / 225 tests).
+
+**Updated 2026-03-04**: Synced with the backend refactor (PR #27, `va_backend_refactor`). Major changes: backend reorganized from flat to nested domain directories (`retrieval/`, `experiments/`, `generation/`, `crud/`, `langsmith/`), code extracted to eval-lib sub-paths (`/llm`, `/langsmith`, `/shared`), shared helpers factored to `lib/`. See [Impact of Codebase Refactor](#impact-of-codebase-refactor) for details.
+
+**Updated 2026-03-01**: Synced with the eval-lib codebase refactor (PR #24, `va_evallib_refactor`). Major changes: experiments collapsed from 4 subdirectories into single `presets.ts`, `ChromaVectorStore` removed, exports reorganized into 8 entry points, all LangSmith code migrated to backend then extracted to eval-lib sub-paths. See [Impact of Codebase Refactor](#impact-of-codebase-refactor) for details.
 
 ---
 
@@ -33,12 +37,13 @@ Organized into **6 vertical slices** — each slice unlocks a new set of runnabl
 
 ## Impact of Codebase Refactor
 
-The eval-lib package went through two significant refactors that affect this plan:
+The eval-lib package and backend went through three significant refactors that affect this plan:
 
 1. **PR #18 (`va_kb_indexing_management`)** — Retrievers became first-class backend entities separate from experiments.
 2. **PR #24 (`va_evallib_refactor`)** — Major codebase cleanup: experiments collapsed, ChromaVectorStore removed, exports reorganized, LangSmith migrated to backend.
+3. **PR #27 (`va_backend_refactor`)** — Backend directory reorganization + code extraction to eval-lib sub-paths.
 
-### What Changed in PR #24 (Most Recent)
+### What Changed in PR #24
 
 ```
 BEFORE (pre-refactor):
@@ -63,12 +68,82 @@ AFTER (current state):
   vector-stores/
     └── in-memory.ts           # InMemoryVectorStore only
 
-  (no langsmith/ directory — all migrated to packages/backend/convex/)
+  (no langsmith/ directory — all migrated to backend, then extracted to eval-lib sub-paths in PR #27)
 ```
+
+### What Changed in PR #27 (Most Recent)
+
+The backend underwent a major restructure. Key changes relevant to this plan:
+
+**1. Directory reorganization** — Flat `convex/` directory reorganized into domain folders:
+
+```
+BEFORE (flat):
+  convex/
+    ├── retrieverActions.ts
+    ├── indexingActions.ts
+    ├── experimentActions.ts
+    ├── generationActions.ts
+    ├── indexing.ts
+    ├── experiments.ts
+    ├── generation.ts
+    ├── rag.ts
+    ├── knowledgeBases.ts, documents.ts, datasets.ts, ...
+    └── lib/llm.ts, lib/langsmith.ts
+
+AFTER (nested domain folders):
+  convex/
+    ├── retrieval/
+    │   ├── retrieverActions.ts     # "use node" — create, startIndexing, retrieve
+    │   ├── indexingActions.ts       # "use node" — two-phase document indexing
+    │   ├── indexing.ts             # Indexing orchestration + WorkPool callbacks
+    │   └── chunks.ts              # Chunk CRUD (was rag.ts)
+    ├── experiments/
+    │   ├── actions.ts             # "use node" — runExperiment + runEvaluation (was experimentActions.ts)
+    │   ├── orchestration.ts       # Start, enqueue, cancel, queries
+    │   └── results.ts             # Per-question results
+    ├── generation/
+    │   ├── actions.ts             # "use node" — strategy execution (was generationActions.ts)
+    │   └── orchestration.ts       # Job orchestration, WorkPool callbacks
+    ├── crud/
+    │   ├── retrievers.ts, documents.ts, datasets.ts, ...
+    │   └── users.ts
+    ├── langsmith/
+    │   ├── sync.ts, retry.ts, syncRetry.ts
+    ├── lib/
+    │   ├── auth.ts                # + lookupUser() helper
+    │   ├── validators.ts          # Shared spanValidator (was triplicated)
+    │   ├── workpool.ts            # Shared applyResult/counterPatch
+    │   └── vectorSearch.ts        # Shared vector search with post-filtering
+    └── schema.ts, crons.ts, auth.config.ts, convex.config.ts
+```
+
+**2. eval-lib sub-path adoption** — Backend now imports from three eval-lib sub-paths:
+
+| Sub-path | Used By | Contains |
+|---|---|---|
+| `rag-evaluation-system/llm` | `"use node"` action files only | `createEmbedder()`, `createLLMClient()`, `getModel()` |
+| `rag-evaluation-system/langsmith` | `"use node"` action files only | `runLangSmithExperiment()`, `uploadDataset()`, `getLangSmithClient()` |
+| `rag-evaluation-system/shared` | Any file (no Node.js deps) | `JobStatus`, `ExperimentResult`, `EMBED_BATCH_SIZE`, etc. |
+
+This means:
+- `createEmbedder()` is now consolidated in eval-lib (was 4 copies across backend action files)
+- LangSmith `runLangSmithExperiment()` and `uploadDataset()` live in eval-lib, imported by backend
+- Backend action files import from `rag-evaluation-system/llm` and `rag-evaluation-system/langsmith`
+- The old `convex/lib/llm.ts` and `convex/lib/langsmith.ts` are deleted
+
+**3. Shared helpers extracted** — Common patterns factored into `convex/lib/`:
+- `vectorSearch.ts` — embed → vectorSearch → fetchChunks → post-filter by indexConfigHash → topK (shared by `retrieval/retrieverActions.ts` and `experiments/actions.ts`)
+- `workpool.ts` — WorkPool counter helpers (shared by generation, indexing, experiments)
+- `validators.ts` — shared `spanValidator` (was triplicated)
+
+**4. Dead code removed** — `ragActions.ts` (deprecated), `testing.ts` (empty), deprecated `insertChunk`/`deleteKbChunks` functions.
+
+**5. API paths changed** — All `api.*` and `internal.*` paths updated to reflect nested structure (e.g., `api.retrieverActions.create` → `api.retrieval.retrieverActions.create`).
 
 ### Current Codebase State (Ground Truth)
 
-All references below are verified against the actual source files as of 2026-03-01.
+All references below are verified against the actual source files as of 2026-03-04.
 
 **Interfaces (unchanged — our targets to implement against):**
 
@@ -200,6 +275,8 @@ export function computeRetrieverConfigHash(config: PipelineConfig, k: number): s
 ```json
 {
   "dependencies": {
+    "@langchain/core": "^1.1.0",
+    "langsmith": "^0.5.0",
     "minisearch": "^7.2.0",
     "zod": "^3.23"
   },
@@ -210,7 +287,7 @@ export function computeRetrieverConfigHash(config: PipelineConfig, k: number): s
 }
 ```
 
-Note: `chromadb` is **no longer** in optionalDependencies (removed in refactor).
+Note: `langsmith` and `@langchain/core` were added in the backend refactor (PR #27) as part of extracting LangSmith code to eval-lib sub-paths. `chromadb` is **no longer** in optionalDependencies (removed in PR #24 refactor).
 
 **Current Export Entry Points (`tsup.config.ts`):**
 
@@ -220,9 +297,14 @@ src/embedders/openai.ts         # OpenAI embedder (tree-shakeable)
 src/rerankers/cohere.ts         # Cohere reranker (optional dep)
 src/pipeline/internals.ts       # Config defaults, BM25, fusion, InMemoryVectorStore
 src/utils/index.ts              # Utility functions
+src/langsmith/index.ts          # LangSmith client, upload, experiment runner (added in PR #27)
+src/llm/index.ts                # createEmbedder, createLLMClient, getModel (added in PR #27)
+src/shared/index.ts             # JobStatus, ExperimentResult, constants (added in PR #27)
 ```
 
-**Current Test Suite:** 24 test files under `packages/eval-lib/tests/`
+External packages (not bundled): `openai`, `langsmith`, `langsmith/evaluation`, `@langchain/core`, `cohere-ai`
+
+**Current Test Suite:** 27 test files / 225 tests under `packages/eval-lib/tests/` (including tests for shared, llm, and langsmith modules added in PR #27)
 
 ### Impacts on This Plan
 
@@ -231,18 +313,25 @@ src/utils/index.ts              # Utility functions
 | 1 | **Experiment presets are now in a single `presets.ts` file** | 6 | The plan's Slice 6 should extend the existing `PRESET_CONFIGS` map and `createPresetRetriever` factory — NOT create a separate `PIPELINE_PRESETS` registry. Merge new presets into the existing pattern. |
 | 2 | **ChromaVectorStore removed** | — | Remove all references to Chroma from the plan. `InMemoryVectorStore` is the only vector store. |
 | 3 | **`chromadb` not in optionalDependencies** | 1 | Don't add it back. Only add new provider SDKs. |
-| 4 | **LangSmith code migrated to backend** | — | No eval-lib LangSmith references needed. |
-| 5 | **5 tsup entry points already exist** | 1 | New providers need their own entry points (e.g., `./embedders/voyage`, `./rerankers/jina`) or be added to existing entry points. Each provider that requires an optional dependency should get its own entry point for tree-shaking. |
+| 4 | **LangSmith code now lives in eval-lib sub-path** | — | As of PR #27, `runLangSmithExperiment()` and `uploadDataset()` are in `rag-evaluation-system/langsmith`. Backend imports from this sub-path. No impact on this plan (eval-lib-only changes). |
+| 5 | **8 tsup entry points already exist** | 1 | The 5 original + 3 new sub-paths (`langsmith`, `llm`, `shared`) from PR #27. New providers need their own entry points (e.g., `./embedders/voyage`, `./rerankers/jina`) or be added to existing entry points. Each provider that requires an optional dependency should get its own entry point for tree-shaking. |
 | 6 | **`IndexConfig` is a single interface, not a discriminated union yet** | 4 | Converting it to a discriminated union is a breaking change. The `DEFAULT_INDEX_CONFIG` constant and `IndexHashPayload` type must be updated simultaneously. |
-| 7 | **`computeRetrieverConfigHash` serializes the full config** | 3, 4, 5 | Uses `stableStringify` on the raw config payload. New fields on extended types are included automatically. But `computeIndexConfigHash` uses a concrete `IndexHashPayload` interface that must become strategy-aware. |
-| 8 | **Backend `startIndexing` hardcodes `strategy: "plain"`** | 4 | `retrieverActions.ts` line 117 hardcodes this. When we add contextual/summary/parent-child index strategies in eval-lib, the backend will need a separate follow-up PR. Our plan stays eval-lib-only. |
-| 9 | **Backend `retrieve` action only does dense vector search** | — | Does NOT use `PipelineRetriever`. The playground only tests dense retrieval today. |
-| 10 | **Backend creates embedder with `createEmbedder(model)` — OpenAI only** | 1 | When we add Cohere/Voyage/Jina embedders to eval-lib, the backend will need a provider-aware factory. Out of scope. |
+| 7 | **`computeRetrieverConfigHash` serializes the full config** | 3, 4, 5 | Uses `stableStringify` on the raw config payload. New fields on extended types are included automatically. But `computeIndexConfigHash` uses a concrete `IndexHashPayload` interface that must become strategy-aware. **Critical**: `computeRetrieverConfigHash` must preserve the inline `index: { ... }` payload structure (not replace with a hash string) to maintain hash stability with existing stored values. |
+| 8 | **Backend `startIndexing` hardcodes `strategy: "plain"`** | 4 | `retrieval/retrieverActions.ts` lines 104-112 hardcode `strategy: "plain" as const` when resolving index config and extract only plain-strategy fields (chunkSize, chunkOverlap, separators, embeddingModel). `retrieval/indexingActions.ts` hardcodes `RecursiveCharacterChunker` as the only chunker. When we add contextual/summary/parent-child index strategies in eval-lib, the backend will need a separate follow-up PR. Our plan stays eval-lib-only. |
+| 9 | **Backend `retrieve` action only does dense vector search** | — | `retrieval/retrieverActions.ts` uses `lib/vectorSearch.ts` for embed → vectorSearch → post-filter → topK. Does NOT use `PipelineRetriever`. The playground only tests dense retrieval today. |
+| 10 | **Backend imports `createEmbedder` from eval-lib — OpenAI only** | 1 | Backend action files now import `createEmbedder` from `rag-evaluation-system/llm` (consolidated in PR #27, was 4 copies). Still OpenAI-only. When we add Cohere/Voyage/Jina embedders to eval-lib, the backend will need a provider-aware factory. Out of scope. |
 | 11 | **Frontend `pipeline-types.ts` must mirror new config types** | 3, 4, 5 | When we extend eval-lib's discriminated unions, the frontend type mirror must be updated. Out of scope (frontend follow-up). |
+| 12 | **eval-lib now has `langsmith/`, `llm/`, `shared/` sub-paths** | 1, 3 | Added in PR #27. `createEmbedder()` and `createLLMClient()` live in `/llm`, `runLangSmithExperiment()` in `/langsmith`. New modules added by this plan (chunkers, query strategies, etc.) should NOT go in these sub-paths — they belong in the main barrel or under `pipeline/`. The `/llm` sub-path's `createEmbedder()` will need updating when we add provider-aware embedder creation (backend follow-up). |
+| 13 | **Backend uses `lib/vectorSearch.ts` shared helper** | — | The embed → vectorSearch → post-filter → topK pattern is in `convex/lib/vectorSearch.ts`, shared by `retrieval/retrieverActions.ts` and `experiments/actions.ts`. When the backend eventually supports full `PipelineRetriever`, this helper may be replaced. |
 
-### No Breaking Changes to eval-lib Public API
+### Backward Compatibility
 
-All our plan changes are additive — extending unions, adding new files, adding new exports. The existing 4 preset factories and their config constants remain unchanged. `PipelineConfig` gains new optional members on existing unions.
+Almost all changes are additive — extending unions, adding new files, adding new exports. The existing 4 preset factories and their config constants remain unchanged. `PipelineConfig` gains new optional members on existing unions.
+
+**One type-level breaking change**: `IndexConfig` is converted from a single interface to a discriminated union (Slice 4). Code that accessed `config.index.chunkSize` without first checking `config.index.strategy` will need a discriminated switch. However:
+- Code that pattern-matched on `config.index.strategy === "plain"` still works.
+- The backend accesses index fields via `as Record<string, unknown>` dynamic access, so it is unaffected.
+- Hash values for `strategy: "plain"` configs are preserved (same payload shape in both `computeIndexConfigHash` and `computeRetrieverConfigHash`).
 
 ### Techniques Considered but Not Included
 
@@ -261,9 +350,10 @@ These were evaluated during research (see `retriever-architecture-exploration.md
 
 These are tracked for awareness but explicitly out of scope:
 
-- **Backend provider factory**: Update `retrieverActions.ts` to instantiate the correct embedder/reranker based on `PipelineConfig` fields.
-- **Backend index strategy support**: Update `startIndexing` to handle non-plain index strategies.
-- **Backend full pipeline retrieval**: Update `retrieve` action to run the full `PipelineRetriever` pipeline.
+- **Backend provider factory**: Update `retrieval/retrieverActions.ts` and `rag-evaluation-system/llm` to instantiate the correct embedder/reranker based on `PipelineConfig` fields (currently hardcoded to OpenAI via `createEmbedder(model)`).
+- **Backend index strategy support**: Update `retrieval/retrieverActions.ts` (line 104-112, currently hardcodes `strategy: "plain"`) and `retrieval/indexingActions.ts` (currently hardcodes `RecursiveCharacterChunker`) to handle non-plain index strategies (contextual, summary, parent-child).
+- **Backend full pipeline retrieval**: Update `retrieval/retrieverActions.ts` `retrieve` action and `experiments/actions.ts` `runEvaluation` to use the full `PipelineRetriever` instead of simple embed → vectorSearch via `lib/vectorSearch.ts`.
+- **Backend experiment evaluation**: Update `experiments/actions.ts` `runEvaluation` which creates a `CallbackRetriever` backed by `vectorSearchWithFilter` — should eventually use a full `PipelineRetriever` to test query/refinement stages.
 - **Frontend type sync**: Update `pipeline-types.ts` to mirror new eval-lib config types.
 - **Frontend UI for new strategies**: Add dropdowns for embedding model provider, query strategy, etc.
 - **Cost/latency tracking**: Add per-stage timing and token-cost tracking to `PipelineRetriever` for experiment analytics. Not required for correctness — pure observability concern.
@@ -307,7 +397,9 @@ This slice adds no new pipeline stages — just new providers that plug into the
 ```typescript
 // Implements: Embedder interface (from embedder.interface.ts)
 // Package: cohere-ai (already in optionalDependencies)
-// Pattern: follows OpenAIEmbedder — private constructor + static create() factory
+// Pattern: follows CohereReranker — private constructor + static async create() factory
+//   (Note: OpenAIEmbedder uses a PUBLIC constructor + static create(); new embedders
+//    use private constructor to force async factory usage for API key / SDK init)
 
 interface CohereEmbedClient {
   embed(opts: {
@@ -351,7 +443,7 @@ export class CohereEmbedder implements Embedder {
 ```typescript
 // Implements: Embedder interface
 // Package: plain fetch to https://api.voyageai.com/v1/embeddings
-// Pattern: private constructor + static create() factory
+// Pattern: private constructor + static async create() factory (same as CohereReranker)
 
 export class VoyageEmbedder implements Embedder {
   readonly name: string;     // "Voyage(voyage-3.5)"
@@ -385,7 +477,7 @@ Uses plain `fetch` — no additional npm dependency required. The Voyage API is 
 ```typescript
 // Implements: Embedder interface
 // Package: plain fetch to https://api.jina.ai/v1/embeddings
-// Pattern: private constructor + static create() factory
+// Pattern: private constructor + static async create() factory (same as CohereReranker)
 
 export class JinaEmbedder implements Embedder {
   readonly name: string;     // "Jina(jina-embeddings-v3)"
@@ -427,7 +519,7 @@ static async create(options?: {
 ```typescript
 // Implements: Reranker interface (from reranker.interface.ts)
 // Package: plain fetch to https://api.jina.ai/v1/rerank
-// Pattern: follows CohereReranker — private constructor + static create() factory
+// Pattern: follows CohereReranker — private constructor + static async create() factory
 
 export class JinaReranker implements Reranker {
   readonly name: string; // "Jina(jina-reranker-v2-base-multilingual)"
@@ -451,7 +543,7 @@ export class JinaReranker implements Reranker {
 ```typescript
 // Implements: Reranker interface
 // Package: plain fetch to https://api.voyageai.com/v1/rerank
-// Pattern: follows CohereReranker — private constructor + static create() factory
+// Pattern: follows CohereReranker — private constructor + static async create() factory
 
 export class VoyageReranker implements Reranker {
   readonly name: string; // "Voyage(rerank-2.5)"
@@ -469,8 +561,16 @@ export class VoyageReranker implements Reranker {
 
 ### 1g. Package.json Changes
 
+Current state after PR #27:
+
 ```json
 {
+  "dependencies": {
+    "@langchain/core": "^1.1.0",
+    "langsmith": "^0.5.0",
+    "minisearch": "^7.2.0",
+    "zod": "^3.23"
+  },
   "optionalDependencies": {
     "cohere-ai": ">=7.0",
     "openai": ">=4.0"
@@ -478,20 +578,37 @@ export class VoyageReranker implements Reranker {
 }
 ```
 
-**No new npm dependencies.** Voyage and Jina use plain `fetch` (Node 18+ built-in). Cohere embedder reuses the existing `cohere-ai` optional dependency.
+**No new npm dependencies needed for Slice 1.** Voyage and Jina use plain `fetch` (Node 18+ built-in). Cohere embedder reuses the existing `cohere-ai` optional dependency. The `langsmith` and `@langchain/core` dependencies were already added in PR #27.
 
 ### 1h. tsup Entry Points
 
 Add new entry points for each provider that has an optional dependency, following the existing `embedders/openai` and `rerankers/cohere` pattern:
 
 ```typescript
-// tsup.config.ts — add to entry array:
+// tsup.config.ts — add to the existing entry array (which already has 8 entry points):
+// Existing: src/index.ts, src/embedders/openai.ts, src/rerankers/cohere.ts,
+//           src/pipeline/internals.ts, src/utils/index.ts,
+//           src/langsmith/index.ts, src/llm/index.ts, src/shared/index.ts
+//
+// Add:
 "src/embedders/cohere.ts",                   // uses cohere-ai (already optional dep)
 "src/embedders/voyage.ts",                   // uses plain fetch (no optional dep needed)
 "src/embedders/jina.ts",                     // uses plain fetch (no optional dep needed)
 "src/rerankers/jina.ts",                     // uses plain fetch
 "src/rerankers/voyage.ts",                   // uses plain fetch
 "src/retrievers/pipeline/llm-openai.ts",     // Slice 3 — uses openai (already optional dep)
+```
+
+Also add these to the `external` array in tsup.config.ts if not already present (Voyage and Jina use plain `fetch`, so no additions needed for those):
+
+```typescript
+external: [
+  "openai",          // already present
+  "langsmith",       // already present
+  "langsmith/evaluation", // already present
+  "@langchain/core", // already present
+  "cohere-ai",       // already present
+],
 ```
 
 And corresponding package.json exports:
@@ -599,7 +716,9 @@ export class TokenChunker implements PositionAwareChunker {
 ```json
 {
   "dependencies": {
+    "@langchain/core": "^1.1.0",
     "js-tiktoken": "^1.0",
+    "langsmith": "^0.5.0",
     "minisearch": "^7.2.0",
     "zod": "^3.23"
   }
@@ -1063,19 +1182,64 @@ export function computeIndexConfigHash(config: PipelineConfig): string {
 
 ### 4c. Update computeRetrieverConfigHash
 
-The existing `computeRetrieverConfigHash` resolves defaults for the index portion using `DEFAULT_INDEX_CONFIG`. When `IndexConfig` becomes a union, the index portion of the hash payload must use the same resolved values as `computeIndexConfigHash`:
+The existing `computeRetrieverConfigHash` resolves defaults for the index portion using `DEFAULT_INDEX_CONFIG`. When `IndexConfig` becomes a union, the index portion of the hash payload must use a strategy-aware switch, matching `computeIndexConfigHash`.
+
+**IMPORTANT — Hash stability**: The current `computeRetrieverConfigHash` inlines the index fields directly in the payload object. We MUST preserve this structure (nested `index` object, not a string hash) to avoid changing hash values for existing retrievers stored in the backend. Changing the payload structure would invalidate all existing `retrieverConfigHash` values, causing duplicate retrievers to be created.
 
 ```typescript
 export function computeRetrieverConfigHash(config: PipelineConfig, k: number): string {
+  const index = config.index ?? DEFAULT_INDEX_CONFIG;
   const query = config.query ?? DEFAULT_QUERY_CONFIG;
   const search = config.search ?? DEFAULT_SEARCH_CONFIG;
   const refinement = config.refinement ?? [];
 
-  // Reuse computeIndexConfigHash for the index portion to stay consistent
-  const indexHash = computeIndexConfigHash(config);
+  // Build the index portion using the same strategy-aware logic as computeIndexConfigHash,
+  // but inline it as a nested object (NOT as a hash string) to preserve hash stability
+  // with existing stored retrieverConfigHash values.
+  let indexPayload: Record<string, unknown>;
+
+  switch (index.strategy) {
+    case "plain":
+      indexPayload = {
+        strategy: "plain",
+        chunkSize: index.chunkSize ?? 1000,
+        chunkOverlap: index.chunkOverlap ?? 200,
+        separators: index.separators,
+        embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
+      };
+      break;
+    case "contextual":
+      indexPayload = {
+        strategy: "contextual",
+        chunkSize: index.chunkSize ?? 1000,
+        chunkOverlap: index.chunkOverlap ?? 200,
+        embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
+        contextPrompt: index.contextPrompt ?? DEFAULT_CONTEXT_PROMPT,
+      };
+      break;
+    case "summary":
+      indexPayload = {
+        strategy: "summary",
+        chunkSize: index.chunkSize ?? 1000,
+        chunkOverlap: index.chunkOverlap ?? 200,
+        embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
+        summaryPrompt: index.summaryPrompt ?? DEFAULT_SUMMARY_PROMPT,
+      };
+      break;
+    case "parent-child":
+      indexPayload = {
+        strategy: "parent-child",
+        childChunkSize: index.childChunkSize ?? 200,
+        parentChunkSize: index.parentChunkSize ?? 1000,
+        childOverlap: index.childOverlap ?? 0,
+        parentOverlap: index.parentOverlap ?? 100,
+        embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
+      };
+      break;
+  }
 
   const payload = {
-    indexHash,
+    index: indexPayload,
     k,
     query,
     refinement,
@@ -1086,6 +1250,8 @@ export function computeRetrieverConfigHash(config: PipelineConfig, k: number): s
   return createHash("sha256").update(json).digest("hex");
 }
 ```
+
+**Hash stability guarantee**: For `strategy: "plain"`, the `indexPayload` shape is identical to the current `computeRetrieverConfigHash` implementation's inline index object: `{ strategy, chunkSize, chunkOverlap, separators, embeddingModel }`. This means existing "plain" retriever hashes remain unchanged. New strategies produce new hashes (no collision risk).
 
 ### 4d. Contextual Indexing Implementation
 
@@ -1191,6 +1357,33 @@ export function applyDedup(
 //   If overlap / min(chunk1.length, chunk2.length) > threshold, keep higher-scored.
 ```
 
+**What it does in plain English:** When you search (especially with hybrid or multi-query), the same chunk often appears multiple times from different search paths. Dedup removes these redundant copies.
+
+- **Exact mode** — removes chunks with identical text content, keeping the highest-scored copy:
+  ```
+  Search results:
+    #1 (score 0.95): "Dogs are loyal companions that love their owners."
+    #2 (score 0.88): "Cats are independent creatures."
+    #3 (score 0.72): "Dogs are loyal companions that love their owners."  <-- duplicate of #1
+
+  After dedup (exact):
+    #1 (score 0.95): "Dogs are loyal companions that love their owners."
+    #2 (score 0.88): "Cats are independent creatures."
+    <-- #3 removed (identical text)
+  ```
+
+- **Overlap mode** — smarter. Two chunks from the same document that share too many character positions are considered near-duplicates:
+  ```
+  Document: "The quick brown fox jumps over the lazy dog near the river."
+
+  Chunk A (chars 0-40):  "The quick brown fox jumps over the lazy "   score=0.9
+  Chunk B (chars 20-55): "fox jumps over the lazy dog near the riv"   score=0.7
+                           ^^^^^^^^^^^^^^^^^^^^
+                           20 chars overlap / min(40,35) = 57% > 50% threshold
+
+  After dedup (overlap): Chunk B removed (too much overlap with higher-scored Chunk A)
+  ```
+
 #### MMR (`type: "mmr"`)
 
 **File**: `packages/eval-lib/src/retrievers/pipeline/refinement/mmr.ts`
@@ -1223,6 +1416,38 @@ export function applyMmr(
 // Reuses spanOverlapChars() from utils/span.ts.
 ```
 
+**What it does in plain English:** Search results tend to cluster around the same topic. If your top 5 results all say basically the same thing, you waste the LLM's context window. MMR selects results that are both **relevant** AND **diverse** — covering different aspects of the answer.
+
+It's a greedy algorithm that picks one chunk at a time, balancing relevance (search score) against similarity to already-picked chunks. The `lambda` parameter controls this trade-off: `1.0` = pure relevance, `0.0` = pure diversity, `0.7` (default) = mostly relevance with a redundancy penalty.
+
+```
+Candidates after search:
+  A (score 0.95): "Python is a popular programming language"
+  B (score 0.90): "Python is widely used in programming"       <-- similar to A
+  C (score 0.85): "JavaScript dominates web development"       <-- different topic
+  D (score 0.80): "Python's syntax is beginner-friendly"       <-- similar to A
+
+MMR selection (lambda=0.7), picking k=3:
+
+  Round 1: Pick A (highest score, nothing selected yet)
+    Selected: [A]
+
+  Round 2: Score each remaining candidate:
+    B: 0.7 * 0.90  -  0.3 * 0.8 (high overlap with A)  = 0.39
+    C: 0.7 * 0.85  -  0.3 * 0.0 (no overlap with A)    = 0.595  <-- winner
+    D: 0.7 * 0.80  -  0.3 * 0.3 (some overlap with A)   = 0.47
+    Pick C
+
+  Round 3: Score remaining candidates:
+    B: 0.7*0.90 - 0.3*max(overlap_A=0.8, overlap_C=0.0) = 0.39
+    D: 0.7*0.80 - 0.3*max(overlap_A=0.3, overlap_C=0.0) = 0.47  <-- winner
+    Pick D
+
+  Final: [A, C, D] -- covers Python AND JavaScript, avoids redundant B
+```
+
+**Key design choice:** Instead of using embedding cosine similarity (which would require storing embeddings at refinement time), this implementation uses **character span overlap** as the diversity proxy. Chunks from different documents always have 0 overlap (maximally diverse).
+
 #### Expand-Context (`type: "expand-context"`)
 
 **File**: `packages/eval-lib/src/retrievers/pipeline/refinement/expand-context.ts`
@@ -1247,6 +1472,29 @@ export function applyExpandContext(
 //
 // Requires corpus reference (stored during init()).
 ```
+
+**What it does in plain English:** Chunks are small slices of a document. Sometimes the answer sits right at the boundary — the chunk contains part of the relevant passage but cuts off mid-sentence. Expand-context goes back to the source document and widens each chunk's window by `windowChars` (default 500) in each direction.
+
+```
+Original document:
+"...earlier text about climate. [CHUNK START] Rising sea levels threaten
+coastal cities. Studies show a 3mm annual rise. [CHUNK END] This has led
+to increased flooding in low-lying areas. Government responses vary..."
+
+Retrieved chunk (chars 100-200):
+"Rising sea levels threaten coastal cities. Studies show a 3mm annual rise."
+
+After expand-context (windowChars=100):
+  newStart = max(0, 100-100) = 0
+  newEnd   = min(docLength, 200+100) = 300
+
+Expanded chunk (chars 0-300):
+"...earlier text about climate. Rising sea levels threaten coastal cities.
+Studies show a 3mm annual rise. This has led to increased flooding in
+low-lying areas. Government responses vary..."
+```
+
+This is similar to "sentence-window retrieval" — you search on small precise chunks but return larger context windows to the LLM.
 
 **Pipeline change**: Store `this._corpus = corpus` during `init()`. The expand-context refinement step receives it.
 
@@ -1317,7 +1565,53 @@ private async _applyRefinements(
 }
 ```
 
+**How refinement steps chain together:** Steps are composable — you stack them in any order in the `refinement` array. The output of one step feeds into the next:
+
+```
+Search results (e.g. 20 candidates)
+    |
+    v
+  dedup            --> remove redundant/overlapping chunks
+    |
+    v
+  rerank           --> re-score with cross-encoder model
+    |
+    v
+  threshold        --> drop anything below score cutoff
+    |
+    v
+  mmr              --> pick diverse top-K
+    |
+    v
+  expand-context   --> widen each chunk's text window
+    |
+    v
+  Final k results to the LLM
+```
+
+Order matters — e.g. dedup before rerank avoids wasting the reranker's budget on duplicates. The "premium" preset uses `dedup -> rerank -> threshold`. The "diverse-hybrid" preset uses just `mmr`.
+
 ### 5b. AsyncPositionAwareChunker Interface
+
+**Why async chunkers?** The existing chunkers (RecursiveCharacter, Sentence, Token, Markdown) are all **synchronous** — they split text using simple rules (character count, regex, token count) and return immediately. But smarter chunking strategies need to **call external services** during chunking: the Semantic Chunker calls an **embedding API** to compare sentence similarity, the Cluster Semantic Chunker does the same with a DP optimization, and the LLM Semantic Chunker calls an **LLM** to ask "where are the topic boundaries?". These are inherently async (network I/O), so the sync `PositionAwareChunker.chunkWithPositions()` signature can't accommodate them.
+
+**Design choice:** A **separate interface** rather than changing the existing one. This avoids a breaking change — all existing sync chunkers keep working unchanged. A discriminator property (`readonly async = true`) and type guard distinguish the two at runtime.
+
+```
+                     PipelineRetrieverDeps.chunker
+                              |
+                     is it async?
+                      /          \
+                    no            yes
+                    |              |
+            call sync          await async
+        chunkWithPositions   chunkWithPositions
+                    \              /
+                     \            /
+                   same PositionAwareChunk[] output
+                              |
+                     continue pipeline...
+```
 
 **File**: `packages/eval-lib/src/chunkers/chunker.interface.ts` — add:
 
@@ -1390,6 +1684,43 @@ export class SemanticChunker implements AsyncPositionAwareChunker {
 }
 ```
 
+**How it works in plain English:** Instead of splitting every N characters, split where the **topic changes**. Detect topic shifts by measuring embedding similarity between consecutive sentences.
+
+```
+Document: "Dogs are loyal. Cats are independent. | Python is popular. JS is for web."
+                                                 ^
+                                          similarity drops here
+                                          (pets --> programming)
+
+Step 1: Split into sentences
+  S1: "Dogs are loyal."
+  S2: "Cats are independent."
+  S3: "Python is popular."
+  S4: "JS is for web."
+
+Step 2: Embed each sentence (API call -- this is why it's async)
+  S1 -> [0.9, 0.1, ...]   (pet-like vector)
+  S2 -> [0.85, 0.12, ...]  (pet-like vector)
+  S3 -> [0.1, 0.8, ...]    (programming-like vector)
+  S4 -> [0.15, 0.75, ...]  (programming-like vector)
+
+Step 3: Cosine similarity between consecutive pairs
+  sim(S1, S2) = 0.95   (high -- same topic)
+  sim(S2, S3) = 0.20   (low -- topic changed!)
+  sim(S3, S4) = 0.92   (high -- same topic)
+
+Step 4: 95th percentile threshold of similarities ~ 0.94
+
+Step 5: Split where similarity < threshold
+  sim(S2, S3) = 0.20 < 0.94  -->  split here!
+
+Result:
+  Chunk 1: "Dogs are loyal. Cats are independent."          (about pets)
+  Chunk 2: "Python is popular. JS is for web."              (about programming)
+```
+
+If any resulting chunk exceeds `maxChunkSize`, it falls back to `RecursiveCharacterChunker` to sub-split.
+
 ### 5d. Cluster Semantic Chunker
 
 **File**: `packages/eval-lib/src/chunkers/cluster-semantic.ts`
@@ -1429,30 +1760,41 @@ export class ClusterSemanticChunker implements AsyncPositionAwareChunker {
 }
 ```
 
-### 5e. cosineSimilarity Utility
+**How it works in plain English:** Instead of just looking at consecutive sentence pairs (like Semantic Chunker), this finds the **globally optimal** chunk boundaries using dynamic programming. It looks at the similarity of ALL segments within a potential chunk, not just neighbors.
 
-**File**: `packages/eval-lib/src/utils/similarity.ts`
+```
+Step 1: Split into micro-segments (~50 chars each)
+  seg0: "Dogs are loyal. Cats"          (chars 0-20)
+  seg1: "are independent. Python"        (chars 20-43)
+  seg2: "is popular. JavaScript"         (chars 43-65)
+  seg3: "is used for web dev."           (chars 65-85)
 
-```typescript
-/**
- * Compute cosine similarity between two vectors of the same length.
- * Returns a value in [-1, 1].
- */
-export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom === 0 ? 0 : dot / denom;
-}
+Step 2: Embed all segments (API call)
+
+Step 3: Build similarity matrix (all pairs):
+          seg0   seg1   seg2   seg3
+  seg0  [ 1.0    0.6    0.1    0.1  ]
+  seg1  [ 0.6    1.0    0.4    0.3  ]
+  seg2  [ 0.1    0.4    1.0    0.9  ]
+  seg3  [ 0.1    0.3    0.9    1.0  ]
+
+Step 4: DP finds optimal boundaries (maximize intra-chunk similarity)
+  Option A: [seg0,seg1] [seg2,seg3]  -> avg_sim(0,1)=0.6 + avg_sim(2,3)=0.9 = 1.5
+  Option B: [seg0] [seg1,seg2,seg3]  -> avg_sim(0)=1.0 + avg_sim(1,2,3)=0.53 = 1.53
+  Option C: [seg0,seg1,seg2] [seg3]  -> avg_sim(0,1,2)=0.37 + avg_sim(3)=1.0 = 1.37
+
+  Best: Option B (highest total intra-chunk similarity)
+
+Step 5: Merge segments at boundaries, track char offsets
 ```
 
-Re-export from `packages/eval-lib/src/utils/index.ts`. Used by `SemanticChunker` (5c) and `ClusterSemanticChunker` (5d).
+More expensive than Semantic Chunker (O(n^2) on segment count) but finds better boundaries because it considers global similarity patterns, not just pairwise neighbors.
+
+### 5e. cosineSimilarity Utility
+
+**File**: `packages/eval-lib/src/utils/similarity.ts` — **ALREADY EXISTS**, no changes needed.
+
+The `cosineSimilarity(a, b)` function already exists in the codebase and is already re-exported from `utils/index.ts`. Used by `SemanticChunker` (5c) and `ClusterSemanticChunker` (5d).
 
 ### 5f. LLM Semantic Chunker
 
@@ -1489,240 +1831,146 @@ export class LLMSemanticChunker implements AsyncPositionAwareChunker {
 }
 ```
 
----
+**How it works in plain English:** Instead of using math (embeddings + similarity), just **ask the LLM** where the topic boundaries are. The LLM understands semantics directly.
 
-## Slice 6 — Named Presets
+```
+Step 1: Split into micro-segments, wrap with tags:
+  "<|start_chunk_0|>Dogs are loyal. Cats<|end_chunk_0|>
+   <|start_chunk_1|>are independent. Python<|end_chunk_1|>
+   <|start_chunk_2|>is popular. JavaScript<|end_chunk_2|>
+   <|start_chunk_3|>is used for web dev.<|end_chunk_3|>"
 
-**File**: `packages/eval-lib/src/experiments/presets.ts` — extend the existing pattern.
+Step 2: Send to LLM with prompt:
+  "Identify thematic boundaries in the following tagged text.
+   Return split points in format: split_after: X, Y"
 
-The current file has individual config constants + a `PRESET_CONFIGS` map + `createPresetRetriever` factory. We extend this by:
+Step 3: LLM responds:  "split_after: 1"
+  (split after chunk 1 -- topic changes from pets to programming)
 
-1. Adding new config constants
-2. Adding them to the `PRESET_CONFIGS` map
-3. Widening the factory's `presetName` union type
-
-```typescript
-// === EXISTING (keep exactly as-is) ===
-
-export const BASELINE_VECTOR_RAG_CONFIG: PipelineConfig = {
-  name: "baseline-vector-rag",
-  index: { strategy: "plain" },
-  search: { strategy: "dense" },
-};
-
-export const BM25_CONFIG: PipelineConfig = { ... };
-export const HYBRID_CONFIG: PipelineConfig = { ... };
-export const HYBRID_RERANKED_CONFIG: PipelineConfig = { ... };
-
-// === NEW PRESET CONFIGS ===
-
-export const DENSE_RERANKED_CONFIG: PipelineConfig = {
-  name: "dense-reranked",
-  index: { strategy: "plain" },
-  search: { strategy: "dense" },
-  refinement: [{ type: "rerank" }],
-};
-
-export const BM25_RERANKED_CONFIG: PipelineConfig = {
-  name: "bm25-reranked",
-  index: { strategy: "plain" },
-  search: { strategy: "bm25" },
-  refinement: [{ type: "rerank" }],
-};
-
-export const HYBRID_RRF_CONFIG: PipelineConfig = {
-  name: "hybrid-rrf",
-  index: { strategy: "plain" },
-  search: { strategy: "hybrid", fusionMethod: "rrf", candidateMultiplier: 4 },
-};
-
-export const HYBRID_RRF_RERANKED_CONFIG: PipelineConfig = {
-  name: "hybrid-rrf-reranked",
-  index: { strategy: "plain" },
-  search: { strategy: "hybrid", fusionMethod: "rrf", candidateMultiplier: 4 },
-  refinement: [{ type: "rerank" }],
-};
-
-export const OPENCLAW_STYLE_CONFIG: PipelineConfig = {
-  name: "openclaw-style",
-  index: { strategy: "plain", chunkSize: 400, chunkOverlap: 80 },
-  search: { strategy: "hybrid", denseWeight: 0.7, sparseWeight: 0.3, fusionMethod: "weighted", candidateMultiplier: 4 },
-  refinement: [{ type: "threshold", minScore: 0.35 }],
-};
-
-export const HYDE_DENSE_CONFIG: PipelineConfig = {
-  name: "hyde-dense",
-  index: { strategy: "plain" },
-  query: { strategy: "hyde" },
-  search: { strategy: "dense" },
-};
-
-export const HYDE_HYBRID_CONFIG: PipelineConfig = {
-  name: "hyde-hybrid",
-  index: { strategy: "plain" },
-  query: { strategy: "hyde" },
-  search: { strategy: "hybrid", denseWeight: 0.7, sparseWeight: 0.3, candidateMultiplier: 4 },
-};
-
-export const HYDE_HYBRID_RERANKED_CONFIG: PipelineConfig = {
-  name: "hyde-hybrid-reranked",
-  index: { strategy: "plain" },
-  query: { strategy: "hyde" },
-  search: { strategy: "hybrid", denseWeight: 0.7, sparseWeight: 0.3, candidateMultiplier: 4 },
-  refinement: [{ type: "rerank" }],
-};
-
-export const MULTI_QUERY_DENSE_CONFIG: PipelineConfig = {
-  name: "multi-query-dense",
-  index: { strategy: "plain" },
-  query: { strategy: "multi-query", numQueries: 3 },
-  search: { strategy: "dense" },
-  refinement: [{ type: "dedup" }],
-};
-
-export const MULTI_QUERY_HYBRID_CONFIG: PipelineConfig = {
-  name: "multi-query-hybrid",
-  index: { strategy: "plain" },
-  query: { strategy: "multi-query", numQueries: 3 },
-  search: { strategy: "hybrid", denseWeight: 0.7, sparseWeight: 0.3, candidateMultiplier: 4 },
-  refinement: [{ type: "dedup" }, { type: "rerank" }],
-};
-
-export const CONTEXTUAL_DENSE_CONFIG: PipelineConfig = {
-  name: "contextual-dense",
-  index: { strategy: "contextual" },
-  search: { strategy: "dense" },
-};
-
-export const CONTEXTUAL_HYBRID_CONFIG: PipelineConfig = {
-  name: "contextual-hybrid",
-  index: { strategy: "contextual" },
-  search: { strategy: "hybrid", denseWeight: 0.7, sparseWeight: 0.3, candidateMultiplier: 4 },
-};
-
-export const ANTHROPIC_BEST_CONFIG: PipelineConfig = {
-  name: "anthropic-best",
-  index: { strategy: "contextual" },
-  search: { strategy: "hybrid", denseWeight: 0.7, sparseWeight: 0.3, candidateMultiplier: 4 },
-  refinement: [{ type: "rerank" }],
-};
-
-export const PARENT_CHILD_DENSE_CONFIG: PipelineConfig = {
-  name: "parent-child-dense",
-  index: { strategy: "parent-child", childChunkSize: 200, parentChunkSize: 1000 },
-  search: { strategy: "dense" },
-};
-
-export const DIVERSE_HYBRID_CONFIG: PipelineConfig = {
-  name: "diverse-hybrid",
-  index: { strategy: "plain" },
-  search: { strategy: "hybrid", denseWeight: 0.7, sparseWeight: 0.3, candidateMultiplier: 4 },
-  refinement: [{ type: "mmr", lambda: 0.5 }],
-};
-
-export const STEP_BACK_HYBRID_CONFIG: PipelineConfig = {
-  name: "step-back-hybrid",
-  index: { strategy: "plain" },
-  query: { strategy: "step-back", includeOriginal: true },
-  search: { strategy: "hybrid", denseWeight: 0.7, sparseWeight: 0.3, candidateMultiplier: 4 },
-  refinement: [{ type: "dedup" }, { type: "rerank" }],
-};
-
-export const PREMIUM_CONFIG: PipelineConfig = {
-  name: "premium",
-  index: { strategy: "contextual" },
-  query: { strategy: "multi-query", numQueries: 3 },
-  search: { strategy: "hybrid", candidateMultiplier: 5 },
-  refinement: [{ type: "dedup" }, { type: "rerank" }, { type: "threshold", minScore: 0.3 }],
-};
-
-export const SUMMARY_DENSE_CONFIG: PipelineConfig = {
-  name: "summary-dense",
-  index: { strategy: "summary" },
-  search: { strategy: "dense" },
-};
-
-export const REWRITE_HYBRID_CONFIG: PipelineConfig = {
-  name: "rewrite-hybrid",
-  index: { strategy: "plain" },
-  query: { strategy: "rewrite" },
-  search: { strategy: "hybrid", denseWeight: 0.7, sparseWeight: 0.3, candidateMultiplier: 4 },
-};
-
-export const REWRITE_HYBRID_RERANKED_CONFIG: PipelineConfig = {
-  name: "rewrite-hybrid-reranked",
-  index: { strategy: "plain" },
-  query: { strategy: "rewrite" },
-  search: { strategy: "hybrid", denseWeight: 0.7, sparseWeight: 0.3, candidateMultiplier: 4 },
-  refinement: [{ type: "rerank" }],
-};
-
-// === UPDATED PRESET MAP ===
-
-const PRESET_CONFIGS = {
-  // Existing
-  "baseline-vector-rag": BASELINE_VECTOR_RAG_CONFIG,
-  "bm25": BM25_CONFIG,
-  "hybrid": HYBRID_CONFIG,
-  "hybrid-reranked": HYBRID_RERANKED_CONFIG,
-  // New — Dense variants
-  "dense-reranked": DENSE_RERANKED_CONFIG,
-  // New — BM25 variants
-  "bm25-reranked": BM25_RERANKED_CONFIG,
-  // New — Hybrid variants
-  "hybrid-rrf": HYBRID_RRF_CONFIG,
-  "hybrid-rrf-reranked": HYBRID_RRF_RERANKED_CONFIG,
-  // New — OpenClaw-style
-  "openclaw-style": OPENCLAW_STYLE_CONFIG,
-  // New — HyDE variants
-  "hyde-dense": HYDE_DENSE_CONFIG,
-  "hyde-hybrid": HYDE_HYBRID_CONFIG,
-  "hyde-hybrid-reranked": HYDE_HYBRID_RERANKED_CONFIG,
-  // New — Multi-Query variants
-  "multi-query-dense": MULTI_QUERY_DENSE_CONFIG,
-  "multi-query-hybrid": MULTI_QUERY_HYBRID_CONFIG,
-  // New — Contextual variants (Anthropic's approach)
-  "contextual-dense": CONTEXTUAL_DENSE_CONFIG,
-  "contextual-hybrid": CONTEXTUAL_HYBRID_CONFIG,
-  "anthropic-best": ANTHROPIC_BEST_CONFIG,
-  // New — Parent-Child
-  "parent-child-dense": PARENT_CHILD_DENSE_CONFIG,
-  // New — Diversity-focused
-  "diverse-hybrid": DIVERSE_HYBRID_CONFIG,
-  // New — Step-Back
-  "step-back-hybrid": STEP_BACK_HYBRID_CONFIG,
-  // New — Rewrite variants
-  "rewrite-hybrid": REWRITE_HYBRID_CONFIG,
-  "rewrite-hybrid-reranked": REWRITE_HYBRID_RERANKED_CONFIG,
-  // New — Summary index
-  "summary-dense": SUMMARY_DENSE_CONFIG,
-  // New — Premium (everything)
-  "premium": PREMIUM_CONFIG,
-} as const;
-
-export type PresetName = keyof typeof PRESET_CONFIGS;
-
-// createPresetRetriever signature UPDATED to accept wider union:
-export function createPresetRetriever(
-  presetName: PresetName,
-  deps: PipelinePresetDeps,
-  overrides?: Partial<PipelineConfig>,
-): PipelineRetriever;
+Step 4: Merge segments based on split points:
+  Chunk 1: segments 0-1 = "Dogs are loyal. Cats are independent."
+  Chunk 2: segments 2-3 = "Python is popular. JavaScript is used for web dev."
 ```
 
-**Note on PipelinePresetDeps**: Presets that require LLM (hyde-*, multi-query-*, step-back-*, contextual-*, anthropic-best, premium) need the caller to also provide `llm` in deps. The `PipelinePresetDeps` interface should be extended:
+Slowest and most expensive (LLM call per batch), but potentially the most accurate since the LLM truly understands meaning. Best for small corpora where quality matters more than speed.
+
+#### Async Chunker Comparison
+
+```
+                     Speed    Cost     Quality   How it decides where to split
+                     -----    ----     -------   ----------------------------
+RecursiveCharacter   fast     free     basic     fixed character count
+Sentence             fast     free     basic     regex (sentence boundaries)
+Semantic             medium   $$       good      embedding similarity drops
+Cluster Semantic     slow     $$       better    DP-optimal embedding clusters
+LLM Semantic         slowest  $$$      best      LLM judgment
+```
+
+All async chunkers produce the same `PositionAwareChunk[]` output with accurate character offsets — they just take different (smarter) approaches to deciding where to cut.
+
+---
+
+## Slice 6 — Named Presets (Simplified)
+
+**Key insight:** The Preset Registry (`src/registry/presets.ts`) already defines all 24 preset configs with full metadata. Instead of duplicating config constants in `experiments/presets.ts`, Slice 6 rewires the `createPresetRetriever` factory to pull configs directly from the registry. This eliminates duplication and makes the registry the **single source of truth** for preset definitions.
+
+```
+BEFORE (duplication):
+  registry/presets.ts          experiments/presets.ts
+  +-----------------------+    +---------------------------+
+  | PresetEntry {         |    | BASELINE_VECTOR_RAG_CONFIG|
+  |   id, name, desc,     |    | BM25_CONFIG               |
+  |   config: { ... },    |    | HYBRID_CONFIG             |  <-- same configs
+  |   status, complexity  |    | HYBRID_RERANKED_CONFIG    |      duplicated!
+  | }                     |    |                           |
+  | x 24 entries          |    | PRESET_CONFIGS map (4)    |
+  +-----------------------+    | createPresetRetriever()   |
+         |                     +---------------------------+
+         v
+    frontend wizard                  runtime factory
+
+
+AFTER (single source of truth):
+  registry/presets.ts          experiments/presets.ts
+  +-----------------------+    +---------------------------+
+  | PresetEntry {         |    | (keep 4 legacy configs    |
+  |   id, name, desc,     |--->|  for backward compat)     |
+  |   config: { ... },    |    |                           |
+  |   status, complexity  |    | createPresetRetriever()   |
+  | }                     |    |   reads config from       |
+  | x 24 entries          |    |   PRESET_REGISTRY         |
+  +-----------------------+    | PresetName derived from   |
+         |                     |   available registry IDs  |
+         v                     +---------------------------+
+    frontend wizard                  runtime factory
+```
+
+**Files:**
+- Modify: `src/experiments/presets.ts` — rewire factory to use registry, derive PresetName
+- Modify: `src/experiments/index.ts` — export PresetName
+- Modify: `src/index.ts` — export PresetName
+
+**Changes to `experiments/presets.ts`:**
 
 ```typescript
-export interface PipelinePresetDeps {
-  readonly chunker: PositionAwareChunker;
-  readonly embedder: Embedder;
-  readonly vectorStore?: VectorStore;
-  readonly reranker?: Reranker;
-  readonly llm?: PipelineLLM;  // NEW — required for LLM-based strategies
+import { PRESET_REGISTRY } from "../registry/presets.js";
+import type { PipelineConfig } from "../retrievers/pipeline/config.js";
+import { PipelineRetriever } from "../retrievers/pipeline/pipeline-retriever.js";
+// ... existing interface imports ...
+
+// --- Keep existing 4 config constants for backward compatibility ---
+export const BASELINE_VECTOR_RAG_CONFIG: PipelineConfig = { /* unchanged */ };
+export const BM25_CONFIG: PipelineConfig = { /* unchanged */ };
+export const HYBRID_CONFIG: PipelineConfig = { /* unchanged */ };
+export const HYBRID_RERANKED_CONFIG: PipelineConfig = { /* unchanged */ };
+
+// --- Build runtime map from registry (available presets only) ---
+const AVAILABLE_PRESET_MAP = new Map(
+  PRESET_REGISTRY
+    .filter((p) => p.status === "available")
+    .map((p) => [p.id, p.config]),
+);
+
+/** Union of all available preset names, derived from the registry. */
+export type PresetName = (typeof PRESET_REGISTRY)[number] extends infer E
+  ? E extends { status: "available"; id: infer Id }
+    ? Id
+    : never
+  : never;
+
+// --- Rewired factory — reads config from registry ---
+export function createPresetRetriever(
+  presetName: string,
+  deps: PipelinePresetDeps,
+  overrides?: Partial<PipelineConfig>,
+): PipelineRetriever {
+  const base = AVAILABLE_PRESET_MAP.get(presetName);
+  if (!base) {
+    throw new Error(`Unknown or unavailable preset: "${presetName}"`);
+  }
+  const config: PipelineConfig = {
+    ...base,
+    ...overrides,
+    name: overrides?.name ?? base.name,
+  };
+  return new PipelineRetriever(config, deps);
 }
 ```
 
-The constructor validation in `PipelineRetriever` catches the missing `llm` case.
+**What stays the same:**
+- `PipelinePresetDeps` interface (already has `llm?: PipelineLLM`)
+- Legacy convenience wrappers (`createBaselineVectorRagRetriever`, etc.) — kept for backward compat
+- 4 existing exported config constants — kept for backward compat
+
+**What changes:**
+- No new config constants (eliminated ~200 lines of duplication)
+- `createPresetRetriever` reads from registry instead of a local map
+- `PresetName` derived from registry `"available"` entries
+- As each slice marks presets `"available"` in the registry, they automatically become usable via the factory
+
+**Note on PipelinePresetDeps**: `llm?: PipelineLLM` already exists on the interface (added in Slice 3). Presets that require LLM or reranker deps are validated by `PipelineRetriever`'s constructor — no additional validation needed in the factory.
+
+**Registry status updates (same slice):** After confirming all strategies for a preset are implemented, flip its status from `"coming-soon"` to `"available"` in `registry/presets.ts` and remove its `comingSoonConfig()` wrapper. This is the only step needed to "enable" a new preset — the factory picks it up automatically.
 
 ---
 
@@ -1759,7 +2007,7 @@ The eval-lib `PipelineConfig` intentionally does NOT include `k` — it's a runt
 | `RefinementStepConfig` union extension | 5 | + Dedup \| Mmr \| ExpandContext |
 | `IndexHashPayload` removed | 4 | Replaced by strategy-aware hashing |
 | `computeIndexConfigHash` rewrite | 4 | Strategy-aware with discriminated switch |
-| `computeRetrieverConfigHash` update | 4 | Delegates to `computeIndexConfigHash` for consistency |
+| `computeRetrieverConfigHash` update | 4 | Strategy-aware index payload (inlined, NOT delegated — preserves hash stability) |
 
 ### presets.ts Changes
 
@@ -1792,8 +2040,6 @@ packages/eval-lib/src/
 │   ├── semantic.ts                       # Slice 5
 │   ├── cluster-semantic.ts               # Slice 5
 │   └── llm-semantic.ts                   # Slice 5
-├── utils/
-│   └── similarity.ts                     # Slice 5 — cosineSimilarity()
 ├── retrievers/pipeline/
 │   ├── llm.interface.ts                  # Slice 3
 │   ├── llm-openai.ts                     # Slice 3
@@ -1831,8 +2077,6 @@ packages/eval-lib/tests/
 │       ├── dedup.test.ts                 # Slice 5
 │       ├── mmr.test.ts                   # Slice 5
 │       └── expand-context.test.ts        # Slice 5
-├── unit/utils/
-│   └── similarity.test.ts               # Slice 5 — cosineSimilarity
 ├── unit/retrievers/pipeline/
 │   └── config-hash.test.ts              # Slice 4 — hash stability tests
 └── unit/experiments/
@@ -1858,23 +2102,21 @@ packages/eval-lib/src/
 │   │   └── index.ts                      # Barrel re-exports (Slice 3)
 │   └── refinement/
 │       └── index.ts                      # Re-exports dedup, mmr, expand-context (Slice 5)
-├── utils/
-│   └── index.ts                          # Re-export cosineSimilarity (Slice 5)
 ├── experiments/
 │   ├── presets.ts                        # New preset configs (Slice 6)
 │   └── index.ts                          # Re-exports (Slice 6)
 └── index.ts                              # Root barrel exports (Slice 1-6)
 
 packages/eval-lib/
-├── package.json                          # New dependencies (Slice 2)
-└── tsup.config.ts                        # New entry points (Slice 1)
+├── package.json                          # New dependencies (Slice 2: js-tiktoken); update langsmith ^0.5.0, @langchain/core ^1.1.0
+└── tsup.config.ts                        # New entry points (Slice 1); 8 entry points already exist from PR #27
 ```
 
 ---
 
 ## Testing Strategy
 
-**Approach**: Unit tests with mocks only. No real API calls in tests. Follow existing patterns from the 24 test files already in the repo.
+**Approach**: Unit tests with mocks only. No real API calls in tests. Follow existing patterns from the existing test files in the repo (including tests added for the `shared/`, `llm/`, and `langsmith/` modules in PR #27).
 
 ### Provider Tests (Embedders + Rerankers)
 
@@ -2029,8 +2271,9 @@ describe("AsyncPositionAwareChunker type guard", () => {
 
 After each slice:
 1. `pnpm -C packages/eval-lib build` — TypeScript compiles
-2. `pnpm -C packages/eval-lib test` — all tests pass (existing 24 files + new)
+2. `pnpm -C packages/eval-lib test` — all tests pass (existing 27 test files / 225 tests + new)
 3. `pnpm typecheck` — no type errors across workspace
+4. `pnpm -C packages/frontend build` — frontend builds (catches `pipeline-types.ts` mirror drift)
 
 ---
 

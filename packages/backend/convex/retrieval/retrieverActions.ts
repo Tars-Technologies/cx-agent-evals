@@ -102,14 +102,26 @@ export const startIndexing = action({
 
     // Resolve index config for the indexing service
     const indexSettings = (config.index ?? {}) as Record<string, unknown>;
-    const indexConfig = {
-      strategy: "plain" as const,
-      chunkSize: (indexSettings.chunkSize as number) ?? 1000,
-      chunkOverlap: (indexSettings.chunkOverlap as number) ?? 200,
-      separators: indexSettings.separators as string[] | undefined,
-      embeddingModel:
-        (indexSettings.embeddingModel as string) ?? "text-embedding-3-small",
-    };
+    const strategy = (indexSettings.strategy as string) ?? "plain";
+    const embeddingModel =
+      (indexSettings.embeddingModel as string) ?? "text-embedding-3-small";
+
+    const indexConfig = strategy === "parent-child"
+      ? {
+          strategy: "parent-child" as const,
+          childChunkSize: (indexSettings.childChunkSize as number) ?? 200,
+          parentChunkSize: (indexSettings.parentChunkSize as number) ?? 1000,
+          childOverlap: (indexSettings.childOverlap as number) ?? 0,
+          parentOverlap: (indexSettings.parentOverlap as number) ?? 100,
+          embeddingModel,
+        }
+      : {
+          strategy: "plain" as const,
+          chunkSize: (indexSettings.chunkSize as number) ?? 1000,
+          chunkOverlap: (indexSettings.chunkOverlap as number) ?? 200,
+          separators: indexSettings.separators as string[] | undefined,
+          embeddingModel,
+        };
 
     // Look up user record
     const user = await ctx.runQuery(internal.crud.users.getByClerkId, {
@@ -206,11 +218,14 @@ export const retrieve = action({
     const queryEmbedding = await embedder.embedQuery(args.query);
 
     // Vector search with post-filtering by indexConfigHash
+    const indexStrategy = (indexSettings.strategy as string) ?? "plain";
+
     const { chunks: filtered, scoreMap } = await vectorSearchWithFilter(ctx, {
       queryEmbedding,
       kbId: retriever.kbId,
       indexConfigHash: retriever.indexConfigHash,
       topK,
+      indexStrategy,
     });
 
     return filtered.map((c: any) => ({

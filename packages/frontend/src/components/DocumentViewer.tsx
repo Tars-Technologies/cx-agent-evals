@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DocumentInfo, GeneratedQuestion } from "@/lib/types";
+import { MarkdownViewer } from "@/components/MarkdownViewer";
+
+type ViewMode = "raw" | "rendered";
 
 const HIGHLIGHT_COLORS = [
   "var(--color-chunk-1)",
@@ -91,13 +94,29 @@ export function DocumentViewer({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const highlights = question && doc ? computeHighlights(doc, question) : [];
+  const hasHighlights = highlights.length > 0;
+
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    hasHighlights ? "raw" : "rendered",
+  );
+
+  // When highlights appear/disappear (e.g. selecting a different question),
+  // switch to raw mode so the user sees them immediately.
   useEffect(() => {
+    if (hasHighlights) {
+      setViewMode("raw");
+    }
+  }, [hasHighlights]);
+
+  useEffect(() => {
+    if (viewMode !== "raw") return;
     if (!containerRef.current) return;
     const firstMark = containerRef.current.querySelector(".first-highlight");
     if (firstMark) {
       firstMark.scrollIntoView({ behavior: "smooth", block: "center" });
     }
-  }, [question]);
+  }, [question, viewMode]);
 
   if (!doc) {
     return (
@@ -107,8 +126,6 @@ export function DocumentViewer({
     );
   }
 
-  const highlights = question ? computeHighlights(doc, question) : [];
-
   const noHighlights = question && highlights.length === 0;
 
   return (
@@ -116,7 +133,7 @@ export function DocumentViewer({
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-elevated/50">
         <span className="text-xs text-accent font-medium">{doc.id}</span>
         <div className="flex items-center gap-3">
-          {highlights.length > 0 && (
+          {hasHighlights && (
             <span className="text-[10px] text-text-muted">
               {highlights.length} highlight{highlights.length !== 1 ? "s" : ""}
             </span>
@@ -124,6 +141,30 @@ export function DocumentViewer({
           <span className="text-[10px] text-text-dim">
             {doc.contentLength.toLocaleString()} chars
           </span>
+          <div className="inline-flex items-center bg-elevated border border-border rounded-full text-[10px] overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setViewMode("raw")}
+              className={`px-2 py-0.5 transition-colors ${
+                viewMode === "raw"
+                  ? "bg-accent/20 text-accent"
+                  : "text-text-muted hover:text-text"
+              }`}
+            >
+              Raw
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("rendered")}
+              className={`px-2 py-0.5 transition-colors ${
+                viewMode === "rendered"
+                  ? "bg-accent/20 text-accent"
+                  : "text-text-muted hover:text-text"
+              }`}
+            >
+              Rendered
+            </button>
+          </div>
         </div>
       </div>
 
@@ -135,9 +176,9 @@ export function DocumentViewer({
         </div>
       )}
 
-      <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden p-4">
+      <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden">
         {question && (
-          <div className="mb-4 pb-3 border-b border-border/50 animate-fade-in">
+          <div className="mx-4 mt-4 mb-4 pb-3 border-b border-border/50 animate-fade-in">
             <span className="text-[10px] text-text-dim uppercase tracking-wider block mb-1">
               Question
             </span>
@@ -147,9 +188,26 @@ export function DocumentViewer({
           </div>
         )}
 
-        <pre className="text-xs text-text-muted leading-[1.8] whitespace-pre-wrap break-all font-[inherit] max-w-full overflow-hidden">
-          {renderHighlightedText(doc.content, highlights)}
-        </pre>
+        {viewMode === "rendered" ? (
+          <>
+            {hasHighlights && (
+              <div className="mx-4 mb-2">
+                <span className="text-[10px] text-text-dim italic">
+                  Switch to raw mode to see highlights
+                </span>
+              </div>
+            )}
+            <MarkdownViewer
+              content={doc.content}
+              showToggle={false}
+              defaultMode="rendered"
+            />
+          </>
+        ) : (
+          <pre className="text-xs text-text-muted leading-[1.8] whitespace-pre-wrap break-all font-[inherit] max-w-full overflow-hidden p-4">
+            {renderHighlightedText(doc.content, highlights)}
+          </pre>
+        )}
       </div>
     </div>
   );

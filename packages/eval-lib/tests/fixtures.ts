@@ -2,6 +2,7 @@ import type { Document, Corpus, CharacterSpan, PositionAwareChunk } from "../src
 import { DocumentId, PositionAwareChunkId } from "../src/types/primitives.js";
 import { createDocument, createCorpus } from "../src/types/documents.js";
 import type { Embedder } from "../src/embedders/embedder.interface.js";
+import type { PipelineLLM } from "../src/retrievers/pipeline/llm.interface.js";
 
 export function sampleDocument(): Document {
   return createDocument({
@@ -65,6 +66,15 @@ export function mockEmbedder(dimension: number = 128): Embedder {
     async embedQuery(query: string) {
       const results = await this.embed([query]);
       return results[0];
+    },
+  };
+}
+
+export function mockLLM(): PipelineLLM {
+  return {
+    name: "MockLLM",
+    async complete() {
+      return "mock LLM response";
     },
   };
 }

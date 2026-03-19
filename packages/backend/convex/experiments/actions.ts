@@ -240,6 +240,23 @@ export const runEvaluation = internalAction({
       queryToQuestionId.set(q.queryText, q._id);
     }
 
+    // Resolve index strategy for parent-child swap.
+    // Retriever path: strategy lives in the retriever's config.
+    // Legacy path: strategy lives in experiment.retrieverConfig.
+    let indexStrategy = "plain";
+    if (experiment.retrieverId) {
+      const ret = await ctx.runQuery(internal.crud.retrievers.getInternal, {
+        id: experiment.retrieverId,
+      });
+      const retConfig = (ret.retrieverConfig ?? {}) as Record<string, any>;
+      const idxSettings = (retConfig.index ?? {}) as Record<string, any>;
+      indexStrategy = (idxSettings.strategy as string) ?? "plain";
+    } else {
+      const retConfig = (experiment.retrieverConfig ?? {}) as Record<string, any>;
+      const idxSettings = (retConfig.index ?? {}) as Record<string, any>;
+      indexStrategy = (idxSettings.strategy as string) ?? "plain";
+    }
+
     // Create CallbackRetriever backed by Convex vector search
     const retriever = new CallbackRetriever({
       name: "convex-vector-search",
@@ -250,6 +267,7 @@ export const runEvaluation = internalAction({
           kbId: args.kbId,
           indexConfigHash: args.indexConfigHash,
           topK,
+          indexStrategy,
         });
 
         return filtered.map(
