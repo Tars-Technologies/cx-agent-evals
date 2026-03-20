@@ -1,6 +1,0 @@
-{
-  "buildCommand": "pnpm -C packages/eval-lib build && pnpm -C packages/frontend build",
-  "outputDirectory": "packages/frontend/.next",
-  "installCommand": "pnpm install",
-  "framework": "nextjs"
-}
