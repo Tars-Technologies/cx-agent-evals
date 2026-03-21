@@ -1,0 +1,346 @@
+<h2>Agents Module — Side-by-Side Layout</h2>
+<p class="subtitle">Sidebar: agent list. Main area: Config (left) + Playground chat (right) in a two-column grid.</p>
+
+<div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.5; color: #e8e8ed; background: #0c0c0f; border-radius: 10px; overflow: hidden; height: 620px; border: 1px solid #2a2a36;">
+  <!-- Header -->
+  <div style="background: #141419; padding: 10px 16px; border-bottom: 1px solid #2a2a36; display: flex; justify-content: space-between; align-items: center;">
+    <div style="display: flex; gap: 20px; align-items: center;">
+      <span style="color: #6ee7b7; font-weight: 600; font-size: 12px;">CX Agent Evals</span>
+      <span style="color: #55556a; font-size: 11px;">KB</span>
+      <span style="color: #55556a; font-size: 11px;">Retrievers</span>
+      <span style="color: #6ee7b7; border-bottom: 2px solid #6ee7b7; padding-bottom: 4px; font-size: 11px;">Agents</span>
+      <span style="color: #55556a; font-size: 11px;">Generate</span>
+      <span style="color: #55556a; font-size: 11px;">Experiments</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span style="color: #55556a; font-size: 10px; background: #1a1a22; padding: 3px 8px; border-radius: 4px; border: 1px solid #2a2a36;">Acme Corp ▾</span>
+      <div style="width: 24px; height: 24px; border-radius: 50%; background: #6ee7b730; display: flex; align-items: center; justify-content: center; color: #6ee7b7; font-size: 10px;">V</div>
+    </div>
+  </div>
+
+  <div style="display: flex; height: calc(100% - 44px);">
+    <!-- Sidebar: Just agents -->
+    <div style="width: 220px; background: #141419; border-right: 1px solid #2a2a36; flex-shrink: 0; display: flex; flex-direction: column;">
+      <div style="padding: 12px; border-bottom: 1px solid #2a2a36; display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: #8888a0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px;">Agents</span>
+        <span style="background: #6ee7b7; color: #0c0c0f; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 500; cursor: pointer;">+ New</span>
+      </div>
+
+      <div style="flex: 1; overflow-y: auto; padding: 8px;">
+        <!-- Selected agent -->
+        <div style="background: #1a1a22; border-left: 3px solid #6ee7b7; border-radius: 6px; padding: 10px; margin-bottom: 6px;">
+          <div style="color: #e8e8ed; font-size: 11px; font-weight: 500;">Acme Support Bot</div>
+          <div style="color: #55556a; font-size: 9px; margin-top: 3px;">claude-sonnet-4</div>
+          <div style="display: flex; gap: 4px; margin-top: 5px; flex-wrap: wrap;">
+            <span style="background: #6ee7b715; color: #6ee7b7; padding: 1px 6px; border-radius: 3px; font-size: 8px;">2 retrievers</span>
+            <span style="background: #6ee7b720; color: #6ee7b7; padding: 1px 6px; border-radius: 10px; font-size: 8px;">ready</span>
+          </div>
+        </div>
+
+        <!-- Other agents -->
+        <div style="border-radius: 6px; padding: 10px; margin-bottom: 6px; border: 1px solid transparent;">
+          <div style="color: #8888a0; font-size: 11px;">FAQ Assistant</div>
+          <div style="color: #55556a; font-size: 9px; margin-top: 3px;">claude-haiku-4</div>
+          <div style="display: flex; gap: 4px; margin-top: 5px;">
+            <span style="background: #8888a010; color: #8888a0; padding: 1px 6px; border-radius: 3px; font-size: 8px;">1 retriever</span>
+            <span style="background: #6ee7b720; color: #6ee7b7; padding: 1px 6px; border-radius: 10px; font-size: 8px;">ready</span>
+          </div>
+        </div>
+
+        <div style="border-radius: 6px; padding: 10px; margin-bottom: 6px; border: 1px solid transparent;">
+          <div style="color: #8888a0; font-size: 11px;">Sales Agent</div>
+          <div style="color: #55556a; font-size: 9px; margin-top: 3px;">claude-sonnet-4</div>
+          <div style="display: flex; gap: 4px; margin-top: 5px;">
+            <span style="background: #8888a010; color: #8888a0; padding: 1px 6px; border-radius: 3px; font-size: 8px;">no tools</span>
+            <span style="background: #f59e0b20; color: #f59e0b; padding: 1px 6px; border-radius: 10px; font-size: 8px;">draft</span>
+          </div>
+        </div>
+
+        <div style="border-radius: 6px; padding: 10px; margin-bottom: 6px; border: 1px solid transparent;">
+          <div style="color: #8888a0; font-size: 11px;">Onboarding Guide</div>
+          <div style="color: #55556a; font-size: 9px; margin-top: 3px;">claude-sonnet-4</div>
+          <div style="display: flex; gap: 4px; margin-top: 5px;">
+            <span style="background: #8888a010; color: #8888a0; padding: 1px 6px; border-radius: 3px; font-size: 8px;">3 retrievers</span>
+            <span style="background: #6ee7b720; color: #6ee7b7; padding: 1px 6px; border-radius: 10px; font-size: 8px;">ready</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main area: two-column grid -->
+    <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+      <!-- Context bar -->
+      <div style="padding: 10px 16px; border-bottom: 1px solid #2a2a36; background: #0c0c0f; display: flex; align-items: center; gap: 10px;">
+        <span style="color: #e8e8ed; font-size: 13px; font-weight: 600;">Acme Support Bot</span>
+        <span style="background: #6ee7b720; color: #6ee7b7; padding: 2px 8px; border-radius: 10px; font-size: 9px;">ready</span>
+        <div style="margin-left: auto; display: flex; gap: 6px;">
+          <span style="color: #55556a; font-size: 9px; background: #1a1a22; padding: 3px 8px; border-radius: 4px; border: 1px solid #2a2a36; cursor: pointer;">Delete</span>
+        </div>
+      </div>
+
+      <!-- Two columns: Config + Playground -->
+      <div style="flex: 1; display: grid; grid-template-columns: 380px 1fr; min-height: 0;">
+
+        <!-- LEFT: Config panel (scrollable) -->
+        <div style="border-right: 1px solid #2a2a36; overflow-y: auto; padding: 14px;">
+
+          <!-- Identity -->
+          <div style="margin-bottom: 14px;">
+            <div style="color: #8888a0; font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <span style="color: #6ee7b750;">●</span> Identity & Company
+            </div>
+            <div style="background: #141419; border: 1px solid #2a2a36; border-radius: 8px; padding: 12px;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                <div>
+                  <div style="color: #55556a; font-size: 8px; margin-bottom: 3px;">Agent Name</div>
+                  <div style="background: #1a1a22; border: 1px solid #2a2a36; border-radius: 5px; padding: 5px 8px; color: #e8e8ed; font-size: 10px;">Acme Support Bot</div>
+                </div>
+                <div>
+                  <div style="color: #55556a; font-size: 8px; margin-bottom: 3px;">Company Name</div>
+                  <div style="background: #1a1a22; border: 1px solid #2a2a36; border-radius: 5px; padding: 5px 8px; color: #e8e8ed; font-size: 10px;">Acme Corp</div>
+                </div>
+              </div>
+              <div style="margin-bottom: 8px;">
+                <div style="color: #55556a; font-size: 8px; margin-bottom: 3px;">Company URL</div>
+                <div style="display: flex; gap: 6px;">
+                  <div style="flex: 1; background: #1a1a22; border: 1px solid #2a2a36; border-radius: 5px; padding: 5px 8px; color: #8888a0; font-size: 10px;">https://acme.com</div>
+                  <span style="background: #6ee7b720; color: #6ee7b7; padding: 5px 10px; border-radius: 5px; font-size: 9px; white-space: nowrap; border: 1px solid #6ee7b730;">Extract</span>
+                </div>
+              </div>
+              <div style="margin-bottom: 8px;">
+                <div style="color: #55556a; font-size: 8px; margin-bottom: 3px;">Role Description</div>
+                <div style="background: #1a1a22; border: 1px solid #2a2a36; border-radius: 5px; padding: 5px 8px; color: #e8e8ed; font-size: 10px; min-height: 36px;">You are a helpful customer support agent for Acme Corp.</div>
+              </div>
+              <div>
+                <div style="color: #55556a; font-size: 8px; margin-bottom: 3px;">Brand Voice</div>
+                <div style="background: #1a1a22; border: 1px solid #2a2a36; border-radius: 5px; padding: 5px 8px; color: #8888a0; font-size: 10px;">friendly, professional, concise</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Response Style -->
+          <div style="margin-bottom: 14px;">
+            <div style="color: #8888a0; font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <span style="color: #6ee7b750;">●</span> Response Style
+            </div>
+            <div style="background: #141419; border: 1px solid #2a2a36; border-radius: 8px; padding: 12px;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div>
+                  <div style="color: #55556a; font-size: 8px; margin-bottom: 3px;">Formality</div>
+                  <div style="background: #1a1a22; border: 1px solid #2a2a36; border-radius: 5px; padding: 5px 8px; color: #e8e8ed; font-size: 10px; display: flex; justify-content: space-between;">Professional <span style="color:#55556a">▾</span></div>
+                </div>
+                <div>
+                  <div style="color: #55556a; font-size: 8px; margin-bottom: 3px;">Length</div>
+                  <div style="background: #1a1a22; border: 1px solid #2a2a36; border-radius: 5px; padding: 5px 8px; color: #e8e8ed; font-size: 10px; display: flex; justify-content: space-between;">Concise <span style="color:#55556a">▾</span></div>
+                </div>
+                <div>
+                  <div style="color: #55556a; font-size: 8px; margin-bottom: 3px;">Formatting</div>
+                  <div style="background: #1a1a22; border: 1px solid #2a2a36; border-radius: 5px; padding: 5px 8px; color: #e8e8ed; font-size: 10px; display: flex; justify-content: space-between;">Markdown <span style="color:#55556a">▾</span></div>
+                </div>
+                <div>
+                  <div style="color: #55556a; font-size: 8px; margin-bottom: 3px;">Language</div>
+                  <div style="background: #1a1a22; border: 1px solid #2a2a36; border-radius: 5px; padding: 5px 8px; color: #e8e8ed; font-size: 10px;">English</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Guardrails -->
+          <div style="margin-bottom: 14px;">
+            <div style="color: #8888a0; font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+              <span style="display: flex; align-items: center; gap: 6px;"><span style="color: #6ee7b750;">●</span> Guardrails & Policies</span>
+              <span style="color: #55556a; cursor: pointer;">▾</span>
+            </div>
+            <div style="background: #141419; border: 1px solid #2a2a36; border-radius: 8px; padding: 12px;">
+              <div style="margin-bottom: 8px;">
+                <div style="color: #55556a; font-size: 8px; margin-bottom: 3px;">Out of Scope</div>
+                <div style="background: #1a1a22; border: 1px solid #2a2a36; border-radius: 5px; padding: 5px 8px; color: #8888a0; font-size: 10px; min-height: 36px;">competitor pricing, internal employee matters, legal advice</div>
+              </div>
+              <div style="margin-bottom: 8px;">
+                <div style="color: #55556a; font-size: 8px; margin-bottom: 3px;">Escalation Rules</div>
+                <div style="background: #1a1a22; border: 1px solid #2a2a36; border-radius: 5px; padding: 5px 8px; color: #8888a0; font-size: 10px; min-height: 36px;">escalate when user is frustrated or requests human agent</div>
+              </div>
+              <div>
+                <div style="color: #55556a; font-size: 8px; margin-bottom: 3px;">Compliance</div>
+                <div style="background: #1a1a22; border: 1px solid #2a2a36; border-radius: 5px; padding: 5px 8px; color: #8888a0; font-size: 10px; min-height: 24px;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Agent Behavior -->
+          <div style="margin-bottom: 14px;">
+            <div style="color: #8888a0; font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <span style="color: #6ee7b750;">●</span> Agent Behavior
+            </div>
+            <div style="background: #141419; border: 1px solid #2a2a36; border-radius: 8px; padding: 12px;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                <div>
+                  <div style="color: #55556a; font-size: 8px; margin-bottom: 3px;">Model</div>
+                  <div style="background: #1a1a22; border: 1px solid #2a2a36; border-radius: 5px; padding: 5px 8px; color: #e8e8ed; font-size: 10px; display: flex; justify-content: space-between;">claude-sonnet-4 <span style="color:#55556a">▾</span></div>
+                </div>
+                <div>
+                  <div style="color: #55556a; font-size: 8px; margin-bottom: 3px;">Reflection</div>
+                  <div style="display: flex; align-items: center; gap: 6px; padding-top: 4px;">
+                    <div style="width: 28px; height: 16px; background: #2a2a36; border-radius: 8px; position: relative;">
+                      <div style="width: 12px; height: 12px; background: #55556a; border-radius: 50%; position: absolute; top: 2px; left: 2px;"></div>
+                    </div>
+                    <span style="color: #55556a; font-size: 9px;">Off</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Retriever Tools -->
+          <div style="margin-bottom: 14px;">
+            <div style="color: #8888a0; font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <span style="color: #6ee7b750;">●</span> Retriever Tools
+            </div>
+            <div style="background: #141419; border: 1px solid #2a2a36; border-radius: 8px; padding: 12px;">
+              <div style="margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #1a1a22; border-radius: 5px; border: 1px solid #2a2a36; margin-bottom: 4px;">
+                  <span style="color: #6ee7b7; font-size: 11px;">☑</span>
+                  <div style="flex: 1;">
+                    <div style="color: #e8e8ed; font-size: 10px;">Product Docs Retriever</div>
+                    <div style="color: #55556a; font-size: 8px; margin-top: 1px;">Acme Knowledge Base · plain · k=5</div>
+                  </div>
+                  <span style="background: #6ee7b720; color: #6ee7b7; padding: 1px 6px; border-radius: 10px; font-size: 8px;">ready</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #1a1a22; border-radius: 5px; border: 1px solid #2a2a36; margin-bottom: 4px;">
+                  <span style="color: #6ee7b7; font-size: 11px;">☑</span>
+                  <div style="flex: 1;">
+                    <div style="color: #e8e8ed; font-size: 10px;">FAQ Retriever</div>
+                    <div style="color: #55556a; font-size: 8px; margin-top: 1px;">Acme Knowledge Base · parent-child · k=3</div>
+                  </div>
+                  <span style="background: #6ee7b720; color: #6ee7b7; padding: 1px 6px; border-radius: 10px; font-size: 8px;">ready</span>
+                </div>
+              </div>
+              <div style="border-top: 1px solid #2a2a36; padding-top: 8px;">
+                <span style="color: #6ee7b7; font-size: 9px; cursor: pointer;">+ Add retriever from any KB</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Additional Instructions -->
+          <div style="margin-bottom: 14px;">
+            <div style="color: #8888a0; font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+              <span style="display: flex; align-items: center; gap: 6px;"><span style="color: #6ee7b750;">●</span> Additional Instructions</span>
+              <span style="color: #55556a; cursor: pointer;">▸</span>
+            </div>
+          </div>
+
+          <!-- Save -->
+          <div style="display: flex; gap: 8px; justify-content: flex-end; padding-top: 4px; border-top: 1px solid #2a2a36;">
+            <span style="background: #6ee7b7; color: #0c0c0f; padding: 6px 20px; border-radius: 6px; font-size: 10px; font-weight: 600;">Save Agent</span>
+          </div>
+        </div>
+
+        <!-- RIGHT: Playground -->
+        <div style="display: flex; flex-direction: column; background: #0a0a0d;">
+          <!-- Playground header -->
+          <div style="padding: 10px 16px; border-bottom: 1px solid #2a2a36; display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="color: #8888a0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px;">Playground</span>
+              <span style="color: #55556a; font-size: 9px;">— Acme Support Bot</span>
+            </div>
+            <span style="color: #55556a; font-size: 9px; background: #1a1a22; padding: 2px 8px; border-radius: 4px; border: 1px solid #2a2a36; cursor: pointer;">Clear chat</span>
+          </div>
+
+          <!-- Chat messages -->
+          <div style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+            <!-- User message -->
+            <div style="display: flex; justify-content: flex-end;">
+              <div style="background: #6ee7b715; border: 1px solid #6ee7b730; border-radius: 12px 12px 4px 12px; padding: 10px 14px; max-width: 80%;">
+                <div style="color: #e8e8ed; font-size: 10px;">What are your pricing plans?</div>
+              </div>
+            </div>
+
+            <!-- Tool call (collapsed) -->
+            <div style="display: flex; justify-content: flex-start;">
+              <div style="max-width: 85%;">
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; padding: 4px 10px; background: #141419; border: 1px solid #2a2a36; border-radius: 6px; width: fit-content;">
+                  <span style="color: #6ee7b7; font-size: 10px;">⚡</span>
+                  <span style="color: #8888a0; font-size: 9px;">Searched <strong style="color: #e8e8ed;">Product Docs Retriever</strong></span>
+                  <span style="color: #55556a; font-size: 9px; cursor: pointer;">▸</span>
+                </div>
+                <!-- Agent response -->
+                <div style="background: #141419; border: 1px solid #2a2a36; border-radius: 4px 12px 12px 12px; padding: 12px 14px;">
+                  <div style="color: #55556a; font-size: 8px; margin-bottom: 6px;">Acme Support Bot</div>
+                  <div style="color: #e8e8ed; font-size: 10px; line-height: 1.6;">
+                    We offer three plans:<br><br>
+                    <strong>Starter</strong> — $29/mo<br>
+                    Up to 1,000 queries, 1 KB<br><br>
+                    <strong>Pro</strong> — $99/mo<br>
+                    Up to 10,000 queries, 5 KBs<br><br>
+                    <strong>Enterprise</strong> — custom pricing<br>
+                    Unlimited queries, dedicated support<br><br>
+                    Would you like details on any of these?
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- User follow-up -->
+            <div style="display: flex; justify-content: flex-end;">
+              <div style="background: #6ee7b715; border: 1px solid #6ee7b730; border-radius: 12px 12px 4px 12px; padding: 10px 14px; max-width: 80%;">
+                <div style="color: #e8e8ed; font-size: 10px;">What's included in the Pro plan?</div>
+              </div>
+            </div>
+
+            <!-- Streaming response -->
+            <div style="display: flex; justify-content: flex-start;">
+              <div style="max-width: 85%;">
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; padding: 4px 10px; background: #141419; border: 1px solid #2a2a36; border-radius: 6px; width: fit-content;">
+                  <span style="color: #6ee7b7; font-size: 10px;">⚡</span>
+                  <span style="color: #8888a0; font-size: 9px;">Searched <strong style="color: #e8e8ed;">Product Docs Retriever</strong></span>
+                  <span style="color: #55556a; font-size: 9px;">▸</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; padding: 4px 10px; background: #141419; border: 1px solid #2a2a36; border-radius: 6px; width: fit-content;">
+                  <span style="color: #6ee7b7; font-size: 10px;">⚡</span>
+                  <span style="color: #8888a0; font-size: 9px;">Searched <strong style="color: #e8e8ed;">FAQ Retriever</strong></span>
+                  <span style="color: #55556a; font-size: 9px;">▸</span>
+                </div>
+                <div style="background: #141419; border: 1px solid #2a2a36; border-radius: 4px 12px 12px 12px; padding: 12px 14px;">
+                  <div style="color: #55556a; font-size: 8px; margin-bottom: 6px;">Acme Support Bot</div>
+                  <div style="color: #e8e8ed; font-size: 10px; line-height: 1.6;">
+                    The <strong>Pro plan</strong> at $99/month includes:<br><br>
+                    • Up to 10,000 queries per month<br>
+                    • 5 Knowledge Bases<br>
+                    • Priority email support<br>
+                    • Advanced analytics dashboard<span style="display: inline-block; width: 6px; height: 12px; background: #6ee7b7; margin-left: 2px; animation: blink 1s infinite; border-radius: 1px;"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Input bar -->
+          <div style="padding: 12px 16px; border-top: 1px solid #2a2a36;">
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <div style="flex: 1; background: #141419; border: 1px solid #2a2a36; border-radius: 8px; padding: 10px 14px; color: #55556a; font-size: 10px;">Type a message...</div>
+              <div style="background: #6ee7b7; color: #0c0c0f; padding: 8px 14px; border-radius: 8px; font-size: 10px; font-weight: 600; cursor: pointer;">Send</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+</style>
+
+<div style="margin-top: 20px; padding: 16px; background: rgba(110, 231, 183, 0.05); border: 1px solid rgba(110, 231, 183, 0.15); border-radius: 8px;">
+  <h3 style="margin-top: 0; font-size: 14px;">Layout breakdown</h3>
+  <ul style="font-size: 13px; line-height: 1.8; color: #ccc;">
+    <li><strong>Sidebar (220px)</strong> — Agent list only. No KB filter. Selected agent highlighted with accent border.</li>
+    <li><strong>Context bar</strong> — Shows selected agent name + status + actions.</li>
+    <li><strong>Config panel (380px, scrollable)</strong> — All structured sections: identity, style, guardrails, behavior, retriever tools, additional instructions. Save button at bottom.</li>
+    <li><strong>Playground (flex, remaining space)</strong> — Single chat session with this agent. Shows tool calls as compact expandable chips above the response. Streaming cursor on active response. Clear chat to reset.</li>
+    <li><strong>Retriever tools</strong> — Listed with their source KB name + config details. "+ Add retriever from any KB" to pick from all org retrievers.</li>
+  </ul>
+</div>

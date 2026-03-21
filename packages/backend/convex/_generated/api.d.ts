@@ -8,7 +8,12 @@
  * @module
  */
 
+import type * as agents_actions from "../agents/actions.js";
+import type * as agents_orchestration from "../agents/orchestration.js";
+import type * as agents_promptTemplate from "../agents/promptTemplate.js";
 import type * as crons from "../crons.js";
+import type * as crud_agents from "../crud/agents.js";
+import type * as crud_conversations from "../crud/conversations.js";
 import type * as crud_datasets from "../crud/datasets.js";
 import type * as crud_documents from "../crud/documents.js";
 import type * as crud_knowledgeBases from "../crud/knowledgeBases.js";
@@ -42,7 +47,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "agents/actions": typeof agents_actions;
+  "agents/orchestration": typeof agents_orchestration;
+  "agents/promptTemplate": typeof agents_promptTemplate;
   crons: typeof crons;
+  "crud/agents": typeof crud_agents;
+  "crud/conversations": typeof crud_conversations;
   "crud/datasets": typeof crud_datasets;
   "crud/documents": typeof crud_documents;
   "crud/knowledgeBases": typeof crud_knowledgeBases;
