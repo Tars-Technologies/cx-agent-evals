@@ -48,6 +48,8 @@ export default function AgentConfigPanel({ agentId }: AgentConfigPanelProps) {
   const [guardrailsOpen, setGuardrailsOpen] = useState(false);
   const [additionalOpen, setAdditionalOpen] = useState(false);
   const [showRetrieverPicker, setShowRetrieverPicker] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
 
   // Sync form state from query data
   useEffect(() => {
@@ -71,34 +73,61 @@ export default function AgentConfigPanel({ agentId }: AgentConfigPanelProps) {
     setAdditionalInstructions(agent.additionalInstructions ?? "");
   }, [agent]);
 
+  // Dirty tracking — compare form state against last-saved agent data
+  const isDirty = agent ? (
+    name !== agent.name ||
+    agentName !== agent.identity.agentName ||
+    companyName !== agent.identity.companyName ||
+    (companyUrl || "") !== (agent.identity.companyUrl ?? "") ||
+    roleDescription !== agent.identity.roleDescription ||
+    (brandVoice || "") !== (agent.identity.brandVoice ?? "") ||
+    (formality || "professional") !== (agent.responseStyle.formality ?? "professional") ||
+    (length || "concise") !== (agent.responseStyle.length ?? "concise") ||
+    (formatting || "") !== (agent.responseStyle.formatting ?? "") ||
+    (language || "English") !== (agent.responseStyle.language ?? "English") ||
+    (outOfScope || "") !== (agent.guardrails.outOfScope ?? "") ||
+    (escalationRules || "") !== (agent.guardrails.escalationRules ?? "") ||
+    (compliance || "") !== (agent.guardrails.compliance ?? "") ||
+    model !== agent.model ||
+    enableReflection !== agent.enableReflection ||
+    JSON.stringify(retrieverIds) !== JSON.stringify(agent.retrieverIds) ||
+    (additionalInstructions || "") !== (agent.additionalInstructions ?? "")
+  ) : false;
+
   const handleSave = async () => {
-    await updateAgent({
-      id: agentId,
-      name,
-      identity: {
-        agentName,
-        companyName,
-        companyUrl: companyUrl || undefined,
-        companyContext: agent?.identity.companyContext,
-        roleDescription,
-        brandVoice: brandVoice || undefined,
-      },
-      responseStyle: {
-        formality: formality || undefined,
-        length: length || undefined,
-        formatting: formatting || undefined,
-        language: language || undefined,
-      },
-      guardrails: {
-        outOfScope: outOfScope || undefined,
-        escalationRules: escalationRules || undefined,
-        compliance: compliance || undefined,
-      },
-      model,
-      enableReflection,
-      retrieverIds,
-      additionalInstructions: additionalInstructions || undefined,
-    });
+    setSaving(true);
+    try {
+      await updateAgent({
+        id: agentId,
+        name,
+        identity: {
+          agentName,
+          companyName,
+          companyUrl: companyUrl || undefined,
+          companyContext: agent?.identity.companyContext,
+          roleDescription,
+          brandVoice: brandVoice || undefined,
+        },
+        responseStyle: {
+          formality: formality || undefined,
+          length: length || undefined,
+          formatting: formatting || undefined,
+          language: language || undefined,
+        },
+        guardrails: {
+          outOfScope: outOfScope || undefined,
+          escalationRules: escalationRules || undefined,
+          compliance: compliance || undefined,
+        },
+        model,
+        enableReflection,
+        retrieverIds,
+        additionalInstructions: additionalInstructions || undefined,
+      });
+      setLastSavedAt(Date.now());
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleExtract = async () => {
@@ -124,7 +153,7 @@ export default function AgentConfigPanel({ agentId }: AgentConfigPanelProps) {
     return <div className="p-4 text-text-dim text-sm">Loading...</div>;
 
   return (
-    <div className="p-3.5 space-y-3.5 overflow-y-auto">
+    <div className="p-3.5 space-y-3.5 overflow-y-auto pb-16 relative">
       {/* ── Section 1: Agent Name ── */}
       <div>
         <div className={sectionHeader}>Agent Name</div>
@@ -329,8 +358,20 @@ export default function AgentConfigPanel({ agentId }: AgentConfigPanelProps) {
               onChange={(e) => setModel(e.target.value)}
               className={selectCls}
             >
-              <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-              <option value="claude-haiku-4-20250514">Claude Haiku 4</option>
+              <optgroup label="Claude (Anthropic)">
+                <option value="claude-opus-4-20250514">Claude Opus 4</option>
+                <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                <option value="claude-sonnet-4-5-20250514">Claude Sonnet 4.5</option>
+                <option value="claude-haiku-4-20250514">Claude Haiku 4</option>
+              </optgroup>
+              <optgroup label="OpenAI">
+                <option value="gpt-4.1">GPT-4.1</option>
+                <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
+                <option value="gpt-4.1-nano">GPT-4.1 Nano</option>
+                <option value="o3">o3</option>
+                <option value="o4-mini">o4-mini</option>
+                <option value="gpt-4o">GPT-4o</option>
+              </optgroup>
             </select>
           </div>
 
@@ -483,13 +524,20 @@ export default function AgentConfigPanel({ agentId }: AgentConfigPanelProps) {
         )}
       </div>
 
-      {/* ── Section 8: Save Button ── */}
-      <button
-        onClick={handleSave}
-        className="w-full bg-accent text-bg text-xs py-2 rounded-md font-medium hover:bg-accent/90 transition-colors cursor-pointer"
-      >
-        Save
-      </button>
+      {/* ── Section 8: Save Button (sticky) ── */}
+      <div className="sticky bottom-0 left-0 right-0 bg-bg-elevated/95 backdrop-blur-sm border-t border-border -mx-3.5 px-3.5 py-2.5 mt-2">
+        <button
+          onClick={handleSave}
+          disabled={!isDirty || saving}
+          className={`w-full text-xs py-2 rounded-md font-medium transition-colors ${
+            isDirty && !saving
+              ? "bg-accent text-bg hover:bg-accent/90 cursor-pointer"
+              : "bg-border text-text-dim cursor-not-allowed"
+          }`}
+        >
+          {saving ? "Saving..." : isDirty ? "Save Changes" : lastSavedAt ? "Saved" : "No Changes"}
+        </button>
+      </div>
     </div>
   );
 }

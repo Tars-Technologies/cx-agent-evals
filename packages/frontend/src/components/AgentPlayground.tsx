@@ -50,6 +50,19 @@ export default function AgentPlayground({ agentId }: AgentPlaygroundProps) {
     ? [...deltas].sort((a, b) => a.start - b.start).map((d) => d.text).join("")
     : "";
 
+  // Detect stuck streaming messages (no deltas for 30s)
+  const [stuckMessageId, setStuckMessageId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!streamingMessage || deltas.length > 0) {
+      setStuckMessageId(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setStuckMessageId(streamingMessage._id);
+    }, 30000);
+    return () => clearTimeout(timer);
+  }, [streamingMessage?._id, deltas.length]);
+
   // Auto-scroll on message changes
   useEffect(() => {
     if (scrollRef.current) {
@@ -145,19 +158,27 @@ export default function AgentPlayground({ agentId }: AgentPlaygroundProps) {
 
           if (msg.role === "assistant") {
             const isStreaming = msg.status === "streaming";
+            const isStuck = stuckMessageId === msg._id;
+            const isError = msg.status === "error";
             const displayContent = isStreaming ? streamedText : msg.content;
 
             return (
               <div key={msg._id} className="flex justify-start">
                 <div className="max-w-[80%]">
                   <div className="text-text-dim text-[8px] mb-0.5 ml-1">Agent</div>
-                  <div className="bg-bg-elevated border border-border rounded-xl px-3 py-2">
-                    <p className="text-sm text-text whitespace-pre-wrap">
-                      {displayContent}
-                      {isStreaming && (
-                        <span className="inline-block w-1.5 h-3 bg-accent animate-pulse rounded-sm ml-0.5 align-middle" />
-                      )}
-                    </p>
+                  <div className={`bg-bg-elevated border rounded-xl px-3 py-2 ${isError ? "border-red-500/30" : "border-border"}`}>
+                    {isStuck && !displayContent ? (
+                      <p className="text-sm text-red-400">
+                        Agent is not responding. Check that ANTHROPIC_API_KEY (or OPENAI_API_KEY for OpenAI models) is set in Convex dashboard environment variables.
+                      </p>
+                    ) : (
+                      <p className={`text-sm whitespace-pre-wrap ${isError ? "text-red-400" : "text-text"}`}>
+                        {displayContent}
+                        {isStreaming && !isStuck && (
+                          <span className="inline-block w-1.5 h-3 bg-accent animate-pulse rounded-sm ml-0.5 align-middle" />
+                        )}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
