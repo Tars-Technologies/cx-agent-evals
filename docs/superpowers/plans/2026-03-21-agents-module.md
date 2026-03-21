@@ -34,7 +34,7 @@
 | File | What Changes |
 |------|-------------|
 | `packages/backend/convex/schema.ts` | Add 4 new tables: agents, conversations, messages, streamDeltas |
-| `packages/backend/convex.json` | Add `ai`, `@ai-sdk/anthropic` to externalPackages |
+| `packages/backend/convex.json` | Add `ai`, `@ai-sdk/anthropic`, `zod` to externalPackages |
 | `packages/backend/package.json` | Add `ai`, `@ai-sdk/anthropic` dependencies |
 | `packages/backend/convex/crud/knowledgeBases.ts` | Add `getInternal` internalQuery |
 | `packages/frontend/src/components/Header.tsx` | Add `"agents"` to mode type union, add nav link |
@@ -66,7 +66,7 @@ In `packages/backend/convex.json`, add `"ai"` and `"@ai-sdk/anthropic"` to the `
 "externalPackages": [
   "langsmith", "@langchain/core", "openai", "minisearch",
   "@mozilla/readability", "linkedom", "turndown", "unpdf",
-  "ai", "@ai-sdk/anthropic"
+  "ai", "@ai-sdk/anthropic", "zod"
 ]
 ```
 
@@ -1181,17 +1181,13 @@ export const getOrCreatePlayground = mutation({
       throw new Error("Agent not found");
     }
 
-    // Look for existing active conversation with this agent
+    // Look for existing active playground conversation for this agent.
+    // Convex can't filter on array contents, so we filter by status
+    // and check agentIds in code.
     const existing = await ctx.db
       .query("conversations")
       .withIndex("by_org", (q) => q.eq("orgId", orgId))
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("status"), "active"),
-          // Check if agentIds contains this agent
-          // Since we can't filter arrays directly, we'll check in code
-        ),
-      )
+      .filter((q) => q.eq(q.field("status"), "active"))
       .collect();
 
     const playground = existing.find(
@@ -1250,19 +1246,9 @@ export const clearPlayground = mutation({
 });
 ```
 
-- [ ] **Step 2: Deploy to verify no type errors**
+- [ ] **Step 2: Verify no syntax errors**
 
-```bash
-cd packages/backend && npx convex dev --once
-```
-
-Expected: This will fail because `internal.agents.actions.runAgent` doesn't exist yet. That's fine — we'll create a stub in the next task. For now, just verify no syntax errors by running:
-
-```bash
-cd packages/backend && npx tsc --noEmit
-```
-
-Note: The scheduler reference to `internal.agents.actions.runAgent` will resolve after Task 6.
+Note: This file references `internal.agents.actions.runAgent` and `internal.agents.actions.extractUrlContext` which don't exist yet. The Convex deploy will fail until Task 6 is complete. That's expected — Tasks 5 and 6 should be deployed together. After completing Task 6, run `npx convex dev --once` to deploy both.
 
 - [ ] **Step 3: Commit**
 
@@ -1291,7 +1277,7 @@ Create `packages/backend/convex/agents/actions.ts`:
 ```typescript
 "use node";
 
-import { action, internalAction } from "../_generated/server";
+import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -1477,6 +1463,12 @@ export const runAgent = internalAction({
       const aiMessages = toAIMessages(historyMessages);
 
       // 6. Track order for new messages
+      // ORDERING INVARIANT: The assistant message is at order N. Tool call/result
+      // messages are inserted at N+1, N+2, etc. When reconstructing history for
+      // subsequent turns, toAIMessages() looks ahead from each assistant message
+      // to fold in the following tool_call/tool_result messages. This works
+      // correctly for single-step tool use. For multi-step (multiple tool rounds),
+      // all tool messages are folded into one assistant turn — acceptable for MVP.
       const lastOrder = allMessages.length > 0
         ? Math.max(...allMessages.map((m: any) => m.order))
         : -1;
@@ -1692,10 +1684,9 @@ export const updateInternal = internalMutation({
 });
 ```
 
-In `packages/backend/convex/crud/conversations.ts`, add:
+In `packages/backend/convex/crud/conversations.ts`, add `internalQuery` to the existing import line (`import { mutation, query, internalMutation, internalQuery } from "../_generated/server";`) and add:
 
 ```typescript
-import { internalQuery } from "../_generated/server";
 
 export const listMessagesInternal = internalQuery({
   args: { conversationId: v.id("conversations") },
@@ -1735,7 +1726,7 @@ Expected: successful deployment. The action won't run yet (needs ANTHROPIC_API_K
 - [ ] **Step 4: Commit**
 
 ```bash
-git add packages/backend/convex/agents/actions.ts packages/backend/convex/crud/agents.ts packages/backend/convex/crud/conversations.ts
+git add packages/backend/convex/agents/actions.ts packages/backend/convex/crud/agents.ts packages/backend/convex/crud/conversations.ts packages/backend/convex/crud/knowledgeBases.ts
 git commit -m "feat(agents): add runAgent action and extractUrlContext with streaming"
 ```
 
@@ -2164,12 +2155,26 @@ Create `packages/frontend/src/components/AgentPlayground.tsx`. This component:
 - Auto-scrolls to bottom on new messages
 
 Key implementation details:
+- **State reset on agent change**: Use a `useEffect` that watches `agentId` — when it changes, reset `conversationId` to null and re-call `getOrCreatePlayground`. Use a guard ref to prevent double-fire in React strict mode:
+  ```tsx
+  const [conversationId, setConversationId] = useState<Id<"conversations"> | null>(null);
+  const getOrCreate = useMutation(api.agents.orchestration.getOrCreatePlayground);
+  const initRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (initRef.current === agentId) return;
+    initRef.current = agentId;
+    setConversationId(null);
+    getOrCreate({ agentId }).then(setConversationId);
+  }, [agentId, getOrCreate]);
+  ```
 - Use `useQuery(api.crud.conversations.listMessages, conversationId ? { conversationId } : "skip")` for messages
-- For streaming: find the message with `status === "streaming"` and subscribe to its deltas via `useQuery(api.crud.conversations.getStreamDeltas, { messageId: streamingMessage._id })`
+- For streaming: find the message with `status === "streaming"` and subscribe to its deltas via `useQuery(api.crud.conversations.getStreamDeltas, streamingMessage ? { messageId: streamingMessage._id } : "skip")`
 - Reconstruct text: sort deltas by `start`, concatenate `text` fields
 - Send: call `useMutation(api.agents.orchestration.sendMessage)` with `{ conversationId, agentId, content }`
 - Group tool_call and tool_result messages with the following assistant message for display
 - Use `useRef` for the scroll container and `useEffect` to scroll on message changes
+- **Clear chat**: call `clearPlayground` mutation, then reset `conversationId` to null and `initRef.current` to null so the `useEffect` re-fires and creates a fresh conversation
 
 This is a ~200-250 line component. Follow the project's chat styling:
 - User messages: `bg-accent/10 border border-accent/20 rounded-xl` right-aligned
