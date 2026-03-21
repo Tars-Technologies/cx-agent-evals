@@ -22,7 +22,8 @@
     "turndown": "^7.2.2",
     "unpdf": "^1.4.0",
     "ai": "^4.3.0",
-    "@ai-sdk/anthropic": "^1.2.0"
+    "@ai-sdk/anthropic": "^1.2.0",
+    "zod": "^3.23"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",

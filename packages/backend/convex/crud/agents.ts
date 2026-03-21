@@ -1,4 +1,4 @@
-import { mutation, query } from "../_generated/server";
+import { mutation, query, internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { getAuthContext } from "../lib/auth";
 
@@ -124,5 +124,35 @@ export const remove = mutation({
       throw new Error("Agent not found");
     }
     await ctx.db.delete(id);
+  },
+});
+
+// ─── Internal Queries/Mutations ───
+
+export const getInternal = internalQuery({
+  args: { id: v.id("agents") },
+  handler: async (ctx, { id }) => {
+    return ctx.db.get(id);
+  },
+});
+
+export const updateInternal = internalMutation({
+  args: {
+    id: v.id("agents"),
+    identity: v.optional(v.object({
+      agentName: v.string(),
+      companyName: v.string(),
+      companyUrl: v.optional(v.string()),
+      companyContext: v.optional(v.string()),
+      roleDescription: v.string(),
+      brandVoice: v.optional(v.string()),
+    })),
+  },
+  handler: async (ctx, { id, ...patch }) => {
+    const updates: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(patch)) {
+      if (value !== undefined) updates[key] = value;
+    }
+    await ctx.db.patch(id, updates);
   },
 });

@@ -1,4 +1,4 @@
-import { mutation, query } from "../_generated/server";
+import { mutation, query, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { getAuthContext } from "../lib/auth";
 
@@ -119,5 +119,14 @@ export const get = query({
       throw new Error("Knowledge base not found");
     }
     return kb;
+  },
+});
+
+// ─── Internal Queries ───
+
+export const getInternal = internalQuery({
+  args: { id: v.id("knowledgeBases") },
+  handler: async (ctx, { id }) => {
+    return ctx.db.get(id);
   },
 });
