@@ -21,7 +21,7 @@ export function ModeSelector() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
           {/* Knowledge Base Card */}
           <Link
             href="/kb"
@@ -133,6 +133,33 @@ export function ModeSelector() {
               <span>Configure & index</span>
               <span className="text-border">→</span>
               <span>Test & compare</span>
+            </div>
+          </Link>
+
+          {/* Agents Card */}
+          <Link
+            href="/agents"
+            className="group block border border-border rounded-lg bg-bg-elevated p-8 hover:border-accent/50 hover:bg-bg-elevated/80 transition-all duration-200"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
+                <svg className="w-5 h-5 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-medium text-text group-hover:text-accent transition-colors">
+                Agents
+              </h2>
+            </div>
+            <p className="text-text-muted text-sm leading-relaxed">
+              Create CX agents with custom prompts and retriever tools. Test them in a live playground.
+            </p>
+            <div className="mt-6 text-xs text-text-dim flex items-center gap-2">
+              <span>Create agent</span>
+              <span className="text-border">→</span>
+              <span>Add tools</span>
+              <span className="text-border">→</span>
+              <span>Test & iterate</span>
             </div>
           </Link>
 
