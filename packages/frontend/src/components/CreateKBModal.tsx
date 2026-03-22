@@ -1,25 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/lib/convex";
 import { Id } from "@convex/_generated/dataModel";
-
-const INDUSTRIES = [
-  "finance",
-  "insurance",
-  "healthcare",
-  "telecom",
-  "education",
-  "government",
-] as const;
-
-const ENTITY_TYPES = [
-  "company",
-  "government-state",
-  "government-county",
-  "industry-aggregate",
-] as const;
+import {
+  INDUSTRIES,
+  ENTITY_TYPES,
+  loadKBCreateConfig,
+  saveKBCreateConfig,
+} from "@/lib/constants";
 
 interface CreateKBModalProps {
   open: boolean;
@@ -30,13 +20,46 @@ interface CreateKBModalProps {
 export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) {
   const createKb = useMutation(api.crud.knowledgeBases.create);
   const [name, setName] = useState("");
-  const [industry, setIndustry] = useState("");
-  const [entityType, setEntityType] = useState("");
+  const [industry, setIndustry] = useState<string>("other");
+  const [customIndustry, setCustomIndustry] = useState("");
+  const [entityType, setEntityType] = useState<string>("company");
   const [company, setCompany] = useState("");
-  const [sourceUrl, setSourceUrl] = useState("");
+  const [companyUrl, setCompanyUrl] = useState("");
   const [creating, setCreating] = useState(false);
+  const [showPreviousHint, setShowPreviousHint] = useState(false);
+
+  // Pre-populate from localStorage when modal opens
+  useEffect(() => {
+    if (!open) return;
+    const saved = loadKBCreateConfig();
+    if (saved) {
+      setCompany(saved.company);
+      setCompanyUrl(saved.companyUrl);
+      setIndustry(saved.industry || "other");
+      setCustomIndustry(saved.customIndustry);
+      setEntityType(saved.entityType || "company");
+      setShowPreviousHint(true);
+    } else {
+      setIndustry("other");
+      setEntityType("company");
+      setShowPreviousHint(false);
+    }
+    setName("");
+    setCreating(false);
+  }, [open]);
 
   if (!open) return null;
+
+  function handleFieldChange() {
+    setShowPreviousHint(false);
+  }
+
+  const resolvedIndustry =
+    industry === "other" && customIndustry.trim()
+      ? customIndustry.trim()
+      : industry === "other"
+        ? undefined
+        : industry;
 
   async function handleCreate() {
     if (!name.trim() || creating) return;
@@ -44,16 +67,18 @@ export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) 
     try {
       const id = await createKb({
         name: name.trim(),
-        ...(industry && { industry }),
+        ...(resolvedIndustry && { industry: resolvedIndustry }),
         ...(entityType && { entityType }),
         ...(company.trim() && { company: company.trim() }),
-        ...(sourceUrl.trim() && { sourceUrl: sourceUrl.trim() }),
+        ...(companyUrl.trim() && { sourceUrl: companyUrl.trim() }),
       });
-      setName("");
-      setIndustry("");
-      setEntityType("");
-      setCompany("");
-      setSourceUrl("");
+      saveKBCreateConfig({
+        company: company.trim(),
+        companyUrl: companyUrl.trim(),
+        industry,
+        customIndustry: customIndustry.trim(),
+        entityType,
+      });
       onCreated(id);
     } finally {
       setCreating(false);
@@ -73,6 +98,10 @@ export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) 
             &times;
           </button>
         </div>
+
+        {showPreviousHint && (
+          <p className="text-[10px] text-text-dim -mt-2">Previously used values</p>
+        )}
 
         <div className="border-t border-border" />
 
@@ -94,25 +123,41 @@ export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) 
             <label className="text-xs text-text-muted uppercase tracking-wide">Industry</label>
             <select
               value={industry}
-              onChange={(e) => setIndustry(e.target.value)}
+              onChange={(e) => {
+                setIndustry(e.target.value);
+                handleFieldChange();
+              }}
               className="w-full bg-bg border border-border rounded px-3 py-2 text-sm text-text-dim focus:border-accent outline-none"
             >
-              <option value="">Select industry...</option>
               {INDUSTRIES.map((ind) => (
                 <option key={ind} value={ind}>
                   {ind.charAt(0).toUpperCase() + ind.slice(1)}
                 </option>
               ))}
             </select>
+            {industry === "other" && (
+              <input
+                type="text"
+                value={customIndustry}
+                onChange={(e) => {
+                  setCustomIndustry(e.target.value);
+                  handleFieldChange();
+                }}
+                placeholder="Enter custom industry..."
+                className="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm text-text focus:border-accent outline-none mt-1"
+              />
+            )}
           </div>
           <div className="space-y-1">
             <label className="text-xs text-text-muted uppercase tracking-wide">Entity Type</label>
             <select
               value={entityType}
-              onChange={(e) => setEntityType(e.target.value)}
+              onChange={(e) => {
+                setEntityType(e.target.value);
+                handleFieldChange();
+              }}
               className="w-full bg-bg border border-border rounded px-3 py-2 text-sm text-text-dim focus:border-accent outline-none"
             >
-              <option value="">Select type...</option>
               {ENTITY_TYPES.map((et) => (
                 <option key={et} value={et}>
                   {et}
@@ -127,19 +172,25 @@ export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) 
           <input
             type="text"
             value={company}
-            onChange={(e) => setCompany(e.target.value)}
+            onChange={(e) => {
+              setCompany(e.target.value);
+              handleFieldChange();
+            }}
             placeholder="e.g. Acme Inc"
             className="w-full bg-bg border border-border rounded px-3 py-2 text-sm text-text focus:border-accent outline-none"
           />
         </div>
 
         <div className="space-y-1">
-          <label className="text-xs text-text-muted uppercase tracking-wide">Source URL</label>
+          <label className="text-xs text-text-muted uppercase tracking-wide">Company URL</label>
           <input
             type="text"
-            value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
-            placeholder="https://acme.com/support"
+            value={companyUrl}
+            onChange={(e) => {
+              setCompanyUrl(e.target.value);
+              handleFieldChange();
+            }}
+            placeholder="https://acme.com"
             className="w-full bg-bg border border-border rounded px-3 py-2 text-sm text-text focus:border-accent outline-none"
           />
         </div>

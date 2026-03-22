@@ -9,21 +9,34 @@ export interface HtmlToMarkdownResult {
   links: string[];
 }
 
+const BOILERPLATE_SELECTORS = [
+  "nav",
+  "header",
+  "footer",
+  "aside",
+  "[role='navigation']",
+  "[role='banner']",
+  "[role='contentinfo']",
+  "[role='complementary']",
+  ".cookie-banner",
+  ".cookie-consent",
+  "#cookie-banner",
+  "#cookie-consent",
+  ".gdpr",
+  "#gdpr",
+  "script",
+  "style",
+  "noscript",
+  "iframe",
+];
+
 export async function htmlToMarkdown(
   html: string,
   options?: HtmlToMarkdownOptions,
 ): Promise<HtmlToMarkdownResult> {
-  // Dynamic imports — deferred so module-level init doesn't run during
-  // Convex's push analysis phase.  All three deps are CJS, so .default may
-  // or may not exist depending on the runtime's CJS/ESM interop behavior.
   const linkedomMod = await import("linkedom");
   const parseHTML: (html: string) => { document: any } =
     (linkedomMod as any).parseHTML ?? (linkedomMod as any).default?.parseHTML;
-
-  const readabilityMod = await import("@mozilla/readability");
-  const Readability: new (doc: any) => { parse(): { content: string; title: string } | null } =
-    (readabilityMod as any).Readability ??
-    (readabilityMod as any).default?.Readability;
 
   const turndownMod = await import("turndown");
   const TurndownService = (turndownMod as any).default ?? turndownMod;
@@ -34,19 +47,17 @@ export async function htmlToMarkdown(
 
   const links = extractLinks(doc, baseUrl);
   let title: string = doc.querySelector("title")?.textContent?.trim() || "";
-  // Extract h1 before Readability mutates the DOM
   const h1Title: string = doc.querySelector("h1")?.textContent?.trim() || "";
   let htmlForConversion: string;
 
   if (onlyMainContent) {
-    const reader = new Readability(doc);
-    const article = reader.parse();
-    if (article) {
-      htmlForConversion = (article.content as string) || "";
-      title = (article.title as string) || title;
-    } else {
-      htmlForConversion = doc.body?.innerHTML || html;
+    for (const selector of BOILERPLATE_SELECTORS) {
+      const elements = doc.querySelectorAll(selector);
+      for (const el of elements) {
+        el.remove();
+      }
     }
+    htmlForConversion = doc.body?.innerHTML || html;
   } else {
     htmlForConversion = doc.body?.innerHTML || html;
   }
@@ -58,7 +69,7 @@ export async function htmlToMarkdown(
   let markdown = turndown.turndown(htmlForConversion);
   markdown = cleanupMarkdown(markdown);
 
-  // Title priority: <title> tag > Readability article.title > original h1 > first markdown heading
+  // Title priority: <title> tag > original h1 > first markdown heading
   if (!title) {
     title = h1Title;
   }

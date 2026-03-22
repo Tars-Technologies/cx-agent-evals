@@ -8,11 +8,9 @@ import { Header } from "@/components/Header";
 import { useKbFromUrl } from "@/lib/useKbFromUrl";
 import { FileUploader } from "@/components/FileUploader";
 import { CreateKBModal } from "@/components/CreateKBModal";
+import { ImportUrlModal } from "@/components/ImportUrlModal";
 import { MarkdownViewer } from "@/components/MarkdownViewer";
-
-const INDUSTRIES = [
-  "finance", "insurance", "healthcare", "telecom", "education", "government",
-] as const;
+import { INDUSTRIES } from "@/lib/constants";
 
 export default function KBPage() {
   return (
@@ -34,10 +32,8 @@ function KBPageContent() {
   const [docViewMode, setDocViewMode] = useState<"raw" | "rendered">("rendered");
 
   // --- Crawl state ---
-  const [showImportUrl, setShowImportUrl] = useState(false);
-  const [crawlUrl, setCrawlUrl] = useState("");
+  const [showImportModal, setShowImportModal] = useState(false);
   const [crawlJobId, setCrawlJobId] = useState<Id<"crawlJobs"> | null>(null);
-  const [crawling, setCrawling] = useState(false);
 
   // --- Queries ---
   const kbs = useQuery(
@@ -59,7 +55,6 @@ function KBPageContent() {
 
   // --- Mutations ---
   const removeDoc = useMutation(api.crud.documents.remove);
-  const startCrawl = useMutation(api.scraping.orchestration.startCrawl);
   const cancelCrawl = useMutation(api.scraping.orchestration.cancelCrawl);
 
   // --- Derived ---
@@ -78,21 +73,6 @@ function KBPageContent() {
   }, [selectedKbId]);
 
   // --- Handlers ---
-  async function handleStartCrawl() {
-    if (!crawlUrl.trim() || !selectedKbId || crawling) return;
-    setCrawling(true);
-    try {
-      const jobId = await startCrawl({
-        kbId: selectedKbId,
-        startUrl: crawlUrl.trim(),
-      });
-      setCrawlJobId(jobId);
-      setCrawlUrl("");
-    } finally {
-      setCrawling(false);
-    }
-  }
-
   async function handleDeleteDoc(docId: Id<"documents">) {
     try {
       await removeDoc({ id: docId });
@@ -227,34 +207,12 @@ function KBPageContent() {
               {/* Upload + Import */}
               <div className="p-3 border-b border-border space-y-2">
                 <FileUploader kbId={selectedKbId} />
-
                 <button
-                  onClick={() => setShowImportUrl(!showImportUrl)}
-                  className="text-xs text-text-dim hover:text-accent transition-colors"
+                  onClick={() => setShowImportModal(true)}
+                  className="px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors whitespace-nowrap"
                 >
-                  {showImportUrl ? "Hide URL Import" : "Import from URL"}
+                  Import from URL
                 </button>
-
-                {showImportUrl && (
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      value={crawlUrl}
-                      onChange={(e) => setCrawlUrl(e.target.value)}
-                      placeholder="https://example.com/docs"
-                      className="flex-1 bg-bg border border-border rounded px-2 py-1 text-sm text-text focus:border-accent outline-none"
-                      disabled={crawling}
-                      onKeyDown={(e) => e.key === "Enter" && handleStartCrawl()}
-                    />
-                    <button
-                      onClick={handleStartCrawl}
-                      disabled={!crawlUrl.trim() || crawling}
-                      className="px-3 py-1 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 disabled:opacity-50 transition-colors"
-                    >
-                      {crawling ? "..." : "Go"}
-                    </button>
-                  </div>
-                )}
 
                 {/* Crawl progress */}
                 {crawlJob && (
@@ -443,6 +401,17 @@ function KBPageContent() {
         onClose={() => setShowCreateModal(false)}
         onCreated={handleKBCreated}
       />
+
+      {/* Import URL Modal */}
+      {selectedKbId && (
+        <ImportUrlModal
+          open={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          kbId={selectedKbId}
+          defaultUrl={selectedKb?.sourceUrl}
+          onStarted={(jobId) => setCrawlJobId(jobId)}
+        />
+      )}
     </div>
   );
 }
