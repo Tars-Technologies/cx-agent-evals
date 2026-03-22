@@ -8,7 +8,7 @@ export function ModeSelector() {
     <div className="flex flex-col min-h-screen bg-bg">
       <Header />
       <div className="flex-1 flex items-center justify-center p-8">
-      <div className="max-w-6xl w-full">
+      <div className="max-w-6xl xl:max-w-[1400px] w-full">
         <div className="text-center mb-12">
           <div className="flex items-center justify-center gap-3 mb-4">
             <div className="w-3 h-3 rounded-full bg-accent animate-pulse-dot" />
@@ -21,7 +21,7 @@ export function ModeSelector() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           {/* Knowledge Base Card */}
           <Link
             href="/kb"
@@ -51,7 +51,7 @@ export function ModeSelector() {
               Create and manage knowledge bases. Upload documents, import from
               URLs, and organize your data.
             </p>
-            <div className="mt-6 text-xs text-text-dim flex items-center gap-2">
+            <div className="mt-6 text-xs text-text-dim flex items-center gap-2 flex-wrap">
               <span>Create KB</span>
               <span className="text-border">&rarr;</span>
               <span>Upload docs</span>
@@ -89,7 +89,7 @@ export function ModeSelector() {
               Create synthetic evaluation datasets with ground truth spans for
               RAG retrieval testing
             </p>
-            <div className="mt-6 text-xs text-text-dim flex items-center gap-2">
+            <div className="mt-6 text-xs text-text-dim flex items-center gap-2 flex-wrap">
               <span>Load corpus</span>
               <span className="text-border">→</span>
               <span>Configure strategy</span>
@@ -127,7 +127,7 @@ export function ModeSelector() {
               Configure, index, and test retrieval pipelines against your
               knowledge bases
             </p>
-            <div className="mt-6 text-xs text-text-dim flex items-center gap-2">
+            <div className="mt-6 text-xs text-text-dim flex items-center gap-2 flex-wrap">
               <span>Select KB</span>
               <span className="text-border">→</span>
               <span>Configure & index</span>
@@ -154,7 +154,7 @@ export function ModeSelector() {
             <p className="text-text-muted text-sm leading-relaxed">
               Create CX agents with custom prompts and retriever tools. Test them in a live playground.
             </p>
-            <div className="mt-6 text-xs text-text-dim flex items-center gap-2">
+            <div className="mt-6 text-xs text-text-dim flex items-center gap-2 flex-wrap">
               <span>Create agent</span>
               <span className="text-border">→</span>
               <span>Add tools</span>
@@ -192,7 +192,7 @@ export function ModeSelector() {
               Run retrieval experiments on LangSmith datasets and compare
               results across configurations
             </p>
-            <div className="mt-6 text-xs text-text-dim flex items-center gap-2">
+            <div className="mt-6 text-xs text-text-dim flex items-center gap-2 flex-wrap">
               <span>Select retriever</span>
               <span className="text-border">→</span>
               <span>Select dataset</span>
