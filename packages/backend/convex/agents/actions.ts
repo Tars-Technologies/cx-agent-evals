@@ -297,7 +297,7 @@ export const runAgent = internalAction({
         statusCode: error?.statusCode,
         responseBody: error?.responseBody,
         cause: error?.cause?.message ?? error?.cause,
-        model: agent?.model,
+        agentId,
       };
       console.error("[runAgent] FAILED:", JSON.stringify(errorDetail, null, 2));
       if (error?.stack) console.error("[runAgent] Stack:", error.stack.split("\n").slice(0, 5).join("\n"));
