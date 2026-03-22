@@ -32,29 +32,23 @@ async function loadCorpusFromKb(
   };
 }
 
-// ─── Per-Document Generation (Simple Strategy) ───
+// ─── Whole-Corpus Generation (Simple Strategy) ───
 
-export const generateForDocument = internalAction({
+export const generateSimple = internalAction({
   args: {
     datasetId: v.id("datasets"),
-    documentId: v.id("documents"),
+    kbId: v.id("knowledgeBases"),
     strategyConfig: v.any(),
   },
   handler: async (ctx, args) => {
     const config = args.strategyConfig as Record<string, unknown>;
-    const queriesPerDoc = (config.queriesPerDoc as number) ?? 5;
+    const totalQuestions = (config.totalQuestions as number) ?? 30;
     const model = getModel(config);
     const llmClient = createLLMClient();
 
-    const doc = await ctx.runQuery(internal.crud.documents.getInternal, {
-      id: args.documentId,
-    });
+    const { corpus } = await loadCorpusFromKb(ctx, args.kbId);
 
-    const corpus = createCorpusFromDocuments([
-      { id: doc.docId, content: doc.content },
-    ]);
-
-    const strategy = new SimpleStrategy({ queriesPerDoc });
+    const strategy = new SimpleStrategy({ totalQuestions });
     const queries = await strategy.generate({ corpus, llmClient, model });
 
     if (queries.length > 0) {
@@ -63,7 +57,7 @@ export const generateForDocument = internalAction({
         await ctx.runMutation(internal.crud.questions.insertBatch, {
           datasetId: args.datasetId,
           questions: batch.map((q, idx) => ({
-            queryId: `${doc.docId}_q${i + idx}`,
+            queryId: `simple_q${i + idx}`,
             queryText: q.query,
             sourceDocId: q.targetDocId,
             relevantSpans: [],

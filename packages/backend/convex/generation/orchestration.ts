@@ -70,9 +70,8 @@ export const startGeneration = mutation({
       throw new Error("No documents in knowledge base to generate questions from");
     }
 
-    // Determine total items based on strategy
-    const isPerDoc = args.strategy === "simple";
-    const totalItems = isPerDoc ? docs.length : 1;
+    // All strategies are now corpus-wide (single action)
+    const totalItems = 1;
 
     // Create generation job record
     const jobId = await ctx.db.insert("generationJobs", {
@@ -93,23 +92,21 @@ export const startGeneration = mutation({
     // Enqueue work items based on strategy and collect workIds for selective cancellation
     const workIds: WorkId[] = [];
 
-    if (isPerDoc) {
-      for (const doc of docs) {
-        const wId = await pool.enqueueAction(
-          ctx,
-          internal.generation.actions.generateForDocument,
-          {
-            datasetId,
-            documentId: doc._id,
-            strategyConfig: args.strategyConfig,
-          },
-          {
-            context: { jobId, itemKey: doc._id as string },
-            onComplete: internal.generation.orchestration.onQuestionGenerated,
-          },
-        );
-        workIds.push(wId);
-      }
+    if (args.strategy === "simple") {
+      const wId = await pool.enqueueAction(
+        ctx,
+        internal.generation.actions.generateSimple,
+        {
+          datasetId,
+          kbId: args.kbId,
+          strategyConfig: args.strategyConfig,
+        },
+        {
+          context: { jobId, itemKey: "corpus" },
+          onComplete: internal.generation.orchestration.onQuestionGenerated,
+        },
+      );
+      workIds.push(wId);
     } else if (args.strategy === "dimension-driven") {
       const wId = await pool.enqueueAction(
         ctx,
