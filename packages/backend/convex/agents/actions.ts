@@ -291,7 +291,16 @@ export const runAgent = internalAction({
         { messageId: assistantMessageId },
       );
     } catch (error: any) {
-      console.error("[runAgent] Error:", error?.message);
+      const errorDetail = {
+        name: error?.name,
+        message: error?.message,
+        statusCode: error?.statusCode,
+        responseBody: error?.responseBody,
+        cause: error?.cause?.message ?? error?.cause,
+        model: agent?.model,
+      };
+      console.error("[runAgent] FAILED:", JSON.stringify(errorDetail, null, 2));
+      if (error?.stack) console.error("[runAgent] Stack:", error.stack.split("\n").slice(0, 5).join("\n"));
       try {
         await ctx.runMutation(internal.crud.conversations.updateMessage, {
           messageId: assistantMessageId,
