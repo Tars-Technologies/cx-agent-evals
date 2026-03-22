@@ -110,3 +110,22 @@ export const updateSpans = internalMutation({
     });
   },
 });
+
+/**
+ * Delete all questions belonging to a dataset.
+ */
+export const deleteByDataset = internalMutation({
+  args: { datasetId: v.id("datasets") },
+  handler: async (ctx, args) => {
+    const questions = await ctx.db
+      .query("questions")
+      .withIndex("by_dataset", (q) => q.eq("datasetId", args.datasetId))
+      .collect();
+
+    for (const q of questions) {
+      await ctx.db.delete(q._id);
+    }
+
+    return { deleted: questions.length };
+  },
+});

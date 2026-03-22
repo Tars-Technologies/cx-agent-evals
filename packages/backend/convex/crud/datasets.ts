@@ -1,4 +1,4 @@
-import { query, internalMutation, internalQuery } from "../_generated/server";
+import { query, mutation, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { getAuthContext } from "../lib/auth";
 
@@ -90,5 +90,61 @@ export const updateQuestionCount = internalMutation({
     await ctx.db.patch(args.datasetId, {
       questionCount: args.questionCount,
     });
+  },
+});
+
+/**
+ * Delete a dataset and all its questions.
+ * Guards against deletion if experiments reference this dataset.
+ */
+export const deleteDataset = mutation({
+  args: { id: v.id("datasets") },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+
+    const dataset = await ctx.db.get(args.id);
+    if (!dataset || dataset.orgId !== orgId) {
+      throw new Error("Dataset not found");
+    }
+
+    // Guard: check for experiments referencing this dataset
+    const experiments = await ctx.db
+      .query("experiments")
+      .withIndex("by_dataset", (q) => q.eq("datasetId", args.id))
+      .collect();
+
+    if (experiments.length > 0) {
+      const names = experiments.map((e) => e.name).join(", ");
+      throw new Error(
+        `Cannot delete dataset — used by ${experiments.length} experiment(s): ${names}. Delete the experiments first.`
+      );
+    }
+
+    // Cancel any running generation jobs for this dataset
+    const jobs = await ctx.db
+      .query("generationJobs")
+      .withIndex("by_dataset", (q) => q.eq("datasetId", args.id))
+      .collect();
+
+    for (const job of jobs) {
+      if (job.status === "running" || job.status === "pending") {
+        await ctx.db.patch(job._id, { status: "canceled", completedAt: Date.now() });
+      }
+    }
+
+    // Delete all questions in the dataset
+    const questions = await ctx.db
+      .query("questions")
+      .withIndex("by_dataset", (q) => q.eq("datasetId", args.id))
+      .collect();
+
+    for (const q of questions) {
+      await ctx.db.delete(q._id);
+    }
+
+    // Delete the dataset record
+    await ctx.db.delete(args.id);
+
+    return { deleted: true, questionsRemoved: questions.length };
   },
 });
