@@ -44,7 +44,6 @@ function toAIMessages(
       aiMessages.push({ role: "user", content: msg.content });
       i++;
     } else if (msg.role === "assistant") {
-      // Look ahead for tool_call messages that follow
       const toolCalls: any[] = [];
       let j = i + 1;
       while (j < messages.length && messages[j].role === "tool_call") {
@@ -69,7 +68,7 @@ function toAIMessages(
           aiMessages.push({
             role: "tool",
             content: [
-              { type: "tool-result", toolCallId: tr.toolCallId, result: tr.result },
+              { type: "tool-result", toolCallId: tr.toolCallId, toolName: tr.toolName, result: tr.result },
             ],
           });
           j++;
@@ -93,21 +92,12 @@ export const runAgent = internalAction({
     assistantMessageId: v.id("messages"),
   },
   handler: async (ctx, { conversationId, agentId, assistantMessageId }) => {
-    console.log("[runAgent] START", { conversationId, agentId, assistantMessageId });
-
     try {
       // 1. Load agent config
-      console.log("[runAgent] Step 1: Loading agent config...");
       const agent = await ctx.runQuery(internal.crud.agents.getInternal, { id: agentId });
       if (!agent) throw new Error("Agent not found");
-      console.log("[runAgent] Step 1 OK: agent loaded", {
-        name: agent.name,
-        model: agent.model,
-        retrieverCount: agent.retrieverIds.length,
-      });
 
       // 2. Load linked retrievers with KB info
-      console.log("[runAgent] Step 2: Loading retrievers...");
       const retrieverInfos: Array<{
         id: string;
         name: string;
@@ -124,10 +114,7 @@ export const runAgent = internalAction({
         const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
           id: retrieverId,
         });
-        if (!retriever || retriever.status !== "ready") {
-          console.log("[runAgent] Skipping retriever (not ready):", retrieverId, retriever?.status);
-          continue;
-        }
+        if (!retriever || retriever.status !== "ready") continue;
         const kb = await ctx.runQuery(internal.crud.knowledgeBases.getInternal, {
           id: retriever.kbId,
         });
@@ -143,14 +130,8 @@ export const runAgent = internalAction({
           defaultK: retriever.defaultK ?? 5,
         });
       }
-      console.log("[runAgent] Step 2 OK: retrievers loaded", {
-        total: agent.retrieverIds.length,
-        ready: retrieverInfos.length,
-        names: retrieverInfos.map((r) => r.name),
-      });
 
       // 3. Build system prompt
-      console.log("[runAgent] Step 3: Building system prompt...");
       const systemPrompt = composeSystemPrompt(
         agent,
         retrieverInfos.map((r) => ({
@@ -158,10 +139,8 @@ export const runAgent = internalAction({
           kbName: r.kbName,
         })),
       );
-      console.log("[runAgent] Step 3 OK: prompt length =", systemPrompt.length);
 
       // 4. Build AI SDK tools — one per retriever
-      console.log("[runAgent] Step 4: Building tools...");
       const tools: Record<string, any> = {};
       const retrieverMap = new Map(retrieverInfos.map((r) => [slugify(r.name), r]));
 
@@ -174,15 +153,12 @@ export const runAgent = internalAction({
             k: z.number().optional().describe("Number of results to return"),
           }),
           execute: async ({ query, k }) => {
-            console.log("[runAgent] Tool execute:", toolName, { query, k });
             const topK = k ?? info.defaultK;
 
-            // Embed the query
             const { createEmbedder } = await import("rag-evaluation-system/llm");
             const embedder = createEmbedder(info.embeddingModel);
             const queryEmbedding = await embedder.embedQuery(query);
 
-            // Vector search
             const { chunks } = await vectorSearchWithFilter(ctx, {
               queryEmbedding,
               kbId: info.kbId as any,
@@ -191,7 +167,6 @@ export const runAgent = internalAction({
               indexStrategy: info.indexStrategy,
             });
 
-            console.log("[runAgent] Tool result:", toolName, "chunks:", chunks.length);
             return chunks.map((c: any) => ({
               content: c.content,
               documentId: c.documentId,
@@ -201,10 +176,8 @@ export const runAgent = internalAction({
           },
         });
       }
-      console.log("[runAgent] Step 4 OK: tools =", Object.keys(tools));
 
       // 5. Load conversation history
-      console.log("[runAgent] Step 5: Loading conversation history...");
       const allMessages = await ctx.runQuery(
         internal.crud.conversations.listMessagesInternal,
         { conversationId },
@@ -213,11 +186,6 @@ export const runAgent = internalAction({
         (m: any) => m._id !== assistantMessageId,
       );
       const aiMessages = toAIMessages(historyMessages);
-      console.log("[runAgent] Step 5 OK:", {
-        totalMessages: allMessages.length,
-        historyMessages: historyMessages.length,
-        aiMessages: aiMessages.length,
-      });
 
       // 6. Track order for new messages
       const lastOrder = allMessages.length > 0
@@ -225,17 +193,7 @@ export const runAgent = internalAction({
         : -1;
       let nextOrder = lastOrder + 1;
 
-      // 7. Stream the response
-      console.log("[runAgent] Step 7: Starting streamText with model:", agent.model);
-
-      // Check env vars
-      const isOpenAI = agent.model.startsWith("gpt-") || agent.model.startsWith("o1") || agent.model.startsWith("o3") || agent.model.startsWith("o4");
-      if (isOpenAI) {
-        console.log("[runAgent] Using OpenAI provider. OPENAI_API_KEY set:", !!process.env.OPENAI_API_KEY);
-      } else {
-        console.log("[runAgent] Using Anthropic provider. ANTHROPIC_API_KEY set:", !!process.env.ANTHROPIC_API_KEY);
-      }
-
+      // 7. Stream the response using fullStream (handles multi-step tool use properly)
       let streamCursor = 0;
       let buffer = "";
       const FLUSH_INTERVAL_MS = 200;
@@ -258,28 +216,16 @@ export const runAgent = internalAction({
         });
       };
 
-      const resolvedModel = resolveModel(agent.model);
-      console.log("[runAgent] Model resolved. Calling streamText...");
-
       const result = streamText({
-        model: resolvedModel,
+        model: resolveModel(agent.model),
         system: systemPrompt,
         messages: aiMessages,
         tools: Object.keys(tools).length > 0 ? tools : undefined,
         maxSteps: 5,
       });
 
-      // Use fullStream to properly handle multi-step tool use.
-      // textStream only yields text deltas and can complete before tool calls finish.
-      // fullStream yields ALL events and only ends when all steps are done.
-      console.log("[runAgent] Consuming fullStream (handles tool calls + text)...");
-      let fullText = "";
-      let chunkCount = 0;
-      let stepCount = 0;
-
       for await (const part of result.fullStream) {
         if (part.type === "text-delta") {
-          chunkCount++;
           buffer += part.textDelta;
           const now = Date.now();
           if (
@@ -289,7 +235,6 @@ export const runAgent = internalAction({
             await flushBuffer();
           }
         } else if (part.type === "tool-call") {
-          console.log("[runAgent] Tool call:", part.toolName, JSON.stringify(part.args).slice(0, 200));
           const retrieverInfo = retrieverMap.get(part.toolName);
           await ctx.runMutation(internal.crud.conversations.insertMessage, {
             conversationId,
@@ -306,7 +251,6 @@ export const runAgent = internalAction({
             status: "complete",
           });
         } else if (part.type === "tool-result") {
-          console.log("[runAgent] Tool result:", part.toolName, "length:", JSON.stringify(part.result).length);
           const retrieverInfo = retrieverMap.get(part.toolName);
           await ctx.runMutation(internal.crud.conversations.insertMessage, {
             conversationId,
@@ -322,40 +266,12 @@ export const runAgent = internalAction({
             },
             status: "complete",
           });
-        } else if (part.type === "step-finish") {
-          stepCount++;
-          console.log("[runAgent] Step finished:", stepCount, {
-            finishReason: part.finishReason,
-            usage: part.usage,
-          });
-        } else if (part.type === "error") {
-          console.error("[runAgent] Stream error event:", part.error);
-        } else if (part.type === "finish") {
-          console.log("[runAgent] Stream finished:", {
-            finishReason: part.finishReason,
-            usage: part.usage,
-          });
         }
       }
       await flushBuffer();
-      console.log("[runAgent] fullStream complete. Text chunks:", chunkCount, "Steps:", stepCount);
 
       // 8. Finalize the assistant message
-      // result.text and result.usage should already be resolved since fullStream completed
-      let finalText: string;
-      let usage: any;
-      try {
-        [finalText, usage] = await Promise.all([result.text, result.usage]);
-      } catch (e: any) {
-        console.error("[runAgent] Error resolving result.text/usage:", e?.message);
-        // Fall back to our accumulated buffer
-        finalText = fullText || "";
-        usage = undefined;
-      }
-      console.log("[runAgent] Step 8: Finalizing message", {
-        textLength: finalText.length,
-        usage,
-      });
+      const [finalText, usage] = await Promise.all([result.text, result.usage]);
       await ctx.runMutation(internal.crud.conversations.updateMessage, {
         messageId: assistantMessageId,
         content: finalText,
@@ -374,26 +290,17 @@ export const runAgent = internalAction({
         internal.crud.conversations.cleanupStreamDeltas,
         { messageId: assistantMessageId },
       );
-      console.log("[runAgent] DONE - success");
     } catch (error: any) {
-      console.error("[runAgent] CAUGHT ERROR:", {
-        name: error?.name,
-        message: error?.message,
-        cause: error?.cause,
-        stack: error?.stack?.slice(0, 500),
-      });
-      // Try to update the message with the error
+      console.error("[runAgent] Error:", error?.message);
       try {
         await ctx.runMutation(internal.crud.conversations.updateMessage, {
           messageId: assistantMessageId,
           content: `Error: ${error.message ?? "Unknown error"}. Please try again.`,
           status: "error",
         });
-        console.log("[runAgent] Error message saved to conversation");
       } catch (updateError: any) {
-        console.error("[runAgent] FAILED to save error to message:", updateError?.message);
+        console.error("[runAgent] Failed to save error to message:", updateError?.message);
       }
-      // Re-throw so Convex marks the action as failed (not silently swallowed)
       throw error;
     }
   },
@@ -425,7 +332,7 @@ export const extractUrlContext = internalAction({
 
       const { generateText } = await import("ai");
       const result = await generateText({
-        model: anthropic("claude-haiku-4-20250514"),
+        model: anthropic("claude-haiku-4-5-20251001"),
         system:
           "You are a research assistant. Summarize the following company information in 2-3 concise paragraphs. Focus on: what the company does, their industry, key products/services, and target audience.",
         prompt: `Company website: ${url}\nTitle: ${title}\n\nContent:\n${textContent}`,
