@@ -56,7 +56,7 @@ export const startCrawl = mutation({
     const userConfig = args.config ?? {};
     const config = {
       maxDepth: userConfig.maxDepth ?? 3,
-      maxPages: userConfig.maxPages ?? 100,
+      maxPages: userConfig.maxPages ?? 200,
       includePaths: userConfig.includePaths,
       excludePaths: userConfig.excludePaths,
       allowSubdomains: userConfig.allowSubdomains ?? false,
