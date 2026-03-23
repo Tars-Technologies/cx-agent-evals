@@ -23,7 +23,13 @@ export function DimensionWizard({
     initialDimensions ?? [],
   );
   const [totalQuestions, setTotalQuestions] = useState(initialTotalQuestions);
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(() => {
+    try {
+      return localStorage.getItem("rag-eval:dimension-discover-url") ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [discovering, setDiscovering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<Set<number>>(
@@ -49,6 +55,11 @@ export function DimensionWizard({
       }
 
       setDimensions(data.dimensions);
+      try {
+        localStorage.setItem("rag-eval:dimension-discover-url", url);
+      } catch {
+        // localStorage full or unavailable
+      }
       setStep(2);
     } catch {
       setError("Connection failed — check server");
@@ -146,31 +157,41 @@ export function DimensionWizard({
               Dimension Setup
             </h2>
             <div className="flex items-center gap-3 mt-2">
-              {[1, 2, 3].map((s) => (
-                <div key={s} className="flex items-center gap-1.5">
-                  <span
-                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors ${
-                      s === step
-                        ? "bg-accent text-bg"
-                        : s < step
-                          ? "bg-accent/20 text-accent"
-                          : "bg-bg-surface text-text-muted"
-                    }`}
+              {[1, 2, 3].map((s) => {
+                const isCompleted = s < step;
+                const isCurrent = s === step;
+                const canClick = isCompleted; // Can only click completed steps
+
+                return (
+                  <div
+                    key={s}
+                    className={`flex items-center gap-1.5 ${canClick ? "cursor-pointer" : ""}`}
+                    onClick={canClick ? () => setStep(s) : undefined}
                   >
-                    {s}
-                  </span>
-                  <span
-                    className={`text-[10px] uppercase tracking-wider ${
-                      s === step ? "text-accent" : "text-text-dim"
-                    }`}
-                  >
-                    {s === 1 ? "Discover" : s === 2 ? "Edit" : "Configure"}
-                  </span>
-                  {s < 3 && (
-                    <span className="w-4 h-px bg-border mx-1" />
-                  )}
-                </div>
-              ))}
+                    <span
+                      className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors ${
+                        isCurrent
+                          ? "bg-accent text-bg"
+                          : isCompleted
+                            ? "bg-accent/20 text-accent"
+                            : "bg-bg-surface text-text-muted"
+                      }`}
+                    >
+                      {isCompleted ? "✓" : s}
+                    </span>
+                    <span
+                      className={`text-[10px] uppercase tracking-wider ${
+                        isCurrent || isCompleted ? "text-accent" : "text-text-dim"
+                      }`}
+                    >
+                      {s === 1 ? "Discover" : s === 2 ? "Edit" : "Configure"}
+                    </span>
+                    {s < 3 && (
+                      <span className="w-4 h-px bg-border mx-1" />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
           <button

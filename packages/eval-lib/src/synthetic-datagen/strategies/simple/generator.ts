@@ -55,13 +55,15 @@ export class SimpleStrategy implements QuestionStrategy {
   async generate(context: StrategyContext): Promise<GeneratedQuery[]> {
     const results: GeneratedQuery[] = [];
     const maxChars = this._options.maxDocumentChars ?? 8000;
+    const numDocs = context.corpus.documents.length;
+    const perDoc = Math.ceil(this._options.totalQuestions / numDocs);
 
     for (const doc of context.corpus.documents) {
       if (doc.content.length > maxChars) {
         console.warn(`Document "${String(doc.id)}" truncated from ${doc.content.length} to ${maxChars} chars`);
       }
       const docContent = doc.content.substring(0, maxChars);
-      const prompt = `Document:\n${docContent}\n\nGenerate ${this._options.queriesPerDoc} diverse questions following the requirements above.`;
+      const prompt = `Document:\n${docContent}\n\nGenerate ${perDoc} diverse questions following the requirements above.`;
 
       const response = await context.llmClient.complete({
         model: context.model,
@@ -84,6 +86,7 @@ export class SimpleStrategy implements QuestionStrategy {
       }
     }
 
-    return results;
+    // Trim to exactly totalQuestions if over-generated due to ceil rounding
+    return results.slice(0, this._options.totalQuestions);
   }
 }

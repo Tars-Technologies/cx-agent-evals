@@ -52,6 +52,7 @@ export class DimensionDrivenStrategy implements QuestionStrategy {
       context.llmClient,
       context.model,
     );
+    console.log(`[DimensionDriven] Funnel: ${validCombos.length} combos after filtering`);
 
     this._onProgress({
       phase: "summarizing",
@@ -64,6 +65,7 @@ export class DimensionDrivenStrategy implements QuestionStrategy {
       context.llmClient,
       context.model,
     );
+    console.log(`[DimensionDriven] Funnel: ${matrix.assignments.length} assignments from relevance matrix`);
 
     this._onProgress({
       phase: "sampling",
@@ -74,6 +76,16 @@ export class DimensionDrivenStrategy implements QuestionStrategy {
       matrix.assignments,
       this._options.totalQuestions,
     );
+
+    // ── Deficit fill: if sampling produced fewer than requested, fill with unscoped questions ──
+    const deficit = this._options.totalQuestions - sampled.length;
+    console.log(`[DimensionDriven] Funnel: ${sampled.length} sampled (target: ${this._options.totalQuestions}), deficit: ${deficit}`);
+    if (deficit > 0) {
+      console.warn(
+        `Dimension-driven pipeline: stratified sample produced ${sampled.length}/${this._options.totalQuestions}. ` +
+        `Filling ${deficit} with unscoped questions.`
+      );
+    }
 
     // Group sampled assignments by document
     const byDoc = new Map<string, DocComboAssignment[]>();
@@ -146,6 +158,55 @@ export class DimensionDrivenStrategy implements QuestionStrategy {
       }
     }
 
-    return results;
+    // ── Generate deficit fill questions (no specific profiles) ──
+    if (deficit > 0) {
+      // Distribute deficit across all documents proportionally
+      const allDocIds = context.corpus.documents.map(d => String(d.id));
+      const deficitPerDoc = Math.ceil(deficit / allDocIds.length);
+
+      for (let dIdx = 0; dIdx < allDocIds.length && results.length < this._options.totalQuestions; dIdx++) {
+        const docId = allDocIds[dIdx];
+        const doc = docIndex.get(docId);
+        if (!doc) continue;
+
+        const needed = Math.min(deficitPerDoc, this._options.totalQuestions - results.length);
+        if (needed <= 0) break;
+
+        this._onProgress({
+          phase: "generating",
+          docId,
+          docIndex: dIdx,
+          totalDocs: allDocIds.length,
+          questionsForDoc: needed,
+        });
+
+        const maxChars = this._options.maxDocumentChars ?? 6000;
+        const docContent = doc.content.substring(0, maxChars);
+
+        const fillPrompt = `Document:\n${docContent}\n\nGenerate ${needed} diverse evaluation questions for a RAG system. Questions should be answerable from this document and sound natural.\n\nOutput JSON: { "questions": ["q1", "q2", ...] }`;
+
+        const fillResponse = await context.llmClient.complete({
+          model: context.model,
+          messages: [
+            { role: "system", content: BATCH_GENERATION_PROMPT },
+            { role: "user", content: fillPrompt },
+          ],
+          responseFormat: "json",
+        });
+
+        const fillData = safeParseLLMResponse(fillResponse, { questions: [] as string[] });
+        for (const q of (fillData.questions ?? [])) {
+          if (results.length >= this._options.totalQuestions) break;
+          results.push({
+            query: q,
+            targetDocId: docId,
+            metadata: { strategy: "dimension-driven", mode: "deficit-fill" },
+          });
+        }
+      }
+    }
+
+    // Final safety trim
+    return results.slice(0, this._options.totalQuestions);
   }
 }

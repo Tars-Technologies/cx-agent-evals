@@ -21,7 +21,7 @@ export interface QuestionStrategy {
 }
 
 export interface SimpleStrategyOptions {
-  readonly queriesPerDoc: number;
+  readonly totalQuestions: number;
   /** Maximum characters of document content sent to the LLM. Default: 8000. */
   readonly maxDocumentChars?: number;
 }

@@ -10,7 +10,7 @@ export function createLLMClient(apiKey?: string): LLMClient {
   if (!key) {
     throw new Error(
       "OPENAI_API_KEY environment variable is not set. " +
-        "Configure it in your Convex dashboard under Settings → Environment Variables.",
+        "Set it in your environment variables (.env.local for Next.js, Convex dashboard for backend).",
     );
   }
   const openai = new OpenAI({ apiKey: key });

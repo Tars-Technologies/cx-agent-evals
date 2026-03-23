@@ -28,7 +28,6 @@ export interface Dimension {
 export interface GenerateConfig {
   folderPath: string;
   strategy: StrategyType;
-  questionsPerDoc: number;
   dimensions?: Dimension[];
   totalQuestions?: number;
 }
@@ -41,7 +40,6 @@ export type SSEEvent =
 export interface UploadMetadata {
   strategy: StrategyType;
   folderPath: string;
-  questionsPerDoc?: number;
   dimensions?: Dimension[];
   totalQuestions?: number;
 }

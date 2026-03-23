@@ -39,8 +39,18 @@ export const insertBatch = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
+    // Check for existing queryIds to prevent duplicate insertion on retry
+    const existing = await ctx.db
+      .query("questions")
+      .withIndex("by_dataset", (q) => q.eq("datasetId", args.datasetId))
+      .collect();
+    const existingQueryIds = new Set(existing.map((q) => q.queryId));
+
     const ids = [];
     for (const q of args.questions) {
+      if (existingQueryIds.has(q.queryId)) {
+        continue; // Skip duplicate
+      }
       const id = await ctx.db.insert("questions", {
         datasetId: args.datasetId,
         queryId: q.queryId,
@@ -108,5 +118,24 @@ export const updateSpans = internalMutation({
     await ctx.db.patch(args.questionId, {
       relevantSpans: args.relevantSpans,
     });
+  },
+});
+
+/**
+ * Delete all questions belonging to a dataset.
+ */
+export const deleteByDataset = internalMutation({
+  args: { datasetId: v.id("datasets") },
+  handler: async (ctx, args) => {
+    const questions = await ctx.db
+      .query("questions")
+      .withIndex("by_dataset", (q) => q.eq("datasetId", args.datasetId))
+      .collect();
+
+    for (const q of questions) {
+      await ctx.db.delete(q._id);
+    }
+
+    return { deleted: questions.length };
   },
 });

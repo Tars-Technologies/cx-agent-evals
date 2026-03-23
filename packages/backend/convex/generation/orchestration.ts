@@ -41,6 +41,29 @@ export const startGeneration = mutation({
       throw new Error("Knowledge base not found");
     }
 
+    // ── Concurrent generation guard ──
+    // Only one active generation per org at a time
+    const TWO_HOURS = 2 * 60 * 60 * 1000;
+
+    const existingRunning = await ctx.db
+      .query("generationJobs")
+      .withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", "running"))
+      .first();
+    const existingPending = await ctx.db
+      .query("generationJobs")
+      .withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", "pending"))
+      .first();
+
+    const existingActive = existingRunning ?? existingPending;
+    if (existingActive && Date.now() - existingActive.createdAt <= TWO_HOURS) {
+      const activeKb = await ctx.db.get(existingActive.kbId);
+      const kbName = activeKb?.name ?? "unknown";
+      throw new Error(
+        `A generation job is already in progress (${existingActive.strategy} on "${kbName}"). ` +
+        `Wait for it to complete or cancel it before starting a new one.`,
+      );
+    }
+
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", userId))
@@ -70,9 +93,8 @@ export const startGeneration = mutation({
       throw new Error("No documents in knowledge base to generate questions from");
     }
 
-    // Determine total items based on strategy
-    const isPerDoc = args.strategy === "simple";
-    const totalItems = isPerDoc ? docs.length : 1;
+    // All strategies are now corpus-wide (single action)
+    const totalItems = 1;
 
     // Create generation job record
     const jobId = await ctx.db.insert("generationJobs", {
@@ -93,23 +115,21 @@ export const startGeneration = mutation({
     // Enqueue work items based on strategy and collect workIds for selective cancellation
     const workIds: WorkId[] = [];
 
-    if (isPerDoc) {
-      for (const doc of docs) {
-        const wId = await pool.enqueueAction(
-          ctx,
-          internal.generation.actions.generateForDocument,
-          {
-            datasetId,
-            documentId: doc._id,
-            strategyConfig: args.strategyConfig,
-          },
-          {
-            context: { jobId, itemKey: doc._id as string },
-            onComplete: internal.generation.orchestration.onQuestionGenerated,
-          },
-        );
-        workIds.push(wId);
-      }
+    if (args.strategy === "simple") {
+      const wId = await pool.enqueueAction(
+        ctx,
+        internal.generation.actions.generateSimple,
+        {
+          datasetId,
+          kbId: args.kbId,
+          strategyConfig: args.strategyConfig,
+        },
+        {
+          context: { jobId, itemKey: "corpus" },
+          onComplete: internal.generation.orchestration.onQuestionGenerated,
+        },
+      );
+      workIds.push(wId);
     } else if (args.strategy === "dimension-driven") {
       const wId = await pool.enqueueAction(
         ctx,
@@ -389,5 +409,46 @@ export const getJobInternal = internalQuery({
   args: { jobId: v.id("generationJobs") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.jobId);
+  },
+});
+
+/**
+ * Return the most recent active (running/pending) generation job for this org.
+ * Filters out stale jobs (>2 hours old) to prevent permanent blocking.
+ * If kbId is provided, only returns active jobs for that KB.
+ */
+export const getActiveJob = query({
+  args: { kbId: v.optional(v.id("knowledgeBases")) },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+
+    const running = await ctx.db
+      .query("generationJobs")
+      .withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", "running"))
+      .collect();
+    const pending = await ctx.db
+      .query("generationJobs")
+      .withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", "pending"))
+      .collect();
+
+    const active = [...running, ...pending];
+
+    // Filter out stale jobs (>2 hours old)
+    const TWO_HOURS = 2 * 60 * 60 * 1000;
+    const healthy = active.filter((j) => Date.now() - j.createdAt <= TWO_HOURS);
+
+    // If kbId specified, filter to that KB
+    const filtered = args.kbId
+      ? healthy.filter((j) => j.kbId === args.kbId)
+      : healthy;
+
+    if (filtered.length === 0) return null;
+
+    // Return the most recent active job
+    const job = filtered.sort((a, b) => b.createdAt - a.createdAt)[0];
+    return {
+      ...job,
+      pendingItems: job.totalItems - job.processedItems - job.failedItems - job.skippedItems,
+    };
   },
 });
