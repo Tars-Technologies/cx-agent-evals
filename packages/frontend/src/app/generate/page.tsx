@@ -13,6 +13,7 @@ import { DocumentViewer } from "@/components/DocumentViewer";
 import { DimensionWizard } from "@/components/DimensionWizard";
 import { RealWorldQuestionsModal } from "@/components/RealWorldQuestionsModal";
 import { DeleteDatasetModal } from "@/components/DeleteDatasetModal";
+import { GenerationBanner } from "@/components/GenerationBanner";
 import { StrategyType, Dimension, DocumentInfo, GeneratedQuestion } from "@/lib/types";
 
 export default function GeneratePage() {
@@ -58,6 +59,15 @@ function GeneratePageContent() {
     selectedKbId ? { kbId: selectedKbId } : "skip",
   );
 
+  // Active job detection (org-wide, no kbId filter — we want to know about any active job)
+  const activeJob = useQuery(api.generation.orchestration.getActiveJob, {});
+
+  // Look up KB name for the active job's banner
+  const activeJobKb = useQuery(
+    api.crud.knowledgeBases.get,
+    activeJob ? { id: activeJob.kbId } : "skip",
+  );
+
   // Mode: "browse" (viewing existing datasets) or "generate" (creating new)
   type PageMode = "browse" | "generate";
   const [mode, setMode] = useState<PageMode>("browse");
@@ -83,6 +93,15 @@ function GeneratePageContent() {
     setBrowseDatasetId(null);
     setMode(kbDatasets && kbDatasets.length > 0 ? "browse" : "generate");
   }, [selectedKbId]);
+
+  // Auto-restore active job state when returning to the page
+  useEffect(() => {
+    if (activeJob && !jobId) {
+      setJobId(activeJob._id);
+      setDatasetId(activeJob.datasetId);
+      setBrowseDatasetId(activeJob.datasetId);
+    }
+  }, [activeJob, jobId]);
 
   // UI state
   const [selectedQuestion, setSelectedQuestion] = useState<number | null>(null);
@@ -110,8 +129,8 @@ function GeneratePageContent() {
     selectedDocId ? { id: selectedDocId } : "skip",
   );
 
-  // Derive generating state from job
-  const generating = job?.status === "pending" || job?.status === "running";
+  // Derive generating state: either from local job or org-wide active job
+  const generating = job?.status === "pending" || job?.status === "running" || !!activeJob;
 
   // Convert Convex questions to component format
   const questions: GeneratedQuestion[] = (questionsData ?? []).map((q) => ({
@@ -244,6 +263,7 @@ function GeneratePageContent() {
 
       setDatasetId(result.datasetId);
       setJobId(result.jobId);
+      setBrowseDatasetId(result.datasetId);
     } catch (err) {
       setGenError(err instanceof Error ? err.message : "Failed to start generation");
     }
@@ -311,6 +331,26 @@ function GeneratePageContent() {
     <div className="flex flex-col h-screen">
       <Header mode="generate" kbId={selectedKbId} />
 
+        {/* Generation Banner — shown when any job is active */}
+        {activeJob && (
+          <GenerationBanner
+            strategy={activeJob.strategy}
+            kbName={activeJobKb?.name ?? "..."}
+            phase={activeJob.phase}
+            processedItems={activeJob.processedItems}
+            totalItems={activeJob.totalItems}
+            onView={() => {
+              // Switch to the KB and dataset of the active job
+              if (activeJob.kbId !== selectedKbId) {
+                setSelectedKbId(activeJob.kbId);
+              }
+              setBrowseDatasetId(activeJob.datasetId);
+              setDatasetId(activeJob.datasetId);
+              setJobId(activeJob._id);
+            }}
+          />
+        )}
+
       <div className="flex flex-1 overflow-hidden max-w-full">
         {/* Left sidebar: KB selector + config */}
         <div className="w-[360px] flex-shrink-0 border-r border-border bg-bg-elevated overflow-y-auto">
@@ -367,8 +407,17 @@ function GeneratePageContent() {
                         >
                           <div className="font-medium truncate pr-6">{ds.name}</div>
                           <div className="flex gap-2 text-[10px] text-text-dim mt-0.5">
-                            <span>{ds.questionCount} questions</span>
-                            <span>{ds.strategy}</span>
+                            {activeJob?.datasetId === ds._id ? (
+                              <span className="flex items-center gap-1.5 text-accent">
+                                <span className="w-1 h-1 rounded-full bg-accent animate-pulse-dot" />
+                                Generating... ({activeJob.processedItems}/{activeJob.totalItems})
+                              </span>
+                            ) : (
+                              <>
+                                <span>{ds.questionCount} questions</span>
+                                <span>{ds.strategy}</span>
+                              </>
+                            )}
                           </div>
                         </button>
                         <button
