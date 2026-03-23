@@ -287,11 +287,17 @@ function GeneratePageContent() {
         }))
       : questions;
 
-  const displayGenerating = mode === "generate" && generating;
+  // Show generating state in center pane when browsing the actively generating dataset
+  const browsingActiveDataset = mode === "browse" && activeJob && browseDatasetId === activeJob.datasetId;
+  const displayGenerating = (mode === "generate" && generating) || !!browsingActiveDataset;
   const displayTotalDone = mode === "browse"
     ? browseQuestions?.length ?? null
     : totalDone;
-  const displayPhaseStatus = mode === "generate" ? phaseStatus : null;
+  const displayPhaseStatus = mode === "generate"
+    ? phaseStatus
+    : browsingActiveDataset
+      ? `${activeJob.phase}... (${activeJob.processedItems}/${activeJob.totalItems})`
+      : null;
 
   // When a question is selected, load its source document
   const selectedQ = selectedQuestion !== null ? displayQuestions[selectedQuestion] : null;
@@ -378,11 +384,17 @@ function GeneratePageContent() {
                         if (mode === "generate") {
                           setMode("browse");
                         } else {
+                          // Clear stale job state so the auto-switch-to-browse effect doesn't fire
+                          setDatasetId(null);
+                          setJobId(null);
                           setMode("generate");
                           setBrowseDatasetId(null);
                         }
                       }}
-                      className="text-[11px] text-accent hover:text-accent/80 transition-colors"
+                      className={mode === "generate"
+                        ? "text-[11px] text-accent hover:text-accent/80 transition-colors"
+                        : "px-2.5 py-1 text-[11px] font-medium text-accent border border-accent/30 rounded hover:bg-accent/10 transition-colors"
+                      }
                     >
                       {mode === "generate" ? "View Datasets" : "+ New Dataset"}
                     </button>
@@ -455,6 +467,7 @@ function GeneratePageContent() {
                     onGenerate={handleGenerate}
                     disabled={!hasDocuments}
                     generating={generating}
+                    disabledReason={activeJob ? "Only one generation at a time" : undefined}
                     strategy={strategy}
                     onStrategyChange={setStrategy}
                     dimensions={dimensions}

@@ -9,6 +9,7 @@ export function GenerateConfig({
   onGenerate,
   disabled,
   generating,
+  disabledReason,
   strategy,
   onStrategyChange,
   dimensions,
@@ -22,6 +23,7 @@ export function GenerateConfig({
   onGenerate: () => void;
   disabled: boolean;
   generating: boolean;
+  disabledReason?: string;
   strategy: StrategyType;
   onStrategyChange: (strategy: StrategyType) => void;
   dimensions: Dimension[];
@@ -105,6 +107,7 @@ export function GenerateConfig({
       <button
         onClick={onGenerate}
         disabled={disabled || generating || !canGenerate}
+        title={generating && disabledReason ? disabledReason : undefined}
         className={`mt-5 w-full py-3 rounded-lg font-semibold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-colors ${
           !(disabled || generating || !canGenerate)
             ? "bg-accent hover:bg-accent/90 text-bg-elevated cursor-pointer"
