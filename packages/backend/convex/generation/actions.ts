@@ -12,6 +12,11 @@ import {
   OpenAIEmbedder,
   createCorpusFromDocuments,
   parseDimensions,
+  calculateQuotas,
+  matchRealWorldQuestions,
+  filterCombinations,
+  generateForDocument,
+  findCitationSpan,
 } from "rag-evaluation-system";
 import { createLLMClient, getModel } from "rag-evaluation-system/llm";
 import { QUESTION_INSERT_BATCH_SIZE } from "rag-evaluation-system/shared";
@@ -173,6 +178,207 @@ export const generateRealWorldGrounded = internalAction({
     }
 
     return { questionsGenerated: queries.length };
+  },
+});
+
+// ─── Unified Pipeline: Phase 1 — Prepare Generation Plan ───
+
+export const prepareGeneration = internalAction({
+  args: {
+    jobId: v.id("generationJobs"),
+    datasetId: v.id("datasets"),
+    kbId: v.id("knowledgeBases"),
+    strategyConfig: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const config = args.strategyConfig as Record<string, unknown>;
+    const { corpus, docs } = await loadCorpusFromKb(ctx, args.kbId);
+    const llmClient = createLLMClient();
+    const model = getModel(config);
+
+    // Read document priorities
+    const docPriorities = docs.map((d: any) => ({
+      id: d.docId as string,
+      priority: (d.priority as number) ?? 3,
+    }));
+
+    // Quota allocation
+    const totalQuestions = (config.totalQuestions as number) ?? 30;
+    const overrides = config.allocationOverrides as
+      | Record<string, number>
+      | undefined;
+    const quotas = calculateQuotas(docPriorities, totalQuestions, overrides);
+
+    // Real-world question matching (if provided)
+    let matchedByDoc: Record<string, any[]> = {};
+    let unmatchedQuestions: string[] = [];
+    const realWorldQuestions = config.realWorldQuestions as
+      | string[]
+      | undefined;
+    if (realWorldQuestions?.length) {
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const embedder = new OpenAIEmbedder({
+        model:
+          (config.embeddingModel as string) ?? "text-embedding-3-small",
+        client: openai,
+      });
+      const result = await matchRealWorldQuestions(
+        corpus,
+        realWorldQuestions,
+        embedder,
+      );
+      matchedByDoc = result.matchedByDoc;
+      unmatchedQuestions = result.unmatchedQuestions;
+    }
+
+    // Dimension filtering (if provided)
+    let validCombos: Record<string, string>[] = [];
+    const dimensions = config.dimensions as any[] | undefined;
+    if (dimensions?.length) {
+      const parsed = parseDimensions(dimensions);
+      validCombos = await filterCombinations(parsed, llmClient, model);
+    }
+
+    // Build doc-level plan data (what each doc needs for generation)
+    const docPlans = docs.map((d: any) => ({
+      docConvexId: d._id as string,
+      docId: d.docId as string,
+      title: d.title as string,
+      quota: quotas.get(d.docId as string) ?? 0,
+      matchedQuestions: matchedByDoc[d.docId as string] ?? [],
+    }));
+
+    // Collect global style examples (all matched questions for cross-doc use)
+    const globalStyleExamples = Object.values(matchedByDoc)
+      .flat()
+      .map((m: any) => m.question as string);
+
+    // Pass plan to orchestration (must be JSON-serializable — convert Maps)
+    await ctx.runMutation(
+      internal.generation.orchestration.savePlanAndEnqueueDocs,
+      {
+        jobId: args.jobId,
+        datasetId: args.datasetId,
+        kbId: args.kbId,
+        strategyConfig: args.strategyConfig,
+        plan: {
+          quotas: Object.fromEntries(quotas),
+          unmatchedQuestions,
+          validCombos,
+          globalStyleExamples,
+          docPlans,
+          preferences: (config.promptPreferences as any) ?? {
+            questionTypes: ["factoid", "procedural", "conditional"],
+            tone: "professional but accessible",
+            focusAreas: "",
+          },
+          model,
+        },
+      },
+    );
+
+    return {
+      phase: "prepared",
+      totalDocs: docPlans.filter((d: { quota: number }) => d.quota > 0).length,
+    };
+  },
+});
+
+// ─── Unified Pipeline: Phase 2 — Generate Questions for a Single Document ───
+
+export const generateForDoc = internalAction({
+  args: {
+    jobId: v.id("generationJobs"),
+    datasetId: v.id("datasets"),
+    docConvexId: v.id("documents"),
+    docId: v.string(),
+    quota: v.number(),
+    matchedQuestions: v.any(),
+    validCombos: v.any(),
+    preferences: v.any(),
+    globalStyleExamples: v.any(),
+    model: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (args.quota === 0) return { questionsGenerated: 0 };
+
+    const doc = await ctx.runQuery(internal.crud.documents.getInternal, {
+      id: args.docConvexId,
+    });
+    const llmClient = createLLMClient();
+
+    const rawQuestions = await generateForDocument({
+      docId: args.docId,
+      docContent: doc.content,
+      quota: args.quota,
+      matched: args.matchedQuestions ?? [],
+      combos: args.validCombos ?? [],
+      preferences: args.preferences,
+      llmClient,
+      model: args.model,
+    });
+
+    // Validate citations and build question records
+    const validatedQuestions = [];
+    let failedCitations = 0;
+
+    for (const q of rawQuestions) {
+      const span = findCitationSpan(doc.content, q.citation);
+      if (span) {
+        validatedQuestions.push({
+          queryId: `unified_${args.docId}_q${validatedQuestions.length}`,
+          queryText: q.question,
+          sourceDocId: args.docId,
+          relevantSpans: [
+            {
+              docId: args.docId,
+              start: span.start,
+              end: span.end,
+              text: span.text,
+            },
+          ],
+          metadata: {
+            source: q.source,
+            profile: q.profile ?? "",
+            citation: span.text,
+          },
+        });
+      } else {
+        failedCitations++;
+      }
+    }
+
+    // Insert questions in batches
+    if (validatedQuestions.length > 0) {
+      for (
+        let i = 0;
+        i < validatedQuestions.length;
+        i += QUESTION_INSERT_BATCH_SIZE
+      ) {
+        const batch = validatedQuestions.slice(
+          i,
+          i + QUESTION_INSERT_BATCH_SIZE,
+        );
+        await ctx.runMutation(internal.crud.questions.insertBatch, {
+          datasetId: args.datasetId,
+          questions: batch,
+        });
+      }
+    }
+
+    // Report progress
+    await ctx.runMutation(
+      internal.generation.orchestration.updateDocProgress,
+      {
+        jobId: args.jobId,
+        docName: doc.title,
+      },
+    );
+
+    return {
+      questionsGenerated: validatedQuestions.length,
+      failedCitations,
+    };
   },
 });
 
