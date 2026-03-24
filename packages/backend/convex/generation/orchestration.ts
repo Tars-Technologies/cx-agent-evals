@@ -386,6 +386,22 @@ export const onPrepareComplete = internalMutation({
   },
 });
 
+// ─── Unified Pipeline: storeGenerationPlan ───
+// Stores shared plan data (combos, style examples, preferences) on the job
+// record so per-doc actions can read it instead of receiving large duplicated args.
+
+export const storeGenerationPlan = internalMutation({
+  args: {
+    jobId: v.id("generationJobs"),
+    sharedPlan: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) return;
+    await ctx.db.patch(args.jobId, { generationPlan: args.sharedPlan });
+  },
+});
+
 // ─── Unified Pipeline: savePlanAndEnqueueDocs ───
 
 export const savePlanAndEnqueueDocs = internalMutation({
@@ -404,8 +420,6 @@ export const savePlanAndEnqueueDocs = internalMutation({
     const plan = args.plan as {
       quotas: Record<string, number>;
       unmatchedQuestions: string[];
-      validCombos: Record<string, string>[];
-      globalStyleExamples: string[];
       docPlans: Array<{
         docConvexId: string;
         docId: string;
@@ -413,7 +427,6 @@ export const savePlanAndEnqueueDocs = internalMutation({
         quota: number;
         matchedQuestions: any[];
       }>;
-      preferences: any;
       model: string;
     };
 
@@ -442,7 +455,9 @@ export const savePlanAndEnqueueDocs = internalMutation({
       }
     }
 
-    // Enqueue one generateForDoc action per document
+    // Enqueue one generateForDoc action per document.
+    // Shared data (validCombos, globalStyleExamples, preferences) is on the job
+    // record — per-doc actions read it from there via getJobInternal.
     const workIds: WorkId[] = [];
     for (const doc of activeDocs) {
       const wId = await pool.enqueueAction(
@@ -455,9 +470,6 @@ export const savePlanAndEnqueueDocs = internalMutation({
           docId: doc.docId,
           quota: doc.quota,
           matchedQuestions: doc.matchedQuestions,
-          validCombos: plan.validCombos,
-          preferences: plan.preferences,
-          globalStyleExamples: plan.globalStyleExamples,
           model: plan.model,
         },
         {

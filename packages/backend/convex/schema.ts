@@ -152,6 +152,8 @@ export default defineSchema({
     totalDocs: v.optional(v.number()),
     docsProcessed: v.optional(v.number()),
     currentDocName: v.optional(v.string()),
+    // Shared generation plan data — stored once, read by per-doc actions
+    generationPlan: v.optional(v.any()),
   })
     .index("by_dataset", ["datasetId"])
     .index("by_org", ["orgId"])

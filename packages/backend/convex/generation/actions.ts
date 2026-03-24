@@ -239,21 +239,55 @@ export const prepareGeneration = internalAction({
       validCombos = await filterCombinations(parsed, llmClient, model);
     }
 
-    // Build doc-level plan data (what each doc needs for generation)
-    const docPlans = docs.map((d: any) => ({
-      docConvexId: d._id as string,
-      docId: d.docId as string,
-      title: d.title as string,
-      quota: quotas.get(d.docId as string) ?? 0,
-      matchedQuestions: matchedByDoc[d.docId as string] ?? [],
-    }));
+    // Truncate arrays to stay within Convex's 8192 array element limit
+    const MAX_STYLE_EXAMPLES = 50;
+    const MAX_COMBOS = 200;
+    const MAX_UNMATCHED = 500;
 
-    // Collect global style examples (all matched questions for cross-doc use)
+    // Build doc-level plan data — limit matched questions to doc's quota
+    const docPlans = docs.map((d: any) => {
+      const docQuota = quotas.get(d.docId as string) ?? 0;
+      const matched = matchedByDoc[d.docId as string] ?? [];
+      return {
+        docConvexId: d._id as string,
+        docId: d.docId as string,
+        title: d.title as string,
+        quota: docQuota,
+        matchedQuestions: matched.slice(0, Math.max(docQuota, 10)),
+      };
+    });
+
+    // Collect global style examples (capped)
     const globalStyleExamples = Object.values(matchedByDoc)
       .flat()
-      .map((m: any) => m.question as string);
+      .map((m: any) => m.question as string)
+      .slice(0, MAX_STYLE_EXAMPLES);
 
-    // Pass plan to orchestration (must be JSON-serializable — convert Maps)
+    const truncatedCombos = validCombos.slice(0, MAX_COMBOS);
+    const truncatedUnmatched = unmatchedQuestions.slice(0, MAX_UNMATCHED);
+
+    const preferences = (config.promptPreferences as any) ?? {
+      questionTypes: ["factoid", "procedural", "conditional"],
+      tone: "professional but accessible",
+      focusAreas: "",
+    };
+
+    // Step 1: Store shared plan data on the job record (avoids duplicating
+    // large arrays in every per-doc action call)
+    await ctx.runMutation(
+      internal.generation.orchestration.storeGenerationPlan,
+      {
+        jobId: args.jobId,
+        sharedPlan: {
+          validCombos: truncatedCombos,
+          globalStyleExamples,
+          preferences,
+          model,
+        },
+      },
+    );
+
+    // Step 2: Enqueue per-doc actions with only doc-specific data
     await ctx.runMutation(
       internal.generation.orchestration.savePlanAndEnqueueDocs,
       {
@@ -263,15 +297,8 @@ export const prepareGeneration = internalAction({
         strategyConfig: args.strategyConfig,
         plan: {
           quotas: Object.fromEntries(quotas),
-          unmatchedQuestions,
-          validCombos,
-          globalStyleExamples,
+          unmatchedQuestions: truncatedUnmatched,
           docPlans,
-          preferences: (config.promptPreferences as any) ?? {
-            questionTypes: ["factoid", "procedural", "conditional"],
-            tone: "professional but accessible",
-            focusAreas: "",
-          },
           model,
         },
       },
@@ -294,13 +321,21 @@ export const generateForDoc = internalAction({
     docId: v.string(),
     quota: v.number(),
     matchedQuestions: v.any(),
-    validCombos: v.any(),
-    preferences: v.any(),
-    globalStyleExamples: v.any(),
     model: v.string(),
   },
   handler: async (ctx, args) => {
     if (args.quota === 0) return { questionsGenerated: 0 };
+
+    // Read shared plan data from job record (stored once, not passed per-doc)
+    const job = await ctx.runQuery(
+      internal.generation.orchestration.getJobInternal,
+      { jobId: args.jobId },
+    );
+    const sharedPlan = (job?.generationPlan ?? {}) as {
+      validCombos?: Record<string, string>[];
+      globalStyleExamples?: string[];
+      preferences?: any;
+    };
 
     const doc = await ctx.runQuery(internal.crud.documents.getInternal, {
       id: args.docConvexId,
@@ -312,8 +347,12 @@ export const generateForDoc = internalAction({
       docContent: doc.content,
       quota: args.quota,
       matched: args.matchedQuestions ?? [],
-      combos: args.validCombos ?? [],
-      preferences: args.preferences,
+      combos: sharedPlan.validCombos ?? [],
+      preferences: sharedPlan.preferences ?? {
+        questionTypes: ["factoid", "procedural", "conditional"],
+        tone: "professional but accessible",
+        focusAreas: "",
+      },
       llmClient,
       model: args.model,
     });
