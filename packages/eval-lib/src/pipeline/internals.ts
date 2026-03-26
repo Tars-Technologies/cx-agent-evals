@@ -13,8 +13,20 @@ export {
   BM25SearchIndex,
   weightedScoreFusion,
   reciprocalRankFusion,
+  rrfFuseMultiple,
+  assignRankScores,
   applyThresholdFilter,
+  applyDedup,
+  applyMmr,
+  applyExpandContext,
+  DEFAULT_HYDE_PROMPT,
+  DEFAULT_MULTI_QUERY_PROMPT,
+  DEFAULT_STEP_BACK_PROMPT,
+  DEFAULT_REWRITE_PROMPT,
 } from "../retrievers/pipeline/index.js";
+
+// Query utilities
+export { parseVariants } from "../retrievers/pipeline/query/index.js";
 
 // InMemoryVectorStore (not used by backend, but kept accessible)
 export { InMemoryVectorStore } from "../vector-stores/index.js";

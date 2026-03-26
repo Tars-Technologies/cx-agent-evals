@@ -18,7 +18,21 @@ import {
   BM25SearchIndex,
   weightedScoreFusion,
   reciprocalRankFusion,
+  rrfFuseMultiple,
+  assignRankScores,
+  applyThresholdFilter,
+  applyDedup,
+  applyMmr,
+  applyExpandContext,
+  DEFAULT_HYDE_PROMPT,
+  DEFAULT_MULTI_QUERY_PROMPT,
+  DEFAULT_STEP_BACK_PROMPT,
+  DEFAULT_REWRITE_PROMPT,
+  parseVariants,
 } from "rag-evaluation-system/pipeline/internals";
+import { OpenAIPipelineLLM } from "rag-evaluation-system/pipeline/llm-openai";
+import type { PipelineLLM } from "rag-evaluation-system";
+import type { Reranker } from "rag-evaluation-system";
 import {
   runLangSmithExperiment,
   type LangSmithExperimentConfig,
@@ -110,6 +124,147 @@ function toPositionAwareChunks(
     });
   }
   return result;
+}
+
+// ─── Helpers: query expansion ───
+
+interface QueryConfig {
+  strategy: "identity" | "hyde" | "multi-query" | "step-back" | "rewrite";
+  hydePrompt?: string;
+  numHypotheticalDocs?: number;
+  numQueries?: number;
+  generationPrompt?: string;
+  stepBackPrompt?: string;
+  includeOriginal?: boolean;
+  rewritePrompt?: string;
+}
+
+interface RefinementStep {
+  type: "rerank" | "threshold" | "dedup" | "mmr" | "expand-context";
+  minScore?: number;
+  method?: "exact" | "overlap";
+  overlapThreshold?: number;
+  lambda?: number;
+  windowChars?: number;
+}
+
+function resolveQueryConfig(retrieverConfig: Record<string, any>): QueryConfig {
+  const q = (retrieverConfig.query ?? {}) as Record<string, any>;
+  return {
+    strategy: (q.strategy as QueryConfig["strategy"]) ?? "identity",
+    hydePrompt: q.hydePrompt as string | undefined,
+    numHypotheticalDocs: q.numHypotheticalDocs as number | undefined,
+    numQueries: q.numQueries as number | undefined,
+    generationPrompt: q.generationPrompt as string | undefined,
+    stepBackPrompt: q.stepBackPrompt as string | undefined,
+    includeOriginal: q.includeOriginal as boolean | undefined,
+    rewritePrompt: q.rewritePrompt as string | undefined,
+  };
+}
+
+function resolveRefinementConfig(retrieverConfig: Record<string, any>): RefinementStep[] {
+  const r = retrieverConfig.refinement;
+  if (!Array.isArray(r)) return [];
+  return r.map((step: any) => ({
+    type: step.type as RefinementStep["type"],
+    minScore: step.minScore as number | undefined,
+    method: step.method as "exact" | "overlap" | undefined,
+    overlapThreshold: step.overlapThreshold as number | undefined,
+    lambda: step.lambda as number | undefined,
+    windowChars: step.windowChars as number | undefined,
+  }));
+}
+
+/** Expand a query using the configured strategy. */
+async function processQuery(
+  query: string,
+  config: QueryConfig,
+  llm?: PipelineLLM,
+): Promise<string[]> {
+  switch (config.strategy) {
+    case "identity":
+      return [query];
+    case "hyde": {
+      if (!llm) return [query];
+      const prompt = config.hydePrompt ?? DEFAULT_HYDE_PROMPT;
+      const n = config.numHypotheticalDocs ?? 1;
+      if (n === 1) return [await llm.complete(prompt + query)];
+      return Promise.all(
+        Array.from({ length: n }, () => llm.complete(prompt + query)),
+      );
+    }
+    case "multi-query": {
+      if (!llm) return [query];
+      const n = config.numQueries ?? 3;
+      const prompt = (config.generationPrompt ?? DEFAULT_MULTI_QUERY_PROMPT).replace(
+        "{n}",
+        String(n),
+      );
+      const variants = await llm.complete(prompt + query);
+      return parseVariants(variants, n);
+    }
+    case "step-back": {
+      if (!llm) return [query];
+      const prompt = config.stepBackPrompt ?? DEFAULT_STEP_BACK_PROMPT;
+      const abstract = await llm.complete(prompt + query);
+      return config.includeOriginal !== false ? [query, abstract] : [abstract];
+    }
+    case "rewrite": {
+      if (!llm) return [query];
+      const prompt = config.rewritePrompt ?? DEFAULT_REWRITE_PROMPT;
+      return [await llm.complete(prompt + query)];
+    }
+  }
+}
+
+/** Apply refinement steps in sequence. */
+async function applyRefinementChain(
+  originalQuery: string,
+  results: ScoredChunk[],
+  steps: RefinementStep[],
+  k: number,
+  corpus: ReturnType<typeof createCorpusFromDocuments>,
+  reranker?: Reranker,
+): Promise<ScoredChunk[]> {
+  let current = results;
+  for (const step of steps) {
+    switch (step.type) {
+      case "rerank": {
+        if (!reranker) {
+          console.warn("[Refinement] Skipping rerank — no reranker available (set CO_API_KEY)");
+          break;
+        }
+        const chunks = current.map(({ chunk }) => chunk);
+        const reranked = await reranker.rerank(originalQuery, chunks, k);
+        current = assignRankScores(reranked);
+        break;
+      }
+      case "threshold":
+        current = applyThresholdFilter(current, step.minScore ?? 0);
+        break;
+      case "dedup":
+        current = applyDedup(current, step.method ?? "overlap", step.overlapThreshold ?? 0.5);
+        break;
+      case "mmr":
+        current = applyMmr(current, k, step.lambda ?? 0.7);
+        break;
+      case "expand-context":
+        current = applyExpandContext(current, corpus, step.windowChars ?? 500);
+        break;
+    }
+  }
+  return current;
+}
+
+/** Try to create a Cohere reranker. Returns undefined if not available. */
+async function tryCreateReranker(): Promise<Reranker | undefined> {
+  try {
+    const { CohereReranker } = await import("rag-evaluation-system/rerankers/cohere");
+    return await CohereReranker.create();
+  } catch {
+    console.warn("[Reranker] Cohere reranker not available — rerank steps will be skipped");
+    return undefined;
+  }
 }
 
 // ─── Orchestrator Action ───
@@ -370,106 +525,121 @@ export const runEvaluation = internalAction({
     indexStrategy = (idxSettings.strategy as string) ?? "plain";
 
     const searchConfig = resolveSearchConfig(retrieverConfigObj);
+    const queryConfig = resolveQueryConfig(retrieverConfigObj);
+    const refinementSteps = resolveRefinementConfig(retrieverConfigObj);
 
-    // ── Build retriever based on search strategy ──
-    let retriever: CallbackRetriever;
-    let cleanupFn: (() => void) | undefined;
+    // ── Create optional LLM for query expansion ──
+    const needsLLM = ["hyde", "multi-query", "step-back", "rewrite"].includes(queryConfig.strategy);
+    let llm: PipelineLLM | undefined;
+    if (needsLLM) {
+      llm = await OpenAIPipelineLLM.create({ model: "gpt-4o-mini" });
+    }
+
+    // ── Create optional reranker ──
+    const needsReranker = refinementSteps.some((s) => s.type === "rerank");
+    let reranker: Reranker | undefined;
+    if (needsReranker) {
+      reranker = await tryCreateReranker();
+    }
+
+    // ── Build search function based on strategy ──
+    let bm25Cleanup: (() => void) | undefined;
+
+    // Helper: convert raw Convex chunks to ScoredChunk[]
+    const convexToScored = (raw: any[], scoreMap: Map<string, number>): ScoredChunk[] =>
+      raw.map((c: any) => ({
+        chunk: {
+          id: PositionAwareChunkId(c.chunkId),
+          content: c.content,
+          docId: DocumentId(c.docId),
+          start: c.start,
+          end: c.end,
+          metadata: c.metadata ?? {},
+        },
+        score: scoreMap.get(c._id.toString()) ?? 0,
+      }));
+
+    // Build the doSearch function that returns ScoredChunk[]
+    let doSearch: (q: string, topK: number) => Promise<ScoredChunk[]>;
 
     if (searchConfig.strategy === "bm25") {
-      // BM25: load all chunks, build in-memory inverted index, no embeddings
       const rawChunks = await loadAllChunks(ctx, args.kbId, args.indexConfigHash);
       const paChunks = toPositionAwareChunks(rawChunks);
       const bm25 = new BM25SearchIndex({ k1: searchConfig.k1, b: searchConfig.b });
       bm25.build(paChunks);
-      cleanupFn = () => bm25.clear();
+      bm25Cleanup = () => bm25.clear();
 
-      retriever = new CallbackRetriever({
-        name: "convex-bm25-search",
-        retrieveFn: async (query: string, topK: number) => {
-          return [...bm25.search(query, topK)];
-        },
-        cleanupFn: async () => bm25.clear(),
-      });
+      doSearch = async (q: string, topK: number) => {
+        return [...bm25.searchWithScores(q, topK)];
+      };
     } else if (searchConfig.strategy === "hybrid") {
-      // Hybrid: BM25 in-memory + Convex vector search, fused
       const rawChunks = await loadAllChunks(ctx, args.kbId, args.indexConfigHash);
       const paChunks = toPositionAwareChunks(rawChunks);
       const bm25 = new BM25SearchIndex({ k1: searchConfig.k1, b: searchConfig.b });
       bm25.build(paChunks);
-      cleanupFn = () => bm25.clear();
+      bm25Cleanup = () => bm25.clear();
 
       const candidateMultiplier = searchConfig.candidateMultiplier ?? 4;
       const denseWeight = searchConfig.denseWeight ?? 0.7;
       const sparseWeight = searchConfig.sparseWeight ?? 0.3;
 
-      retriever = new CallbackRetriever({
-        name: "convex-hybrid-search",
-        retrieveFn: async (query: string, topK: number) => {
-          const candidateK = topK * candidateMultiplier;
+      doSearch = async (q: string, topK: number) => {
+        const candidateK = topK * candidateMultiplier;
+        const queryEmbedding = await embedder.embedQuery(q);
+        const { chunks: denseRaw, scoreMap } = await vectorSearchWithFilter(ctx, {
+          queryEmbedding, kbId: args.kbId, indexConfigHash: args.indexConfigHash,
+          topK: candidateK, indexStrategy,
+        });
+        const denseResults = convexToScored(denseRaw, scoreMap);
+        const sparseResults: ScoredChunk[] = [...bm25.searchWithScores(q, candidateK)];
 
-          // Dense component: embed query → Convex vector search
-          const queryEmbedding = await embedder.embedQuery(query);
-          const { chunks: denseRaw, scoreMap } = await vectorSearchWithFilter(ctx, {
-            queryEmbedding,
-            kbId: args.kbId,
-            indexConfigHash: args.indexConfigHash,
-            topK: candidateK,
-            indexStrategy,
-          });
-          const denseResults: ScoredChunk[] = denseRaw.map((c: any) => ({
-            chunk: {
-              id: PositionAwareChunkId(c.chunkId),
-              content: c.content,
-              docId: DocumentId(c.docId),
-              start: c.start,
-              end: c.end,
-              metadata: c.metadata ?? {},
-            },
-            score: scoreMap.get(c._id.toString()) ?? 0,
-          }));
+        const fused =
+          searchConfig.fusionMethod === "rrf"
+            ? reciprocalRankFusion({ denseResults, sparseResults, k: searchConfig.rrfK })
+            : weightedScoreFusion({ denseResults, sparseResults, denseWeight, sparseWeight });
 
-          // Sparse component: BM25 in-memory
-          const sparseResults: ScoredChunk[] = [
-            ...bm25.searchWithScores(query, candidateK),
-          ];
-
-          // Fuse results
-          const fused =
-            searchConfig.fusionMethod === "rrf"
-              ? reciprocalRankFusion({ denseResults, sparseResults, k: searchConfig.rrfK })
-              : weightedScoreFusion({ denseResults, sparseResults, denseWeight, sparseWeight });
-
-          return fused.slice(0, topK).map(({ chunk }) => chunk);
-        },
-        cleanupFn: async () => bm25.clear(),
-      });
+        return fused.slice(0, topK);
+      };
     } else {
-      // Dense (default): embed query → Convex vector search
-      retriever = new CallbackRetriever({
-        name: "convex-vector-search",
-        retrieveFn: async (query: string, topK: number) => {
-          const queryEmbedding = await embedder.embedQuery(query);
-          const { chunks: filtered } = await vectorSearchWithFilter(ctx, {
-            queryEmbedding,
-            kbId: args.kbId,
-            indexConfigHash: args.indexConfigHash,
-            topK,
-            indexStrategy,
-          });
-
-          return filtered.map(
-            (c: any): PositionAwareChunk => ({
-              id: PositionAwareChunkId(c.chunkId),
-              content: c.content,
-              metadata: c.metadata ?? {},
-              docId: DocumentId(c.docId),
-              start: c.start,
-              end: c.end,
-            }),
-          );
-        },
-      });
+      doSearch = async (q: string, topK: number) => {
+        const queryEmbedding = await embedder.embedQuery(q);
+        const { chunks: filtered, scoreMap } = await vectorSearchWithFilter(ctx, {
+          queryEmbedding, kbId: args.kbId, indexConfigHash: args.indexConfigHash,
+          topK, indexStrategy,
+        });
+        return convexToScored(filtered, scoreMap);
+      };
     }
+
+    // ── Build retriever with full pipeline: query → search → refinement ──
+    const retriever = new CallbackRetriever({
+      name: `convex-${searchConfig.strategy}-search`,
+      retrieveFn: async (originalQuery: string, topK: number) => {
+        // QUERY stage: expand the query
+        const queries = await processQuery(originalQuery, queryConfig, llm);
+
+        // SEARCH stage: search per query, fuse if multiple
+        let scoredResults: ScoredChunk[];
+        if (queries.length === 1) {
+          scoredResults = await doSearch(queries[0], topK);
+        } else {
+          const perQueryResults = await Promise.all(
+            queries.map((q) => doSearch(q, topK * 2)),
+          );
+          scoredResults = rrfFuseMultiple(perQueryResults);
+        }
+
+        // REFINEMENT stage: apply chain using original query
+        if (refinementSteps.length > 0) {
+          scoredResults = await applyRefinementChain(
+            originalQuery, scoredResults, refinementSteps, topK, corpus, reranker,
+          );
+        }
+
+        return scoredResults.slice(0, topK).map(({ chunk }) => chunk);
+      },
+      cleanupFn: async () => { bm25Cleanup?.(); },
+    });
 
     // Run evaluation via LangSmith evaluate()
     let resultsCount = 0;
