@@ -12,7 +12,13 @@ import {
   PositionAwareChunkId,
   DocumentId,
   type PositionAwareChunk,
+  type ScoredChunk,
 } from "rag-evaluation-system";
+import {
+  BM25SearchIndex,
+  weightedScoreFusion,
+  reciprocalRankFusion,
+} from "rag-evaluation-system/pipeline/internals";
 import {
   runLangSmithExperiment,
   type LangSmithExperimentConfig,
@@ -20,6 +26,91 @@ import {
 import type { ExperimentResult } from "rag-evaluation-system/shared";
 import { createEmbedder } from "rag-evaluation-system/llm";
 import { vectorSearchWithFilter } from "../lib/vectorSearch";
+import type { ActionCtx } from "../_generated/server";
+
+// ─── Helpers: search-strategy dispatch ───
+
+interface SearchConfig {
+  strategy: "dense" | "bm25" | "hybrid";
+  k1?: number;
+  b?: number;
+  denseWeight?: number;
+  sparseWeight?: number;
+  fusionMethod?: "weighted" | "rrf";
+  rrfK?: number;
+  candidateMultiplier?: number;
+}
+
+/** Extract search config from a retriever/experiment config object. */
+function resolveSearchConfig(retrieverConfig: Record<string, any>): SearchConfig {
+  const search = (retrieverConfig.search ?? {}) as Record<string, any>;
+  return {
+    strategy: (search.strategy as SearchConfig["strategy"]) ?? "dense",
+    k1: search.k1 as number | undefined,
+    b: search.b as number | undefined,
+    denseWeight: search.denseWeight as number | undefined,
+    sparseWeight: search.sparseWeight as number | undefined,
+    fusionMethod: search.fusionMethod as "weighted" | "rrf" | undefined,
+    rrfK: search.rrfK as number | undefined,
+    candidateMultiplier: search.candidateMultiplier as number | undefined,
+  };
+}
+
+/** Paginate through all chunks for a (kbId, indexConfigHash). */
+async function loadAllChunks(
+  ctx: ActionCtx,
+  kbId: Id<"knowledgeBases">,
+  indexConfigHash: string,
+): Promise<Array<{
+  chunkId: string;
+  content: string;
+  docId: string;
+  start: number;
+  end: number;
+  metadata: Record<string, unknown>;
+}>> {
+  const all: Array<{
+    chunkId: string;
+    content: string;
+    docId: string;
+    start: number;
+    end: number;
+    metadata: Record<string, unknown>;
+  }> = [];
+  let cursor: string | null = null;
+  let done = false;
+  while (!done) {
+    const page: any = await ctx.runQuery(
+      internal.retrieval.chunks.getChunksByKbConfigPage,
+      { kbId, indexConfigHash, cursor },
+    );
+    all.push(...page.chunks);
+    done = page.isDone;
+    cursor = page.continueCursor;
+  }
+  return all;
+}
+
+/** Convert raw DB chunks to PositionAwareChunk[], deduplicating by chunkId. */
+function toPositionAwareChunks(
+  raw: Array<{ chunkId: string; content: string; docId: string; start: number; end: number; metadata: Record<string, unknown> }>,
+): PositionAwareChunk[] {
+  const seen = new Set<string>();
+  const result: PositionAwareChunk[] = [];
+  for (const c of raw) {
+    if (seen.has(c.chunkId)) continue;
+    seen.add(c.chunkId);
+    result.push({
+      id: PositionAwareChunkId(c.chunkId),
+      content: c.content,
+      docId: DocumentId(c.docId),
+      start: c.start,
+      end: c.end,
+      metadata: c.metadata,
+    });
+  }
+  return result;
+}
 
 // ─── Orchestrator Action ───
 
@@ -131,12 +222,37 @@ export const runExperiment = internalAction({
         }
       }
 
-      // ── Step 2: Ensure dataset is synced to LangSmith ──
+      // ── Step 2: Load questions (needed for staleness check + guard) ──
+      const allQuestions = await ctx.runQuery(
+        internal.crud.questions.byDatasetInternal,
+        { datasetId: args.datasetId },
+      );
+      // Skip questions with no ground truth spans — they inflate recall
+      // and drag down precision, making retriever metrics meaningless.
+      const questions = allQuestions.filter(
+        (q: any) => Array.isArray(q.relevantSpans) && q.relevantSpans.length > 0,
+      );
+
+      // ── Step 3: Ensure dataset is synced to LangSmith ──
       let dataset = await ctx.runQuery(internal.crud.datasets.getInternal, {
         id: args.datasetId,
       });
 
-      if (!dataset.langsmithDatasetId) {
+      // Detect stale LangSmith dataset: if the dataset's total question
+      // count differs from the filtered count (questions with ground truth),
+      // the LangSmith dataset was synced before the ground-truth filter was
+      // added and contains extra examples that waste evaluation time.
+      const needsResync =
+        !dataset.langsmithDatasetId ||
+        (dataset.questionCount != null && dataset.questionCount !== questions.length);
+
+      if (needsResync) {
+        if (dataset.langsmithDatasetId) {
+          await ctx.runMutation(internal.crud.datasets.clearLangsmithSync, {
+            datasetId: args.datasetId,
+          });
+        }
+
         await ctx.runMutation(internal.experiments.orchestration.updateStatus, {
           experimentId: args.experimentId,
           status: "running",
@@ -151,12 +267,6 @@ export const runExperiment = internalAction({
           id: args.datasetId,
         });
       }
-
-      // ── Step 3: Count questions and guard against empty datasets ──
-      const questions = await ctx.runQuery(
-        internal.crud.questions.byDatasetInternal,
-        { datasetId: args.datasetId },
-      );
 
       if (questions.length === 0) {
         await ctx.runMutation(internal.experiments.orchestration.updateStatus, {
@@ -230,58 +340,136 @@ export const runEvaluation = internalAction({
     // Create embedder for query embedding
     const embedder = createEmbedder(args.embeddingModel);
 
-    // Build query → questionId lookup for onResult callback
-    const questions = await ctx.runQuery(
+    // Build query → questionId lookup for onResult callback.
+    // Only include questions with ground truth spans so retriever
+    // metrics are not distorted by unanswerable questions.
+    const allQuestions = await ctx.runQuery(
       internal.crud.questions.byDatasetInternal,
       { datasetId: args.datasetId },
+    );
+    const questions = allQuestions.filter(
+      (q: any) => Array.isArray(q.relevantSpans) && q.relevantSpans.length > 0,
     );
     const queryToQuestionId = new Map<string, Id<"questions">>();
     for (const q of questions) {
       queryToQuestionId.set(q.queryText, q._id);
     }
 
-    // Resolve index strategy for parent-child swap.
-    // Retriever path: strategy lives in the retriever's config.
-    // Legacy path: strategy lives in experiment.retrieverConfig.
+    // Resolve index strategy and search config from retriever/experiment config.
     let indexStrategy = "plain";
+    let retrieverConfigObj: Record<string, any> = {};
     if (experiment.retrieverId) {
       const ret = await ctx.runQuery(internal.crud.retrievers.getInternal, {
         id: experiment.retrieverId,
       });
-      const retConfig = (ret.retrieverConfig ?? {}) as Record<string, any>;
-      const idxSettings = (retConfig.index ?? {}) as Record<string, any>;
-      indexStrategy = (idxSettings.strategy as string) ?? "plain";
+      retrieverConfigObj = (ret.retrieverConfig ?? {}) as Record<string, any>;
     } else {
-      const retConfig = (experiment.retrieverConfig ?? {}) as Record<string, any>;
-      const idxSettings = (retConfig.index ?? {}) as Record<string, any>;
-      indexStrategy = (idxSettings.strategy as string) ?? "plain";
+      retrieverConfigObj = (experiment.retrieverConfig ?? {}) as Record<string, any>;
     }
+    const idxSettings = (retrieverConfigObj.index ?? {}) as Record<string, any>;
+    indexStrategy = (idxSettings.strategy as string) ?? "plain";
 
-    // Create CallbackRetriever backed by Convex vector search
-    const retriever = new CallbackRetriever({
-      name: "convex-vector-search",
-      retrieveFn: async (query: string, topK: number) => {
-        const queryEmbedding = await embedder.embedQuery(query);
-        const { chunks: filtered } = await vectorSearchWithFilter(ctx, {
-          queryEmbedding,
-          kbId: args.kbId,
-          indexConfigHash: args.indexConfigHash,
-          topK,
-          indexStrategy,
-        });
+    const searchConfig = resolveSearchConfig(retrieverConfigObj);
 
-        return filtered.map(
-          (c: any): PositionAwareChunk => ({
-            id: PositionAwareChunkId(c.chunkId),
-            content: c.content,
-            metadata: c.metadata ?? {},
-            docId: DocumentId(c.docId),
-            start: c.start,
-            end: c.end,
-          }),
-        );
-      },
-    });
+    // ── Build retriever based on search strategy ──
+    let retriever: CallbackRetriever;
+    let cleanupFn: (() => void) | undefined;
+
+    if (searchConfig.strategy === "bm25") {
+      // BM25: load all chunks, build in-memory inverted index, no embeddings
+      const rawChunks = await loadAllChunks(ctx, args.kbId, args.indexConfigHash);
+      const paChunks = toPositionAwareChunks(rawChunks);
+      const bm25 = new BM25SearchIndex({ k1: searchConfig.k1, b: searchConfig.b });
+      bm25.build(paChunks);
+      cleanupFn = () => bm25.clear();
+
+      retriever = new CallbackRetriever({
+        name: "convex-bm25-search",
+        retrieveFn: async (query: string, topK: number) => {
+          return [...bm25.search(query, topK)];
+        },
+        cleanupFn: async () => bm25.clear(),
+      });
+    } else if (searchConfig.strategy === "hybrid") {
+      // Hybrid: BM25 in-memory + Convex vector search, fused
+      const rawChunks = await loadAllChunks(ctx, args.kbId, args.indexConfigHash);
+      const paChunks = toPositionAwareChunks(rawChunks);
+      const bm25 = new BM25SearchIndex({ k1: searchConfig.k1, b: searchConfig.b });
+      bm25.build(paChunks);
+      cleanupFn = () => bm25.clear();
+
+      const candidateMultiplier = searchConfig.candidateMultiplier ?? 4;
+      const denseWeight = searchConfig.denseWeight ?? 0.7;
+      const sparseWeight = searchConfig.sparseWeight ?? 0.3;
+
+      retriever = new CallbackRetriever({
+        name: "convex-hybrid-search",
+        retrieveFn: async (query: string, topK: number) => {
+          const candidateK = topK * candidateMultiplier;
+
+          // Dense component: embed query → Convex vector search
+          const queryEmbedding = await embedder.embedQuery(query);
+          const { chunks: denseRaw, scoreMap } = await vectorSearchWithFilter(ctx, {
+            queryEmbedding,
+            kbId: args.kbId,
+            indexConfigHash: args.indexConfigHash,
+            topK: candidateK,
+            indexStrategy,
+          });
+          const denseResults: ScoredChunk[] = denseRaw.map((c: any) => ({
+            chunk: {
+              id: PositionAwareChunkId(c.chunkId),
+              content: c.content,
+              docId: DocumentId(c.docId),
+              start: c.start,
+              end: c.end,
+              metadata: c.metadata ?? {},
+            },
+            score: scoreMap.get(c._id.toString()) ?? 0,
+          }));
+
+          // Sparse component: BM25 in-memory
+          const sparseResults: ScoredChunk[] = [
+            ...bm25.searchWithScores(query, candidateK),
+          ];
+
+          // Fuse results
+          const fused =
+            searchConfig.fusionMethod === "rrf"
+              ? reciprocalRankFusion({ denseResults, sparseResults, k: searchConfig.rrfK })
+              : weightedScoreFusion({ denseResults, sparseResults, denseWeight, sparseWeight });
+
+          return fused.slice(0, topK).map(({ chunk }) => chunk);
+        },
+        cleanupFn: async () => bm25.clear(),
+      });
+    } else {
+      // Dense (default): embed query → Convex vector search
+      retriever = new CallbackRetriever({
+        name: "convex-vector-search",
+        retrieveFn: async (query: string, topK: number) => {
+          const queryEmbedding = await embedder.embedQuery(query);
+          const { chunks: filtered } = await vectorSearchWithFilter(ctx, {
+            queryEmbedding,
+            kbId: args.kbId,
+            indexConfigHash: args.indexConfigHash,
+            topK,
+            indexStrategy,
+          });
+
+          return filtered.map(
+            (c: any): PositionAwareChunk => ({
+              id: PositionAwareChunkId(c.chunkId),
+              content: c.content,
+              metadata: c.metadata ?? {},
+              docId: DocumentId(c.docId),
+              start: c.start,
+              end: c.end,
+            }),
+          );
+        },
+      });
+    }
 
     // Run evaluation via LangSmith evaluate()
     let resultsCount = 0;

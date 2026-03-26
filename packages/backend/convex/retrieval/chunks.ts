@@ -95,6 +95,62 @@ export const deleteKbConfigChunks = internalMutation({
   },
 });
 
+// ─── Queries (KB-level, paginated — for BM25 / hybrid search) ───
+
+/**
+ * Read one page of chunks for a (kbId, indexConfigHash) pair.
+ *
+ * Returns chunk text + position data WITHOUT embeddings (each embedding is
+ * ~12 KB; stripping them keeps pages well under 16 MB). Joins the
+ * user-facing `docId` string from the parent `documents` table.
+ *
+ * Designed to be called in a loop from an ACTION so that each
+ * ctx.runQuery() call gets its own 16 MB read budget.
+ */
+export const getChunksByKbConfigPage = internalQuery({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    indexConfigHash: v.string(),
+    cursor: v.union(v.string(), v.null()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const numItems = args.pageSize ?? 500;
+    const page = await ctx.db
+      .query("documentChunks")
+      .withIndex("by_kb_config", (q) =>
+        q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash),
+      )
+      .paginate({ numItems, cursor: args.cursor as any ?? null });
+
+    // Join docId and strip embedding in one pass
+    const docCache = new Map<string, string>();
+    const chunks = [];
+    for (const c of page.page) {
+      let docId = docCache.get(c.documentId);
+      if (docId === undefined) {
+        const doc = await ctx.db.get(c.documentId);
+        docId = doc?.docId ?? "";
+        docCache.set(c.documentId, docId);
+      }
+      chunks.push({
+        chunkId: c.chunkId,
+        content: c.content,
+        docId,
+        start: c.start,
+        end: c.end,
+        metadata: c.metadata ?? {},
+      });
+    }
+
+    return {
+      chunks,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
 // ─── Queries (new — for two-phase indexing) ───
 
 /**

@@ -7,11 +7,71 @@ import { Id } from "../_generated/dataModel";
 import {
   computeIndexConfigHash,
   computeRetrieverConfigHash,
+  PositionAwareChunkId,
+  DocumentId,
   type PipelineConfig,
+  type PositionAwareChunk,
+  type ScoredChunk,
 } from "rag-evaluation-system";
+import {
+  BM25SearchIndex,
+  weightedScoreFusion,
+  reciprocalRankFusion,
+} from "rag-evaluation-system/pipeline/internals";
 import { createEmbedder } from "rag-evaluation-system/llm";
 import { getAuthContext } from "../lib/auth";
 import { vectorSearchWithFilter } from "../lib/vectorSearch";
+
+// ─── Helpers ───
+
+/** Paginate through all chunks for a (kbId, indexConfigHash). */
+async function loadAllChunksForRetriever(
+  ctx: ActionCtx,
+  kbId: Id<"knowledgeBases">,
+  indexConfigHash: string,
+) {
+  const all: Array<{
+    chunkId: string;
+    content: string;
+    docId: string;
+    start: number;
+    end: number;
+    metadata: Record<string, unknown>;
+  }> = [];
+  let cursor: string | null = null;
+  let done = false;
+  while (!done) {
+    const page: any = await ctx.runQuery(
+      internal.retrieval.chunks.getChunksByKbConfigPage,
+      { kbId, indexConfigHash, cursor },
+    );
+    all.push(...page.chunks);
+    done = page.isDone;
+    cursor = page.continueCursor;
+  }
+  return all;
+}
+
+/** Deduplicate raw chunks by chunkId and convert to PositionAwareChunk-like objects. */
+function deduplicateChunks(
+  rawChunks: Array<{ chunkId: string; content: string; docId: string; start: number; end: number; metadata: Record<string, unknown> }>,
+) {
+  const seen = new Set<string>();
+  const result: Array<{ id: ReturnType<typeof PositionAwareChunkId>; content: string; docId: ReturnType<typeof DocumentId>; start: number; end: number; metadata: Record<string, unknown> }> = [];
+  for (const c of rawChunks) {
+    if (seen.has(c.chunkId)) continue;
+    seen.add(c.chunkId);
+    result.push({
+      id: PositionAwareChunkId(c.chunkId),
+      content: c.content,
+      docId: DocumentId(c.docId),
+      start: c.start,
+      end: c.end,
+      metadata: c.metadata,
+    });
+  }
+  return result;
+}
 
 // ─── Create Retriever ───
 
@@ -209,33 +269,115 @@ export const retrieve = action({
     };
     const topK = args.k ?? retriever.defaultK;
 
-    // Resolve embedding model from index config
+    // Resolve embedding model and search strategy from config
     const indexSettings = (config.index ?? {}) as Record<string, unknown>;
     const embeddingModel =
       (indexSettings.embeddingModel as string) ?? "text-embedding-3-small";
-
-    const embedder = createEmbedder(embeddingModel);
-    const queryEmbedding = await embedder.embedQuery(args.query);
-
-    // Vector search with post-filtering by indexConfigHash
     const indexStrategy = (indexSettings.strategy as string) ?? "plain";
 
-    const { chunks: filtered, scoreMap } = await vectorSearchWithFilter(ctx, {
-      queryEmbedding,
-      kbId: retriever.kbId,
-      indexConfigHash: retriever.indexConfigHash,
-      topK,
-      indexStrategy,
-    });
+    const searchSettings = ((config as Record<string, any>).search ?? {}) as Record<string, any>;
+    const searchStrategy = (searchSettings.strategy as string) ?? "dense";
 
-    return filtered.map((c: any) => ({
-      chunkId: c.chunkId,
-      content: c.content,
-      docId: c.docId,
-      start: c.start,
-      end: c.end,
-      score: scoreMap.get(c._id.toString()) ?? 0,
-      metadata: c.metadata ?? {},
-    }));
+    if (searchStrategy === "bm25") {
+      // BM25: load all chunks, build in-memory inverted index, search
+      const rawChunks = await loadAllChunksForRetriever(ctx, retriever.kbId, retriever.indexConfigHash);
+      const paChunks = deduplicateChunks(rawChunks);
+      const bm25 = new BM25SearchIndex({
+        k1: searchSettings.k1 as number | undefined,
+        b: searchSettings.b as number | undefined,
+      });
+      bm25.build(paChunks);
+      const results = bm25.searchWithScores(args.query, topK);
+      bm25.clear();
+
+      return [...results].map(({ chunk, score }) => ({
+        chunkId: chunk.id as string,
+        content: chunk.content,
+        docId: chunk.docId as string,
+        start: chunk.start,
+        end: chunk.end,
+        score,
+        metadata: (chunk.metadata ?? {}) as Record<string, unknown>,
+      }));
+    } else if (searchStrategy === "hybrid") {
+      // Hybrid: BM25 in-memory + Convex vector search, fused
+      const rawChunks = await loadAllChunksForRetriever(ctx, retriever.kbId, retriever.indexConfigHash);
+      const paChunks = deduplicateChunks(rawChunks);
+      const bm25 = new BM25SearchIndex({
+        k1: searchSettings.k1 as number | undefined,
+        b: searchSettings.b as number | undefined,
+      });
+      bm25.build(paChunks);
+
+      const candidateMultiplier = (searchSettings.candidateMultiplier as number) ?? 4;
+      const denseWeight = (searchSettings.denseWeight as number) ?? 0.7;
+      const sparseWeight = (searchSettings.sparseWeight as number) ?? 0.3;
+      const candidateK = topK * candidateMultiplier;
+
+      // Dense component
+      const embedder = createEmbedder(embeddingModel);
+      const queryEmbedding = await embedder.embedQuery(args.query);
+      const { chunks: denseRaw, scoreMap } = await vectorSearchWithFilter(ctx, {
+        queryEmbedding,
+        kbId: retriever.kbId,
+        indexConfigHash: retriever.indexConfigHash,
+        topK: candidateK,
+        indexStrategy,
+      });
+      const denseResults: ScoredChunk[] = denseRaw.map((c: any) => ({
+        chunk: {
+          id: PositionAwareChunkId(c.chunkId),
+          content: c.content,
+          docId: DocumentId(c.docId),
+          start: c.start,
+          end: c.end,
+          metadata: c.metadata ?? {},
+        },
+        score: scoreMap.get(c._id.toString()) ?? 0,
+      }));
+
+      // Sparse component
+      const sparseResults: ScoredChunk[] = [...bm25.searchWithScores(args.query, candidateK)];
+      bm25.clear();
+
+      // Fuse
+      const fusionMethod = (searchSettings.fusionMethod as string) ?? "weighted";
+      const fused =
+        fusionMethod === "rrf"
+          ? reciprocalRankFusion({ denseResults, sparseResults, k: searchSettings.rrfK as number | undefined })
+          : weightedScoreFusion({ denseResults, sparseResults, denseWeight, sparseWeight });
+
+      return fused.slice(0, topK).map(({ chunk, score }) => ({
+        chunkId: chunk.id as string,
+        content: chunk.content,
+        docId: chunk.docId as string,
+        start: chunk.start,
+        end: chunk.end,
+        score,
+        metadata: (chunk.metadata ?? {}) as Record<string, unknown>,
+      }));
+    } else {
+      // Dense (default): embed query → Convex vector search
+      const embedder = createEmbedder(embeddingModel);
+      const queryEmbedding = await embedder.embedQuery(args.query);
+
+      const { chunks: filtered, scoreMap } = await vectorSearchWithFilter(ctx, {
+        queryEmbedding,
+        kbId: retriever.kbId,
+        indexConfigHash: retriever.indexConfigHash,
+        topK,
+        indexStrategy,
+      });
+
+      return filtered.map((c: any) => ({
+        chunkId: c.chunkId,
+        content: c.content,
+        docId: c.docId,
+        start: c.start,
+        end: c.end,
+        score: scoreMap.get(c._id.toString()) ?? 0,
+        metadata: c.metadata ?? {},
+      }));
+    }
   },
 });
