@@ -11,6 +11,7 @@
 import type * as agents_actions from "../agents/actions.js";
 import type * as agents_orchestration from "../agents/orchestration.js";
 import type * as agents_promptTemplate from "../agents/promptTemplate.js";
+import type * as annotations_crud from "../annotations/crud.js";
 import type * as crons from "../crons.js";
 import type * as crud_agents from "../crud/agents.js";
 import type * as crud_conversations from "../crud/conversations.js";
@@ -21,6 +22,8 @@ import type * as crud_questions from "../crud/questions.js";
 import type * as crud_retrievers from "../crud/retrievers.js";
 import type * as crud_users from "../crud/users.js";
 import type * as experiments_actions from "../experiments/actions.js";
+import type * as experiments_agentActions from "../experiments/agentActions.js";
+import type * as experiments_agentResults from "../experiments/agentResults.js";
 import type * as experiments_orchestration from "../experiments/orchestration.js";
 import type * as experiments_results from "../experiments/results.js";
 import type * as generation_actions from "../generation/actions.js";
@@ -50,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   "agents/actions": typeof agents_actions;
   "agents/orchestration": typeof agents_orchestration;
   "agents/promptTemplate": typeof agents_promptTemplate;
+  "annotations/crud": typeof annotations_crud;
   crons: typeof crons;
   "crud/agents": typeof crud_agents;
   "crud/conversations": typeof crud_conversations;
@@ -60,6 +64,8 @@ declare const fullApi: ApiFromModules<{
   "crud/retrievers": typeof crud_retrievers;
   "crud/users": typeof crud_users;
   "experiments/actions": typeof experiments_actions;
+  "experiments/agentActions": typeof experiments_agentActions;
+  "experiments/agentResults": typeof experiments_agentResults;
   "experiments/orchestration": typeof experiments_orchestration;
   "experiments/results": typeof experiments_results;
   "generation/actions": typeof generation_actions;
@@ -402,6 +408,104 @@ export declare const components: {
     };
   };
   scrapingPool: {
+    config: {
+      update: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+          maxParallelism?: number;
+        },
+        any
+      >;
+    };
+    lib: {
+      cancel: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          id: string;
+          logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+        },
+        any
+      >;
+      cancelAll: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          before?: number;
+          limit?: number;
+          logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+        },
+        any
+      >;
+      enqueue: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config: {
+            logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+            maxParallelism?: number;
+          };
+          fnArgs: any;
+          fnHandle: string;
+          fnName: string;
+          fnType: "action" | "mutation" | "query";
+          onComplete?: { context?: any; fnHandle: string };
+          retryBehavior?: {
+            base: number;
+            initialBackoffMs: number;
+            maxAttempts: number;
+          };
+          runAt: number;
+        },
+        string
+      >;
+      enqueueBatch: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config: {
+            logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+            maxParallelism?: number;
+          };
+          items: Array<{
+            fnArgs: any;
+            fnHandle: string;
+            fnName: string;
+            fnType: "action" | "mutation" | "query";
+            onComplete?: { context?: any; fnHandle: string };
+            retryBehavior?: {
+              base: number;
+              initialBackoffMs: number;
+              maxAttempts: number;
+            };
+            runAt: number;
+          }>;
+        },
+        Array<string>
+      >;
+      status: FunctionReference<
+        "query",
+        "internal",
+        { id: string },
+        | { previousAttempts: number; state: "pending" }
+        | { previousAttempts: number; state: "running" }
+        | { state: "finished" }
+      >;
+      statusBatch: FunctionReference<
+        "query",
+        "internal",
+        { ids: Array<string> },
+        Array<
+          | { previousAttempts: number; state: "pending" }
+          | { previousAttempts: number; state: "running" }
+          | { state: "finished" }
+        >
+      >;
+    };
+  };
+  agentExperimentPool: {
     config: {
       update: FunctionReference<
         "mutation",
