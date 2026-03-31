@@ -30,12 +30,26 @@ describe("splitIntoPassages", () => {
     expect(passages[0]).toContain("Also short.");
   });
 
-  it("should cap passages at maxLen", () => {
+  it("should chunk oversized single paragraph into pieces within maxLen", () => {
     const longPara = "A".repeat(600);
     const passages = splitIntoPassages(longPara, 500);
-    // Single long paragraph gets pushed as-is
-    expect(passages).toHaveLength(1);
-    expect(passages[0].length).toBe(600);
+    // Oversized paragraph gets split into chunks that fit within maxLen
+    expect(passages).toHaveLength(2);
+    expect(passages[0].length).toBe(500);
+    expect(passages[1].length).toBe(100);
+    // All content preserved
+    expect(passages.join("")).toBe(longPara);
+  });
+
+  it("should split oversized paragraph on newlines and sentences before hard-truncating", () => {
+    // Paragraph with sentence boundaries, total > 500 chars
+    const sentence = "This is a test sentence. ";
+    const longPara = sentence.repeat(30); // ~750 chars
+    const passages = splitIntoPassages(longPara, 500);
+    expect(passages.length).toBeGreaterThan(1);
+    for (const p of passages) {
+      expect(p.length).toBeLessThanOrEqual(500);
+    }
   });
 
   it("should handle empty text", () => {

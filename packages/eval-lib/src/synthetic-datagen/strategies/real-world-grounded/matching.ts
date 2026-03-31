@@ -23,6 +23,57 @@ export interface PassageInfo {
   readonly text: string;
 }
 
+/**
+ * Break a single oversized text block into chunks that fit within maxLen.
+ * Tries progressively smaller split boundaries: single newlines → sentences → hard cut.
+ */
+function chunkOversizedBlock(block: string, maxLen: number): string[] {
+  if (block.length <= maxLen) return [block];
+
+  // Try splitting on single newlines first
+  const lines = block.split(/\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length > 1) {
+    return accumulateChunks(lines, maxLen, "\n");
+  }
+
+  // Try splitting on sentence boundaries
+  const sentences = block.split(/(?<=[.!?])\s+/).filter(Boolean);
+  if (sentences.length > 1) {
+    return accumulateChunks(sentences, maxLen, " ");
+  }
+
+  // Hard truncate as last resort
+  const chunks: string[] = [];
+  for (let i = 0; i < block.length; i += maxLen) {
+    chunks.push(block.slice(i, i + maxLen));
+  }
+  return chunks;
+}
+
+/** Accumulate fragments into chunks that stay under maxLen. */
+function accumulateChunks(fragments: string[], maxLen: number, sep: string): string[] {
+  const chunks: string[] = [];
+  let current = "";
+  for (const frag of fragments) {
+    if (current.length > 0 && current.length + frag.length + sep.length > maxLen) {
+      chunks.push(current);
+      current = "";
+    }
+    current = current.length > 0 ? current + sep + frag : frag;
+  }
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+  // Any chunk still oversized gets hard-truncated
+  return chunks.flatMap((c) =>
+    c.length > maxLen
+      ? Array.from({ length: Math.ceil(c.length / maxLen) }, (_, i) =>
+          c.slice(i * maxLen, (i + 1) * maxLen),
+        )
+      : [c],
+  );
+}
+
 export function splitIntoPassages(text: string, maxLen = PASSAGE_MAX_LENGTH): string[] {
   const paragraphs = text.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
   const passages: string[] = [];
@@ -38,9 +89,9 @@ export function splitIntoPassages(text: string, maxLen = PASSAGE_MAX_LENGTH): st
     } else {
       current = para;
     }
-    // If single paragraph exceeds max, flush it as-is
+    // If accumulated text exceeds max, break it down properly
     if (current.length >= maxLen) {
-      passages.push(current);
+      passages.push(...chunkOversizedBlock(current, maxLen));
       current = "";
     }
   }
