@@ -288,8 +288,8 @@ function AnnotateContent() {
                 )}
               </div>
 
-              {/* Retrieval Metrics */}
-              {currentResult.scores && (
+              {/* Retrieval Metrics — only shown when agent made tool calls */}
+              {currentResult.toolCalls.length > 0 && currentResult.scores && (
                 <div className="flex gap-4 text-sm">
                   {Object.entries(
                     currentResult.scores as Record<string, number>,

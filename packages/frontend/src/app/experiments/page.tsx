@@ -512,7 +512,7 @@ function ExperimentRow({ experiment: exp }: { experiment: any }) {
           {exp.phase ?? "Evaluating"}... ({exp.processedQuestions}/{exp.totalQuestions ?? "?"})
         </div>
       )}
-      {scores && Object.keys(scores).length > 0 && (
+      {!isAgent && scores && Object.keys(scores).length > 0 && (
         <div className="flex gap-4 mt-2 text-sm">
           {Object.entries(scores).slice(0, 4).map(([key, value]) => (
             <span key={key} className="text-text-muted">
