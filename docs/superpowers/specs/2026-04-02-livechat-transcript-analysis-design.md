@@ -243,7 +243,7 @@ interface BasicStats {
 ```
 packages/eval-lib/src/data-analysis/
   index.ts                     # Public API re-exports
-  types.ts                     # All TypeScript interfaces (as defined above)
+  types.ts                     # All TypeScript interfaces (as defined above, including TopicTypeExport)
   csv-parser.ts                # Streaming CSV parser using csv-parse
   transcript-parser.ts         # Deterministic transcript string -> RawMessage[] parser
   basic-stats.ts               # Aggregate statistics calculator
@@ -771,6 +771,125 @@ All scripts print progress to stderr and write JSON to the specified output path
 }
 ```
 
+## Frontend
+
+### Placement: Vertical Icon Rail in KB Page
+
+The livechat transcript analysis lives within the Knowledge Base page, accessed via a narrow **vertical icon rail** on the left edge. Two icons:
+- **Documents** (current KB view) — default
+- **Livechat Transcripts** (new analysis view)
+
+Clicking the livechat icon replaces the entire KB page content to the right of the rail. All livechat components are self-contained and isolated so they can be moved to a different location later.
+
+### Layout: Upload List + Tab Content
+
+The livechat view has two regions:
+- **Left sidebar** (~200px): Lists uploaded CSV files. Each entry shows the filename, conversation count, and processing status (Pending / Processing / Analyzed). An "Upload" button at the top opens a file picker for CSV upload.
+- **Main content area**: Three tabs — **Stats**, **Transcripts**, **Microtopics**
+
+### Stats Tab
+
+Dashboard cards showing aggregate statistics from `basic-stats.json`:
+- **Top row** (4 cards): Total Conversations, Unique Visitors, Unique Agents, Avg Duration
+- **Bottom row** (2 cards): Top Agents (name + conversation count), Labels breakdown (label + count)
+
+### Transcripts Tab
+
+**Chat bubble view** for browsing raw parsed conversations:
+- **Left panel**: Scrollable conversation list with search. Each entry shows visitor name, conversation ID, agent name, message count, duration.
+- **Right panel**: Selected conversation displayed as chat bubbles:
+  - User messages: right-aligned, green (`accent-dim` background, `accent-bright` text)
+  - Agent messages: left-aligned, dark (`bg-surface` background, `text` color, `border` border)
+  - Workflow messages: centered system pills (subtle, dimmed)
+  - Each message shows its ID as a subtle tag (e.g., `#18`)
+  - Conversation header shows visitor name, ID, phone, status badges, language
+
+### Microtopics Tab
+
+Two sub-views controlled by a **segmented toggle above the left sidebar** ("By Conversation" / "By Topic Type"). The toggle switches both the sidebar content and the main content.
+
+#### By Conversation View
+
+- **Left sidebar**: Toggle at top, then search, then conversation list with microtopic badges (e.g., `Q×2 R×1`)
+- **Main content**: Selected conversation's microtopics as **accordion cards**:
+  - Bot flow input shown as a centered pill at the top (intent + language)
+  - Workflow events summarized as a centered dimmed line
+  - Each microtopic is a collapsible card with:
+    - Color-coded type badge: green=question, purple=request, yellow=identity_info, gray=greeting/closing/confirmation
+    - Preview text when collapsed (first user message or extracted info summary)
+    - Message count
+  - Expanded card shows exchanges with **Primary** and **Follow-up** sections
+  - Messages inside exchanges use the same chat bubble style (user right, agent left)
+  - `identity_info` cards show extracted data (name, phone, etc.) as tags
+- **Export button** (top-right): Exports the selected conversation's microtopics as JSON — same format as `ConversationMicrotopics` from JSON 2
+
+#### By Topic Type View
+
+- **Left sidebar**: Toggle at top, then topic type list with counts. Each type is color-coded and shows the count of microtopics across all conversations. Clicking a type filters the main content.
+- **Main content**: Flat scrollable feed of all microtopics matching the selected type:
+  - Header shows count and conversation span (e.g., "847 questions across 200 conversations")
+  - Each card shows:
+    - Conversation reference (visitor name, conversation ID, agent name)
+    - User message prominently displayed
+    - Agent response below, indented with a left border
+  - Cards are sorted by conversation order (can be extended with sorting later)
+- **Export button** (top-right): Exports all microtopics of the selected type as JSON
+
+#### Topic Type Export Format
+
+```typescript
+interface TopicTypeExport {
+  type: MicrotopicType;
+  exportedAt: string;
+  source: string;                        // CSV filename
+  totalItems: number;
+  items: {
+    conversationId: string;
+    visitorName: string;
+    agentName: string;
+    language: string;
+    exchanges: Exchange[];               // Same structure as Microtopic.exchanges
+    extracted?: ExtractedInfo[];          // For identity_info type
+  }[];
+}
+```
+
+### Processing Flow (Frontend)
+
+1. User uploads a CSV file (max ~500-1000 conversations for frontend processing)
+2. Frontend sends CSV to an API route (Next.js server action or API route) that runs the three scripts sequentially:
+   - Basic stats → `basic-stats.json`
+   - Transcript parsing → `raw-transcripts.json`
+   - Microtopic extraction → `microtopics.json` (with `--limit` for initial batch)
+3. Progress shown in the upload list sidebar (Pending → Processing → Analyzed)
+4. Once complete, JSON files are loaded into the frontend and displayed across the three tabs
+
+**Note:** For the initial implementation, processing happens server-side via the CLI scripts. The frontend loads the resulting JSON files. No database storage — JSON files only.
+
+### Filtering: Conversations Without User Messages
+
+Conversations where the end user sent zero messages (only workflow_input and possibly human_agent messages) are filtered out from the Transcripts and Microtopics views by default. They are still present in the JSON files and counted in basic stats, but hidden from the interactive views since they contain no usable Q&A data. A "Show all" toggle can be added later to inspect them.
+
+### Component Isolation
+
+All livechat transcript components are kept in a separate directory:
+
+```
+packages/frontend/src/components/livechat/
+  LivechatView.tsx             # Root component (replaces KB content when rail icon active)
+  UploadSidebar.tsx            # Left sidebar with upload list
+  StatsTab.tsx                 # Stats dashboard
+  TranscriptsTab.tsx           # Chat bubble transcript viewer
+  MicrotopicsTab.tsx           # Microtopics viewer (both sub-views)
+  ConversationList.tsx         # Reusable conversation list for Transcripts + Microtopics
+  ChatBubble.tsx               # Reusable message bubble component
+  MicrotopicCard.tsx           # Collapsible microtopic accordion card
+  TopicTypeFeed.tsx            # Flat feed for By Topic Type view
+  ExportButton.tsx             # JSON export button
+```
+
+The icon rail toggle is added to the KB page (`app/kb/page.tsx`) but renders `<LivechatView />` as a self-contained unit.
+
 ## Constraints and Non-Goals
 
 **Constraints:**
@@ -779,9 +898,11 @@ All scripts print progress to stderr and write JSON to the specified output path
 - JSON 2 (microtopics) uses AI only for segmentation/classification boundaries — message text is never reproduced by the LLM
 - All message IDs from JSON 1 must appear in JSON 2 (no dropped messages)
 - Initial microtopic extraction limited to 200 conversations for quality validation
+- Frontend processes CSVs up to ~500-1000 conversations; larger files use CLI scripts directly
 
 **Non-goals (for now):**
-- Frontend UI for uploading/viewing analysis results (future work)
-- Database storage of analysis output (future work — currently JSON files only)
+- Database storage of analysis output (JSON files only)
 - Automated feeding of Q&A pairs into the question generation module (future integration)
 - Processing of non-livechat transcript formats
+- Editing/moving messages between microtopics in the UI (future feature)
+- Sorting/advanced filtering in the By Topic Type view (future feature)
