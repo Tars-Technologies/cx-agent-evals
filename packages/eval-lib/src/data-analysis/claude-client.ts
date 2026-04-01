@@ -2,8 +2,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import type {
   RawMessage,
   LLMExtractionResult,
-  MicrotopicType,
-  ExtractedInfo,
 } from "./types.js";
 
 const SYSTEM_PROMPT = `You are analyzing customer support chat transcripts from a telecom company (Vodafone Qatar).
