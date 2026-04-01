@@ -207,6 +207,8 @@ interface BasicStats {
   source: string;
   generatedAt: string;
   totalConversations: number;
+  conversationsWithUserMessages: number;   // Conversations where the user sent >= 1 message
+  conversationsWithoutUserMessages: number; // Filtered out from Transcripts/Microtopics views
   uniqueVisitors: number;
   uniqueAgents: number;
   statusBreakdown: Record<string, number>;
@@ -235,6 +237,21 @@ interface BasicStats {
     earliestStart: string;
     latestStart: string;
   };
+}
+
+interface TopicTypeExport {
+  type: MicrotopicType;
+  exportedAt: string;
+  source: string;                          // CSV filename
+  totalItems: number;
+  items: {
+    conversationId: string;
+    visitorName: string;
+    agentName: string;
+    language: string;
+    exchanges: Exchange[];
+    extracted?: ExtractedInfo[];
+  }[];
 }
 ```
 
@@ -323,7 +340,7 @@ raw-transcripts.json → deterministic pre-processing → Claude Sonnet 4.6 API 
 
 For each conversation:
 
-1. **Detect botFlowInput**: If the first message has role `"workflow_input"` and matches the bot flow pattern, extract it as `botFlowInput` and remove from the message list sent to the LLM. Bot flow messages are comma-separated values like `"Continue in English, -No Input-, New Postpaid Plan, English,"`. Parsing heuristic: split on comma, trim whitespace, filter out empty strings and `"-No Input-"`. The last non-empty token matching a known language (`English`, `Arabic`) becomes the `language` field. The remaining substantive token (e.g., `"New Postpaid Plan"`, `"GigaHome Fibre"`) becomes the `intent` field. If parsing fails, set `intent` and `language` to `"unknown"` and keep `rawText` verbatim.
+1. **Detect botFlowInput**: If the first message has role `"workflow_input"` and matches the bot flow pattern, extract it as `botFlowInput` and remove from the message list sent to the LLM. Bot flow messages are comma-separated values like `"Continue in English, -No Input-, New Postpaid Plan, English,"`. Parsing heuristic: split on comma, trim whitespace, filter out empty strings, `"-No Input-"`, and language switch phrases like `"Continue in English"`, `"تبديل إلى العربية"`. Known languages: `English`, `Arabic`. The last token matching a known language becomes the `language` field. The remaining tokens are candidate intents — filter out pure whitespace and single-word noise. If exactly one substantive token remains (e.g., `"New Postpaid Plan"`, `"GigaHome Fibre"`), it becomes the `intent` field. If multiple remain, join them with ` / ` (e.g., `"New Postpaid Plan / Upgrade"`). If none remain, set `intent` to `"unknown"`. If parsing fails entirely (no language found, no structure), set both `intent` and `language` to `"unknown"` and keep `rawText` verbatim.
 
 2. **Identify system messages**: Match `workflow_input` messages against known patterns:
    - `"Assigned to {name} by {name}"`
@@ -345,6 +362,8 @@ For each conversation:
 You are analyzing customer support chat transcripts from a telecom company (Vodafone Qatar).
 
 Your task is to segment the conversation into microtopics and classify each one. You will receive messages with their IDs. Return ONLY message IDs and classifications — do NOT reproduce message text.
+
+Conversations may be in English, Arabic, or a mix of both. Classify based on the semantic content regardless of language.
 
 Microtopic types:
 - identity_info: User shares personal information (name, phone, email, address, QID) or agent asks for/confirms it
@@ -433,7 +452,7 @@ npx tsx packages/eval-lib/src/data-analysis/run-microtopics.ts \
   --concurrency 10
 ```
 
-All scripts print progress to stderr and write JSON to the specified output path. CLI args are parsed from `process.argv` directly (no external arg parsing library needed — just `--input`, `--output`, `--limit`, `--concurrency`).
+All scripts print progress to stderr and write JSON to the specified output path. CLI args are parsed from `process.argv` directly (no external arg parsing library needed — just `--input`, `--output`, `--limit`, `--concurrency`). Scripts create the output directory if it doesn't exist (`fs.mkdirSync(dir, { recursive: true })`).
 
 **Git:** `data/output/` should be added to `.gitignore` — generated JSON files are large and should not be committed.
 
@@ -781,23 +800,51 @@ The livechat transcript analysis lives within the Knowledge Base page, accessed 
 
 Clicking the livechat icon replaces the entire KB page content to the right of the rail. All livechat components are self-contained and isolated so they can be moved to a different location later.
 
-### Layout: Upload List + Tab Content
+### Layout Hierarchy
 
-The livechat view has two regions:
-- **Left sidebar** (~200px): Lists uploaded CSV files. Each entry shows the filename, conversation count, and processing status (Pending / Processing / Analyzed). An "Upload" button at the top opens a file picker for CSV upload.
-- **Main content area**: Three tabs — **Stats**, **Transcripts**, **Microtopics**
+The full layout from left to right:
+
+```
+┌──────┬──────────────┬─────────────────────────────────────────────┐
+│ Icon │   Upload     │              Tab Content Area               │
+│ Rail │   Sidebar    │  ┌─────────┬─────────────────────────────┐  │
+│      │              │  │ Stats │ Transcripts │ Microtopics │  │  │
+│ 36px │   ~180px     │  ├─────────┴─────────────────────────────┤  │
+│      │              │  │                                       │  │
+│  📄  │  VFQ Jul-Dec │  │     Tab-specific content              │  │
+│  💬  │  VFQ Jan-Mar │  │     (may have its own internal        │  │
+│      │              │  │      left panel + detail panel)        │  │
+│      │  [+ Upload]  │  │                                       │  │
+│      │              │  └───────────────────────────────────────┘  │
+└──────┴──────────────┴─────────────────────────────────────────────┘
+```
+
+- **Icon rail** (36px): Always visible. Switches between Documents view and Livechat Transcripts view.
+- **Upload sidebar** (~180px): Always visible when in livechat mode. Lists uploaded CSVs with processing status.
+- **Tab content area** (remaining width): Tabs at top, content below. Some tabs (Transcripts, Microtopics) have their own internal split with a conversation list + detail panel.
+
+### Upload Sidebar
+
+Lists uploaded CSV files. Each entry shows:
+- Filename (truncated)
+- Conversation count
+- Processing status: `Pending` → `Parsing...` → `Analyzing...` → `Ready`
+
+An "+ Upload" button at the top opens a file picker. Multiple CSVs can be uploaded and appear as separate entries. Selecting a CSV loads its data into the three tabs.
 
 ### Stats Tab
 
-Dashboard cards showing aggregate statistics from `basic-stats.json`:
-- **Top row** (4 cards): Total Conversations, Unique Visitors, Unique Agents, Avg Duration
+Full-width dashboard (no internal left panel). Cards showing aggregate statistics from `basic-stats.json`:
+- **Top row** (4 cards): Total Conversations, Conversations with User Messages, Unique Visitors, Unique Agents
+- **Second row** (4 cards): Avg Duration, Median Duration, Avg Messages/Conversation (visitor), Avg Messages/Conversation (agent)
 - **Bottom row** (2 cards): Top Agents (name + conversation count), Labels breakdown (label + count)
 
 ### Transcripts Tab
 
-**Chat bubble view** for browsing raw parsed conversations:
-- **Left panel**: Scrollable conversation list with search. Each entry shows visitor name, conversation ID, agent name, message count, duration.
-- **Right panel**: Selected conversation displayed as chat bubbles:
+Internal split layout within the tab content area:
+
+- **Left panel** (~220px): Scrollable conversation list with search. Each entry shows visitor name, conversation ID, agent name, message count, duration. Conversations with zero user messages are hidden by default (these have `metadata.messageCountVisitor === 0` in the raw transcripts JSON). The conversation list is paginated/virtualized — only render visible items since there may be hundreds of conversations.
+- **Right panel** (remaining width): Selected conversation displayed as chat bubbles:
   - User messages: right-aligned, green (`accent-dim` background, `accent-bright` text)
   - Agent messages: left-aligned, dark (`bg-surface` background, `text` color, `border` border)
   - Workflow messages: centered system pills (subtle, dimmed)
@@ -806,69 +853,81 @@ Dashboard cards showing aggregate statistics from `basic-stats.json`:
 
 ### Microtopics Tab
 
-Two sub-views controlled by a **segmented toggle above the left sidebar** ("By Conversation" / "By Topic Type"). The toggle switches both the sidebar content and the main content.
+Internal split layout. Two sub-views controlled by a **segmented toggle above the left panel** ("By Conversation" / "By Topic Type"). The toggle switches both the left panel content and the right panel content.
 
 #### By Conversation View
 
-- **Left sidebar**: Toggle at top, then search, then conversation list with microtopic badges (e.g., `Q×2 R×1`)
-- **Main content**: Selected conversation's microtopics as **accordion cards**:
+- **Left panel** (~220px): Toggle at top, then search, then conversation list. Each entry shows visitor name, conversation ID, and microtopic badges (e.g., `Q×2 R×1`). Badges are computed at load time by counting microtopics per type from the microtopics JSON for each conversation. Same virtualization as Transcripts tab.
+- **Right panel**: Selected conversation's microtopics as **accordion cards**:
   - Bot flow input shown as a centered pill at the top (intent + language)
-  - Workflow events summarized as a centered dimmed line
-  - Each microtopic is a collapsible card with:
+  - Workflow `uncategorized` microtopics shown as compact centered dimmed lines (not full accordion cards — they're noise, don't need expand/collapse)
+  - Each non-workflow microtopic is a collapsible card with:
     - Color-coded type badge: green=question, purple=request, yellow=identity_info, gray=greeting/closing/confirmation
     - Preview text when collapsed (first user message or extracted info summary)
     - Message count
-  - Expanded card shows exchanges with **Primary** and **Follow-up** sections
+  - Expanded card shows exchanges with **Primary** and **Follow-up** section labels
   - Messages inside exchanges use the same chat bubble style (user right, agent left)
-  - `identity_info` cards show extracted data (name, phone, etc.) as tags
-- **Export button** (top-right): Exports the selected conversation's microtopics as JSON — same format as `ConversationMicrotopics` from JSON 2
+  - `identity_info` cards show extracted data (name, phone, etc.) as tags below the exchanges
+- **Export button** (top-right of right panel): Exports the selected conversation's microtopics as JSON — same format as `ConversationMicrotopics` from JSON 2
 
 #### By Topic Type View
 
-- **Left sidebar**: Toggle at top, then topic type list with counts. Each type is color-coded and shows the count of microtopics across all conversations. Clicking a type filters the main content.
-- **Main content**: Flat scrollable feed of all microtopics matching the selected type:
+- **Left panel** (~220px): Toggle at top, then topic type list with counts. Each type is color-coded and shows the total count of microtopics of that type across all conversations. Counts are computed at load time by flattening all conversations' microtopics and grouping by type. Clicking a type selects it and filters the right panel.
+- **Right panel**: Flat scrollable feed of all microtopics matching the selected type:
   - Header shows count and conversation span (e.g., "847 questions across 200 conversations")
   - Each card shows:
-    - Conversation reference (visitor name, conversation ID, agent name)
-    - User message prominently displayed
-    - Agent response below, indented with a left border
-  - Cards are sorted by conversation order (can be extended with sorting later)
-- **Export button** (top-right): Exports all microtopics of the selected type as JSON
-
-#### Topic Type Export Format
-
-```typescript
-interface TopicTypeExport {
-  type: MicrotopicType;
-  exportedAt: string;
-  source: string;                        // CSV filename
-  totalItems: number;
-  items: {
-    conversationId: string;
-    visitorName: string;
-    agentName: string;
-    language: string;
-    exchanges: Exchange[];               // Same structure as Microtopic.exchanges
-    extracted?: ExtractedInfo[];          // For identity_info type
-  }[];
-}
-```
+    - Conversation reference line: visitor name, conversation ID, agent name (dimmed)
+    - User message(s) from the primary exchange prominently displayed
+    - Agent response(s) from the primary exchange below, indented with a left border
+  - Feed is virtualized for performance (could be hundreds of items)
+  - Cards are ordered by conversation ID then by message ID within each conversation
+- **Export button** (top-right of right panel): Exports all microtopics of the selected type as JSON using the `TopicTypeExport` format (defined in the Output types section above)
 
 ### Processing Flow (Frontend)
 
-1. User uploads a CSV file (max ~500-1000 conversations for frontend processing)
-2. Frontend sends CSV to an API route (Next.js server action or API route) that runs the three scripts sequentially:
-   - Basic stats → `basic-stats.json`
-   - Transcript parsing → `raw-transcripts.json`
-   - Microtopic extraction → `microtopics.json` (with `--limit` for initial batch)
-3. Progress shown in the upload list sidebar (Pending → Processing → Analyzed)
-4. Once complete, JSON files are loaded into the frontend and displayed across the three tabs
+**Upload and storage:**
+1. User clicks "+ Upload" and selects a CSV file via file picker
+2. CSV file is sent to a Next.js API route (`/api/livechat/upload`) via `FormData`
+3. API route saves the CSV to `data/uploads/{timestamp}-{sanitized-filename}.csv` on the server
+4. Upload entry is added to a manifest file (`data/uploads/manifest.json`) that tracks all uploads with their status and output paths
+5. Frontend polls or uses SSE for status updates
 
-**Note:** For the initial implementation, processing happens server-side via the CLI scripts. The frontend loads the resulting JSON files. No database storage — JSON files only.
+**Processing pipeline (server-side, in the API route):**
+1. **Parse step** (deterministic): Runs `transcript-parser` on the CSV → writes `raw-transcripts-{id}.json` to `data/output/`
+2. **Stats step** (deterministic): Runs `basic-stats` on the CSV → writes `basic-stats-{id}.json` to `data/output/`
+3. **Microtopics step** (AI-assisted): Runs `microtopic-extractor` on the raw transcripts JSON with `--limit 200` → writes `microtopics-{id}.json` to `data/output/`
+
+Steps 1 and 2 can run in parallel. Step 3 depends on step 1's output. Status transitions: `Pending` → `Parsing...` → `Analyzing...` → `Ready`.
+
+**Loading into frontend:**
+- When user selects an upload with status `Ready`, frontend fetches the three JSON files via API routes that serve them from `data/output/`
+- Raw transcripts and microtopics JSON are loaded into memory. For 500-1000 conversations, expect 5-20MB of JSON — acceptable for modern browsers
+- At load time, build two indexes for the Microtopics tab:
+  - `byConversation`: Map<conversationId, ConversationMicrotopics> (already the native structure)
+  - `byType`: Map<MicrotopicType, {conversationId, visitorName, agentName, language, microtopic}[]> (flattened and grouped)
+- Conversation lists use virtualized scrolling (e.g., `react-window` or manual intersection observer) since there may be 500+ entries
+
+**Manifest file format** (`data/uploads/manifest.json`):
+```json
+[
+  {
+    "id": "1743550000-vfq-jul-dec-2025",
+    "filename": "[1] VFQ - Telesales Human Livechat Conversations - 1st Jul 2025 - 31st Dec 2025.csv",
+    "uploadedAt": "2026-04-02T10:00:00Z",
+    "status": "ready",
+    "conversationCount": 37241,
+    "outputFiles": {
+      "rawTranscripts": "data/output/raw-transcripts-1743550000.json",
+      "microtopics": "data/output/microtopics-1743550000.json",
+      "basicStats": "data/output/basic-stats-1743550000.json"
+    }
+  }
+]
+```
 
 ### Filtering: Conversations Without User Messages
 
-Conversations where the end user sent zero messages (only workflow_input and possibly human_agent messages) are filtered out from the Transcripts and Microtopics views by default. They are still present in the JSON files and counted in basic stats, but hidden from the interactive views since they contain no usable Q&A data. A "Show all" toggle can be added later to inspect them.
+Conversations where the end user sent zero messages (only workflow_input and possibly human_agent messages) are filtered out from the Transcripts and Microtopics views by default. Detection: `metadata.messageCountVisitor === 0` in the raw transcripts JSON, or no messages with `role === "user"` in the parsed messages array. These conversations are still counted in basic stats (the `conversationsWithoutUserMessages` field) but hidden from interactive views since they contain no usable Q&A data.
 
 ### Component Isolation
 
@@ -877,18 +936,20 @@ All livechat transcript components are kept in a separate directory:
 ```
 packages/frontend/src/components/livechat/
   LivechatView.tsx             # Root component (replaces KB content when rail icon active)
-  UploadSidebar.tsx            # Left sidebar with upload list
-  StatsTab.tsx                 # Stats dashboard
-  TranscriptsTab.tsx           # Chat bubble transcript viewer
-  MicrotopicsTab.tsx           # Microtopics viewer (both sub-views)
-  ConversationList.tsx         # Reusable conversation list for Transcripts + Microtopics
-  ChatBubble.tsx               # Reusable message bubble component
+  UploadSidebar.tsx            # Left sidebar with upload list + upload button
+  TabBar.tsx                   # Stats / Transcripts / Microtopics tab bar
+  StatsTab.tsx                 # Stats dashboard (full-width, no internal split)
+  TranscriptsTab.tsx           # Chat bubble transcript viewer (internal split: list + detail)
+  MicrotopicsTab.tsx           # Microtopics viewer (internal split, toggle for sub-views)
+  ConversationList.tsx         # Reusable virtualized conversation list (used by Transcripts + Microtopics)
+  ChatBubble.tsx               # Reusable message bubble component (user/agent/workflow)
   MicrotopicCard.tsx           # Collapsible microtopic accordion card
-  TopicTypeFeed.tsx            # Flat feed for By Topic Type view
-  ExportButton.tsx             # JSON export button
+  TopicTypeFeed.tsx            # Virtualized flat feed for By Topic Type view
+  ExportButton.tsx             # JSON export button (conversation export + topic type export)
+  types.ts                     # Frontend-specific types (upload manifest, view state, etc.)
 ```
 
-The icon rail toggle is added to the KB page (`app/kb/page.tsx`) but renders `<LivechatView />` as a self-contained unit.
+The KB page (`app/kb/page.tsx`) adds a narrow icon rail on the left. When the livechat icon is active, it renders `<LivechatView />` as a self-contained unit instead of the normal KB content. The icon rail itself is inline in the KB page (just two icon buttons, not a separate component file).
 
 ## Constraints and Non-Goals
 
