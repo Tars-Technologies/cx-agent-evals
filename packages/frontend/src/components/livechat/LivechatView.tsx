@@ -7,16 +7,69 @@ import { TranscriptsTab } from "./TranscriptsTab";
 import { MicrotopicsTab } from "./MicrotopicsTab";
 import type { LivechatTab, UploadEntry, LoadedData } from "./types";
 
+function DeleteConfirmModal({
+  filename,
+  onConfirm,
+  onCancel,
+}: {
+  filename: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const [confirmText, setConfirmText] = useState("");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="bg-bg-elevated border border-border rounded-lg p-5 w-[400px] shadow-xl">
+        <h3 className="text-sm font-semibold text-text mb-2">
+          Delete upload?
+        </h3>
+        <p className="text-xs text-text-muted mb-1">
+          This will permanently delete the uploaded CSV and all processed output
+          files for:
+        </p>
+        <p className="text-xs text-accent mb-3 truncate">{filename}</p>
+        <p className="text-xs text-text-dim mb-2">
+          Type <span className="text-red-400 font-semibold">delete</span> to
+          confirm.
+        </p>
+        <input
+          type="text"
+          value={confirmText}
+          onChange={(e) => setConfirmText(e.target.value)}
+          placeholder="delete"
+          className="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm text-text focus:border-accent outline-none mb-3"
+          autoFocus
+        />
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-xs text-text-muted hover:text-text border border-border rounded transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={confirmText !== "delete"}
+            className="px-3 py-1.5 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function LivechatView() {
   const [activeTab, setActiveTab] = useState<LivechatTab>("stats");
   const [uploads, setUploads] = useState<UploadEntry[]>([]);
   const [selectedUploadId, setSelectedUploadId] = useState<string | null>(null);
   const [loadedData, setLoadedData] = useState<LoadedData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<UploadEntry | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Track the last loaded upload ID to avoid re-fetching the same data
   const lastLoadedId = useRef<string | null>(null);
-  // Track serialized manifest to avoid unnecessary state updates
   const lastManifestJson = useRef<string>("");
 
   // Poll manifest for upload status
@@ -25,7 +78,6 @@ export function LivechatView() {
       const res = await fetch("/api/livechat/manifest");
       if (res.ok) {
         const text = await res.text();
-        // Only update state if manifest actually changed
         if (text !== lastManifestJson.current) {
           lastManifestJson.current = text;
           setUploads(JSON.parse(text));
@@ -36,27 +88,24 @@ export function LivechatView() {
     }
   }, []);
 
-  // Poll manifest, but stop once all uploads are in terminal states
   useEffect(() => {
     refreshManifest();
     const hasPending = uploads.some(
       (u) => u.status !== "ready" && u.status !== "error"
     );
-    // Only keep polling if there are uploads still processing, or no uploads yet
     if (hasPending || uploads.length === 0) {
       const interval = setInterval(refreshManifest, 3000);
       return () => clearInterval(interval);
     }
   }, [refreshManifest, uploads]);
 
-  // Load data when selecting an upload — only fetch once per upload ID
+  // Load data when selecting an upload
   useEffect(() => {
     if (!selectedUploadId) {
       setLoadedData(null);
       lastLoadedId.current = null;
       return;
     }
-    // Already loaded this upload's data
     if (lastLoadedId.current === selectedUploadId && loadedData) {
       return;
     }
@@ -70,9 +119,15 @@ export function LivechatView() {
     lastLoadedId.current = selectedUploadId;
     setLoading(true);
     Promise.all([
-      fetch(`/api/livechat/data/${selectedUploadId}?type=basicStats`).then((r) => r.json()),
-      fetch(`/api/livechat/data/${selectedUploadId}?type=rawTranscripts`).then((r) => r.json()),
-      fetch(`/api/livechat/data/${selectedUploadId}?type=microtopics`).then((r) => r.json()),
+      fetch(`/api/livechat/data/${selectedUploadId}?type=basicStats`).then(
+        (r) => r.json()
+      ),
+      fetch(
+        `/api/livechat/data/${selectedUploadId}?type=rawTranscripts`
+      ).then((r) => r.json()),
+      fetch(`/api/livechat/data/${selectedUploadId}?type=microtopics`).then(
+        (r) => r.json()
+      ),
     ])
       .then(([basicStats, rawTranscripts, microtopics]) => {
         setLoadedData({ basicStats, rawTranscripts, microtopics });
@@ -89,17 +144,37 @@ export function LivechatView() {
     formData.append("file", file);
     try {
       await fetch("/api/livechat/upload", { method: "POST", body: formData });
+      lastManifestJson.current = "";
       await refreshManifest();
     } catch (err) {
       console.error("Upload failed:", err);
     }
   }
 
+  async function handleDelete(id: string) {
+    try {
+      await fetch("/api/livechat/manifest", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (selectedUploadId === id) {
+        setSelectedUploadId(null);
+        setLoadedData(null);
+        lastLoadedId.current = null;
+      }
+      lastManifestJson.current = "";
+      await refreshManifest();
+    } catch (err) {
+      console.error("Delete failed:", err);
+    }
+  }
+
   return (
     <div className="flex flex-1 overflow-hidden">
-      {/* Upload Sidebar */}
-      <div className="w-[180px] border-r border-border flex flex-col">
-        <div className="p-2 border-b border-border">
+      {/* Upload Sidebar — matches KB document panel width */}
+      <div className="w-[360px] border-r border-border flex flex-col bg-bg-elevated">
+        <div className="p-3 border-b border-border">
           <input
             ref={fileInputRef}
             type="file"
@@ -113,36 +188,73 @@ export function LivechatView() {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="w-full text-xs bg-accent-dim text-accent-bright rounded px-2 py-1.5 hover:bg-accent-dim/80 transition-colors"
+            className="px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors whitespace-nowrap"
           >
             + Upload CSV
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-1">
+        <div className="flex-1 overflow-y-auto">
           {uploads.length === 0 && (
-            <div className="text-text-dim text-xs p-3 text-center">
-              No uploads yet
+            <div className="p-4 text-xs text-text-dim">
+              No uploads yet. Upload a CSV file to get started.
             </div>
           )}
           {uploads.map((upload) => (
-            <button
+            <div
               key={upload.id}
               onClick={() => setSelectedUploadId(upload.id)}
-              className={`w-full text-left p-2 rounded text-xs mb-0.5 ${
+              className={`group flex items-center justify-between px-3 py-2 cursor-pointer border-b border-border/50 transition-colors ${
                 selectedUploadId === upload.id
-                  ? "bg-bg-surface border-l-2 border-accent text-accent"
-                  : "text-text-muted hover:bg-bg-hover"
+                  ? "bg-accent/10 border-l-2 border-l-accent"
+                  : "hover:bg-bg-hover"
               }`}
             >
-              <div className="truncate text-[10px]">{upload.filename}</div>
-              <div className="text-text-dim text-[9px] mt-0.5">
-                {upload.status === "ready" && upload.conversationCount
-                  ? `${upload.conversationCount.toLocaleString()} convos · Ready`
-                  : upload.status === "error"
-                    ? "Error"
-                    : upload.status}
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-text truncate">
+                  {upload.filename}
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-text-dim mt-0.5">
+                  {upload.conversationCount != null && (
+                    <span>
+                      {upload.conversationCount.toLocaleString()} convos
+                    </span>
+                  )}
+                  <span
+                    className={`px-1 py-0.5 rounded text-[9px] ${
+                      upload.status === "ready"
+                        ? "bg-accent/10 text-accent"
+                        : upload.status === "error"
+                          ? "bg-red-500/10 text-red-400"
+                          : "bg-yellow-500/10 text-yellow-400"
+                    }`}
+                  >
+                    {upload.status}
+                  </span>
+                </div>
               </div>
-            </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteTarget(upload);
+                }}
+                className="opacity-0 group-hover:opacity-100 text-text-dim hover:text-red-400 transition-all p-1"
+                title="Delete upload"
+              >
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              </button>
+            </div>
           ))}
         </div>
       </div>
@@ -172,6 +284,18 @@ export function LivechatView() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          filename={deleteTarget.filename}
+          onConfirm={() => {
+            handleDelete(deleteTarget.id);
+            setDeleteTarget(null);
+          }}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }
