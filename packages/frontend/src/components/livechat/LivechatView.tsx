@@ -14,38 +14,60 @@ export function LivechatView() {
   const [loadedData, setLoadedData] = useState<LoadedData | null>(null);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Track the last loaded upload ID to avoid re-fetching the same data
+  const lastLoadedId = useRef<string | null>(null);
+  // Track serialized manifest to avoid unnecessary state updates
+  const lastManifestJson = useRef<string>("");
 
   // Poll manifest for upload status
   const refreshManifest = useCallback(async () => {
     try {
       const res = await fetch("/api/livechat/manifest");
       if (res.ok) {
-        const data = await res.json();
-        setUploads(data);
+        const text = await res.text();
+        // Only update state if manifest actually changed
+        if (text !== lastManifestJson.current) {
+          lastManifestJson.current = text;
+          setUploads(JSON.parse(text));
+        }
       }
     } catch {
       // ignore
     }
   }, []);
 
+  // Poll manifest, but stop once all uploads are in terminal states
   useEffect(() => {
     refreshManifest();
-    const interval = setInterval(refreshManifest, 3000);
-    return () => clearInterval(interval);
-  }, [refreshManifest]);
+    const hasPending = uploads.some(
+      (u) => u.status !== "ready" && u.status !== "error"
+    );
+    // Only keep polling if there are uploads still processing, or no uploads yet
+    if (hasPending || uploads.length === 0) {
+      const interval = setInterval(refreshManifest, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [refreshManifest, uploads]);
 
-  // Load data when selecting an upload
+  // Load data when selecting an upload — only fetch once per upload ID
   useEffect(() => {
     if (!selectedUploadId) {
       setLoadedData(null);
+      lastLoadedId.current = null;
+      return;
+    }
+    // Already loaded this upload's data
+    if (lastLoadedId.current === selectedUploadId && loadedData) {
       return;
     }
     const upload = uploads.find((u) => u.id === selectedUploadId);
     if (!upload || upload.status !== "ready") {
       setLoadedData(null);
+      lastLoadedId.current = null;
       return;
     }
 
+    lastLoadedId.current = selectedUploadId;
     setLoading(true);
     Promise.all([
       fetch(`/api/livechat/data/${selectedUploadId}?type=basicStats`).then((r) => r.json()),
@@ -55,9 +77,12 @@ export function LivechatView() {
       .then(([basicStats, rawTranscripts, microtopics]) => {
         setLoadedData({ basicStats, rawTranscripts, microtopics });
       })
-      .catch(() => setLoadedData(null))
+      .catch(() => {
+        setLoadedData(null);
+        lastLoadedId.current = null;
+      })
       .finally(() => setLoading(false));
-  }, [selectedUploadId, uploads]);
+  }, [selectedUploadId, uploads, loadedData]);
 
   async function handleUpload(file: File) {
     const formData = new FormData();
