@@ -63,7 +63,7 @@ export function ConversationList({
               </span>
             </div>
             <div className="text-text-dim text-[10px] mt-0.5">
-              {conv.agentName} · {conv.messages.length} msgs
+              {conv.agentName} · {conv.messages.filter((m) => m.role !== "workflow_input").length} msgs
             </div>
             {renderBadges && (
               <div className="mt-1">{renderBadges(conv)}</div>
