@@ -147,26 +147,8 @@ function AnnotateContent() {
         rating,
         comment: comment || undefined,
       });
-      // Auto-advance to next unrated
-      const nextUnrated = filteredItems.findIndex(({ result: r }, i) => {
-        if (i <= currentIndex) return false;
-        if (!r) return false; // skip pending
-        return !annotationMap.get(r._id);
-      });
-      if (nextUnrated !== -1) {
-        setCurrentIndex(nextUnrated);
-      } else if (currentIndex < filteredItems.length - 1) {
-        setCurrentIndex(currentIndex + 1);
-      }
     },
-    [
-      currentResult,
-      comment,
-      upsertAnnotation,
-      filteredItems,
-      currentIndex,
-      annotationMap,
-    ],
+    [currentResult, comment, upsertAnnotation],
   );
 
   // --- Keyboard shortcuts ---

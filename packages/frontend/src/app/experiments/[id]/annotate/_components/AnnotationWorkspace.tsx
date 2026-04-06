@@ -1,6 +1,7 @@
 "use client";
 
 import { RatingButton } from "./RatingButton";
+import { MarkdownViewer } from "@/components/MarkdownViewer";
 import type { Rating } from "./types";
 
 interface AnnotationWorkspaceProps {
@@ -110,8 +111,8 @@ export function AnnotationWorkspace({
             Error: {result.error ?? "Unknown error"}
           </div>
         ) : (
-          <div className="text-text text-sm whitespace-pre-wrap max-h-96 overflow-y-auto">
-            {result.answerText}
+          <div className="max-h-96 overflow-y-auto">
+            <MarkdownViewer content={result.answerText} showToggle={true} />
           </div>
         )}
         {result.usage && (
