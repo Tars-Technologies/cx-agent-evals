@@ -11,6 +11,7 @@ export const upsert = mutation({
       v.literal("bad"),
     ),
     comment: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const { orgId, userId } = await getAuthContext(ctx);
@@ -37,6 +38,7 @@ export const upsert = mutation({
       await ctx.db.patch(myAnnotation._id, {
         rating: args.rating,
         comment: args.comment,
+        tags: args.tags,
         updatedAt: Date.now(),
       });
       return myAnnotation._id;
@@ -49,6 +51,7 @@ export const upsert = mutation({
       questionId: result.questionId,
       rating: args.rating,
       comment: args.comment,
+      tags: args.tags,
       ratedBy: user._id,
       createdAt: Date.now(),
     });
@@ -115,5 +118,67 @@ export const stats = query({
       good_enough,
       bad,
     };
+  },
+});
+
+export const updateTags = mutation({
+  args: {
+    resultId: v.id("agentExperimentResults"),
+    tags: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { orgId, userId } = await getAuthContext(ctx);
+    const user = await lookupUser(ctx, userId);
+
+    const result = await ctx.db.get(args.resultId);
+    if (!result) throw new Error("Result not found");
+
+    const experiment = await ctx.db.get(result.experimentId);
+    if (!experiment || experiment.orgId !== orgId) {
+      throw new Error("Experiment not found");
+    }
+
+    const existing = await ctx.db
+      .query("annotations")
+      .withIndex("by_result", (q) => q.eq("resultId", args.resultId))
+      .collect();
+    const myAnnotation = existing.find((a) => a.ratedBy === user._id);
+
+    if (!myAnnotation) {
+      throw new Error("Rate this result before adding tags");
+    }
+
+    await ctx.db.patch(myAnnotation._id, {
+      tags: args.tags,
+      updatedAt: Date.now(),
+    });
+    return myAnnotation._id;
+  },
+});
+
+export const allTags = query({
+  args: { experimentId: v.id("experiments") },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+
+    const exp = await ctx.db.get(args.experimentId);
+    if (!exp || exp.orgId !== orgId) {
+      throw new Error("Experiment not found");
+    }
+
+    const annotations = await ctx.db
+      .query("annotations")
+      .withIndex("by_experiment", (q) =>
+        q.eq("experimentId", args.experimentId),
+      )
+      .collect();
+
+    const tagSet = new Set<string>();
+    for (const a of annotations) {
+      if (a.tags) {
+        for (const t of a.tags) tagSet.add(t);
+      }
+    }
+    return [...tagSet].sort();
   },
 });

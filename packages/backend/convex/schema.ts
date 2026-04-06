@@ -270,6 +270,7 @@ export default defineSchema({
       v.literal("bad"),
     ),
     comment: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
     ratedBy: v.id("users"),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
