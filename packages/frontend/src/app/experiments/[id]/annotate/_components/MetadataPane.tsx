@@ -29,33 +29,8 @@ export function MetadataPane({
         hasAnnotation={!!annotation}
       />
 
-      {/* Scores + Retrieved Chunks + Tool Calls + Ground Truth */}
+      {/* Retrieved Chunks + Tool Calls + Ground Truth + Scores */}
       <div className="p-4 space-y-2">
-        {/* Scores — only when tool calls were made and scores exist */}
-        {result.toolCalls.length > 0 && result.scores && (
-          <CollapsibleSection
-            title={`Scores (${Object.keys(result.scores).length})`}
-          >
-            <div className="space-y-2">
-              {Object.entries(result.scores as Record<string, number>).map(
-                ([key, value]) => (
-                  <div
-                    key={key}
-                    className="flex items-center justify-between text-xs"
-                  >
-                    <span className="text-text-dim uppercase tracking-wide">
-                      {key === "iou" ? "IoU" : key}
-                    </span>
-                    <span className="text-accent font-medium">
-                      {value.toFixed(3)}
-                    </span>
-                  </div>
-                ),
-              )}
-            </div>
-          </CollapsibleSection>
-        )}
-
         {/* Retrieved Chunks */}
         <CollapsibleSection
           title={`Retrieved Chunks (${result.retrievedChunks.length})`}
@@ -128,6 +103,31 @@ export function MetadataPane({
                   </div>
                 </div>
               ))}
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {/* Scores — last to avoid biasing annotation; only when tool calls exist */}
+        {result.toolCalls.length > 0 && result.scores && (
+          <CollapsibleSection
+            title={`Scores (${Object.keys(result.scores).length})`}
+          >
+            <div className="space-y-2">
+              {Object.entries(result.scores as Record<string, number>).map(
+                ([key, value]) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between text-xs"
+                  >
+                    <span className="text-text-dim uppercase tracking-wide">
+                      {key === "iou" ? "IoU" : key}
+                    </span>
+                    <span className="text-accent font-medium">
+                      {value.toFixed(3)}
+                    </span>
+                  </div>
+                ),
+              )}
             </div>
           </CollapsibleSection>
         )}
