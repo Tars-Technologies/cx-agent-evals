@@ -268,6 +268,8 @@ export default defineSchema({
       v.literal("great"),
       v.literal("good_enough"),
       v.literal("bad"),
+      v.literal("pass"),
+      v.literal("fail"),
     ),
     comment: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
@@ -277,6 +279,29 @@ export default defineSchema({
   })
     .index("by_experiment", ["experimentId"])
     .index("by_result", ["resultId"]),
+
+  // ─── Failure Modes (axial codes grouping failure patterns) ───
+  failureModes: defineTable({
+    orgId: v.string(),
+    experimentId: v.id("experiments"),
+    name: v.string(),
+    description: v.string(),
+    order: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  }).index("by_experiment", ["experimentId"]),
+
+  // ─── Failure Mode Question Mappings (many-to-many) ───
+  failureModeQuestionMappings: defineTable({
+    orgId: v.string(),
+    failureModeId: v.id("failureModes"),
+    questionId: v.id("questions"),
+    experimentId: v.id("experiments"),
+    createdAt: v.number(),
+  })
+    .index("by_failure_mode", ["failureModeId"])
+    .index("by_experiment", ["experimentId"])
+    .index("by_question", ["questionId"]),
 
   // ─── Document Chunks (position-aware, with vector embeddings) ───
   documentChunks: defineTable({
