@@ -57,6 +57,8 @@ function AnnotateContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [tagFilter, setTagFilter] = useState("");
 
+  const isLive = experiment?.status === "running" || experiment?.status === "pending";
+
   // --- Build joined data ---
   const questionMap = useMemo(() => {
     const map = new Map<string, any>();
@@ -66,6 +68,15 @@ function AnnotateContent() {
     return map;
   }, [questions]);
 
+  // Map from questionId -> result (for merging questions with results)
+  const resultByQuestionId = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const r of results ?? []) {
+      map.set(r.questionId, r);
+    }
+    return map;
+  }, [results]);
+
   const annotationMap = useMemo(() => {
     const map = new Map<string, any>();
     for (const a of annotations ?? []) {
@@ -74,32 +85,45 @@ function AnnotateContent() {
     return map;
   }, [annotations]);
 
-  // Filter results: rating -> tag -> search
-  const filteredResults = useMemo(() => {
-    if (!results) return [];
-    return results.filter((r) => {
-      const annotation = annotationMap.get(r._id);
+  // Build unified list: only questions with ground truth spans (matches backend filter)
+  // Questions without relevantSpans are skipped during experiment execution
+  type QuestionItem = { question: any; result: any | null };
+  const allItems: QuestionItem[] = useMemo(() => {
+    if (!questions) return [];
+    const evaluatable = questions.filter(
+      (q) => Array.isArray(q.relevantSpans) && q.relevantSpans.length > 0,
+    );
+    return evaluatable.map((q) => ({
+      question: q,
+      result: resultByQuestionId.get(q._id) ?? null,
+    }));
+  }, [questions, resultByQuestionId]);
+
+  // Filter items: rating -> tag -> search
+  const filteredItems = useMemo(() => {
+    return allItems.filter(({ question: q, result: r }) => {
+      const annotation = r ? annotationMap.get(r._id) : null;
       // Rating filter
-      if (filter === "unrated" && annotation) return false;
-      if (filter !== "all" && filter !== "unrated" && annotation?.rating !== filter)
-        return false;
+      if (filter === "unrated") {
+        if (annotation) return false; // rated items excluded
+      } else if (filter !== "all") {
+        if (annotation?.rating !== filter) return false;
+      }
       // Tag filter
       if (tagFilter && !annotation?.tags?.includes(tagFilter)) return false;
       // Search filter
       if (searchQuery) {
-        const q = questionMap.get(r.questionId);
         if (!q?.queryText.toLowerCase().includes(searchQuery.toLowerCase()))
           return false;
       }
       return true;
     });
-  }, [results, filter, tagFilter, searchQuery, annotationMap, questionMap]);
+  }, [allItems, filter, tagFilter, searchQuery, annotationMap]);
 
-  // Current result
-  const currentResult = filteredResults[currentIndex] ?? null;
-  const currentQuestion = currentResult
-    ? questionMap.get(currentResult.questionId)
-    : null;
+  // Current item
+  const currentItem = filteredItems[currentIndex] ?? null;
+  const currentResult = currentItem?.result ?? null;
+  const currentQuestion = currentItem?.question ?? null;
   const currentAnnotation = currentResult
     ? annotationMap.get(currentResult._id)
     : null;
@@ -124,13 +148,14 @@ function AnnotateContent() {
         comment: comment || undefined,
       });
       // Auto-advance to next unrated
-      const nextUnrated = filteredResults.findIndex((r, i) => {
+      const nextUnrated = filteredItems.findIndex(({ result: r }, i) => {
         if (i <= currentIndex) return false;
+        if (!r) return false; // skip pending
         return !annotationMap.get(r._id);
       });
       if (nextUnrated !== -1) {
         setCurrentIndex(nextUnrated);
-      } else if (currentIndex < filteredResults.length - 1) {
+      } else if (currentIndex < filteredItems.length - 1) {
         setCurrentIndex(currentIndex + 1);
       }
     },
@@ -138,7 +163,7 @@ function AnnotateContent() {
       currentResult,
       comment,
       upsertAnnotation,
-      filteredResults,
+      filteredItems,
       currentIndex,
       annotationMap,
     ],
@@ -159,13 +184,13 @@ function AnnotateContent() {
         setCurrentIndex(currentIndex - 1);
       else if (
         e.key === "ArrowRight" &&
-        currentIndex < filteredResults.length - 1
+        currentIndex < filteredItems.length - 1
       )
         setCurrentIndex(currentIndex + 1);
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleRate, currentIndex, filteredResults.length]);
+  }, [handleRate, currentIndex, filteredItems.length]);
 
   // --- Loading states ---
   if (!experiment || !results || !questions) {
@@ -215,7 +240,31 @@ function AnnotateContent() {
         </div>
       </div>
 
-      {/* Progress bar */}
+      {/* Live experiment banner */}
+      {isLive && (
+        <div className="flex items-center gap-3 px-6 py-2 bg-purple-500/10 border-b border-purple-500/20">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-400" />
+          </span>
+          <span className="text-xs text-purple-300">
+            Experiment running — {experiment?.processedQuestions ?? 0} of{" "}
+            {experiment?.totalQuestions ?? "?"} questions processed
+          </span>
+          {experiment?.totalQuestions && experiment.totalQuestions > 0 && (
+            <div className="flex-1 max-w-xs h-1.5 bg-purple-500/20 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-purple-400 transition-all duration-500"
+                style={{
+                  width: `${((experiment.processedQuestions ?? 0) / experiment.totalQuestions) * 100}%`,
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Annotation progress bar */}
       {stats && stats.total > 0 && (
         <div className="h-1 bg-border">
           <div
@@ -230,12 +279,14 @@ function AnnotateContent() {
       {/* Three-pane layout */}
       <div className="flex-1 overflow-hidden flex">
         <QuestionListPane
-          results={filteredResults}
-          questionMap={questionMap}
+          items={filteredItems}
           annotationMap={annotationMap}
-          currentResultId={currentResult?._id ?? null}
+          currentIndex={currentIndex}
           onSelectResult={setCurrentIndex}
           stats={stats ?? null}
+          totalQuestions={allItems.length}
+          totalResults={results?.length ?? 0}
+          isLive={isLive}
           filter={filter}
           onFilterChange={setFilter}
           searchQuery={searchQuery}
@@ -252,8 +303,9 @@ function AnnotateContent() {
           comment={comment}
           onCommentChange={setComment}
           onRate={handleRate}
+          isPending={currentItem !== null && currentResult === null}
           emptyMessage={
-            filteredResults.length === 0
+            filteredItems.length === 0
               ? "No results match the current filter."
               : "Select a result to annotate."
           }

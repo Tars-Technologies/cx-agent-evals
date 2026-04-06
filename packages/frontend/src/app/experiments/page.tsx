@@ -522,12 +522,18 @@ function ExperimentRow({ experiment: exp }: { experiment: any }) {
         </div>
       )}
       <div className="flex items-center gap-3 mt-2">
-        {isAgent && exp.status === "completed" && (
+        {isAgent && (exp.status === "completed" || exp.status === "completed_with_errors" || exp.status === "running") && (
           <Link
             href={`/experiments/${exp._id}/annotate`}
             className="inline-flex items-center gap-1 text-xs text-purple-300 hover:text-purple-200 transition-colors"
           >
-            Annotate
+            {exp.status === "running" && (
+              <span className="relative flex h-2 w-2 mr-0.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-400" />
+              </span>
+            )}
+            {exp.status === "running" ? "Annotate Live" : "Annotate"}
             <ArrowRightIcon />
           </Link>
         )}
