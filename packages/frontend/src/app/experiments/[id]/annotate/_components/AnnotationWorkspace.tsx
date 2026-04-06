@@ -123,20 +123,6 @@ export function AnnotationWorkspace({
         )}
       </div>
 
-      {/* Retrieval Metrics */}
-      {result.toolCalls.length > 0 && result.scores && (
-        <div className="flex gap-4 text-sm">
-          {Object.entries(result.scores as Record<string, number>).map(
-            ([key, value]) => (
-              <span key={key} className="text-text-muted">
-                {key === "iou" ? "IoU" : key}:{" "}
-                <span className="text-accent">{value.toFixed(3)}</span>
-              </span>
-            ),
-          )}
-        </div>
-      )}
-
       {/* Rating section */}
       <div className="border border-border rounded-lg bg-bg-elevated p-5">
         <div className="text-xs text-text-dim uppercase tracking-wider mb-3">
