@@ -167,6 +167,10 @@ export default defineSchema({
     name: v.string(),
     retrieverId: v.optional(v.id("retrievers")),
     retrieverConfig: v.optional(v.any()),
+    experimentType: v.optional(
+      v.union(v.literal("retriever"), v.literal("agent")),
+    ),
+    agentId: v.optional(v.id("agents")),
     k: v.optional(v.number()),
     metricNames: v.array(v.string()),
     status: v.union(
@@ -207,7 +211,8 @@ export default defineSchema({
     .index("by_org", ["orgId"])
     .index("by_dataset", ["datasetId"])
     .index("by_retriever", ["retrieverId"])
-    .index("by_kb", ["kbId"]),
+    .index("by_kb", ["kbId"])
+    .index("by_agent", ["agentId"]),
 
   // ─── Experiment Results (per-question evaluation results) ───
   experimentResults: defineTable({
@@ -217,6 +222,67 @@ export default defineSchema({
     scores: v.record(v.string(), v.number()),
     metadata: v.any(),
   }).index("by_experiment", ["experimentId"]),
+
+  // ─── Agent Experiment Results (per-question agent answers + tool calls) ───
+  agentExperimentResults: defineTable({
+    experimentId: v.id("experiments"),
+    questionId: v.id("questions"),
+    answerText: v.string(),
+    toolCalls: v.array(
+      v.object({
+        toolName: v.string(),
+        query: v.string(),
+        retrieverId: v.optional(v.string()),
+        chunks: v.array(
+          v.object({
+            content: v.string(),
+            docId: v.string(),
+            start: v.number(),
+            end: v.number(),
+          }),
+        ),
+      }),
+    ),
+    retrievedChunks: v.array(
+      v.object({
+        content: v.string(),
+        docId: v.string(),
+        start: v.number(),
+        end: v.number(),
+      }),
+    ),
+    scores: v.optional(v.record(v.string(), v.number())),
+    usage: v.optional(
+      v.object({
+        promptTokens: v.number(),
+        completionTokens: v.number(),
+      }),
+    ),
+    latencyMs: v.number(),
+    status: v.union(v.literal("complete"), v.literal("error")),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_experiment", ["experimentId"]),
+
+  // ─── Annotations (human ratings for agent experiment results) ───
+  annotations: defineTable({
+    orgId: v.string(),
+    experimentId: v.id("experiments"),
+    resultId: v.id("agentExperimentResults"),
+    questionId: v.id("questions"),
+    rating: v.union(
+      v.literal("great"),
+      v.literal("good_enough"),
+      v.literal("bad"),
+    ),
+    comment: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+    ratedBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_experiment", ["experimentId"])
+    .index("by_result", ["resultId"]),
 
   // ─── Document Chunks (position-aware, with vector embeddings) ───
   documentChunks: defineTable({

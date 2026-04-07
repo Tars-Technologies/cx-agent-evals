@@ -81,6 +81,34 @@ export const getInternal = internalQuery({
   },
 });
 
+/**
+ * Clear LangSmith sync state so the next experiment triggers a fresh sync.
+ * Used when the existing LangSmith dataset is stale (e.g. has examples
+ * without ground-truth spans from before the filter was added).
+ */
+export const clearLangsmithSync = internalMutation({
+  args: { datasetId: v.id("datasets") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.datasetId, {
+      langsmithDatasetId: undefined,
+      langsmithUrl: undefined,
+      langsmithSyncStatus: "pending",
+    });
+
+    // Clear langsmithExampleId on all questions so the next sync re-links them
+    const questions = await ctx.db
+      .query("questions")
+      .withIndex("by_dataset", (q) => q.eq("datasetId", args.datasetId))
+      .collect();
+
+    for (const q of questions) {
+      if (q.langsmithExampleId) {
+        await ctx.db.patch(q._id, { langsmithExampleId: undefined });
+      }
+    }
+  },
+});
+
 export const updateQuestionCount = internalMutation({
   args: {
     datasetId: v.id("datasets"),
