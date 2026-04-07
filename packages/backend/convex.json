@@ -4,7 +4,8 @@
     "externalPackages": [
       "langsmith", "@langchain/core", "openai", "minisearch",
       "linkedom", "turndown", "unpdf",
-      "ai", "@ai-sdk/anthropic", "@ai-sdk/openai", "zod"
+      "ai", "@ai-sdk/anthropic", "@ai-sdk/openai", "zod",
+      "cohere-ai"
     ]
   }
 }

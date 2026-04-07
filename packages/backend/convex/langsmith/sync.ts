@@ -34,9 +34,14 @@ export const syncDataset = internalAction({
         id: args.datasetId,
       });
 
-      const questions = await ctx.runQuery(
+      const allQuestions = await ctx.runQuery(
         internal.crud.questions.byDatasetInternal,
         { datasetId: args.datasetId },
+      );
+      // Only sync questions with ground truth spans — questions without
+      // spans produce meaningless retriever metrics.
+      const questions = allQuestions.filter(
+        (q: any) => Array.isArray(q.relevantSpans) && q.relevantSpans.length > 0,
       );
 
       if (questions.length === 0) {
@@ -70,6 +75,15 @@ export const syncDataset = internalAction({
         }),
       );
 
+      // Delete any existing LangSmith dataset with this name to avoid
+      // stale examples from a previous sync.
+      try {
+        const deleteClient = await getLangSmithClient();
+        await deleteClient.deleteDataset({ datasetName: dataset.name });
+      } catch {
+        // Dataset may not exist yet — ignore
+      }
+
       // Upload to LangSmith
       const result = await uploadDataset(groundTruth, {
         datasetName: dataset.name,
@@ -80,12 +94,16 @@ export const syncDataset = internalAction({
         },
       });
 
-      // Update dataset with LangSmith info
+      // Update dataset with LangSmith info and aligned question count
       await ctx.runMutation(internal.crud.datasets.updateSyncStatus, {
         datasetId: args.datasetId,
         langsmithDatasetId: result.datasetName,
         langsmithUrl: result.datasetUrl,
         langsmithSyncStatus: "synced",
+      });
+      await ctx.runMutation(internal.crud.datasets.updateQuestionCount, {
+        datasetId: args.datasetId,
+        questionCount: questions.length,
       });
 
       // Link LangSmith example IDs back to questions for experiment result correlation
