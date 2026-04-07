@@ -1,4 +1,4 @@
-import { mutation, query, internalQuery } from "../_generated/server";
+import { mutation, query, internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { getAuthContext } from "../lib/auth";
 
@@ -97,15 +97,10 @@ export const listWithDocCounts = query({
         .order("desc")
         .collect();
     }
-    return Promise.all(
-      kbs.map(async (kb) => {
-        const docs = await ctx.db
-          .query("documents")
-          .withIndex("by_kb", (q) => q.eq("kbId", kb._id))
-          .collect();
-        return { ...kb, documentCount: docs.length };
-      }),
-    );
+    return kbs.map((kb) => ({
+      ...kb,
+      documentCount: kb.documentCount ?? 0,
+    }));
   },
 });
 
@@ -128,5 +123,27 @@ export const getInternal = internalQuery({
   args: { id: v.id("knowledgeBases") },
   handler: async (ctx, { id }) => {
     return ctx.db.get(id);
+  },
+});
+
+/**
+ * One-time backfill: set documentCount on all KBs that don't have it.
+ * Run via Convex dashboard or CLI after deploying the schema change.
+ */
+export const backfillDocumentCounts = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const kbs = await ctx.db.query("knowledgeBases").collect();
+    let updated = 0;
+    for (const kb of kbs) {
+      if (kb.documentCount !== undefined) continue;
+      const docs = await ctx.db
+        .query("documents")
+        .withIndex("by_kb", (q) => q.eq("kbId", kb._id))
+        .collect();
+      await ctx.db.patch(kb._id, { documentCount: docs.length });
+      updated++;
+    }
+    return { updated, total: kbs.length };
   },
 });

@@ -1,4 +1,5 @@
 import { mutation, query, internalQuery, internalMutation } from "../_generated/server";
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { getAuthContext } from "../lib/auth";
 
@@ -29,7 +30,7 @@ export const create = mutation({
     const content = args.content;
     const docId = args.title;
 
-    return await ctx.db.insert("documents", {
+    const docRowId = await ctx.db.insert("documents", {
       orgId,
       kbId: args.kbId,
       docId,
@@ -40,11 +41,21 @@ export const create = mutation({
       metadata: {},
       createdAt: Date.now(),
     });
+
+    // Increment denormalized document count
+    await ctx.db.patch(args.kbId, {
+      documentCount: (kb.documentCount ?? 0) + 1,
+    });
+
+    return docRowId;
   },
 });
 
 export const listByKb = query({
-  args: { kbId: v.id("knowledgeBases") },
+  args: {
+    kbId: v.id("knowledgeBases"),
+    paginationOpts: paginationOptsValidator,
+  },
   handler: async (ctx, args) => {
     const { orgId } = await getAuthContext(ctx);
 
@@ -54,20 +65,23 @@ export const listByKb = query({
       throw new Error("Knowledge base not found");
     }
 
-    const docs = await ctx.db
+    const page = await ctx.db
       .query("documents")
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
-      .collect();
+      .paginate(args.paginationOpts);
 
     // Return without full content for listing (content can be large)
-    return docs.map((doc) => ({
-      _id: doc._id,
-      docId: doc.docId,
-      title: doc.title,
-      contentLength: doc.contentLength,
-      sourceType: doc.sourceType,
-      createdAt: doc.createdAt,
-    }));
+    return {
+      ...page,
+      page: page.page.map((doc) => ({
+        _id: doc._id,
+        docId: doc.docId,
+        title: doc.title,
+        contentLength: doc.contentLength,
+        sourceType: doc.sourceType,
+        createdAt: doc.createdAt,
+      })),
+    };
   },
 });
 
@@ -113,6 +127,14 @@ export const remove = mutation({
       await ctx.storage.delete(doc.fileId);
     }
     await ctx.db.delete(args.id);
+
+    // Decrement denormalized document count
+    const kb = await ctx.db.get(doc.kbId);
+    if (kb) {
+      await ctx.db.patch(doc.kbId, {
+        documentCount: Math.max(0, (kb.documentCount ?? 0) - 1),
+      });
+    }
   },
 });
 
@@ -156,7 +178,7 @@ export const createFromScrape = internalMutation({
     sourceType: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("documents", {
+    const docRowId = await ctx.db.insert("documents", {
       orgId: args.orgId,
       kbId: args.kbId,
       docId: args.title,
@@ -168,5 +190,15 @@ export const createFromScrape = internalMutation({
       sourceType: args.sourceType,
       createdAt: Date.now(),
     });
+
+    // Increment denormalized document count
+    const kb = await ctx.db.get(args.kbId);
+    if (kb) {
+      await ctx.db.patch(args.kbId, {
+        documentCount: (kb.documentCount ?? 0) + 1,
+      });
+    }
+
+    return docRowId;
   },
 });

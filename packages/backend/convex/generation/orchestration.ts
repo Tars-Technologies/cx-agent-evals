@@ -83,13 +83,13 @@ export const startGeneration = mutation({
       createdAt: Date.now(),
     });
 
-    // Get documents for this KB
-    const docs = await ctx.db
+    // Check that KB has at least one document (read only one row, not all)
+    const hasDoc = await ctx.db
       .query("documents")
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
-      .collect();
+      .first();
 
-    if (docs.length === 0) {
+    if (!hasDoc) {
       throw new Error("No documents in knowledge base to generate questions from");
     }
 

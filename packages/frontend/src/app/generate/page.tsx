@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState, useEffect, useRef } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, usePaginatedQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import { Id } from "@convex/_generated/dataModel";
 import { Header } from "@/components/Header";
@@ -38,10 +38,15 @@ function GeneratePageContent() {
     datasetId ? { datasetId } : "skip",
   );
 
-  // Documents in the selected KB
-  const documentsData = useQuery(
+  // Documents in the selected KB (paginated to avoid 16MB read limit)
+  const {
+    results: documentsData,
+    status: docPaginationStatus,
+    loadMore: loadMoreDocs,
+  } = usePaginatedQuery(
     api.crud.documents.listByKb,
     selectedKbId ? { kbId: selectedKbId } : "skip",
+    { initialNumItems: 100 },
   );
 
   // Job status (reactive — updates as generation progresses)

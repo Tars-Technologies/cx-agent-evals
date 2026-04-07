@@ -84,7 +84,7 @@ export async function seedDocument(
   return await t.run(async (ctx) => {
     const title = overrides?.title ?? "Test Document";
     const content = overrides?.content ?? "# Test\n\nSample document content.";
-    return await ctx.db.insert("documents", {
+    const docId = await ctx.db.insert("documents", {
       orgId: TEST_ORG_ID,
       kbId,
       docId: title,
@@ -95,5 +95,15 @@ export async function seedDocument(
       sourceType: overrides?.sourceType,
       createdAt: Date.now(),
     });
+
+    // Increment denormalized document count on KB
+    const kb = await ctx.db.get(kbId);
+    if (kb) {
+      await ctx.db.patch(kbId, {
+        documentCount: (kb.documentCount ?? 0) + 1,
+      });
+    }
+
+    return docId;
   });
 }

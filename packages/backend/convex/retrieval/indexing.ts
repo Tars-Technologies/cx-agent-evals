@@ -91,13 +91,11 @@ export const startIndexing = internalMutation({
       await ctx.db.delete(completedJob._id);
     }
 
-    // Get all documents for this KB
-    const docs = await ctx.db
-      .query("documents")
-      .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
-      .collect();
-
-    if (docs.length === 0) {
+    // Use denormalized count for totalDocs and emptiness check
+    const kb = await ctx.db.get(args.kbId);
+    if (!kb) throw new Error("Knowledge base not found");
+    const totalDocs = kb.documentCount ?? 0;
+    if (totalDocs === 0) {
       throw new Error("No documents in knowledge base to index");
     }
 
@@ -115,7 +113,7 @@ export const startIndexing = internalMutation({
       indexConfigHash: args.indexConfigHash,
       indexConfig: args.indexConfig,
       status: "running",
-      totalDocs: docs.length,
+      totalDocs,
       processedDocs: 0,
       failedDocs: 0,
       skippedDocs: 0,
@@ -127,38 +125,49 @@ export const startIndexing = internalMutation({
     // Extract chunking/embedding config
     const indexConfig = args.indexConfig as Record<string, any>;
 
-    // Enqueue one action per document and collect workIds for selective cancellation
+    // Enqueue one action per document, paginating to avoid 16MB read limit.
+    // Only doc._id is needed per iteration — content is read later by the action.
     const workIds: WorkId[] = [];
-    for (const doc of docs) {
-      const wId = await pool.enqueueAction(
-        ctx,
-        internal.retrieval.indexingActions.indexDocument,
-        {
-          documentId: doc._id,
-          kbId: args.kbId,
-          indexConfigHash: args.indexConfigHash,
-          // Pass all strategy-specific fields
-          strategy: indexConfig.strategy,
-          chunkSize: indexConfig.chunkSize,
-          chunkOverlap: indexConfig.chunkOverlap,
-          embeddingModel: indexConfig.embeddingModel,
-          childChunkSize: indexConfig.childChunkSize,
-          parentChunkSize: indexConfig.parentChunkSize,
-          childOverlap: indexConfig.childOverlap,
-          parentOverlap: indexConfig.parentOverlap,
-        },
-        {
-          context: { jobId, documentId: doc._id },
-          onComplete: internal.retrieval.indexing.onDocumentIndexed,
-        },
-      );
-      workIds.push(wId);
+    let cursor: string | null = null;
+    let done = false;
+    while (!done) {
+      const page = await ctx.db
+        .query("documents")
+        .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
+        .paginate({ numItems: 100, cursor: cursor as any ?? null });
+      for (const doc of page.page) {
+        const wId = await pool.enqueueAction(
+          ctx,
+          internal.retrieval.indexingActions.indexDocument,
+          {
+            documentId: doc._id,
+            kbId: args.kbId,
+            indexConfigHash: args.indexConfigHash,
+            // Pass all strategy-specific fields
+            strategy: indexConfig.strategy,
+            chunkSize: indexConfig.chunkSize,
+            chunkOverlap: indexConfig.chunkOverlap,
+            embeddingModel: indexConfig.embeddingModel,
+            childChunkSize: indexConfig.childChunkSize,
+            parentChunkSize: indexConfig.parentChunkSize,
+            childOverlap: indexConfig.childOverlap,
+            parentOverlap: indexConfig.parentOverlap,
+          },
+          {
+            context: { jobId, documentId: doc._id },
+            onComplete: internal.retrieval.indexing.onDocumentIndexed,
+          },
+        );
+        workIds.push(wId);
+      }
+      done = page.isDone;
+      cursor = page.continueCursor;
     }
 
     // Store workIds on the job for selective cancellation
     await ctx.db.patch(jobId, { workIds: workIds as string[] });
 
-    return { jobId, alreadyRunning: false, totalDocs: docs.length };
+    return { jobId, alreadyRunning: false, totalDocs };
   },
 });
 

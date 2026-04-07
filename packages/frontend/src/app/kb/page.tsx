@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState, useEffect } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, usePaginatedQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import { Id } from "@convex/_generated/dataModel";
 import { Header } from "@/components/Header";
@@ -40,9 +40,14 @@ function KBPageContent() {
     api.crud.knowledgeBases.listWithDocCounts,
     industryFilter ? { industry: industryFilter } : {},
   );
-  const documents = useQuery(
+  const {
+    results: documents,
+    status: docPaginationStatus,
+    loadMore: loadMoreDocs,
+  } = usePaginatedQuery(
     api.crud.documents.listByKb,
     selectedKbId ? { kbId: selectedKbId } : "skip",
+    { initialNumItems: 50 },
   );
   const selectedDoc = useQuery(
     api.crud.documents.get,
@@ -258,7 +263,7 @@ function KBPageContent() {
 
               {/* Document list (scrollable) */}
               <div className="flex-1 overflow-y-auto">
-                {documents === undefined ? (
+                {docPaginationStatus === "LoadingFirstPage" ? (
                   <div className="p-4 flex items-center gap-2 text-text-dim text-xs">
                     <div className="w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
                     Loading...
@@ -318,6 +323,20 @@ function KBPageContent() {
                     {docSearchQuery
                       ? "No matching documents."
                       : "No documents yet. Upload files or import from URL."}
+                  </div>
+                )}
+                {docPaginationStatus === "CanLoadMore" && (
+                  <button
+                    onClick={() => loadMoreDocs(50)}
+                    className="w-full px-3 py-2 text-xs text-accent hover:bg-bg-hover transition-colors border-t border-border/50"
+                  >
+                    Load more documents...
+                  </button>
+                )}
+                {docPaginationStatus === "LoadingMore" && (
+                  <div className="p-2 flex items-center justify-center gap-2 text-text-dim text-xs border-t border-border/50">
+                    <div className="w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                    Loading...
                   </div>
                 )}
               </div>
