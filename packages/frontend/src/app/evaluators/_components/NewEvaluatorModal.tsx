@@ -116,7 +116,7 @@ export function NewEvaluatorModal({
         <div className="flex items-center justify-end gap-2 mt-6">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 text-sm text-text-dim hover:text-text transition-colors"
+            className="px-3 py-1.5 text-sm text-text-dim hover:text-text transition-colors cursor-pointer"
           >
             Cancel
           </button>
@@ -125,7 +125,7 @@ export function NewEvaluatorModal({
             disabled={
               !selectedExpId || !name.trim() || !!noFailureModes || creating
             }
-            className="px-4 py-1.5 bg-accent text-bg rounded-lg hover:bg-accent/90 transition-colors text-sm disabled:opacity-50"
+            className="px-4 py-1.5 bg-accent text-bg rounded-lg hover:bg-accent/90 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed enabled:cursor-pointer"
           >
             {creating ? "Creating..." : "Create Evaluator"}
           </button>

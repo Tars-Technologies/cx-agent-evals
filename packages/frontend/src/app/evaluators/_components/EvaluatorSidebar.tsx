@@ -4,7 +4,7 @@ import { Id } from "@convex/_generated/dataModel";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: "Draft", color: "text-text-dim" },
-  validating: { label: "Validating", color: "text-yellow-400" },
+  validating: { label: "Awaiting Test", color: "text-yellow-400" },
   validated: { label: "Validated", color: "text-blue-400" },
   ready: { label: "Ready", color: "text-accent" },
 };
@@ -52,7 +52,7 @@ export function EvaluatorSidebar({
         </div>
         <button
           onClick={onNewEvaluator}
-          className="text-xs text-accent hover:underline"
+          className="text-xs text-accent hover:underline cursor-pointer"
         >
           + New
         </button>
@@ -81,7 +81,7 @@ export function EvaluatorSidebar({
                   <button
                     key={c._id}
                     onClick={() => onSelectConfig(c._id)}
-                    className={`w-full text-left px-3 py-2.5 border-b border-border transition-colors ${
+                    className={`w-full text-left px-3 py-2.5 border-b border-border transition-colors cursor-pointer ${
                       isSelected
                         ? "bg-accent/10 border-l-2 border-l-accent"
                         : "hover:bg-bg-hover"

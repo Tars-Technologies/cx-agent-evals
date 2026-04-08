@@ -33,7 +33,7 @@ const MODEL_GROUPS: Array<{
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: "Draft", color: "text-text-dim" },
-  validating: { label: "Validating", color: "text-yellow-400" },
+  validating: { label: "Awaiting Test", color: "text-yellow-400" },
   validated: { label: "Validated", color: "text-blue-400" },
   ready: { label: "Ready", color: "text-accent" },
 };
@@ -384,7 +384,7 @@ export function ConfigurePanel({ config, experimentId }: ConfigurePanelProps) {
             <button
               onClick={handleSave}
               disabled={!hasUnsavedChanges || saving}
-              className="px-4 py-2 bg-accent text-bg rounded-lg hover:bg-accent/90 transition-colors text-sm disabled:opacity-30 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-accent text-bg rounded-lg hover:bg-accent/90 transition-colors text-sm disabled:opacity-30 disabled:cursor-not-allowed enabled:cursor-pointer"
             >
               {saving ? "Saving..." : "Save Changes"}
             </button>
@@ -405,7 +405,7 @@ export function ConfigurePanel({ config, experimentId }: ConfigurePanelProps) {
           <div className="flex bg-bg rounded-md p-0.5">
             <button
               onClick={() => setRightMode("editor")}
-              className={`px-3 py-1 text-xs rounded transition-colors ${
+              className={`px-3 py-1 text-xs rounded transition-colors cursor-pointer ${
                 rightMode === "editor"
                   ? "bg-bg-elevated text-accent"
                   : "text-text-dim hover:text-text"
@@ -415,7 +415,7 @@ export function ConfigurePanel({ config, experimentId }: ConfigurePanelProps) {
             </button>
             <button
               onClick={() => setRightMode("preview")}
-              className={`px-3 py-1 text-xs rounded transition-colors ${
+              className={`px-3 py-1 text-xs rounded transition-colors cursor-pointer ${
                 rightMode === "preview"
                   ? "bg-bg-elevated text-accent"
                   : "text-text-dim hover:text-text"

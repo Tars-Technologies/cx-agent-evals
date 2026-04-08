@@ -141,7 +141,7 @@ export function RunPanel({ config, experimentId, experiment }: RunPanelProps) {
         <button
           onClick={handleRun}
           disabled={!targetExpId || !!runningRun || running}
-          className="px-4 py-2 bg-accent text-bg rounded-lg hover:bg-accent/90 transition-colors text-sm disabled:opacity-50"
+          className="px-4 py-2 bg-accent text-bg rounded-lg hover:bg-accent/90 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed enabled:cursor-pointer"
         >
           {runningRun ? "Running..." : "Run Evaluator"}
         </button>
@@ -221,8 +221,8 @@ export function RunPanel({ config, experimentId, experiment }: RunPanelProps) {
 
       {/* Results table */}
       {results && results.length > 0 && (
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex items-center gap-2 mb-3">
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+          <div className="flex items-center gap-2 mb-2">
             <span className="text-xs text-text-dim">Filter:</span>
             {(
               [
@@ -234,7 +234,7 @@ export function RunPanel({ config, experimentId, experiment }: RunPanelProps) {
               <button
                 key={f.key}
                 onClick={() => setFilter(f.key)}
-                className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                className={`px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer ${
                   filter === f.key
                     ? "bg-accent/10 text-accent"
                     : "text-text-dim hover:text-text hover:bg-bg-hover"

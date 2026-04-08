@@ -106,10 +106,10 @@ export function EvaluatorWorkspace({
             disabled={tab.disabled}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab.key
-                ? "border-accent text-accent"
+                ? "border-accent text-accent cursor-pointer"
                 : tab.disabled
                   ? "border-transparent text-text-dim/40 cursor-not-allowed"
-                  : "border-transparent text-text-dim hover:text-text"
+                  : "border-transparent text-text-dim hover:text-text cursor-pointer"
             }`}
           >
             {tab.label}
