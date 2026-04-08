@@ -16,8 +16,10 @@ export function NewEvaluatorModal({
   onClose,
   onCreated,
 }: NewEvaluatorModalProps) {
-  const [selectedExpId, setSelectedExpId] = useState<Id<"experiments"> | "">("");
-  const [selectedFmId, setSelectedFmId] = useState<Id<"failureModes"> | "">("");
+  const [name, setName] = useState("");
+  const [selectedExpId, setSelectedExpId] = useState<Id<"experiments"> | "">(
+    "",
+  );
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,53 +31,24 @@ export function NewEvaluatorModal({
     (e) => e.experimentType === "agent",
   );
 
-  // Load failure modes for selected experiment
+  // Validate failure modes exist for selected experiment
   const failureModes = useQuery(
     api.failureModes.crud.byExperiment,
-    selectedExpId ? { experimentId: selectedExpId as Id<"experiments"> } : "skip",
+    selectedExpId
+      ? { experimentId: selectedExpId as Id<"experiments"> }
+      : "skip",
   );
 
-  // Load existing configs for selected experiment to filter out FMs that already have one
-  const existingConfigs = useQuery(
-    api.evaluator.crud.configsByExperiment,
-    selectedExpId ? { experimentId: selectedExpId as Id<"experiments"> } : "skip",
-  );
-  const usedFmIds = new Set(
-    (existingConfigs ?? []).map((c) => c.failureModeId),
-  );
-  const availableFailureModes = (failureModes ?? []).filter(
-    (fm) => !usedFmIds.has(fm._id),
-  );
+  const noFailureModes = selectedExpId && failureModes && failureModes.length === 0;
 
   const handleCreate = async () => {
-    if (!selectedExpId || !selectedFmId) return;
+    if (!selectedExpId || !name.trim()) return;
     setCreating(true);
     setError(null);
     try {
-      const fm = (failureModes ?? []).find((f) => f._id === selectedFmId);
-      if (!fm) throw new Error("Failure mode not found");
-
-      const defaultPrompt = `You are an expert evaluator assessing outputs from an AI agent.
-
-Your Task: Determine if the agent's response exhibits the following failure mode.
-
-Failure Mode: ${fm.name}
-Description: ${fm.description}
-
-Definition of Pass/Fail:
-- Fail: The agent's response clearly exhibits this failure mode.
-- Pass: The agent's response does NOT exhibit this failure mode.
-
-Output Format: Return a JSON object with exactly two keys:
-1. "reasoning": A brief explanation (1-2 sentences) for your decision.
-2. "answer": Either "Pass" or "Fail".`;
-
       const configId = await createConfig({
         experimentId: selectedExpId as Id<"experiments">,
-        failureModeId: selectedFmId as Id<"failureModes">,
-        judgePrompt: defaultPrompt,
-        fewShotExampleIds: [],
-        modelId: "claude-sonnet-4-6",
+        name: name.trim(),
       });
       onCreated(configId);
     } catch (e: any) {
@@ -93,6 +66,21 @@ Output Format: Return a JSON object with exactly two keys:
         </h2>
 
         <div className="space-y-4">
+          {/* Name */}
+          <div>
+            <label className="block text-xs font-medium text-text-dim mb-1.5">
+              Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Tone judge v1"
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-dim/60"
+              autoFocus
+            />
+          </div>
+
           {/* Experiment selector */}
           <div>
             <label className="block text-xs font-medium text-text-dim mb-1.5">
@@ -100,10 +88,7 @@ Output Format: Return a JSON object with exactly two keys:
             </label>
             <select
               value={selectedExpId}
-              onChange={(e) => {
-                setSelectedExpId(e.target.value as any);
-                setSelectedFmId("");
-              }}
+              onChange={(e) => setSelectedExpId(e.target.value as any)}
               className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text"
             >
               <option value="">Select an experiment...</option>
@@ -114,41 +99,14 @@ Output Format: Return a JSON object with exactly two keys:
               ))}
             </select>
             <p className="mt-1 text-xs text-text-dim">
-              Pick the experiment whose annotations &amp; failure modes you want to use.
+              The experiment whose annotations &amp; failure modes will train this judge.
             </p>
           </div>
 
-          {/* Failure mode selector */}
-          {selectedExpId && (
-            <div>
-              <label className="block text-xs font-medium text-text-dim mb-1.5">
-                Failure Mode
-              </label>
-              {failureModes === undefined ? (
-                <div className="text-xs text-text-dim">Loading...</div>
-              ) : failureModes.length === 0 ? (
-                <div className="text-xs text-yellow-400">
-                  No failure modes generated yet for this experiment. Generate
-                  failure modes first.
-                </div>
-              ) : availableFailureModes.length === 0 ? (
-                <div className="text-xs text-yellow-400">
-                  All failure modes already have an evaluator.
-                </div>
-              ) : (
-                <select
-                  value={selectedFmId}
-                  onChange={(e) => setSelectedFmId(e.target.value as any)}
-                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text"
-                >
-                  <option value="">Select a failure mode...</option>
-                  {availableFailureModes.map((fm) => (
-                    <option key={fm._id} value={fm._id}>
-                      {fm.name}
-                    </option>
-                  ))}
-                </select>
-              )}
+          {noFailureModes && (
+            <div className="text-xs text-yellow-400">
+              No failure modes generated yet for this experiment. Generate
+              failure modes first.
             </div>
           )}
 
@@ -164,7 +122,9 @@ Output Format: Return a JSON object with exactly two keys:
           </button>
           <button
             onClick={handleCreate}
-            disabled={!selectedExpId || !selectedFmId || creating}
+            disabled={
+              !selectedExpId || !name.trim() || !!noFailureModes || creating
+            }
             className="px-4 py-1.5 bg-accent text-bg rounded-lg hover:bg-accent/90 transition-colors text-sm disabled:opacity-50"
           >
             {creating ? "Creating..." : "Create Evaluator"}

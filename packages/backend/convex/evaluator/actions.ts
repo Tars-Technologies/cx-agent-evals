@@ -7,7 +7,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { generateText, type LanguageModel } from "ai";
 import { toBinaryLabel } from "../lib/labels";
-import { computeSplit } from "./splits";
+import { computeSplit, stratifiedFewShot } from "./splits";
 import {
   computeTPRTNR,
   correctedPassRate,
@@ -59,103 +59,6 @@ async function callJudge(
   };
 }
 
-// ─── Prompt Generation Helper ───
-
-async function buildDefaultPrompt(
-  ctx: any,
-  failureModeId: string,
-): Promise<string> {
-  const failureMode = await ctx.runQuery(
-    internal.failureModes.crud.getInternal,
-    { id: failureModeId },
-  );
-  if (!failureMode) throw new Error("Failure mode not found");
-
-  return `You are an expert evaluator assessing outputs from an AI agent.
-
-Your Task: Determine if the agent's response exhibits the following failure mode.
-
-Failure Mode: ${failureMode.name}
-Description: ${failureMode.description}
-
-Definition of Pass/Fail:
-- Fail: The agent's response clearly exhibits this failure mode — ${failureMode.description.toLowerCase()}
-- Pass: The agent's response does NOT exhibit this failure mode. The response may have other issues, but this specific failure pattern is absent.
-
-Output Format: Return your evaluation as a JSON object with exactly two keys:
-1. "reasoning": A brief explanation (1-2 sentences) for your decision.
-2. "answer": Either "Pass" or "Fail".
-
-Do NOT include any other text outside the JSON object.`;
-}
-
-export const generateDefaultPrompt = internalAction({
-  args: { failureModeId: v.id("failureModes") },
-  handler: async (ctx, args): Promise<string> => {
-    return buildDefaultPrompt(ctx, args.failureModeId);
-  },
-});
-
-// ─── Public-facing action to generate prompt (called from mutation scheduler) ───
-
-export const generateAndCreateConfig = internalAction({
-  args: {
-    orgId: v.string(),
-    experimentId: v.id("experiments"),
-    failureModeId: v.id("failureModes"),
-    modelId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const prompt = await buildDefaultPrompt(ctx, args.failureModeId);
-
-    // Get annotated questions mapped to this failure mode to pick training examples
-    const mappings = await ctx.runQuery(
-      internal.failureModes.crud.mappingsByExperimentInternal,
-      { experimentId: args.experimentId },
-    );
-    const fmMappings = mappings.filter(
-      (m: any) => m.failureModeId === args.failureModeId,
-    );
-    const questionIds = fmMappings.map((m: any) => m.questionId as string);
-
-    // Also include passing questions from annotations
-    const annotations = await ctx.runQuery(
-      internal.annotations.crud.byExperimentInternal,
-      { experimentId: args.experimentId },
-    );
-    const annotatedQuestionIds = new Set(
-      annotations.map((a: any) => a.questionId as string),
-    );
-    // All annotated questions that are either in failure mode mappings OR pass
-    const allEligibleIds = [...annotatedQuestionIds].filter((qId) => {
-      const annotation = annotations.find((a: any) => a.questionId === qId);
-      if (!annotation) return false;
-      const label = toBinaryLabel(annotation.rating);
-      // Include if it's mapped to this failure mode (fail) or is a pass
-      return questionIds.includes(qId) || label === "pass";
-    });
-
-    const splitConfig = { trainPct: 15, devPct: 43, testPct: 42 };
-    const seed = Math.floor(Math.random() * 2147483647);
-    const split = computeSplit(allEligibleIds, splitConfig, seed);
-
-    // Pick up to 5 training examples (mix of pass and fail)
-    const fewShotIds = split.train.slice(0, 5) as any;
-
-    await ctx.runMutation(internal.evaluator.crud.createConfigInternal, {
-      orgId: args.orgId,
-      experimentId: args.experimentId,
-      failureModeId: args.failureModeId,
-      name: "", // will be filled from failure mode
-      judgePrompt: prompt,
-      fewShotExampleIds: fewShotIds,
-      modelId: args.modelId,
-      splitConfig,
-      splitSeed: seed,
-    });
-  },
-});
-
 // ─── Run Validation (Dev or Test) ───
 
 export const runValidation = internalAction({
@@ -178,14 +81,15 @@ export const runValidation = internalAction({
         status: "running",
       });
 
-      // Get all eligible question IDs for this evaluator
-      const eligibleIds = await getEligibleQuestionIds(ctx, config);
+      // Get all eligible question IDs (with labels) for this evaluator
+      const eligible = await getEligibleQuestionIds(ctx, config);
 
-      // Compute split
+      // Stratified split (passes and fails split independently)
       const split = computeSplit(
-        eligibleIds,
+        eligible.ids,
         config.splitConfig,
         config.splitSeed,
+        eligible.labels,
       );
       const targetIds =
         args.runType === "dev" ? split.dev : split.test;
@@ -225,9 +129,23 @@ export const runValidation = internalAction({
         questions.map((q: any) => [q._id as string, q]),
       );
 
-      // Build few-shot examples
+      // Stratified few-shot from training split (capped at maxFewShotExamples)
+      const trainPasses: string[] = [];
+      const trainFails: string[] = [];
+      for (const qId of split.train) {
+        const ann = annotationMap.get(qId);
+        if (!ann) continue;
+        if (toBinaryLabel(ann.rating) === "pass") trainPasses.push(qId);
+        else trainFails.push(qId);
+      }
+      const sampled = stratifiedFewShot(
+        trainPasses,
+        trainFails,
+        config.maxFewShotExamples ?? 8,
+        config.splitSeed,
+      );
       const fewShotExamples = buildFewShotExamples(
-        config.fewShotExampleIds as string[],
+        sampled.ids,
         questionMap,
         resultByQuestion,
         annotationMap,
@@ -257,8 +175,8 @@ export const runValidation = internalAction({
             .slice(0, 3000);
 
           const fullPrompt = assembleJudgePrompt(
-            config.judgePrompt,
             fewShotExamples,
+            config.outputFormatJson,
             {
               question: question.queryText,
               answer: result.answerText ?? "(no answer)",
@@ -424,8 +342,32 @@ export const runOnExperiment = internalAction({
         sourceQuestions.map((q: any) => [q._id as string, q]),
       );
 
+      // Compute stratified training split from source experiment annotations
+      const sourceEligible = await getEligibleQuestionIds(ctx, config);
+      const sourceSplit = computeSplit(
+        sourceEligible.ids,
+        config.splitConfig,
+        config.splitSeed,
+        sourceEligible.labels,
+      );
+
+      // Stratified few-shot from training split (capped at maxFewShotExamples)
+      const sourceTrainPasses: string[] = [];
+      const sourceTrainFails: string[] = [];
+      for (const qId of sourceSplit.train) {
+        const ann = sourceAnnotationMap.get(qId);
+        if (!ann) continue;
+        if (toBinaryLabel(ann.rating) === "pass") sourceTrainPasses.push(qId);
+        else sourceTrainFails.push(qId);
+      }
+      const sourceSampled = stratifiedFewShot(
+        sourceTrainPasses,
+        sourceTrainFails,
+        config.maxFewShotExamples ?? 8,
+        config.splitSeed,
+      );
       const fewShotExamples = buildFewShotExamples(
-        config.fewShotExampleIds as string[],
+        sourceSampled.ids,
         sourceQuestionMap,
         sourceResultByQuestion,
         sourceAnnotationMap,
@@ -457,8 +399,8 @@ export const runOnExperiment = internalAction({
             .slice(0, 3000);
 
           const fullPrompt = assembleJudgePrompt(
-            config.judgePrompt,
             fewShotExamples,
+            config.outputFormatJson,
             {
               question: question.queryText,
               answer: result.answerText ?? "(no answer)",
@@ -519,11 +461,12 @@ export const runOnExperiment = internalAction({
       const theta = correctedPassRate(pObs, tpr, tnr);
 
       // Bootstrap CI using test set results
-      const eligibleIds = await getEligibleQuestionIds(ctx, config);
+      const eligible = await getEligibleQuestionIds(ctx, config);
       const split = computeSplit(
-        eligibleIds,
+        eligible.ids,
         config.splitConfig,
         config.splitSeed,
+        eligible.labels,
       );
       const testAnnotations = await ctx.runQuery(
         internal.annotations.crud.byExperimentInternal,
@@ -583,15 +526,20 @@ export const runOnExperiment = internalAction({
 
 // ─── Helpers ───
 
+interface EligibleQuestions {
+  ids: string[];
+  labels: Map<string, "pass" | "fail">;
+}
+
 async function getEligibleQuestionIds(
   ctx: any,
   config: any,
-): Promise<string[]> {
+): Promise<EligibleQuestions> {
   const mappings = await ctx.runQuery(
     internal.failureModes.crud.mappingsByExperimentInternal,
     { experimentId: config.experimentId },
   );
-  const fmQuestionIds = new Set(
+  const fmQuestionIds = new Set<string>(
     mappings
       .filter((m: any) => m.failureModeId === config.failureModeId)
       .map((m: any) => m.questionId as string),
@@ -602,17 +550,20 @@ async function getEligibleQuestionIds(
     { experimentId: config.experimentId },
   );
 
-  // Eligible: annotated questions that are either mapped to this failure mode or pass
-  return annotations
-    .map((a: any) => a.questionId as string)
-    .filter((qId: string) => {
-      const annotation = annotations.find(
-        (a: any) => (a.questionId as string) === qId,
-      );
-      if (!annotation) return false;
-      const label = toBinaryLabel(annotation.rating);
-      return fmQuestionIds.has(qId) || label === "pass";
-    });
+  const ids: string[] = [];
+  const labels = new Map<string, "pass" | "fail">();
+  const seen = new Set<string>();
+  for (const a of annotations) {
+    const qId = a.questionId as string;
+    if (seen.has(qId)) continue;
+    seen.add(qId);
+    const label = toBinaryLabel(a.rating);
+    if (fmQuestionIds.has(qId) || label === "pass") {
+      ids.push(qId);
+      labels.set(qId, label);
+    }
+  }
+  return { ids, labels };
 }
 
 interface FewShotExample {
@@ -652,35 +603,69 @@ function buildFewShotExamples(
   return examples;
 }
 
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function assembleJudgePrompt(
-  _systemPrompt: string,
   fewShotExamples: FewShotExample[],
+  outputFormatJson: string | undefined,
   target: { question: string; answer: string; context: string },
 ): string {
   const parts: string[] = [];
 
   // Few-shot examples
   if (fewShotExamples.length > 0) {
-    parts.push("Here are some examples of how to evaluate:\n");
-    for (let i = 0; i < fewShotExamples.length; i++) {
-      const ex = fewShotExamples[i];
-      parts.push(`--- Example ${i + 1} ---`);
-      parts.push(`Question: ${ex.question}`);
-      parts.push(`Agent Answer: ${ex.answer}`);
-      if (ex.context) parts.push(`Retrieved Context: ${ex.context}`);
+    parts.push("<examples>");
+    for (const ex of fewShotExamples) {
+      parts.push("  <example>");
+      parts.push(`    <question>${escapeXml(ex.question)}</question>`);
+      parts.push(`    <agent_answer>${escapeXml(ex.answer)}</agent_answer>`);
+      if (ex.context) {
+        parts.push(
+          `    <retrieved_context>${escapeXml(ex.context)}</retrieved_context>`,
+        );
+      }
+      const verdict = ex.humanLabel === "pass" ? "Pass" : "Fail";
+      const reasoning = `This is a ${ex.humanLabel === "pass" ? "passing" : "failing"} example.`;
       parts.push(
-        `Evaluation: {"reasoning": "This is a ${ex.humanLabel === "pass" ? "passing" : "failing"} example.", "answer": "${ex.humanLabel === "pass" ? "Pass" : "Fail"}"}`,
+        `    <evaluation>{"reasoning": "${reasoning}", "answer": "${verdict}"}</evaluation>`,
       );
-      parts.push("");
+      parts.push("  </example>");
     }
+    parts.push("</examples>");
+    parts.push("");
   }
 
   // Target
-  parts.push("--- Now evaluate the following ---");
-  parts.push(`Question: ${target.question}`);
-  parts.push(`Agent Answer: ${target.answer}`);
-  if (target.context) parts.push(`Retrieved Context: ${target.context}`);
-  parts.push("\nReturn your evaluation as a JSON object:");
+  parts.push("<input>");
+  parts.push(`  <question>${escapeXml(target.question)}</question>`);
+  parts.push(`  <agent_answer>${escapeXml(target.answer)}</agent_answer>`);
+  if (target.context) {
+    parts.push(
+      `  <retrieved_context>${escapeXml(target.context)}</retrieved_context>`,
+    );
+  }
+  parts.push("</input>");
+  parts.push("");
+
+  // Output format
+  if (outputFormatJson && outputFormatJson.trim().length > 0) {
+    parts.push("<output_format>");
+    parts.push(outputFormatJson);
+    parts.push("</output_format>");
+    parts.push("");
+    parts.push(
+      "Evaluate the <input> above and return a JSON object matching <output_format>.",
+    );
+  } else {
+    parts.push(
+      "Evaluate the <input> above and return your evaluation as a JSON object.",
+    );
+  }
 
   return parts.join("\n");
 }

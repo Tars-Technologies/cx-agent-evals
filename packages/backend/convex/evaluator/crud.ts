@@ -7,6 +7,8 @@ import {
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { getAuthContext } from "../lib/auth";
+import { computeSplit, stratifiedFewShot } from "./splits";
+import { toBinaryLabel } from "../lib/labels";
 
 // ─── Config Queries ───
 
@@ -81,6 +83,130 @@ export const getConfigInternal = internalQuery({
   },
 });
 
+/**
+ * Returns the train/dev/test split for a config, and the training-set
+ * questions joined with their annotations and agent results.
+ *
+ * Used by the Configure UI to show which examples will be injected as
+ * few-shot examples in the judge prompt.
+ */
+export const trainingExamplesByConfig = query({
+  args: {
+    configId: v.id("evaluatorConfigs"),
+    /** Optional override for unsaved slider preview in the UI */
+    overrideMaxFewShot: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+    const config = await ctx.db.get(args.configId);
+    if (!config || config.orgId !== orgId) return null;
+
+    // Build the same eligibility set used by the actions
+    const mappings = await ctx.db
+      .query("failureModeQuestionMappings")
+      .withIndex("by_experiment", (q) =>
+        q.eq("experimentId", config.experimentId),
+      )
+      .collect();
+    const fmQuestionIds = new Set(
+      mappings
+        .filter((m) => m.failureModeId === config.failureModeId)
+        .map((m) => m.questionId as string),
+    );
+
+    const annotations = await ctx.db
+      .query("annotations")
+      .withIndex("by_experiment", (q) =>
+        q.eq("experimentId", config.experimentId),
+      )
+      .collect();
+
+    const eligibleIds: string[] = [];
+    const labelByQuestion = new Map<string, "pass" | "fail">();
+    const seen = new Set<string>();
+    for (const a of annotations) {
+      const qId = a.questionId as string;
+      if (seen.has(qId)) continue;
+      seen.add(qId);
+      const label = toBinaryLabel(a.rating);
+      if (fmQuestionIds.has(qId) || label === "pass") {
+        eligibleIds.push(qId);
+        labelByQuestion.set(qId, label);
+      }
+    }
+
+    const split = computeSplit(
+      eligibleIds,
+      config.splitConfig,
+      config.splitSeed,
+      labelByQuestion,
+    );
+
+    // Stratified few-shot sampling from the training set
+    const annotationByQuestion = new Map(
+      annotations.map((a) => [a.questionId as string, a]),
+    );
+    const trainPasses: string[] = [];
+    const trainFails: string[] = [];
+    for (const qId of split.train) {
+      const ann = annotationByQuestion.get(qId);
+      if (!ann) continue;
+      if (toBinaryLabel(ann.rating) === "pass") trainPasses.push(qId);
+      else trainFails.push(qId);
+    }
+
+    const maxFewShot =
+      args.overrideMaxFewShot ?? config.maxFewShotExamples ?? 8;
+    const sampled = stratifiedFewShot(
+      trainPasses,
+      trainFails,
+      maxFewShot,
+      config.splitSeed,
+    );
+
+    // Hydrate the picked few-shot examples
+    const agentResults = await ctx.db
+      .query("agentExperimentResults")
+      .withIndex("by_experiment", (q) =>
+        q.eq("experimentId", config.experimentId),
+      )
+      .collect();
+    const resultByQuestion = new Map(
+      agentResults.map((r) => [r.questionId as string, r]),
+    );
+
+    const fewShotExamples = [];
+    for (const qId of sampled.ids) {
+      const question = await ctx.db.get(qId as any);
+      const annotation = annotationByQuestion.get(qId);
+      const result = resultByQuestion.get(qId);
+      if (!question || !annotation || !result) continue;
+      fewShotExamples.push({
+        questionId: qId,
+        questionText: (question as any).queryText as string,
+        answerText: result.answerText ?? "(no answer)",
+        humanLabel: toBinaryLabel(annotation.rating),
+      });
+    }
+
+    return {
+      splitSizes: {
+        train: split.train.length,
+        dev: split.dev.length,
+        test: split.test.length,
+      },
+      fewShotBreakdown: {
+        passes: sampled.passCount,
+        fails: sampled.failCount,
+        total: sampled.ids.length,
+        availablePasses: trainPasses.length,
+        availableFails: trainFails.length,
+      },
+      fewShotExamples,
+    };
+  },
+});
+
 // ─── Run Queries ───
 
 export const runsByConfig = query({
@@ -146,13 +272,30 @@ export const resultsByRunInternal = internalQuery({
 
 // ─── Config Mutations ───
 
+const DEFAULT_OUTPUT_FORMAT = `{
+  "reasoning": "<brief 1-2 sentence explanation>",
+  "answer": "Pass" | "Fail"
+}`;
+
+const DEFAULT_JUDGE_PROMPT_TEMPLATE = (
+  fmName: string,
+  fmDescription: string,
+) => `You are an expert evaluator assessing outputs from an AI agent.
+
+Your Task: Determine if the agent's response exhibits the following failure mode.
+
+Failure Mode: ${fmName}
+Description: ${fmDescription}
+
+Definition of Pass/Fail:
+- Fail: The agent's response clearly exhibits this failure mode.
+- Pass: The agent's response does NOT exhibit this failure mode.`;
+
 export const createConfig = mutation({
   args: {
     experimentId: v.id("experiments"),
-    failureModeId: v.id("failureModes"),
-    judgePrompt: v.string(),
-    fewShotExampleIds: v.array(v.id("questions")),
-    modelId: v.string(),
+    name: v.string(),
+    modelId: v.optional(v.string()),
     splitConfig: v.optional(
       v.object({
         trainPct: v.number(),
@@ -166,29 +309,35 @@ export const createConfig = mutation({
     const exp = await ctx.db.get(args.experimentId);
     if (!exp || exp.orgId !== orgId) throw new Error("Experiment not found");
 
-    const failureMode = await ctx.db.get(args.failureModeId);
-    if (!failureMode || failureMode.orgId !== orgId)
-      throw new Error("Failure mode not found");
-
-    // Check if config already exists for this failure mode
-    const existing = await ctx.db
-      .query("evaluatorConfigs")
-      .withIndex("by_failure_mode", (q) =>
-        q.eq("failureModeId", args.failureModeId),
+    // Pre-populate failureModeId with the first failure mode for the experiment
+    const failureModes = await ctx.db
+      .query("failureModes")
+      .withIndex("by_experiment", (q) =>
+        q.eq("experimentId", args.experimentId),
       )
       .collect();
-    if (existing.length > 0) {
-      throw new Error("Evaluator config already exists for this failure mode");
+
+    if (failureModes.length === 0) {
+      throw new Error(
+        "Generate failure modes for this experiment before creating an evaluator",
+      );
     }
+
+    const defaultFm = failureModes.sort((a, b) => a.order - b.order)[0];
 
     return await ctx.db.insert("evaluatorConfigs", {
       orgId,
       experimentId: args.experimentId,
-      failureModeId: args.failureModeId,
-      name: failureMode.name,
-      judgePrompt: args.judgePrompt,
-      fewShotExampleIds: args.fewShotExampleIds,
-      modelId: args.modelId,
+      failureModeId: defaultFm._id,
+      name: args.name.trim() || defaultFm.name,
+      judgePrompt: DEFAULT_JUDGE_PROMPT_TEMPLATE(
+        defaultFm.name,
+        defaultFm.description,
+      ),
+      outputFormatJson: DEFAULT_OUTPUT_FORMAT,
+      fewShotExampleIds: [],
+      maxFewShotExamples: 8,
+      modelId: args.modelId ?? "claude-sonnet-4-6",
       splitConfig: args.splitConfig ?? {
         trainPct: 15,
         devPct: 43,
@@ -204,8 +353,11 @@ export const createConfig = mutation({
 export const updateConfig = mutation({
   args: {
     id: v.id("evaluatorConfigs"),
+    name: v.optional(v.string()),
+    failureModeId: v.optional(v.id("failureModes")),
     judgePrompt: v.optional(v.string()),
-    fewShotExampleIds: v.optional(v.array(v.id("questions"))),
+    outputFormatJson: v.optional(v.string()),
+    maxFewShotExamples: v.optional(v.number()),
     modelId: v.optional(v.string()),
     splitConfig: v.optional(
       v.object({
@@ -222,9 +374,22 @@ export const updateConfig = mutation({
       throw new Error("Config not found");
 
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
+
+    if (args.name !== undefined) patch.name = args.name;
+    if (args.failureModeId !== undefined) {
+      // Validate the new failure mode belongs to same experiment + org
+      const fm = await ctx.db.get(args.failureModeId);
+      if (!fm || fm.orgId !== orgId)
+        throw new Error("Failure mode not found");
+      if (fm.experimentId !== config.experimentId)
+        throw new Error("Failure mode must be from the same experiment");
+      patch.failureModeId = args.failureModeId;
+    }
     if (args.judgePrompt !== undefined) patch.judgePrompt = args.judgePrompt;
-    if (args.fewShotExampleIds !== undefined)
-      patch.fewShotExampleIds = args.fewShotExampleIds;
+    if (args.outputFormatJson !== undefined)
+      patch.outputFormatJson = args.outputFormatJson;
+    if (args.maxFewShotExamples !== undefined)
+      patch.maxFewShotExamples = args.maxFewShotExamples;
     if (args.modelId !== undefined) patch.modelId = args.modelId;
     if (args.splitConfig !== undefined) {
       patch.splitConfig = args.splitConfig;
@@ -232,8 +397,15 @@ export const updateConfig = mutation({
       patch.splitSeed = Math.floor(Math.random() * 2147483647);
     }
 
-    // Reset metrics if prompt or examples changed (need re-validation)
-    if (args.judgePrompt !== undefined || args.fewShotExampleIds !== undefined) {
+    // Reset metrics if anything that affects judgment changed
+    if (
+      args.judgePrompt !== undefined ||
+      args.outputFormatJson !== undefined ||
+      args.maxFewShotExamples !== undefined ||
+      args.failureModeId !== undefined ||
+      args.modelId !== undefined ||
+      args.splitConfig !== undefined
+    ) {
       patch.devMetrics = undefined;
       patch.testMetrics = undefined;
       patch.status = "draft";
@@ -400,41 +572,6 @@ export const insertResultInternal = internalMutation({
   handler: async (ctx, args) => {
     return await ctx.db.insert("evaluatorResults", {
       ...args,
-      createdAt: Date.now(),
-    });
-  },
-});
-
-export const createConfigInternal = internalMutation({
-  args: {
-    orgId: v.string(),
-    experimentId: v.id("experiments"),
-    failureModeId: v.id("failureModes"),
-    name: v.string(),
-    judgePrompt: v.string(),
-    fewShotExampleIds: v.array(v.id("questions")),
-    modelId: v.string(),
-    splitConfig: v.object({
-      trainPct: v.number(),
-      devPct: v.number(),
-      testPct: v.number(),
-    }),
-    splitSeed: v.number(),
-  },
-  handler: async (ctx, args) => {
-    // Resolve failure mode name
-    const fm = await ctx.db.get(args.failureModeId);
-    return await ctx.db.insert("evaluatorConfigs", {
-      orgId: args.orgId,
-      experimentId: args.experimentId,
-      failureModeId: args.failureModeId,
-      name: fm?.name ?? args.name,
-      judgePrompt: args.judgePrompt,
-      fewShotExampleIds: args.fewShotExampleIds,
-      modelId: args.modelId,
-      splitConfig: args.splitConfig,
-      splitSeed: args.splitSeed,
-      status: "draft" as const,
       createdAt: Date.now(),
     });
   },

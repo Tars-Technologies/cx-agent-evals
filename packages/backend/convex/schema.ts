@@ -310,7 +310,9 @@ export default defineSchema({
     failureModeId: v.id("failureModes"),
     name: v.string(),
     judgePrompt: v.string(),
+    outputFormatJson: v.optional(v.string()),
     fewShotExampleIds: v.array(v.id("questions")),
+    maxFewShotExamples: v.optional(v.number()),
     modelId: v.string(),
     splitConfig: v.object({
       trainPct: v.number(),
