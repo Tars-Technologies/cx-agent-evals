@@ -1,4 +1,4 @@
-import { query, mutation, internalMutation } from "../_generated/server";
+import { query, mutation, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { getAuthContext } from "../lib/auth";
@@ -238,5 +238,24 @@ export const createMappingInternal = internalMutation({
       experimentId: args.experimentId,
       createdAt: Date.now(),
     });
+  },
+});
+
+export const getInternal = internalQuery({
+  args: { id: v.id("failureModes") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id);
+  },
+});
+
+export const mappingsByExperimentInternal = internalQuery({
+  args: { experimentId: v.id("experiments") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("failureModeQuestionMappings")
+      .withIndex("by_experiment", (q) =>
+        q.eq("experimentId", args.experimentId),
+      )
+      .collect();
   },
 });

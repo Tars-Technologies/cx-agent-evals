@@ -303,6 +303,105 @@ export default defineSchema({
     .index("by_experiment", ["experimentId"])
     .index("by_question", ["questionId"]),
 
+  // ─── Evaluator Configs (LLM-as-Judge per failure mode) ───
+  evaluatorConfigs: defineTable({
+    orgId: v.string(),
+    experimentId: v.id("experiments"),
+    failureModeId: v.id("failureModes"),
+    name: v.string(),
+    judgePrompt: v.string(),
+    fewShotExampleIds: v.array(v.id("questions")),
+    modelId: v.string(),
+    splitConfig: v.object({
+      trainPct: v.number(),
+      devPct: v.number(),
+      testPct: v.number(),
+    }),
+    splitSeed: v.number(),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("validating"),
+      v.literal("validated"),
+      v.literal("ready"),
+    ),
+    devMetrics: v.optional(
+      v.object({
+        tpr: v.number(),
+        tnr: v.number(),
+        accuracy: v.number(),
+        total: v.number(),
+      }),
+    ),
+    testMetrics: v.optional(
+      v.object({
+        tpr: v.number(),
+        tnr: v.number(),
+        accuracy: v.number(),
+        total: v.number(),
+      }),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_experiment", ["experimentId"])
+    .index("by_failure_mode", ["failureModeId"]),
+
+  // ─── Evaluator Runs (execution of judge on traces) ───
+  evaluatorRuns: defineTable({
+    orgId: v.string(),
+    evaluatorConfigId: v.id("evaluatorConfigs"),
+    targetExperimentId: v.id("experiments"),
+    runType: v.union(
+      v.literal("dev"),
+      v.literal("test"),
+      v.literal("full"),
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    totalTraces: v.number(),
+    processedTraces: v.number(),
+    failedTraces: v.number(),
+    rawPassRate: v.optional(v.number()),
+    correctedPassRate: v.optional(v.number()),
+    confidenceInterval: v.optional(
+      v.object({
+        lower: v.number(),
+        upper: v.number(),
+      }),
+    ),
+    tprUsed: v.optional(v.number()),
+    tnrUsed: v.optional(v.number()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_evaluator_config", ["evaluatorConfigId"])
+    .index("by_target_experiment", ["targetExperimentId"]),
+
+  // ─── Evaluator Results (per-question judge verdict) ───
+  evaluatorResults: defineTable({
+    orgId: v.string(),
+    runId: v.id("evaluatorRuns"),
+    questionId: v.id("questions"),
+    resultId: v.id("agentExperimentResults"),
+    judgeVerdict: v.union(v.literal("pass"), v.literal("fail")),
+    judgeReasoning: v.string(),
+    humanLabel: v.optional(v.union(v.literal("pass"), v.literal("fail"))),
+    agreesWithHuman: v.optional(v.boolean()),
+    usage: v.optional(
+      v.object({
+        promptTokens: v.number(),
+        completionTokens: v.number(),
+      }),
+    ),
+    latencyMs: v.optional(v.number()),
+    createdAt: v.number(),
+  }).index("by_run", ["runId"]),
+
   // ─── Document Chunks (position-aware, with vector embeddings) ───
   documentChunks: defineTable({
     documentId: v.id("documents"),
