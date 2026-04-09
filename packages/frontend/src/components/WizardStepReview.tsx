@@ -80,10 +80,10 @@ export function WizardStepReview({
       {documents.length > 0 && (
         <div>
           <label className="text-xs text-text-dim mb-1.5 block">Document Priority &amp; Allocation</label>
-          <div className="border border-border rounded overflow-hidden">
+          <div className="border border-border rounded max-h-[360px] overflow-y-auto">
             <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-bg-secondary">
+              <thead className="sticky top-0 bg-bg-secondary z-10">
+                <tr>
                   <th className="text-left px-3 py-1.5 text-text-dim font-normal">Document</th>
                   <th className="text-center px-3 py-1.5 text-text-dim font-normal w-24">Priority</th>
                   <th className="text-right px-3 py-1.5 text-text-dim font-normal w-16">Alloc.</th>
