@@ -7,5 +7,6 @@ app.use(workpool, { name: "generationPool" });
 app.use(workpool, { name: "experimentPool" });
 app.use(workpool, { name: "scrapingPool" });
 app.use(workpool, { name: "agentExperimentPool" });
+app.use(workpool, { name: "livechatAnalysisPool" });
 
 export default app;
