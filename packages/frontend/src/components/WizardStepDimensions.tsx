@@ -95,9 +95,9 @@ export function WizardStepDimensions({ kbId, dimensions, onChange, onNext, onSki
 
       {/* Dimension chips */}
       {dimensions.length > 0 && (
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {dimensions.map((dim, di) => (
-            <div key={di} className="p-2 border border-border rounded">
+            <div key={di} className="p-3 border border-border rounded">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-medium text-text">{dim.name}</span>
                 <button onClick={() => removeDimension(di)} className="text-xs text-text-dim hover:text-red-400">×</button>
