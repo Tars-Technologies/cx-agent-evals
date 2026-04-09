@@ -35,6 +35,7 @@ import type * as lib_auth from "../lib/auth.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as lib_vectorSearch from "../lib/vectorSearch.js";
 import type * as lib_workpool from "../lib/workpool.js";
+import type * as livechat_actions from "../livechat/actions.js";
 import type * as livechat_orchestration from "../livechat/orchestration.js";
 import type * as retrieval_chunks from "../retrieval/chunks.js";
 import type * as retrieval_indexing from "../retrieval/indexing.js";
@@ -78,6 +79,7 @@ declare const fullApi: ApiFromModules<{
   "lib/validators": typeof lib_validators;
   "lib/vectorSearch": typeof lib_vectorSearch;
   "lib/workpool": typeof lib_workpool;
+  "livechat/actions": typeof livechat_actions;
   "livechat/orchestration": typeof livechat_orchestration;
   "retrieval/chunks": typeof retrieval_chunks;
   "retrieval/indexing": typeof retrieval_indexing;
