@@ -14,6 +14,10 @@ const WIZARD_CONFIG_PREFIX = "rag-eval:unified-wizard-config:";
 const OLD_WIZARD_CONFIG_KEY = "rag-eval:unified-wizard-config";
 const wizardKey = (kbId: string) => `${WIZARD_CONFIG_PREFIX}${kbId}`;
 
+const OLD_DISCOVER_URL_KEY = "rag-eval:dimension-discover-url";
+const DISCOVER_URL_PREFIX = "rag-eval:dimension-discover-url:";
+const discoverUrlKey = (kbId: string) => `${DISCOVER_URL_PREFIX}${kbId}`;
+
 const DEFAULT_PREFERENCES: PromptPreferences = {
   questionTypes: ["factoid", "procedural", "conditional"],
   tone: "professional but accessible",
@@ -92,18 +96,27 @@ export function GenerationWizard({
   // One-time migration from the old global storage key
   useEffect(() => {
     try {
-      const oldValue = localStorage.getItem(OLD_WIZARD_CONFIG_KEY);
-      if (oldValue == null) return;
-      const currentKey = wizardKey(kbId);
-      // Only seed if this KB doesn't already have its own entry
-      if (localStorage.getItem(currentKey) == null) {
-        localStorage.setItem(currentKey, oldValue);
+      // Migrate wizard config
+      const oldConfig = localStorage.getItem(OLD_WIZARD_CONFIG_KEY);
+      if (oldConfig != null) {
+        const currentKey = wizardKey(kbId);
+        if (localStorage.getItem(currentKey) == null) {
+          localStorage.setItem(currentKey, oldConfig);
+        }
+        localStorage.removeItem(OLD_WIZARD_CONFIG_KEY);
       }
-      localStorage.removeItem(OLD_WIZARD_CONFIG_KEY);
+      // Migrate discover URL
+      const oldUrl = localStorage.getItem(OLD_DISCOVER_URL_KEY);
+      if (oldUrl != null) {
+        const currentUrlKey = discoverUrlKey(kbId);
+        if (localStorage.getItem(currentUrlKey) == null) {
+          localStorage.setItem(currentUrlKey, oldUrl);
+        }
+        localStorage.removeItem(OLD_DISCOVER_URL_KEY);
+      }
     } catch {
       // Silent — migration is best-effort
     }
-    // Run once on mount only
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -198,6 +211,7 @@ export function GenerationWizard({
       )}
       {step === 1 && (
         <WizardStepDimensions
+          kbId={kbId}
           dimensions={config.dimensions}
           onChange={(dims) => setConfig((prev) => ({ ...prev, dimensions: dims }))}
           onNext={() => setStep(2)}

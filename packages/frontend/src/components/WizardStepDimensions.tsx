@@ -1,9 +1,13 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { Dimension } from "@/lib/types";
 
+const DISCOVER_URL_PREFIX = "rag-eval:dimension-discover-url:";
+const discoverUrlKey = (kbId: string) => `${DISCOVER_URL_PREFIX}${kbId}`;
+
 interface WizardStepDimensionsProps {
+  kbId: string;
   dimensions: Dimension[];
   onChange: (dimensions: Dimension[]) => void;
   onNext: () => void;
@@ -11,11 +15,19 @@ interface WizardStepDimensionsProps {
   onBack: () => void;
 }
 
-export function WizardStepDimensions({ dimensions, onChange, onNext, onSkip, onBack }: WizardStepDimensionsProps) {
+export function WizardStepDimensions({ kbId, dimensions, onChange, onNext, onSkip, onBack }: WizardStepDimensionsProps) {
   const [url, setUrl] = useState(() => {
-    try { return localStorage.getItem("rag-eval:dimension-discover-url") ?? ""; }
+    try { return localStorage.getItem(discoverUrlKey(kbId)) ?? ""; }
     catch { return ""; }
   });
+
+  useEffect(() => {
+    try {
+      setUrl(localStorage.getItem(discoverUrlKey(kbId)) ?? "");
+    } catch {
+      setUrl("");
+    }
+  }, [kbId]);
   const [discovering, setDiscovering] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,7 +44,7 @@ export function WizardStepDimensions({ dimensions, onChange, onNext, onSkip, onB
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Discovery failed"); return; }
       onChange(data.dimensions);
-      try { localStorage.setItem("rag-eval:dimension-discover-url", url); } catch {}
+      try { localStorage.setItem(discoverUrlKey(kbId), url); } catch {}
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to discover");
     } finally {
