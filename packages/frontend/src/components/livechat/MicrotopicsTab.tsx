@@ -1,5 +1,6 @@
 "use client";
 
+import type React from "react";
 import { useState, useMemo } from "react";
 import type {
   MicrotopicsFile,
@@ -35,9 +36,13 @@ const TYPE_COLORS: Record<string, string> = {
 export function MicrotopicsTab({
   microtopicsData,
   rawData,
+  microtopicsStatus,
+  microtopicsError,
 }: {
   microtopicsData: MicrotopicsFile | null;
   rawData: RawTranscriptsFile | null;
+  microtopicsStatus: "pending" | "running" | "ready" | "failed" | "skipped";
+  microtopicsError?: string;
 }) {
   const [view, setView] = useState<"conversation" | "topicType">("conversation");
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
@@ -88,6 +93,53 @@ export function MicrotopicsTab({
     () => conversations.find((c) => c.conversationId === selectedConvId) ?? null,
     [conversations, selectedConvId]
   );
+
+  // Status-based placeholders take precedence over missing data.
+  if (microtopicsStatus !== "ready") {
+    let message = "";
+    let showSpinner = false;
+    let extra: React.ReactNode = null;
+
+    if (microtopicsStatus === "pending") {
+      message =
+        "AI analysis queued. Waiting for stats and transcripts to finish first.";
+    } else if (microtopicsStatus === "running") {
+      message = "AI analysis in progress… this can take a few minutes.";
+      showSpinner = true;
+    } else if (microtopicsStatus === "failed") {
+      message = `AI analysis failed${microtopicsError ? ": " + microtopicsError : ""}`;
+      extra = (
+        <button
+          disabled
+          title="Not yet implemented"
+          className="mt-2 text-[10px] text-text-dim border border-border rounded px-2 py-0.5 cursor-not-allowed opacity-50"
+        >
+          Retry
+        </button>
+      );
+    } else if (microtopicsStatus === "skipped") {
+      message = "AI analysis not yet run";
+      extra = (
+        <button
+          disabled
+          title="Not yet implemented"
+          className="mt-2 text-[10px] text-text-dim border border-border rounded px-2 py-0.5 cursor-not-allowed opacity-50"
+        >
+          Analyze now
+        </button>
+      );
+    }
+
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-text-dim text-xs px-4 text-center">
+        {showSpinner && (
+          <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin mb-2" />
+        )}
+        <div>{message}</div>
+        {extra}
+      </div>
+    );
+  }
 
   if (!microtopicsData || !rawData) {
     return (
