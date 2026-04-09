@@ -161,7 +161,7 @@ With those two changes, the Review step's priority dots reflect the persisted va
 | `packages/frontend/src/app/generate/page.tsx` | Remove the sidebar `Generation Config` block. Add `+ New Generation` button above the dataset list (above the "Datasets (N)" section). Render `<GenerationWizard>` inside the main pane when `mode === "generate"`. Add `handleCancelGeneration` that falls back to the previously-selected dataset or the first dataset. Stop hardcoding `priority: 3`. |
 | `packages/frontend/src/components/GenerationWizard.tsx` | Replace single-column sidebar layout with the wizard card layout (header + stepper + content). Accept `onCancel` prop. Switch localStorage key from global to per-KB. Add one-time migration for both old keys (wizard config + discover URL). Pass `kbId` through to `WizardStepDimensions`. |
 | `packages/frontend/src/components/WizardStepRealWorld.tsx` | Textarea grows to `min-h-[200px]`. Counter moves below. |
-| `packages/frontend/src/components/WizardStepDimensions.tsx` | Switch dimension list to `grid grid-cols-1 lg:grid-cols-2 gap-3`. Accept `kbId` prop. Switch localStorage read/write to `discoverUrlKey(kbId)`. |
+| `packages/frontend/src/components/WizardStepDimensions.tsx` | Switch dimension list to `grid grid-cols-1 md:grid-cols-2 gap-3`. Accept `kbId` prop. Switch localStorage read/write to `discoverUrlKey(kbId)`. |
 | `packages/frontend/src/components/WizardStepPreferences.tsx` | Two-column layout for preference inputs on `lg:` and up. |
 | `packages/frontend/src/components/WizardStepReview.tsx` | Wrap priority table in `max-h-[360px] overflow-y-auto` with sticky thead. No prop or logic changes. |
 
