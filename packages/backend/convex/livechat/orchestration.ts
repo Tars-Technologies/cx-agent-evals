@@ -98,3 +98,184 @@ export const markMicrotopicsFailed = internalMutation({
     });
   },
 });
+
+// ─── Public mutations ───
+
+export const generateUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await getAuthContext(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const create = mutation({
+  args: {
+    filename: v.string(),
+    csvStorageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    const { orgId, userId } = await getAuthContext(ctx);
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", userId))
+      .unique();
+    if (!user) throw new Error("User not found");
+
+    const uploadId = await ctx.db.insert("livechatUploads", {
+      orgId,
+      createdBy: user._id,
+      filename: args.filename,
+      csvStorageId: args.csvStorageId,
+      status: "pending",
+      microtopicsStatus: "pending",
+      createdAt: Date.now(),
+    });
+
+    // Enqueue the analysis pipeline
+    const workId = await pool.enqueueAction(
+      ctx,
+      internal.livechat.actions.runAnalysisPipeline,
+      {
+        uploadId,
+        csvStorageId: args.csvStorageId,
+      },
+      {
+        context: { uploadId },
+        onComplete: internal.livechat.orchestration.onAnalysisComplete,
+      },
+    );
+
+    await ctx.db.patch(uploadId, { workIds: [workId as string] });
+
+    return { uploadId };
+  },
+});
+
+export const remove = mutation({
+  args: { id: v.id("livechatUploads") },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+    const row = await ctx.db.get(args.id);
+    if (!row || row.orgId !== orgId) {
+      throw new Error("Upload not found");
+    }
+
+    // Reject if busy
+    const busy =
+      row.status === "pending" ||
+      row.status === "parsing" ||
+      row.microtopicsStatus === "running";
+    if (busy) {
+      throw new Error("Cannot delete upload while analysis is in progress");
+    }
+
+    await ctx.storage.delete(row.csvStorageId);
+    if (row.rawTranscriptsStorageId != null) {
+      await ctx.storage.delete(row.rawTranscriptsStorageId);
+    }
+    if (row.microtopicsStorageId != null) {
+      await ctx.storage.delete(row.microtopicsStorageId);
+    }
+    await ctx.db.delete(row._id);
+
+    return { ok: true };
+  },
+});
+
+// ─── Public queries ───
+
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    const { orgId } = await getAuthContext(ctx);
+    const rows = await ctx.db
+      .query("livechatUploads")
+      .withIndex("by_org_created", (q) => q.eq("orgId", orgId))
+      .order("desc")
+      .collect();
+    return rows;
+  },
+});
+
+export const get = query({
+  args: { id: v.id("livechatUploads") },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+    const row = await ctx.db.get(args.id);
+    if (!row || row.orgId !== orgId) {
+      return null;
+    }
+    return row;
+  },
+});
+
+export const getDownloadUrl = query({
+  args: {
+    id: v.id("livechatUploads"),
+    type: v.union(
+      v.literal("rawTranscripts"),
+      v.literal("microtopics"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+    const row = await ctx.db.get(args.id);
+    if (!row || row.orgId !== orgId) {
+      return null;
+    }
+    const storageId =
+      args.type === "rawTranscripts"
+        ? row.rawTranscriptsStorageId
+        : row.microtopicsStorageId;
+    if (!storageId) return null;
+    return await ctx.storage.getUrl(storageId);
+  },
+});
+
+// ─── WorkPool onComplete callback ───
+
+export const onAnalysisComplete = internalMutation({
+  args: vOnCompleteArgs(
+    v.object({
+      uploadId: v.id("livechatUploads"),
+    }),
+  ),
+  handler: async (
+    ctx,
+    { context, result }: {
+      workId: string;
+      context: { uploadId: Id<"livechatUploads"> };
+      result: RunResult;
+    },
+  ) => {
+    // If the action crashed before writing any terminal status to the row,
+    // patch it as failed here. If it already wrote a terminal status, this
+    // callback is a no-op.
+    const row = await ctx.db.get(context.uploadId);
+    if (!row) return;
+
+    const alreadyTerminal =
+      row.status === "ready" ||
+      row.status === "failed" ||
+      row.microtopicsStatus === "ready" ||
+      row.microtopicsStatus === "failed";
+
+    if (alreadyTerminal) return;
+
+    if (result.kind === "failed") {
+      await ctx.db.patch(context.uploadId, {
+        status: "failed",
+        error: result.error ?? "Analysis action crashed without writing status",
+        completedAt: Date.now(),
+      });
+    } else if (result.kind === "canceled") {
+      await ctx.db.patch(context.uploadId, {
+        status: "failed",
+        error: "Analysis was canceled",
+        completedAt: Date.now(),
+      });
+    }
+  },
+});
