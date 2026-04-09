@@ -153,6 +153,56 @@ export default defineSchema({
     .index("by_org", ["orgId"])
     .index("by_status", ["orgId", "status"]),
 
+  // ── Livechat uploads ──
+  livechatUploads: defineTable({
+    // Ownership
+    orgId: v.string(),
+    createdBy: v.id("users"),
+
+    // File identity
+    filename: v.string(),
+    csvStorageId: v.id("_storage"),
+
+    // Overall pipeline status
+    status: v.union(
+      v.literal("pending"),
+      v.literal("parsing"),
+      v.literal("ready"),
+      v.literal("failed"),
+    ),
+    error: v.optional(v.string()),
+
+    // AI microtopics status (independent of overall status)
+    microtopicsStatus: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("ready"),
+      v.literal("failed"),
+      v.literal("skipped"),
+    ),
+    microtopicsError: v.optional(v.string()),
+
+    // Output blobs (optional until filled by the action)
+    rawTranscriptsStorageId: v.optional(v.id("_storage")),
+    microtopicsStorageId: v.optional(v.id("_storage")),
+
+    // Inline metadata (small)
+    conversationCount: v.optional(v.number()),
+    basicStats: v.optional(v.any()),
+    processedConversations: v.optional(v.number()),
+    failedConversationCount: v.optional(v.number()),
+
+    // Timestamps
+    createdAt: v.number(),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+
+    // WorkPool tracking
+    workIds: v.optional(v.array(v.string())),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_org_created", ["orgId", "createdAt"]),
+
   // ─── Experiments (evaluation runs against a dataset) ───
   experiments: defineTable({
     orgId: v.string(),
