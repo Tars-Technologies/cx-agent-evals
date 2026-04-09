@@ -67,6 +67,7 @@ export const listByKb = query({
       contentLength: doc.contentLength,
       sourceType: doc.sourceType,
       createdAt: doc.createdAt,
+      priority: doc.priority,
     }));
   },
 });
