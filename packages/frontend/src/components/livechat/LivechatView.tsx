@@ -1,11 +1,20 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@/lib/convex";
+import type { Id } from "@convex/_generated/dataModel";
 import { TabBar } from "./TabBar";
 import { StatsTab } from "./StatsTab";
 import { TranscriptsTab } from "./TranscriptsTab";
 import { MicrotopicsTab } from "./MicrotopicsTab";
-import type { LivechatTab, UploadEntry, LoadedData } from "./types";
+import type {
+  LivechatTab,
+  LoadedData,
+  RawTranscriptsFile,
+  MicrotopicsFile,
+  BasicStats,
+} from "./types";
 
 function DeleteConfirmModal({
   filename,
@@ -63,116 +72,125 @@ function DeleteConfirmModal({
 
 export function LivechatView() {
   const [activeTab, setActiveTab] = useState<LivechatTab>("stats");
-  const [uploads, setUploads] = useState<UploadEntry[]>([]);
-  const [selectedUploadId, setSelectedUploadId] = useState<string | null>(null);
-  const [loadedData, setLoadedData] = useState<LoadedData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<UploadEntry | null>(null);
+  const [selectedUploadId, setSelectedUploadId] =
+    useState<Id<"livechatUploads"> | null>(null);
+  const [deleteTargetId, setDeleteTargetId] =
+    useState<Id<"livechatUploads"> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const lastLoadedId = useRef<string | null>(null);
-  const lastManifestJson = useRef<string>("");
 
-  // Poll manifest for upload status
-  const refreshManifest = useCallback(async () => {
-    try {
-      const res = await fetch("/api/livechat/manifest");
-      if (res.ok) {
-        const text = await res.text();
-        if (text !== lastManifestJson.current) {
-          lastManifestJson.current = text;
-          setUploads(JSON.parse(text));
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
+  // Large blob state — fetched lazily via signed URLs
+  const [rawTranscriptsData, setRawTranscriptsData] =
+    useState<RawTranscriptsFile | null>(null);
+  const [microtopicsData, setMicrotopicsData] =
+    useState<MicrotopicsFile | null>(null);
+  const lastFetchedRawUrl = useRef<string | null>(null);
+  const lastFetchedMicroUrl = useRef<string | null>(null);
 
+  // Reactive Convex queries
+  const uploads = useQuery(api.livechat.orchestration.list) ?? [];
+  const selectedUpload = useQuery(
+    api.livechat.orchestration.get,
+    selectedUploadId ? { id: selectedUploadId } : "skip",
+  );
+  const rawTranscriptsUrl = useQuery(
+    api.livechat.orchestration.getDownloadUrl,
+    selectedUploadId && selectedUpload?.status === "ready"
+      ? { id: selectedUploadId, type: "rawTranscripts" as const }
+      : "skip",
+  );
+  const microtopicsUrl = useQuery(
+    api.livechat.orchestration.getDownloadUrl,
+    selectedUploadId && selectedUpload?.microtopicsStatus === "ready"
+      ? { id: selectedUploadId, type: "microtopics" as const }
+      : "skip",
+  );
+
+  // Mutations
+  const generateUploadUrl = useMutation(
+    api.livechat.orchestration.generateUploadUrl,
+  );
+  const createUpload = useMutation(api.livechat.orchestration.create);
+  const removeUpload = useMutation(api.livechat.orchestration.remove);
+
+  // Clear blob state when selection changes
   useEffect(() => {
-    refreshManifest();
-    const hasPending = uploads.some(
-      (u) => u.status !== "ready" && u.status !== "error"
-    );
-    if (hasPending || uploads.length === 0) {
-      const interval = setInterval(refreshManifest, 3000);
-      return () => clearInterval(interval);
-    }
-  }, [refreshManifest, uploads]);
+    setRawTranscriptsData(null);
+    setMicrotopicsData(null);
+    lastFetchedRawUrl.current = null;
+    lastFetchedMicroUrl.current = null;
+  }, [selectedUploadId]);
 
-  // Load data when selecting an upload
+  // Fetch raw transcripts JSON when URL is available
   useEffect(() => {
-    if (!selectedUploadId) {
-      setLoadedData(null);
-      lastLoadedId.current = null;
-      return;
-    }
-    if (lastLoadedId.current === selectedUploadId && loadedData) {
-      return;
-    }
-    const upload = uploads.find((u) => u.id === selectedUploadId);
-    if (!upload || upload.status !== "ready") {
-      setLoadedData(null);
-      lastLoadedId.current = null;
-      return;
-    }
+    if (!rawTranscriptsUrl) return;
+    if (lastFetchedRawUrl.current === rawTranscriptsUrl) return;
+    lastFetchedRawUrl.current = rawTranscriptsUrl;
+    fetch(rawTranscriptsUrl)
+      .then((r) => r.json())
+      .then((data: RawTranscriptsFile) => setRawTranscriptsData(data))
+      .catch((err) => {
+        console.error("Failed to fetch raw transcripts:", err);
+        lastFetchedRawUrl.current = null;
+      });
+  }, [rawTranscriptsUrl]);
 
-    lastLoadedId.current = selectedUploadId;
-    setLoading(true);
-    Promise.all([
-      fetch(`/api/livechat/data/${selectedUploadId}?type=basicStats`).then(
-        (r) => r.json()
-      ),
-      fetch(
-        `/api/livechat/data/${selectedUploadId}?type=rawTranscripts`
-      ).then((r) => r.json()),
-      fetch(`/api/livechat/data/${selectedUploadId}?type=microtopics`).then(
-        (r) => r.json()
-      ),
-    ])
-      .then(([basicStats, rawTranscripts, microtopics]) => {
-        setLoadedData({ basicStats, rawTranscripts, microtopics });
-      })
-      .catch(() => {
-        setLoadedData(null);
-        lastLoadedId.current = null;
-      })
-      .finally(() => setLoading(false));
-  }, [selectedUploadId, uploads, loadedData]);
+  // Fetch microtopics JSON when URL is available
+  useEffect(() => {
+    if (!microtopicsUrl) return;
+    if (lastFetchedMicroUrl.current === microtopicsUrl) return;
+    lastFetchedMicroUrl.current = microtopicsUrl;
+    fetch(microtopicsUrl)
+      .then((r) => r.json())
+      .then((data: MicrotopicsFile) => setMicrotopicsData(data))
+      .catch((err) => {
+        console.error("Failed to fetch microtopics:", err);
+        lastFetchedMicroUrl.current = null;
+      });
+  }, [microtopicsUrl]);
 
   async function handleUpload(file: File) {
-    const formData = new FormData();
-    formData.append("file", file);
     try {
-      await fetch("/api/livechat/upload", { method: "POST", body: formData });
-      lastManifestJson.current = "";
-      await refreshManifest();
+      const uploadUrl = await generateUploadUrl({});
+      const postRes = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "text/csv" },
+        body: file,
+      });
+      if (!postRes.ok) {
+        throw new Error(`Upload failed with status ${postRes.status}`);
+      }
+      const { storageId } = (await postRes.json()) as { storageId: string };
+      await createUpload({
+        filename: file.name,
+        csvStorageId: storageId as Id<"_storage">,
+      });
     } catch (err) {
       console.error("Upload failed:", err);
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(id: Id<"livechatUploads">) {
     try {
-      await fetch("/api/livechat/manifest", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
+      await removeUpload({ id });
       if (selectedUploadId === id) {
         setSelectedUploadId(null);
-        setLoadedData(null);
-        lastLoadedId.current = null;
       }
-      lastManifestJson.current = "";
-      await refreshManifest();
     } catch (err) {
       console.error("Delete failed:", err);
     }
   }
 
+  const loadedData: LoadedData = {
+    basicStats: (selectedUpload?.basicStats as BasicStats | undefined) ?? null,
+    rawTranscripts: rawTranscriptsData,
+    microtopics: microtopicsData,
+  };
+
+  const deleteTargetUpload = uploads.find((u) => u._id === deleteTargetId) ?? null;
+
   return (
     <div className="flex flex-1 overflow-hidden">
-      {/* Upload Sidebar — matches KB document panel width */}
+      {/* Upload Sidebar */}
       <div className="w-[360px] border-r border-border flex flex-col bg-bg-elevated">
         <div className="p-3 border-b border-border">
           <input
@@ -199,101 +217,126 @@ export function LivechatView() {
               No uploads yet. Upload a CSV file to get started.
             </div>
           )}
-          {uploads.map((upload) => (
-            <div
-              key={upload.id}
-              onClick={() => setSelectedUploadId(upload.id)}
-              className={`group flex items-center justify-between px-3 py-2 cursor-pointer border-b border-border/50 transition-colors ${
-                selectedUploadId === upload.id
-                  ? "bg-accent/10 border-l-2 border-l-accent"
-                  : "hover:bg-bg-hover"
-              }`}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-text truncate">
-                  {upload.filename}
-                </div>
-                <div className="flex items-center gap-2 text-[10px] text-text-dim mt-0.5">
-                  {upload.conversationCount != null && (
-                    <span>
-                      {upload.conversationCount.toLocaleString()} convos
-                    </span>
-                  )}
-                  <span
-                    className={`px-1 py-0.5 rounded text-[9px] ${
-                      upload.status === "ready"
-                        ? "bg-accent/10 text-accent"
-                        : upload.status === "error"
-                          ? "bg-red-500/10 text-red-400"
-                          : "bg-yellow-500/10 text-yellow-400"
-                    }`}
-                  >
-                    {upload.status}
-                  </span>
-                </div>
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDeleteTarget(upload);
-                }}
-                className="opacity-0 group-hover:opacity-100 text-text-dim hover:text-red-400 transition-all p-1"
-                title="Delete upload"
+          {uploads.map((upload) => {
+            const isBusy =
+              upload.status === "pending" ||
+              upload.status === "parsing" ||
+              upload.microtopicsStatus === "running";
+            return (
+              <div
+                key={upload._id}
+                onClick={() => setSelectedUploadId(upload._id)}
+                className={`group flex items-center justify-between px-3 py-2 cursor-pointer border-b border-border/50 transition-colors ${
+                  selectedUploadId === upload._id
+                    ? "bg-accent/10 border-l-2 border-l-accent"
+                    : "hover:bg-bg-hover"
+                }`}
               >
-                <svg
-                  className="w-3.5 h-3.5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-text truncate">
+                    {upload.filename}
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-text-dim mt-0.5">
+                    {upload.conversationCount != null && (
+                      <span>
+                        {upload.conversationCount.toLocaleString()} convos
+                      </span>
+                    )}
+                    <span
+                      className={`px-1 py-0.5 rounded text-[9px] ${
+                        upload.status === "ready"
+                          ? "bg-accent/10 text-accent"
+                          : upload.status === "failed"
+                            ? "bg-red-500/10 text-red-400"
+                            : "bg-yellow-500/10 text-yellow-400"
+                      }`}
+                    >
+                      {upload.status}
+                    </span>
+                    {upload.status === "ready" && (
+                      <span
+                        className={`px-1 py-0.5 rounded text-[9px] ${
+                          upload.microtopicsStatus === "ready"
+                            ? "bg-accent/10 text-accent"
+                            : upload.microtopicsStatus === "failed"
+                              ? "bg-red-500/10 text-red-400"
+                              : "bg-yellow-500/10 text-yellow-400"
+                        }`}
+                      >
+                        mt:{upload.microtopicsStatus}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!isBusy) setDeleteTargetId(upload._id);
+                  }}
+                  disabled={isBusy}
+                  className={`opacity-0 group-hover:opacity-100 text-text-dim transition-all p-1 ${
+                    isBusy
+                      ? "cursor-not-allowed"
+                      : "hover:text-red-400"
+                  }`}
+                  title={
+                    isBusy
+                      ? "Cannot delete while analysis is in progress"
+                      : "Delete upload"
+                  }
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                  />
-                </svg>
-              </button>
-            </div>
-          ))}
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {/* Tab Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
-        {loading ? (
-          <div className="flex items-center justify-center h-full text-text-dim text-xs">
-            <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin mr-2" />
-            Loading data...
-          </div>
-        ) : (
-          <div className="flex-1 overflow-hidden">
-            {activeTab === "stats" && (
-              <StatsTab stats={loadedData?.basicStats ?? null} />
-            )}
-            {activeTab === "transcripts" && (
-              <TranscriptsTab data={loadedData?.rawTranscripts ?? null} />
-            )}
-            {activeTab === "microtopics" && (
-              <MicrotopicsTab
-                microtopicsData={loadedData?.microtopics ?? null}
-                rawData={loadedData?.rawTranscripts ?? null}
-              />
-            )}
-          </div>
-        )}
+        <div className="flex-1 overflow-hidden">
+          {activeTab === "stats" && (
+            <StatsTab stats={loadedData.basicStats} />
+          )}
+          {activeTab === "transcripts" && (
+            <TranscriptsTab data={loadedData.rawTranscripts} />
+          )}
+          {activeTab === "microtopics" && (
+            <MicrotopicsTab
+              microtopicsData={loadedData.microtopics}
+              rawData={loadedData.rawTranscripts}
+              microtopicsStatus={
+                selectedUpload?.microtopicsStatus ?? "pending"
+              }
+              microtopicsError={selectedUpload?.microtopicsError}
+            />
+          )}
+        </div>
       </div>
 
       {/* Delete Confirmation Modal */}
-      {deleteTarget && (
+      {deleteTargetId && deleteTargetUpload && (
         <DeleteConfirmModal
-          filename={deleteTarget.filename}
+          filename={deleteTargetUpload.filename}
           onConfirm={() => {
-            handleDelete(deleteTarget.id);
-            setDeleteTarget(null);
+            handleDelete(deleteTargetId);
+            setDeleteTargetId(null);
           }}
-          onCancel={() => setDeleteTarget(null)}
+          onCancel={() => setDeleteTargetId(null)}
         />
       )}
     </div>
