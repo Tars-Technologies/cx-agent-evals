@@ -10,7 +10,9 @@ import { WizardStepDimensions } from "./WizardStepDimensions";
 import { WizardStepPreferences } from "./WizardStepPreferences";
 import { WizardStepReview } from "./WizardStepReview";
 
-const STORAGE_KEY = "rag-eval:unified-wizard-config";
+const WIZARD_CONFIG_PREFIX = "rag-eval:unified-wizard-config:";
+const OLD_WIZARD_CONFIG_KEY = "rag-eval:unified-wizard-config";
+const wizardKey = (kbId: string) => `${WIZARD_CONFIG_PREFIX}${kbId}`;
 
 const DEFAULT_PREFERENCES: PromptPreferences = {
   questionTypes: ["factoid", "procedural", "conditional"],
@@ -55,7 +57,7 @@ export function GenerationWizard({
   const [step, setStep] = useState(0);
   const [config, setConfig] = useState<UnifiedWizardConfig>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(wizardKey(kbId));
       if (saved) return { ...DEFAULT_CONFIG, ...JSON.parse(saved) };
     } catch {
       // Ignore corrupted localStorage
@@ -66,11 +68,44 @@ export function GenerationWizard({
   // Persist config to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+      localStorage.setItem(wizardKey(kbId), JSON.stringify(config));
     } catch {
       // localStorage full or unavailable
     }
-  }, [config]);
+  }, [config, kbId]);
+
+  // Reload config when KB changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(wizardKey(kbId));
+      if (saved) {
+        setConfig({ ...DEFAULT_CONFIG, ...JSON.parse(saved) });
+      } else {
+        setConfig(DEFAULT_CONFIG);
+      }
+    } catch {
+      setConfig(DEFAULT_CONFIG);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kbId]);
+
+  // One-time migration from the old global storage key
+  useEffect(() => {
+    try {
+      const oldValue = localStorage.getItem(OLD_WIZARD_CONFIG_KEY);
+      if (oldValue == null) return;
+      const currentKey = wizardKey(kbId);
+      // Only seed if this KB doesn't already have its own entry
+      if (localStorage.getItem(currentKey) == null) {
+        localStorage.setItem(currentKey, oldValue);
+      }
+      localStorage.removeItem(OLD_WIZARD_CONFIG_KEY);
+    } catch {
+      // Silent — migration is best-effort
+    }
+    // Run once on mount only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Document priorities (local state, syncs to Convex on change)
   const [docPriorities, setDocPriorities] = useState<Record<string, number>>(() => {
