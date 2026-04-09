@@ -25,7 +25,7 @@ importers:
         version: 1.3.24(zod@3.25.76)
       '@convex-dev/workpool':
         specifier: ^0.4.0
-        version: 0.4.0(convex-helpers@0.1.113(convex@1.34.0(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3))(react@19.2.3)(typescript@5.9.3)(zod@3.25.76))(convex@1.34.0(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3))
+        version: 0.4.0(convex-helpers@0.1.113(convex@1.34.1(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3))(react@19.2.3)(typescript@5.9.3)(zod@3.25.76))(convex@1.34.1(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3))
       '@langchain/core':
         specifier: ^1.1.0
         version: 1.1.26(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.18.0)(zod@3.25.76))
@@ -39,8 +39,8 @@ importers:
         specifier: ^7.0.0
         version: 7.20.0
       convex:
-        specifier: ^1.34.0
-        version: 1.34.0(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
+        specifier: ^1.34.1
+        version: 1.34.1(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
       langsmith:
         specifier: ^0.5.0
         version: 0.5.4(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.18.0)(zod@3.25.76))
@@ -74,7 +74,7 @@ importers:
         version: 25.2.3
       convex-test:
         specifier: ^0.0.41
-        version: 0.0.41(convex@1.34.0(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3))
+        version: 0.0.41(convex@1.34.1(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3))
       typescript:
         specifier: ^5.4
         version: 5.9.3
@@ -262,8 +262,8 @@ packages:
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
 
-  '@asamuzakjp/css-color@5.0.1':
-    resolution: {integrity: sha512-2SZFvqMyvboVV1d15lMf7XiI3m7SDqXUuKaTymJYLN6dSGadqp+fVojqJlVoMlbZnlTmu3S0TLwLTJpvBMO1Aw==}
+  '@asamuzakjp/css-color@5.1.6':
+    resolution: {integrity: sha512-BXWCh8dHs9GOfpo/fWGDJtDmleta2VePN9rn6WQt3GjEbxzutVF4t0x2pmH+7dbMCLtuv3MlwqRsAuxlzFXqFg==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
 
   '@asamuzakjp/dom-selector@6.8.1':
@@ -547,8 +547,8 @@ packages:
     peerDependencies:
       '@csstools/css-tokenizer': ^4.0.0
 
-  '@csstools/css-syntax-patches-for-csstree@1.1.1':
-    resolution: {integrity: sha512-BvqN0AMWNAnLk9G8jnUT77D+mUbY/H2b3uDTvg2isJkHaOufUE2R3AOwxWo7VBQKT1lOdwdvorddo2B/lk64+w==}
+  '@csstools/css-syntax-patches-for-csstree@1.1.2':
+    resolution: {integrity: sha512-5GkLzz4prTIpoyeUiIu3iV6CSG3Plo7xRVOFPKI7FVEJ3mZ0A8SwK0XU3Gl7xAkiQ+mDyam+NNp875/C5y+jSA==}
     peerDependencies:
       css-tree: ^3.2.1
     peerDependenciesMeta:
@@ -2290,8 +2290,8 @@ packages:
       react:
         optional: true
 
-  convex@1.34.0:
-    resolution: {integrity: sha512-TbC509Z4urZMChZR2aLPgalQ8gMhAYSz2VMxaYsCvba8YqB0Uxma7zWnXwRn7aEGXuA8ro5/uHgD1IJ0HhYYPg==}
+  convex@1.34.1:
+    resolution: {integrity: sha512-ooyFnZVVq0u6b5zt0Ptq8QB2ixhf/2vXe+PIcUtdtrs0lq/TwpkmmruHdqkFmWgMd6N+Tmfy8AGkz6QnZUYZBA==}
     engines: {node: '>=18.0.0', npm: '>=7.0.0'}
     hasBin: true
     peerDependencies:
@@ -3316,8 +3316,8 @@ packages:
   loupe@2.3.7:
     resolution: {integrity: sha512-zSMINGVYkdpYSOBmLi0D1Uo7JU9nVdQKrHxC8eYlV+9YKK9WePqAlL7lSlorG/U2Fw1w0hTBmaa/jrQ3UbPHtA==}
 
-  lru-cache@11.2.7:
-    resolution: {integrity: sha512-aY/R+aEsRelme17KGQa/1ZSIpLpNYYrhcrepKTZgE+W3WM16YMCaPwOHLHsmopZHELU0Ojin1lPVxKR0MihncA==}
+  lru-cache@11.3.2:
+    resolution: {integrity: sha512-wgWa6FWQ3QRRJbIjbsldRJZxdxYngT/dO0I5Ynmlnin8qy7tC6xYzbcJjtN4wHLXtkbVwHzk0C+OejVw1XM+DQ==}
     engines: {node: 20 || >=22}
 
   lru-cache@5.1.1:
@@ -4125,11 +4125,11 @@ packages:
     resolution: {integrity: sha512-KYad6Vy5VDWV4GH3fjpseMQ/XU2BhIYP7Vzd0LG44qRWm/Yt2WCOTicFdvmgo6gWaqooMQCawTtILVQJupKu7A==}
     engines: {node: '>=14.0.0'}
 
-  tldts-core@7.0.27:
-    resolution: {integrity: sha512-YQ7uPjgWUibIK6DW5lrKujGwUKhLevU4hcGbP5O6TcIUb+oTjJYJVWPS4nZsIHrEEEG6myk/oqAJUEQmpZrHsg==}
+  tldts-core@7.0.28:
+    resolution: {integrity: sha512-7W5Efjhsc3chVdFhqtaU0KtK32J37Zcr9RKtID54nG+tIpcY79CQK/veYPODxtD/LJ4Lue66jvrQzIX2Z2/pUQ==}
 
-  tldts@7.0.27:
-    resolution: {integrity: sha512-I4FZcVFcqCRuT0ph6dCDpPuO4Xgzvh+spkcTr1gK7peIvxWauoloVO0vuy1FQnijT63ss6AsHB6+OIM4aXHbPg==}
+  tldts@7.0.28:
+    resolution: {integrity: sha512-+Zg3vWhRUv8B1maGSTFdev9mjoo8Etn2Ayfs4cnjlD3CsGkxXX4QyW3j2WJ0wdjYcYmy7Lx2RDsZMhgCWafKIw==}
     hasBin: true
 
   to-regex-range@5.0.1:
@@ -4249,8 +4249,8 @@ packages:
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
 
-  undici@7.24.5:
-    resolution: {integrity: sha512-3IWdCpjgxp15CbJnsi/Y9TCDE7HWVN19j1hmzVhoAkY/+CJx449tVxT5wZc1Gwg8J+P0LWvzlBzxYRnHJ+1i7Q==}
+  undici@7.24.7:
+    resolution: {integrity: sha512-H/nlJ/h0ggGC+uRL3ovD+G0i4bqhvsDOpbDv7At5eFLlj2b41L8QliGbnl2H7SnDiYhENphh1tQFJZf+MyfLsQ==}
     engines: {node: '>=20.18.1'}
 
   unified@11.0.5:
@@ -4535,13 +4535,12 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
 
-  '@asamuzakjp/css-color@5.0.1':
+  '@asamuzakjp/css-color@5.1.6':
     dependencies:
       '@csstools/css-calc': 3.1.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-color-parser': 4.0.2(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-tokenizer': 4.0.0
-      lru-cache: 11.2.7
     optional: true
 
   '@asamuzakjp/dom-selector@6.8.1':
@@ -4550,7 +4549,7 @@ snapshots:
       bidi-js: 1.0.3
       css-tree: 3.2.1
       is-potential-custom-element-name: 1.0.1
-      lru-cache: 11.2.7
+      lru-cache: 11.3.2
     optional: true
 
   '@asamuzakjp/nwsapi@2.3.9':
@@ -5168,10 +5167,10 @@ snapshots:
       - react
       - react-dom
 
-  '@convex-dev/workpool@0.4.0(convex-helpers@0.1.113(convex@1.34.0(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3))(react@19.2.3)(typescript@5.9.3)(zod@3.25.76))(convex@1.34.0(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3))':
+  '@convex-dev/workpool@0.4.0(convex-helpers@0.1.113(convex@1.34.1(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3))(react@19.2.3)(typescript@5.9.3)(zod@3.25.76))(convex@1.34.1(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3))':
     dependencies:
-      convex: 1.34.0(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
-      convex-helpers: 0.1.113(convex@1.34.0(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3))(react@19.2.3)(typescript@5.9.3)(zod@3.25.76)
+      convex: 1.34.1(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
+      convex-helpers: 0.1.113(convex@1.34.1(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3))(react@19.2.3)(typescript@5.9.3)(zod@3.25.76)
 
   '@csstools/color-helpers@6.0.2':
     optional: true
@@ -5195,7 +5194,7 @@ snapshots:
       '@csstools/css-tokenizer': 4.0.0
     optional: true
 
-  '@csstools/css-syntax-patches-for-csstree@1.1.1(css-tree@3.2.1)':
+  '@csstools/css-syntax-patches-for-csstree@1.1.2(css-tree@3.2.1)':
     optionalDependencies:
       css-tree: 3.2.1
     optional: true
@@ -6715,17 +6714,17 @@ snapshots:
 
   convert-source-map@2.0.0: {}
 
-  convex-helpers@0.1.113(convex@1.34.0(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3))(react@19.2.3)(typescript@5.9.3)(zod@3.25.76):
+  convex-helpers@0.1.113(convex@1.34.1(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3))(react@19.2.3)(typescript@5.9.3)(zod@3.25.76):
     dependencies:
-      convex: 1.34.0(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
+      convex: 1.34.1(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
     optionalDependencies:
       react: 19.2.3
       typescript: 5.9.3
       zod: 3.25.76
 
-  convex-test@0.0.41(convex@1.34.0(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)):
+  convex-test@0.0.41(convex@1.34.1(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)):
     dependencies:
-      convex: 1.34.0(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
+      convex: 1.34.1(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
 
   convex@1.31.7(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3):
     dependencies:
@@ -6735,7 +6734,7 @@ snapshots:
       '@clerk/clerk-react': 5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       react: 19.2.3
 
-  convex@1.34.0(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3):
+  convex@1.34.1(@clerk/clerk-react@5.60.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3):
     dependencies:
       esbuild: 0.27.0
       prettier: 3.8.1
@@ -6778,10 +6777,10 @@ snapshots:
 
   cssstyle@6.2.0:
     dependencies:
-      '@asamuzakjp/css-color': 5.0.1
-      '@csstools/css-syntax-patches-for-csstree': 1.1.1(css-tree@3.2.1)
+      '@asamuzakjp/css-color': 5.1.6
+      '@csstools/css-syntax-patches-for-csstree': 1.1.2(css-tree@3.2.1)
       css-tree: 3.2.1
-      lru-cache: 11.2.7
+      lru-cache: 11.3.2
     optional: true
 
   csstype@3.1.3: {}
@@ -7868,7 +7867,7 @@ snapshots:
       saxes: 6.0.0
       symbol-tree: 3.2.4
       tough-cookie: 6.0.1
-      undici: 7.24.5
+      undici: 7.24.7
       w3c-xmlserializer: 5.0.0
       webidl-conversions: 8.0.1
       whatwg-mimetype: 5.0.0
@@ -8033,7 +8032,7 @@ snapshots:
     dependencies:
       get-func-name: 2.0.2
 
-  lru-cache@11.2.7:
+  lru-cache@11.3.2:
     optional: true
 
   lru-cache@5.1.1:
@@ -9162,12 +9161,12 @@ snapshots:
 
   tinyspy@2.2.1: {}
 
-  tldts-core@7.0.27:
+  tldts-core@7.0.28:
     optional: true
 
-  tldts@7.0.27:
+  tldts@7.0.28:
     dependencies:
-      tldts-core: 7.0.27
+      tldts-core: 7.0.28
     optional: true
 
   to-regex-range@5.0.1:
@@ -9176,7 +9175,7 @@ snapshots:
 
   tough-cookie@6.0.1:
     dependencies:
-      tldts: 7.0.27
+      tldts: 7.0.28
     optional: true
 
   tr46@0.0.3: {}
@@ -9308,7 +9307,7 @@ snapshots:
 
   undici-types@7.16.0: {}
 
-  undici@7.24.5:
+  undici@7.24.7:
     optional: true
 
   unified@11.0.5:
