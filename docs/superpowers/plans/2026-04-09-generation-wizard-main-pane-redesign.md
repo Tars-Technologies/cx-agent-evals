@@ -644,6 +644,8 @@ Find the `Datasets` section in the sidebar (around lines 280–307). Just **befo
           setJobId(null);
           setMode("generate");
           setBrowseDatasetId(null);
+          setSelectedQuestion(null);
+          setSelectedDocId(null);
         }}
         disabled={!hasDocuments || !!activeJob}
         title={
@@ -707,6 +709,14 @@ to:
 ```tsx
 {kbDatasets.length > 0 && (
   <div className="p-4 space-y-1 max-h-64 overflow-y-auto">
+```
+
+Also add an empty-state message for when the KB has zero datasets (matches the spec's "No datasets yet" requirement). Immediately after the existing dataset list block's closing `)}`, add:
+
+```tsx
+{kbDatasets.length === 0 && (
+  <div className="p-4 text-xs text-text-dim">No datasets yet</div>
+)}
 ```
 
 In the dataset item click handler, ensure clicking a dataset switches back to `browse` mode (current code only calls `setBrowseDatasetId` — add `setMode("browse")`):
