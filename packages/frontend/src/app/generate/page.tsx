@@ -374,7 +374,7 @@ function GeneratePageContent() {
                       _id: d._id as string,
                       docId: d.docId,
                       title: d.title,
-                      priority: 3,
+                      priority: d.priority ?? 3,
                     }))}
                     generating={generating}
                     disabledReason={activeJob ? "Only one generation at a time" : undefined}
