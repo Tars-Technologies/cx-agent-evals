@@ -46,7 +46,7 @@ pnpm-debug.log*
 data/
 data/output/
 data/uploads/
-!packages/frontend/src/app/api/livechat/data/
+
 
 # Claude worktrees
 .claude/worktrees
