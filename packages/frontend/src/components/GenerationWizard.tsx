@@ -48,6 +48,7 @@ interface GenerationWizardProps {
   disabledReason?: string;
   onGenerated: (datasetId: Id<"datasets">, jobId: Id<"generationJobs">) => void;
   onError: (error: string) => void;
+  onCancel: () => void;
 }
 
 export function GenerationWizard({
@@ -57,6 +58,7 @@ export function GenerationWizard({
   disabledReason,
   onGenerated,
   onError,
+  onCancel,
 }: GenerationWizardProps) {
   const [step, setStep] = useState(0);
   const [config, setConfig] = useState<UnifiedWizardConfig>(() => {
@@ -180,67 +182,98 @@ export function GenerationWizard({
   }
 
   return (
-    <div className="space-y-3">
-      {/* Stepper */}
-      <div className="flex items-center gap-1">
-        {STEPS.map((label, i) => (
+    <div className="h-full overflow-y-auto p-6">
+      <div className="max-w-[840px] mx-auto border border-border rounded-lg bg-bg-elevated p-6 animate-fade-in">
+        {/* Header */}
+        <div className="flex items-center justify-between pb-3 mb-4 border-b border-border">
+          <h2 className="text-sm font-semibold text-text">New Question Generation</h2>
           <button
-            key={label}
-            onClick={() => setStep(i)}
-            className={`flex-1 text-[10px] py-1 rounded transition-colors ${
-              i === step
-                ? "bg-accent-dim text-accent-bright"
-                : i < step
-                  ? "text-accent hover:bg-accent/5"
-                  : "text-text-dim"
-            }`}
+            onClick={onCancel}
+            className="text-xs text-text-dim hover:text-text transition-colors"
           >
-            {label}
+            ✕ Cancel
           </button>
-        ))}
-      </div>
+        </div>
 
-      {/* Step content */}
-      {step === 0 && (
-        <WizardStepRealWorld
-          questions={config.realWorldQuestions}
-          onChange={(qs) => setConfig((prev) => ({ ...prev, realWorldQuestions: qs }))}
-          onNext={() => setStep(1)}
-          onSkip={() => setStep(1)}
-        />
-      )}
-      {step === 1 && (
-        <WizardStepDimensions
-          kbId={kbId}
-          dimensions={config.dimensions}
-          onChange={(dims) => setConfig((prev) => ({ ...prev, dimensions: dims }))}
-          onNext={() => setStep(2)}
-          onSkip={() => setStep(2)}
-          onBack={() => setStep(0)}
-        />
-      )}
-      {step === 2 && (
-        <WizardStepPreferences
-          preferences={config.preferences}
-          onChange={(prefs) => setConfig((prev) => ({ ...prev, preferences: prefs }))}
-          onNext={() => setStep(3)}
-          onBack={() => setStep(1)}
-        />
-      )}
-      {step === 3 && (
-        <WizardStepReview
-          config={config}
-          documents={docsWithPriority}
-          onTotalQuestionsChange={(n) => setConfig((prev) => ({ ...prev, totalQuestions: n }))}
-          onPriorityChange={handlePriorityChange}
-          onGenerate={handleGenerate}
-          onBack={() => setStep(2)}
-          onEditStep={(s) => setStep(s)}
-          generating={generating}
-          disabled={!documents.length}
-          disabledReason={disabledReason}
-        />
-      )}
+        {/* Stepper */}
+        <div className="flex items-stretch gap-2 mb-6">
+          {STEPS.map((label, i) => {
+            const state = i === step ? "active" : i < step ? "done" : "pending";
+            return (
+              <button
+                key={label}
+                onClick={() => setStep(i)}
+                className="flex-1 flex flex-col items-stretch gap-1.5 group"
+              >
+                <div
+                  className={`h-[3px] rounded-sm transition-colors ${
+                    state === "active"
+                      ? "bg-accent"
+                      : state === "done"
+                        ? "bg-accent-dim"
+                        : "bg-border group-hover:bg-border-bright"
+                  }`}
+                />
+                <span
+                  className={`text-[10px] text-center transition-colors ${
+                    state === "active"
+                      ? "text-accent"
+                      : state === "done"
+                        ? "text-accent"
+                        : "text-text-dim"
+                  }`}
+                >
+                  {label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Step content */}
+        <div className="min-h-[420px]">
+          {step === 0 && (
+            <WizardStepRealWorld
+              questions={config.realWorldQuestions}
+              onChange={(qs) => setConfig((prev) => ({ ...prev, realWorldQuestions: qs }))}
+              onNext={() => setStep(1)}
+              onSkip={() => setStep(1)}
+            />
+          )}
+          {step === 1 && (
+            <WizardStepDimensions
+              kbId={kbId}
+              dimensions={config.dimensions}
+              onChange={(dims) => setConfig((prev) => ({ ...prev, dimensions: dims }))}
+              onNext={() => setStep(2)}
+              onSkip={() => setStep(2)}
+              onBack={() => setStep(0)}
+            />
+          )}
+          {step === 2 && (
+            <WizardStepPreferences
+              preferences={config.preferences}
+              onChange={(prefs) => setConfig((prev) => ({ ...prev, preferences: prefs }))}
+              onNext={() => setStep(3)}
+              onBack={() => setStep(1)}
+            />
+          )}
+          {step === 3 && (
+            <WizardStepReview
+              config={config}
+              documents={docsWithPriority}
+              onTotalQuestionsChange={(n) => setConfig((prev) => ({ ...prev, totalQuestions: n }))}
+              onPriorityChange={handlePriorityChange}
+              onGenerate={handleGenerate}
+              onBack={() => setStep(2)}
+              onEditStep={(s) => setStep(s)}
+              generating={generating}
+              disabled={!documents.length}
+              disabledReason={disabledReason}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

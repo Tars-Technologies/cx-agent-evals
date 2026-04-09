@@ -174,6 +174,15 @@ function GeneratePageContent() {
     }
   }
 
+  function handleCancelGeneration() {
+    // Return to browse mode, preserving the currently-selected dataset if any.
+    // If no dataset is selected but datasets exist, select the first one.
+    setMode("browse");
+    if (!browseDatasetId && kbDatasets && kbDatasets.length > 0) {
+      setBrowseDatasetId(kbDatasets[0]._id);
+    }
+  }
+
   // Phase status from generation job
   const phaseStatus = job?.phase
     ? `${job.phase}... (${job.processedItems}/${job.totalItems})`
@@ -276,37 +285,50 @@ function GeneratePageContent() {
               </div>
             </div>
 
+            {/* + New Generation button */}
+            {selectedKbId && (
+              <div className="border border-border rounded-lg bg-bg">
+                <div className="p-3">
+                  <button
+                    onClick={() => {
+                      // Clear stale job state so the auto-switch-to-browse effect doesn't fire
+                      setDatasetId(null);
+                      setJobId(null);
+                      setMode("generate");
+                      setBrowseDatasetId(null);
+                      setSelectedQuestion(null);
+                      setSelectedDocId(null);
+                    }}
+                    disabled={!hasDocuments || !!activeJob}
+                    title={
+                      !hasDocuments
+                        ? "Upload documents before generating"
+                        : activeJob
+                          ? "Only one generation at a time"
+                          : undefined
+                    }
+                    className={`w-full px-3 py-2 text-xs rounded transition-colors ${
+                      mode === "generate"
+                        ? "bg-accent text-bg font-medium"
+                        : "border border-dashed border-accent/40 text-accent hover:bg-accent/5"
+                    } disabled:opacity-40 disabled:cursor-not-allowed`}
+                  >
+                    {mode === "generate" ? "● Creating new generation" : "+ New Generation"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Dataset section — appears after KB selected */}
             {selectedKbId && kbDatasets !== undefined && (
               <div className="border border-border rounded-lg bg-bg">
-                <div className="px-4 py-2 border-b border-border flex items-center justify-between">
+                <div className="px-4 py-2 border-b border-border">
                   <span className="text-xs text-text-dim uppercase tracking-wider">
                     Datasets ({kbDatasets.length})
                   </span>
-                  {kbDatasets.length > 0 && (
-                    <button
-                      onClick={() => {
-                        if (mode === "generate") {
-                          setMode("browse");
-                        } else {
-                          // Clear stale job state so the auto-switch-to-browse effect doesn't fire
-                          setDatasetId(null);
-                          setJobId(null);
-                          setMode("generate");
-                          setBrowseDatasetId(null);
-                        }
-                      }}
-                      className={mode === "generate"
-                        ? "text-[11px] text-accent hover:text-accent/80 transition-colors"
-                        : "px-2.5 py-1 text-[11px] font-medium bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors"
-                      }
-                    >
-                      {mode === "generate" ? "View Datasets" : "+ New Dataset"}
-                    </button>
-                  )}
                 </div>
 
-                {mode === "browse" && kbDatasets.length > 0 && (
+                {kbDatasets.length > 0 && (
                   <div className="p-4 space-y-1 max-h-64 overflow-y-auto">
                     {kbDatasets.map((ds) => (
                       <div key={ds._id} className="relative group">
@@ -315,6 +337,7 @@ function GeneratePageContent() {
                             setBrowseDatasetId(ds._id);
                             setSelectedQuestion(null);
                             setSelectedDocId(null);
+                            setMode("browse");
                           }}
                           className={`w-full text-left px-3 py-2 rounded text-xs transition-colors ${
                             browseDatasetId === ds._id
@@ -359,34 +382,9 @@ function GeneratePageContent() {
                     ))}
                   </div>
                 )}
-              </div>
-            )}
-
-            {hasDocuments && mode === "generate" && (
-              <div className="border border-border rounded-lg bg-bg">
-                <div className="px-4 py-2 border-b border-border text-xs text-text-dim uppercase tracking-wider">
-                  Generation Config
-                </div>
-                <div className="p-4">
-                  <GenerationWizard
-                    kbId={selectedKbId!}
-                    documents={(documentsData ?? []).map((d) => ({
-                      _id: d._id as string,
-                      docId: d.docId,
-                      title: d.title,
-                      priority: d.priority ?? 3,
-                    }))}
-                    generating={generating}
-                    disabledReason={activeJob ? "Only one generation at a time" : undefined}
-                    onGenerated={(dsId, jId) => {
-                      setDatasetId(dsId);
-                      setJobId(jId);
-                      setBrowseDatasetId(dsId);
-                      setMode("browse");
-                    }}
-                    onError={setGenError}
-                  />
-                </div>
+                {kbDatasets.length === 0 && (
+                  <div className="p-4 text-xs text-text-dim">No datasets yet</div>
+                )}
               </div>
             )}
 
@@ -404,24 +402,50 @@ function GeneratePageContent() {
           </div>
         </div>
 
-        {/* Center: question list */}
-        {(displayQuestions.length > 0 || displayGenerating) && (
-          <div className="w-80 flex-shrink-0 border-r border-border bg-bg">
-            <QuestionList
-              questions={displayQuestions}
-              selectedIndex={selectedQuestion}
-              onSelect={setSelectedQuestion}
-              generating={displayGenerating}
-              totalDone={displayTotalDone}
-              phaseStatus={displayPhaseStatus}
+        {mode === "generate" ? (
+          <div className="flex-1 min-w-0 bg-bg overflow-hidden">
+            <GenerationWizard
+              kbId={selectedKbId!}
+              documents={(documentsData ?? []).map((d) => ({
+                _id: d._id as string,
+                docId: d.docId,
+                title: d.title,
+                priority: d.priority ?? 3,
+              }))}
+              generating={generating}
+              disabledReason={activeJob ? "Only one generation at a time" : undefined}
+              onGenerated={(dsId, jId) => {
+                setDatasetId(dsId);
+                setJobId(jId);
+                setBrowseDatasetId(dsId);
+                setMode("browse");
+              }}
+              onError={setGenError}
+              onCancel={handleCancelGeneration}
             />
           </div>
-        )}
+        ) : (
+          <>
+            {/* Center: question list */}
+            {(displayQuestions.length > 0 || displayGenerating) && (
+              <div className="w-80 flex-shrink-0 border-r border-border bg-bg">
+                <QuestionList
+                  questions={displayQuestions}
+                  selectedIndex={selectedQuestion}
+                  onSelect={setSelectedQuestion}
+                  generating={displayGenerating}
+                  totalDone={displayTotalDone}
+                  phaseStatus={displayPhaseStatus}
+                />
+              </div>
+            )}
 
-        {/* Right: document viewer */}
-        <div className="flex-1 min-w-0 bg-bg overflow-hidden">
-          <DocumentViewer doc={selectedDoc} question={selectedQ} />
-        </div>
+            {/* Right: document viewer */}
+            <div className="flex-1 min-w-0 bg-bg overflow-hidden">
+              <DocumentViewer doc={selectedDoc} question={selectedQ} />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Delete Dataset Modal */}
