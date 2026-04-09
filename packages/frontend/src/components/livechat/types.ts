@@ -8,24 +8,20 @@ import type {
 
 export type LivechatTab = "stats" | "transcripts" | "microtopics";
 
-export interface UploadEntry {
-  id: string;
-  filename: string;
-  uploadedAt: string;
-  status: "pending" | "parsing" | "analyzing" | "ready" | "error";
-  conversationCount?: number;
-  error?: string;
-  outputFiles?: {
-    rawTranscripts: string;
-    microtopics: string;
-    basicStats: string;
-  };
-}
+// Types mirrored from the Convex row so components don't need
+// to import from the backend's _generated types.
+export type UploadStatus = "pending" | "parsing" | "ready" | "failed";
+export type MicrotopicsStatus =
+  | "pending"
+  | "running"
+  | "ready"
+  | "failed"
+  | "skipped";
 
 export interface LoadedData {
-  rawTranscripts: RawTranscriptsFile;
-  microtopics: MicrotopicsFile;
-  basicStats: BasicStats;
+  basicStats: BasicStats | null;
+  rawTranscripts: RawTranscriptsFile | null;
+  microtopics: MicrotopicsFile | null;
 }
 
 export interface MicrotopicByTypeItem {
@@ -38,4 +34,10 @@ export interface MicrotopicByTypeItem {
 
 export type MicrotopicsByType = Map<MicrotopicType, MicrotopicByTypeItem[]>;
 
-export type { RawTranscriptsFile, MicrotopicsFile, BasicStats, MicrotopicType, Microtopic };
+export type {
+  RawTranscriptsFile,
+  MicrotopicsFile,
+  BasicStats,
+  MicrotopicType,
+  Microtopic,
+};
