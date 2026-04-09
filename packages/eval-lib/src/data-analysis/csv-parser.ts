@@ -1,4 +1,5 @@
 import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
 import { parse } from "csv-parse";
 
 /**
@@ -15,6 +16,29 @@ export async function* parseCSV(
       relax_column_count: true,
       trim: true,
     })
+  );
+
+  for await (const record of parser) {
+    yield record as Record<string, string>;
+  }
+}
+
+/**
+ * Parse a CSV string (already loaded into memory) row-by-row.
+ * Used when the source is not a filesystem path — e.g., a Convex
+ * file storage blob fetched as text.
+ * Handles quoted fields with newlines. Yields one Record per row.
+ */
+export async function* parseCSVFromString(
+  text: string,
+): AsyncIterable<Record<string, string>> {
+  const parser = Readable.from([text]).pipe(
+    parse({
+      columns: true,
+      skip_empty_lines: true,
+      relax_column_count: true,
+      trim: true,
+    }),
   );
 
   for await (const record of parser) {
