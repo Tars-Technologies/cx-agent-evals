@@ -3,7 +3,7 @@ import {
   preprocessConversation,
   assembleConversation,
   isSystemMessage,
-} from "../../../src/data-analysis/microtopic-extractor.js";
+} from "../../../src/data-analysis/message-type-classifier.js";
 import type { RawConversation, LLMExtractionResult } from "../../../src/data-analysis/types.js";
 
 function makeConversation(overrides: Partial<RawConversation> = {}): RawConversation {

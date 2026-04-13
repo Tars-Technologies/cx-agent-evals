@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { parseCLIArgs } from "./csv-parser.js";
 import { createClaudeClient } from "./claude-client.js";
-import { extractMicrotopics } from "./microtopic-extractor.js";
+import { extractMicrotopics } from "./message-type-classifier.js";
 import type { RawTranscriptsFile } from "./types.js";
 
 async function main() {
