@@ -18,10 +18,12 @@ export function MessageTypeCard({
   messageType,
   agentName,
   forceExpanded,
+  translatedMessages,
 }: {
   messageType: MessageType;
   agentName?: string;
   forceExpanded?: boolean;
+  translatedMessages?: Array<{ id: number; text: string }>;
 }) {
   const [localExpanded, setLocalExpanded] = useState(forceExpanded ?? false);
   const expanded = forceExpanded ?? localExpanded;
@@ -99,15 +101,21 @@ export function MessageTypeCard({
                 </div>
               </div>
               <div className="px-2.5 pb-2">
-                {exchange.messages.map((msg) => (
-                  <ChatBubble
-                    key={msg.id}
-                    id={msg.id}
-                    role={msg.role}
-                    text={msg.text}
-                    agentName={agentName}
-                  />
-                ))}
+                {exchange.messages.map((msg) => {
+                  const translation = translatedMessages?.find(
+                    (t) => t.id === msg.id,
+                  );
+                  return (
+                    <ChatBubble
+                      key={msg.id}
+                      id={msg.id}
+                      role={msg.role}
+                      text={msg.text}
+                      agentName={agentName}
+                      translatedText={translation?.text}
+                    />
+                  );
+                })}
               </div>
             </div>
           ))}

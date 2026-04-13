@@ -47,7 +47,9 @@ export function ChatBubble({
         {translatedText && (
           <>
             <div className="border-t border-dashed border-current/20 my-1" />
-            <div className="text-[#c084fc] text-[11px]">{translatedText}</div>
+            <div className={`text-[11px] ${isUser ? "text-white/70" : "text-[#c084fc]"}`}>
+              {translatedText}
+            </div>
           </>
         )}
       </div>

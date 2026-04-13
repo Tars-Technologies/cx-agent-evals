@@ -415,6 +415,7 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
                           messageType={mt}
                           agentName={selectedConv.agentName}
                           forceExpanded={allExpanded}
+                          translatedMessages={(selectedConv as any).translatedMessages}
                         />
                       ),
                     )
