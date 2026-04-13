@@ -415,6 +415,39 @@ export const generateForDoc = internalAction({
 
     const missedQuestions = args.quota - allValidated.length;
 
+    // Pass 2: Enrich with multi-span ground truth
+    const assigner = new GroundTruthAssigner();
+    const singleDocCorpus = createCorpusFromDocuments([
+      { id: args.docId, content: doc.content },
+    ]);
+
+    for (const question of allValidated) {
+      try {
+        const results = await assigner.assign(
+          [
+            {
+              query: question.queryText,
+              targetDocId: question.sourceDocId,
+              metadata: (question.metadata ?? {}) as Record<string, string>,
+            },
+          ],
+          { corpus: singleDocCorpus, llmClient, model: args.model },
+        );
+
+        if (results.length > 0 && results[0].relevantSpans.length > 0) {
+          question.relevantSpans = results[0].relevantSpans.map((s) => ({
+            docId: String(s.docId),
+            start: s.start,
+            end: s.end,
+            text: s.text,
+          }));
+        }
+        // If no results or empty spans, keep the original single span from pass 1
+      } catch {
+        // Swallow — keep original single span
+      }
+    }
+
     // Insert questions in batches
     if (allValidated.length > 0) {
       for (let i = 0; i < allValidated.length; i += QUESTION_INSERT_BATCH_SIZE) {
