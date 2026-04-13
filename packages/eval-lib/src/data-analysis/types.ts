@@ -41,8 +41,8 @@ export interface RawTranscriptsFile {
   conversations: RawConversation[];
 }
 
-// ── JSON 2: Microtopics ──
-export type MicrotopicType =
+// ── Message Types ──
+export type MessageTypeCategory =
   | "identity_info"
   | "question"
   | "request"
@@ -51,7 +51,7 @@ export type MicrotopicType =
   | "closing"
   | "uncategorized";
 
-export interface MicrotopicMessage {
+export interface MessageTypeMessage {
   id: number;
   role: MessageRole;
   text: string;
@@ -59,7 +59,7 @@ export interface MicrotopicMessage {
 
 export interface Exchange {
   label: "primary" | "follow_up";
-  messages: MicrotopicMessage[];
+  messages: MessageTypeMessage[];
 }
 
 export interface ExtractedInfo {
@@ -67,8 +67,8 @@ export interface ExtractedInfo {
   value: string;
 }
 
-export interface Microtopic {
-  type: MicrotopicType;
+export interface MessageType {
+  type: MessageTypeCategory;
   exchanges: Exchange[];
   extracted?: ExtractedInfo[];
 }
@@ -80,23 +80,6 @@ export interface BotFlowInput {
   messageIds: number[];
 }
 
-export interface ConversationMicrotopics {
-  conversationId: string;
-  language: string;
-  botFlowInput?: BotFlowInput;
-  microtopics: Microtopic[];
-}
-
-export interface MicrotopicsFile {
-  source: string;
-  generatedAt: string;
-  model: string;
-  totalConversations: number;
-  processedConversations: number;
-  failures: string[];
-  conversations: ConversationMicrotopics[];
-}
-
 // ── LLM Output (ID-only, no text) ──
 export interface LLMExchangeResult {
   label: "primary" | "follow_up";
@@ -104,7 +87,7 @@ export interface LLMExchangeResult {
 }
 
 export interface LLMMicrotopicResult {
-  type: MicrotopicType;
+  type: MessageTypeCategory;
   exchanges: LLMExchangeResult[];
   extracted?: ExtractedInfo[];
 }
@@ -152,20 +135,30 @@ export interface BasicStats {
   };
 }
 
-// ── Export Format (frontend topic type export) ──
-export interface TopicTypeExportItem {
+// ── Backward-compat aliases (deprecated, for incremental migration) ──
+
+/** @deprecated Use MessageTypeCategory */
+export type MicrotopicType = MessageTypeCategory;
+/** @deprecated Use MessageType */
+export type Microtopic = MessageType;
+/** @deprecated Use MessageTypeMessage */
+export type MicrotopicMessage = MessageTypeMessage;
+
+/** @deprecated Will be removed when microtopic-extractor.ts is rewritten */
+export interface ConversationMicrotopics {
   conversationId: string;
-  visitorName: string;
-  agentName: string;
-  language: string;
-  exchanges: Exchange[];
-  extracted?: ExtractedInfo[];
+  microtopics: MessageType[];
+  botFlowInput?: BotFlowInput;
+  language?: string;
 }
 
-export interface TopicTypeExport {
-  type: MicrotopicType;
-  exportedAt: string;
+/** @deprecated Will be removed when microtopic-extractor.ts is rewritten */
+export interface MicrotopicsFile {
   source: string;
-  totalItems: number;
-  items: TopicTypeExportItem[];
+  conversations: ConversationMicrotopics[];
+  generatedAt?: string;
+  model?: string;
+  totalConversations?: number;
+  processedConversations?: number;
+  failures?: string[];
 }
