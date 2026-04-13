@@ -121,24 +121,14 @@ export function ConversationList({
                   <div className="flex justify-between items-center gap-1">
                     <div className="flex items-center gap-1 min-w-0">
                       {showStatusDots && (
-                        <div className="flex items-center gap-0.5 shrink-0">
-                          <span
-                            title="Classification status"
-                            className={`inline-block w-1.5 h-1.5 rounded-full ${
-                              conv.classificationStatus === "done"
-                                ? "bg-green-400"
-                                : "bg-bg-hover"
-                            }`}
-                          />
-                          <span
-                            title="Translation status"
-                            className={`inline-block w-1.5 h-1.5 rounded-full ${
-                              conv.translationStatus === "done"
-                                ? "bg-purple-400"
-                                : "bg-bg-hover"
-                            }`}
-                          />
-                        </div>
+                        <span
+                          title="Classification status"
+                          className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+                            conv.classificationStatus === "done"
+                              ? "bg-green-400"
+                              : "bg-bg-hover"
+                          }`}
+                        />
                       )}
                       <span
                         className={`truncate ${

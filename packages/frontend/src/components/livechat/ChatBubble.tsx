@@ -7,11 +7,13 @@ export function ChatBubble({
   role,
   text,
   agentName,
+  translatedText,
 }: {
   id: number;
   role: MessageRole;
   text: string;
   agentName?: string;
+  translatedText?: string;
 }) {
   if (role === "workflow_input") {
     return (
@@ -42,6 +44,12 @@ export function ChatBubble({
           {isUser ? "User" : agentName ?? "Agent"} · #{id}
         </div>
         {text}
+        {translatedText && (
+          <>
+            <div className="border-t border-dashed border-current/20 my-1" />
+            <div className="text-[#c084fc] text-[11px]">{translatedText}</div>
+          </>
+        )}
       </div>
     </div>
   );

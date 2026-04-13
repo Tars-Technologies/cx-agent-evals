@@ -11,7 +11,7 @@ import {
   createClaudeClient,
   classifyMessageTypes,
   translateMessages,
-  hasNonAscii,
+  needsTranslation,
   type RawConversation,
 } from "rag-evaluation-system/data-analysis";
 
@@ -234,7 +234,7 @@ export const translateConversations = internalAction({
         if (!conv) throw new Error("Conversation not found");
 
         const messagesToTranslate = conv.messages
-          .filter((m: { text: string }) => hasNonAscii(m.text))
+          .filter((m: { text: string }) => needsTranslation(m.text))
           .map((m: { id: number; text: string }) => ({ id: m.id, text: m.text }));
 
         if (messagesToTranslate.length === 0) {

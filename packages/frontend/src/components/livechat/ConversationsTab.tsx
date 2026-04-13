@@ -12,6 +12,11 @@ import { ChatBubble } from "./ChatBubble";
 import { ExportButton } from "./ExportButton";
 import type { MessageTypeCategory, MessageTypeItem, MessagesByType } from "./types";
 
+/** Check if text contains non-Latin script characters that likely need translation. */
+function needsTranslation(text: string): boolean {
+  return /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(text);
+}
+
 const TYPE_ORDER: MessageTypeCategory[] = [
   "question",
   "request",
@@ -41,6 +46,9 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
   const [showMessageTypes, setShowMessageTypes] = useState(true);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Optimistic UI: track pending operations so buttons react immediately
+  const [pendingClassify, setPendingClassify] = useState<Set<string>>(new Set());
+  const [pendingTranslate, setPendingTranslate] = useState<Set<string>>(new Set());
 
   // --- Queries ---
   const { results, status, loadMore } = usePaginatedQuery(
@@ -66,6 +74,20 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
   const allConversations = useMemo(() => results ?? [], [results]);
 
   const maxSelected = selectedIds.size >= 100;
+
+  // Effective statuses (merge server state with optimistic pending state)
+  const effectiveClassificationStatus = selectedConvId && pendingClassify.has(selectedConvId)
+    ? "running"
+    : selectedConv?.classificationStatus;
+  const effectiveTranslationStatus = selectedConvId && pendingTranslate.has(selectedConvId)
+    ? "running"
+    : selectedConv?.translationStatus;
+
+  // Check if conversation has any messages needing translation
+  const hasTranslatableMessages = useMemo(() => {
+    if (!selectedConv) return false;
+    return selectedConv.messages.some((m: { text: string }) => needsTranslation(m.text));
+  }, [selectedConv]);
 
   // Build MessagesByType for the "By Message Type" view
   const messagesByType = useMemo(() => {
@@ -272,24 +294,31 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
                     </div>
                     <div className="flex items-center gap-1.5">
                       {/* Classification controls */}
-                      {(selectedConv.classificationStatus === "none" ||
-                        selectedConv.classificationStatus === "failed") && (
+                      {(effectiveClassificationStatus === "none" ||
+                        effectiveClassificationStatus === "failed") && (
                         <button
-                          onClick={() =>
-                            classifySingle({ conversationId: selectedConvId! })
-                          }
+                          onClick={() => {
+                            setPendingClassify((prev) => new Set(prev).add(selectedConvId!));
+                            classifySingle({ conversationId: selectedConvId! }).finally(() =>
+                              setPendingClassify((prev) => {
+                                const next = new Set(prev);
+                                next.delete(selectedConvId!);
+                                return next;
+                              }),
+                            );
+                          }}
                           className="bg-accent text-bg font-medium px-3 py-1 rounded text-[10px] hover:opacity-90"
                         >
                           Classify
                         </button>
                       )}
-                      {selectedConv.classificationStatus === "running" && (
+                      {effectiveClassificationStatus === "running" && (
                         <span className="text-text-muted text-[10px] flex items-center gap-1">
                           <span className="animate-spin">&#x27F3;</span>
                           Classifying...
                         </span>
                       )}
-                      {selectedConv.classificationStatus === "done" && (
+                      {effectiveClassificationStatus === "done" && (
                         <button
                           onClick={() => setShowMessageTypes(!showMessageTypes)}
                           className={`text-[10px] border rounded px-2 py-0.5 transition-colors ${
@@ -302,19 +331,26 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
                         </button>
                       )}
 
-                      {/* Translation controls */}
-                      {(selectedConv.translationStatus === "none" ||
-                        selectedConv.translationStatus === "failed") && (
+                      {/* Translation controls — only show if conversation has translatable messages */}
+                      {hasTranslatableMessages && (effectiveTranslationStatus === "none" ||
+                        effectiveTranslationStatus === "failed") && (
                         <button
-                          onClick={() =>
-                            translateSingle({ conversationId: selectedConvId! })
-                          }
+                          onClick={() => {
+                            setPendingTranslate((prev) => new Set(prev).add(selectedConvId!));
+                            translateSingle({ conversationId: selectedConvId! }).finally(() =>
+                              setPendingTranslate((prev) => {
+                                const next = new Set(prev);
+                                next.delete(selectedConvId!);
+                                return next;
+                              }),
+                            );
+                          }}
                           className="bg-[#c084fc] text-bg font-medium px-3 py-1 rounded text-[10px] hover:opacity-90"
                         >
                           Translate
                         </button>
                       )}
-                      {selectedConv.translationStatus === "running" && (
+                      {effectiveTranslationStatus === "running" && (
                         <span className="text-text-muted text-[10px] flex items-center gap-1">
                           <span className="animate-spin">&#x27F3;</span>
                           Translating...
@@ -377,21 +413,14 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
                           (t: { id: number }) => t.id === msg.id,
                         );
                         return (
-                          <div key={msg.id}>
-                            <ChatBubble
-                              id={msg.id}
-                              role={msg.role as any}
-                              text={msg.text}
-                              agentName={selectedConv.agentName}
-                            />
-                            {translation && (
-                              <div className="border-t border-dashed border-border mx-4 pt-1 pb-1">
-                                <span className="text-[11px] text-[#c084fc]">
-                                  {translation.text}
-                                </span>
-                              </div>
-                            )}
-                          </div>
+                          <ChatBubble
+                            key={msg.id}
+                            id={msg.id}
+                            role={msg.role as any}
+                            text={msg.text}
+                            agentName={selectedConv.agentName}
+                            translatedText={translation?.text}
+                          />
                         );
                       },
                     )

@@ -8,4 +8,4 @@ export {
   preprocessConversation,
 } from "./message-type-classifier.js";
 export { createClaudeClient, classifyConversation } from "./claude-client.js";
-export { translateMessages, hasNonAscii } from "./translator.js";
+export { translateMessages, needsTranslation, hasNonAscii } from "./translator.js";

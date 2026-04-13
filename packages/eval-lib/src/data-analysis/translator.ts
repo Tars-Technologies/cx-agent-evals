@@ -31,11 +31,21 @@ interface TranslationResult {
 }
 
 /**
- * Check if a message contains non-ASCII characters (likely non-English).
+ * Check if text contains non-Latin script characters that likely need translation.
+ * Detects Arabic, CJK, Cyrillic, Thai, Devanagari, Hebrew, Korean, etc.
+ * Excludes common non-ASCII characters in English text (smart quotes, em dashes,
+ * accented Latin letters, etc.).
  */
-export function hasNonAscii(text: string): boolean {
-  return /[^\x00-\x7F]/.test(text);
+export function needsTranslation(text: string): boolean {
+  // Match characters NOT in Latin, Common, or Inherited Unicode scripts.
+  // Common includes digits, punctuation, symbols, whitespace.
+  // Inherited includes combining marks used with Latin.
+  // This catches Arabic, CJK, Cyrillic, Thai, Devanagari, Hebrew, Hangul, etc.
+  return /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(text);
 }
+
+/** @deprecated Use needsTranslation */
+export const hasNonAscii = needsTranslation;
 
 /**
  * Translate non-English messages in a conversation to English.
@@ -48,7 +58,7 @@ export async function translateMessages(
   retries = 3,
 ): Promise<Array<{ id: number; text: string }>> {
   // Filter to only non-English messages
-  const nonEnglish = messages.filter((m) => hasNonAscii(m.text));
+  const nonEnglish = messages.filter((m) => needsTranslation(m.text));
 
   if (nonEnglish.length === 0) {
     return []; // All messages are English
