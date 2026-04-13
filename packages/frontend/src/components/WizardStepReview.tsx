@@ -23,6 +23,41 @@ interface WizardStepReviewProps {
   disabledReason?: string;
 }
 
+function calculateAllocations(
+  docs: DocInfo[],
+  totalQuestions: number,
+): Map<string, number> {
+  const allocations = new Map<string, number>();
+  const totalWeight = docs.reduce((s, d) => s + d.priority, 0);
+  if (totalWeight === 0 || docs.length === 0) return allocations;
+
+  if (totalQuestions < docs.length) {
+    const sorted = [...docs].sort((a, b) => b.priority - a.priority);
+    for (let i = 0; i < sorted.length; i++) {
+      allocations.set(sorted[i]._id, i < totalQuestions ? 1 : 0);
+    }
+    return allocations;
+  }
+
+  // Sort ascending — lowest priority first, highest last gets remainder
+  const sorted = [...docs].sort((a, b) => a.priority - b.priority);
+  let allocated = 0;
+
+  for (let i = 0; i < sorted.length; i++) {
+    if (i === sorted.length - 1) {
+      allocations.set(sorted[i]._id, totalQuestions - allocated);
+    } else {
+      const quota = Math.round(
+        (sorted[i].priority / totalWeight) * totalQuestions,
+      );
+      allocations.set(sorted[i]._id, quota);
+      allocated += quota;
+    }
+  }
+
+  return allocations;
+}
+
 export function WizardStepReview({
   config,
   documents,
@@ -35,7 +70,7 @@ export function WizardStepReview({
   disabled,
   disabledReason,
 }: WizardStepReviewProps) {
-  const totalWeight = documents.reduce((s, d) => s + d.priority, 0);
+  const allocations = calculateAllocations(documents, config.totalQuestions);
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -91,9 +126,7 @@ export function WizardStepReview({
               </thead>
               <tbody>
                 {documents.map((doc) => {
-                  const alloc = totalWeight > 0
-                    ? Math.round((doc.priority / totalWeight) * config.totalQuestions)
-                    : 0;
+                  const alloc = allocations.get(doc._id) ?? 0;
                   return (
                     <tr key={doc._id} className="border-t border-border">
                       <td className="px-3 py-1.5 text-text truncate max-w-[200px]">{doc.title}</td>
@@ -105,6 +138,15 @@ export function WizardStepReview({
                   );
                 })}
               </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-border-bright">
+                  <td className="px-3 py-2 text-text-muted text-xs font-medium">Total</td>
+                  <td className="px-3 py-2 text-center"></td>
+                  <td className="px-3 py-2 text-right font-mono text-accent text-xs font-medium">
+                    {config.totalQuestions}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
