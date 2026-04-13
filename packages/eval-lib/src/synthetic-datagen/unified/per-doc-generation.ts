@@ -40,6 +40,7 @@ export interface BuildPromptParams {
   readonly combos: ReadonlyArray<Record<string, string>>;
   readonly preferences: PromptPreferences;
   readonly model: string;
+  readonly excludeQuestions?: readonly string[];
 }
 
 function formatCombos(combos: ReadonlyArray<Record<string, string>>): string {
@@ -116,7 +117,7 @@ export function buildPrompt(params: BuildPromptParams): {
     });
     parts.push("");
     parts.push(
-      `For each question set "source" to "direct-reuse" and provide the "citation" as a verbatim excerpt from the document.`,
+      `For each question set "source" to "real-world" and provide the "citation" as a verbatim excerpt from the document.`,
     );
   } else if (scenario === 2) {
     const generateCount = quota - matched.length;
@@ -137,7 +138,7 @@ export function buildPrompt(params: BuildPromptParams): {
       parts.push(`  ${i + 1}. ${m.question}`);
     });
     parts.push(
-      `For existing questions set "source" to "direct-reuse". For new questions set "source" to "generated".`,
+      `For existing questions set "source" to "real-world". For new questions set "source" to "generated".`,
     );
   } else {
     // Scenarios 3 and 4 — generate all quota questions
@@ -154,6 +155,17 @@ export function buildPrompt(params: BuildPromptParams): {
   parts.push(
     `For each question, provide a "citation" as a verbatim excerpt from the document that answers the question.`,
   );
+
+  // Exclusions for retry rounds
+  if (params.excludeQuestions && params.excludeQuestions.length > 0) {
+    parts.push("");
+    parts.push(
+      "IMPORTANT: Do NOT generate questions similar to the following (these have already been generated):",
+    );
+    params.excludeQuestions.forEach((q, i) => {
+      parts.push(`  ${i + 1}. ${q}`);
+    });
+  }
 
   parts.push("");
   parts.push("Output JSON in this exact format:");
@@ -275,6 +287,7 @@ export interface GenerateForDocumentParams {
   readonly preferences: PromptPreferences;
   readonly llmClient: LLMClient;
   readonly model: string;
+  readonly excludeQuestions?: readonly string[];
 }
 
 /**
@@ -313,6 +326,7 @@ export async function generateForDocument(
     combos,
     preferences,
     model,
+    excludeQuestions: params.excludeQuestions,
   });
 
   let response: string;
@@ -334,7 +348,7 @@ export async function generateForDocument(
   return parsed.map((q) => ({
     question: q.question,
     citation: q.citation,
-    source: q.source === "direct-reuse" ? "direct-reuse" : "generated",
+    source: q.source === "real-world" ? "real-world" : "generated",
     profile: q.profile,
     docId,
   }));

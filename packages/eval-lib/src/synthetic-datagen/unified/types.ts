@@ -40,7 +40,7 @@ export interface GenerationPlan {
 export interface UnifiedQuestion {
   readonly question: string;
   readonly citation: string;
-  readonly source: "generated" | "direct-reuse";
+  readonly source: "generated" | "real-world";
   readonly profile: string | null;
   readonly docId: string;
 }
