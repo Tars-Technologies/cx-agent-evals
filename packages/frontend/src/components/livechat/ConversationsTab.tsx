@@ -1,0 +1,475 @@
+"use client";
+
+import { useState, useMemo } from "react";
+import { useQuery, useMutation, usePaginatedQuery } from "convex/react";
+import { api } from "@/lib/convex";
+import type { Id } from "@convex/_generated/dataModel";
+import { ResizablePanel } from "../ResizablePanel";
+import { ConversationList } from "./ConversationList";
+import { MessageTypeCard } from "./MessageTypeCard";
+import { MessageTypeFeed } from "./MessageTypeFeed";
+import { ChatBubble } from "./ChatBubble";
+import { ExportButton } from "./ExportButton";
+import type { MessageTypeCategory, MessageTypeItem, MessagesByType } from "./types";
+
+const TYPE_ORDER: MessageTypeCategory[] = [
+  "question",
+  "request",
+  "identity_info",
+  "confirmation",
+  "greeting",
+  "closing",
+  "uncategorized",
+];
+
+const TYPE_COLORS: Record<string, string> = {
+  question: "text-accent",
+  request: "text-[#818cf8]",
+  identity_info: "text-[#fbbf24]",
+  confirmation: "text-text-muted",
+  greeting: "text-text-muted",
+  closing: "text-text-muted",
+  uncategorized: "text-text-dim",
+};
+
+export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads"> }) {
+  // --- State ---
+  const [view, setView] = useState<"conversation" | "messageType">("conversation");
+  const [selectedConvId, setSelectedConvId] = useState<Id<"livechatConversations"> | null>(null);
+  const [selectedType, setSelectedType] = useState<MessageTypeCategory>("question");
+  const [allExpanded, setAllExpanded] = useState(true);
+  const [showMessageTypes, setShowMessageTypes] = useState(true);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // --- Queries ---
+  const { results, status, loadMore } = usePaginatedQuery(
+    api.livechat.orchestration.listConversations,
+    { uploadId },
+    { initialNumItems: 200 },
+  );
+
+  const selectedConv = useQuery(
+    api.livechat.orchestration.getConversation,
+    selectedConvId ? { id: selectedConvId } : "skip",
+  );
+
+  const counts = useQuery(api.livechat.orchestration.getClassificationCounts, { uploadId });
+
+  // --- Mutations ---
+  const classifySingle = useMutation(api.livechat.orchestration.classifySingle);
+  const translateSingle = useMutation(api.livechat.orchestration.translateSingle);
+  const classifyBatch = useMutation(api.livechat.orchestration.classifyBatch);
+  const translateBatch = useMutation(api.livechat.orchestration.translateBatch);
+
+  // --- Derived data ---
+  const allConversations = useMemo(() => results ?? [], [results]);
+
+  const maxSelected = selectedIds.size >= 100;
+
+  // Build MessagesByType for the "By Message Type" view
+  const messagesByType = useMemo(() => {
+    const map: MessagesByType = new Map();
+    for (const conv of allConversations) {
+      if (conv.classificationStatus !== "done" || !conv.messageTypes) continue;
+      for (const mt of conv.messageTypes as any[]) {
+        const items = map.get(mt.type as MessageTypeCategory) || [];
+        items.push({
+          conversationId: conv.conversationId,
+          visitorName: conv.visitorName,
+          agentName: conv.agentName,
+          language: (conv as any).botFlowInput?.language || "unknown",
+          messageType: mt,
+        });
+        map.set(mt.type as MessageTypeCategory, items);
+      }
+    }
+    return map;
+  }, [allConversations]);
+
+  // Total classified count from the messagesByType map
+  const classifiedCount = counts?.classified ?? 0;
+
+  // --- Handlers ---
+  function handleToggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else if (next.size < 100) {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function handleSelectNext10Unclassified() {
+    const remaining = 100 - selectedIds.size;
+    if (remaining <= 0) return;
+    const unclassified = allConversations.filter(
+      (c) => c.classificationStatus === "none" && !selectedIds.has(c._id),
+    );
+    const toAdd = unclassified.slice(0, Math.min(10, remaining));
+    if (toAdd.length === 0) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const c of toAdd) next.add(c._id);
+      return next;
+    });
+  }
+
+  function handleBatchClassify() {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds) as Id<"livechatConversations">[];
+    classifyBatch({ uploadId, conversationIds: ids });
+  }
+
+  function handleBatchTranslate() {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds) as Id<"livechatConversations">[];
+    translateBatch({ uploadId, conversationIds: ids });
+  }
+
+  function handleToggleSelectionMode() {
+    if (selectionMode) {
+      setSelectedIds(new Set());
+    }
+    setSelectionMode(!selectionMode);
+  }
+
+  // --- Render ---
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header row */}
+      <div className="bg-bg-elevated px-3 py-1.5 border-b border-border flex justify-between items-center">
+        <div className="flex bg-bg-surface rounded border border-border overflow-hidden">
+          <button
+            onClick={() => setView("conversation")}
+            className={`px-3 py-1 text-[10px] ${
+              view === "conversation"
+                ? "bg-accent-dim text-accent-bright"
+                : "text-text-dim hover:text-text"
+            }`}
+          >
+            By Conversation ({counts?.total ?? "..."})
+          </button>
+          <button
+            onClick={() => setView("messageType")}
+            className={`px-3 py-1 text-[10px] ${
+              view === "messageType"
+                ? "bg-accent-dim text-accent-bright"
+                : "text-text-dim hover:text-text"
+            }`}
+          >
+            By Message Type ({classifiedCount} classified)
+          </button>
+        </div>
+        {view === "conversation" && (
+          <button
+            onClick={handleToggleSelectionMode}
+            className="text-[10px] text-text-muted hover:text-accent border border-border rounded px-2 py-0.5 transition-colors"
+          >
+            {selectionMode ? "Done Selecting" : "Select Conversations"}
+          </button>
+        )}
+      </div>
+
+      {/* Main content */}
+      {view === "conversation" ? (
+        <div className="flex flex-1 overflow-hidden">
+          {/* Sidebar */}
+          <ResizablePanel
+            storageKey="livechat-conversations-sidebar"
+            defaultWidth={240}
+            className="border-r border-border flex flex-col"
+          >
+            <div className="flex flex-col h-full">
+              {/* Selection mode header */}
+              {selectionMode && (
+                <div className="px-2 py-1.5 border-b border-border">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-text-muted text-[10px]">
+                      {selectedIds.size}/100 selected
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleSelectNext10Unclassified}
+                    disabled={maxSelected}
+                    className={`w-full text-[10px] border border-border rounded px-2 py-0.5 transition-colors ${
+                      maxSelected
+                        ? "opacity-50 cursor-not-allowed text-text-dim"
+                        : "text-text-muted hover:text-accent hover:border-accent/40"
+                    }`}
+                  >
+                    Select next 10 unclassified
+                  </button>
+                </div>
+              )}
+
+              {/* Conversation list */}
+              <div className="flex-1 overflow-hidden">
+                <ConversationList
+                  conversations={allConversations as any[]}
+                  selectedId={selectedConvId}
+                  onSelect={(id) => setSelectedConvId(id as Id<"livechatConversations">)}
+                  selectionMode={selectionMode}
+                  selectedIds={selectedIds}
+                  onToggleSelect={handleToggleSelect}
+                  maxSelected={maxSelected}
+                  showStatusDots
+                />
+              </div>
+
+              {/* Load more button */}
+              {status !== "Exhausted" && (
+                <div className="p-2 border-t border-border">
+                  <button
+                    onClick={() => loadMore(200)}
+                    className="w-full text-[10px] text-text-muted hover:text-accent border border-border rounded px-2 py-1 transition-colors"
+                  >
+                    {status === "LoadingMore" ? (
+                      <span className="animate-spin inline-block mr-1">&#x27F3;</span>
+                    ) : null}
+                    Load more
+                  </button>
+                </div>
+              )}
+
+              {/* Floating action bar for batch operations */}
+              {selectionMode && selectedIds.size > 0 && (
+                <div className="p-2 border-t border-border bg-bg-elevated flex gap-1.5">
+                  <button
+                    onClick={handleBatchClassify}
+                    className="flex-1 bg-accent text-bg font-medium px-3 py-1.5 rounded text-xs hover:opacity-90"
+                  >
+                    Classify ({selectedIds.size})
+                  </button>
+                  <button
+                    onClick={handleBatchTranslate}
+                    className="flex-1 bg-[#c084fc] text-bg font-medium px-3 py-1.5 rounded text-xs hover:opacity-90"
+                  >
+                    Translate ({selectedIds.size})
+                  </button>
+                </div>
+              )}
+            </div>
+          </ResizablePanel>
+
+          {/* Detail pane */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {selectedConv ? (
+              <>
+                {/* Detail header */}
+                <div className="bg-bg-elevated px-3 py-2 border-b border-border">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="text-text text-xs font-semibold">
+                        {selectedConv.visitorName || "Unknown"}
+                      </span>
+                      <span className="text-text-dim text-[10px] ml-2">
+                        #{selectedConv.conversationId}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {/* Classification controls */}
+                      {(selectedConv.classificationStatus === "none" ||
+                        selectedConv.classificationStatus === "failed") && (
+                        <button
+                          onClick={() =>
+                            classifySingle({ conversationId: selectedConvId! })
+                          }
+                          className="bg-accent text-bg font-medium px-3 py-1 rounded text-[10px] hover:opacity-90"
+                        >
+                          Classify
+                        </button>
+                      )}
+                      {selectedConv.classificationStatus === "running" && (
+                        <span className="text-text-muted text-[10px] flex items-center gap-1">
+                          <span className="animate-spin">&#x27F3;</span>
+                          Classifying...
+                        </span>
+                      )}
+                      {selectedConv.classificationStatus === "done" && (
+                        <button
+                          onClick={() => setShowMessageTypes(!showMessageTypes)}
+                          className={`text-[10px] border rounded px-2 py-0.5 transition-colors ${
+                            showMessageTypes
+                              ? "border-accent text-accent"
+                              : "border-border text-text-dim hover:text-text"
+                          }`}
+                        >
+                          {showMessageTypes ? "Hide" : "Show"} Message Types
+                        </button>
+                      )}
+
+                      {/* Translation controls */}
+                      {(selectedConv.translationStatus === "none" ||
+                        selectedConv.translationStatus === "failed") && (
+                        <button
+                          onClick={() =>
+                            translateSingle({ conversationId: selectedConvId! })
+                          }
+                          className="bg-[#c084fc] text-bg font-medium px-3 py-1 rounded text-[10px] hover:opacity-90"
+                        >
+                          Translate
+                        </button>
+                      )}
+                      {selectedConv.translationStatus === "running" && (
+                        <span className="text-text-muted text-[10px] flex items-center gap-1">
+                          <span className="animate-spin">&#x27F3;</span>
+                          Translating...
+                        </span>
+                      )}
+
+                      {/* Expand/Collapse toggle */}
+                      {showMessageTypes &&
+                        selectedConv.classificationStatus === "done" && (
+                          <button
+                            onClick={() => setAllExpanded(!allExpanded)}
+                            className="px-2 py-1 text-[10px] text-text-dim border border-border rounded hover:text-text hover:border-accent/40 transition-colors"
+                          >
+                            {allExpanded ? "Collapse All" : "Expand All"}
+                          </button>
+                        )}
+
+                      {/* Export */}
+                      <ExportButton
+                        data={selectedConv}
+                        filename={`conversation-${selectedConv.conversationId}.json`}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Message content */}
+                <div className="flex-1 overflow-y-auto p-3">
+                  {/* Bot flow input badge */}
+                  {(selectedConv as any).botFlowInput && (
+                    <div className="text-center mb-2">
+                      <span className="text-[#fbbf24] text-[10px] bg-[#fbbf2415] px-2 py-0.5 rounded-full border border-[#fbbf2430]">
+                        {(selectedConv as any).botFlowInput.intent} ·{" "}
+                        {(selectedConv as any).botFlowInput.language}
+                      </span>
+                    </div>
+                  )}
+
+                  {showMessageTypes &&
+                  selectedConv.classificationStatus === "done" &&
+                  selectedConv.messageTypes ? (
+                    /* Accordion cards view */
+                    (selectedConv.messageTypes as any[]).map(
+                      (mt: any, i: number) => (
+                        <MessageTypeCard
+                          key={i}
+                          messageType={mt}
+                          agentName={selectedConv.agentName}
+                          forceExpanded={allExpanded}
+                        />
+                      ),
+                    )
+                  ) : (
+                    /* Flat chat bubble view */
+                    selectedConv.messages.map(
+                      (msg: { id: number; role: string; text: string }) => {
+                        const translation = (
+                          selectedConv as any
+                        )?.translatedMessages?.find(
+                          (t: { id: number }) => t.id === msg.id,
+                        );
+                        return (
+                          <div key={msg.id}>
+                            <ChatBubble
+                              id={msg.id}
+                              role={msg.role as any}
+                              text={msg.text}
+                              agentName={selectedConv.agentName}
+                            />
+                            {translation && (
+                              <div className="border-t border-dashed border-border mx-4 pt-1 pb-1">
+                                <span className="text-[11px] text-[#c084fc]">
+                                  {translation.text}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      },
+                    )
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-center h-full text-text-dim text-xs">
+                Select a conversation to view
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* By Message Type view */
+        <div className="flex flex-1 overflow-hidden">
+          {/* Type list sidebar */}
+          <ResizablePanel
+            storageKey="livechat-messagetype-sidebar"
+            defaultWidth={180}
+            className="border-r border-border"
+          >
+            <div className="flex-1 overflow-y-auto p-1">
+              {TYPE_ORDER.map((type) => {
+                const items = messagesByType.get(type) ?? [];
+                if (items.length === 0) return null;
+                return (
+                  <button
+                    key={type}
+                    onClick={() => setSelectedType(type)}
+                    className={`w-full text-left px-2 py-1.5 rounded text-xs mb-0.5 flex justify-between ${
+                      selectedType === type
+                        ? "bg-bg-surface border-l-2 border-accent"
+                        : "hover:bg-bg-hover"
+                    }`}
+                  >
+                    <span className={TYPE_COLORS[type] ?? "text-text-dim"}>
+                      {type}
+                    </span>
+                    <span className="text-text-dim">{items.length}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </ResizablePanel>
+
+          {/* Feed */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="bg-bg-elevated px-3 py-2 border-b border-border flex justify-between items-center">
+              <div>
+                <span className="text-accent text-xs font-semibold">
+                  {(messagesByType.get(selectedType) ?? []).length} {selectedType}s
+                </span>
+                <span className="text-text-dim text-[10px] ml-2">
+                  across {classifiedCount} classified conversations
+                </span>
+              </div>
+              <ExportButton
+                data={{
+                  type: selectedType,
+                  exportedAt: new Date().toISOString(),
+                  totalItems: (messagesByType.get(selectedType) ?? []).length,
+                  items: (messagesByType.get(selectedType) ?? []).map((item) => ({
+                    conversationId: item.conversationId,
+                    visitorName: item.visitorName,
+                    agentName: item.agentName,
+                    language: item.language,
+                    exchanges: item.messageType.exchanges,
+                    extracted: item.messageType.extracted,
+                  })),
+                }}
+                filename={`${selectedType}-export.json`}
+              />
+            </div>
+            <MessageTypeFeed items={messagesByType.get(selectedType) ?? []} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
