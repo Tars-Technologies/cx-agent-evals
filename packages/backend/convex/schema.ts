@@ -155,53 +155,98 @@ export default defineSchema({
 
   // ── Livechat uploads ──
   livechatUploads: defineTable({
-    // Ownership
     orgId: v.string(),
     createdBy: v.id("users"),
-
-    // File identity
     filename: v.string(),
     csvStorageId: v.id("_storage"),
 
-    // Overall pipeline status
     status: v.union(
       v.literal("pending"),
       v.literal("parsing"),
       v.literal("ready"),
       v.literal("failed"),
+      v.literal("deleting"),
     ),
     error: v.optional(v.string()),
 
-    // AI microtopics status (independent of overall status)
-    microtopicsStatus: v.union(
-      v.literal("pending"),
-      v.literal("running"),
-      v.literal("ready"),
-      v.literal("failed"),
-      v.literal("skipped"),
-    ),
-    microtopicsError: v.optional(v.string()),
-
-    // Output blobs (optional until filled by the action)
-    rawTranscriptsStorageId: v.optional(v.id("_storage")),
-    microtopicsStorageId: v.optional(v.id("_storage")),
-
-    // Inline metadata (small)
     conversationCount: v.optional(v.number()),
+    parsedConversations: v.optional(v.number()),
     basicStats: v.optional(v.any()),
-    processedConversations: v.optional(v.number()),
-    failedConversationCount: v.optional(v.number()),
 
-    // Timestamps
     createdAt: v.number(),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
-
-    // WorkPool tracking
     workIds: v.optional(v.array(v.string())),
   })
     .index("by_org", ["orgId"])
     .index("by_org_created", ["orgId", "createdAt"]),
+
+  // ── Livechat conversations (one row per conversation per upload) ──
+  livechatConversations: defineTable({
+    uploadId: v.id("livechatUploads"),
+    orgId: v.string(),
+
+    conversationId: v.string(),
+    visitorId: v.string(),
+    visitorName: v.string(),
+    visitorPhone: v.string(),
+    visitorEmail: v.string(),
+    agentId: v.string(),
+    agentName: v.string(),
+    agentEmail: v.string(),
+    inbox: v.string(),
+    labels: v.array(v.string()),
+    status: v.string(),
+
+    messages: v.array(
+      v.object({
+        id: v.number(),
+        role: v.union(
+          v.literal("user"),
+          v.literal("human_agent"),
+          v.literal("workflow_input"),
+        ),
+        text: v.string(),
+      }),
+    ),
+
+    metadata: v.any(),
+
+    botFlowInput: v.optional(
+      v.object({
+        intent: v.string(),
+        language: v.string(),
+      }),
+    ),
+
+    messageTypes: v.optional(v.any()),
+    classificationStatus: v.union(
+      v.literal("none"),
+      v.literal("running"),
+      v.literal("done"),
+      v.literal("failed"),
+    ),
+    classificationError: v.optional(v.string()),
+
+    translatedMessages: v.optional(
+      v.array(
+        v.object({
+          id: v.number(),
+          text: v.string(),
+        }),
+      ),
+    ),
+    translationStatus: v.union(
+      v.literal("none"),
+      v.literal("running"),
+      v.literal("done"),
+      v.literal("failed"),
+    ),
+    translationError: v.optional(v.string()),
+  })
+    .index("by_upload", ["uploadId"])
+    .index("by_upload_classification", ["uploadId", "classificationStatus"])
+    .index("by_org", ["orgId"]),
 
   // ─── Experiments (evaluation runs against a dataset) ───
   experiments: defineTable({
