@@ -10,6 +10,7 @@ export function QuestionList({
   totalDone,
   phaseStatus,
   onUpload,
+  realWorldCount,
 }: {
   questions: GeneratedQuestion[];
   selectedIndex: number | null;
@@ -18,6 +19,7 @@ export function QuestionList({
   totalDone: number | null;
   phaseStatus?: string | null;
   onUpload?: () => void;
+  realWorldCount?: number;
 }) {
   // Group by docId
   const grouped = new Map<string, { question: GeneratedQuestion; index: number }[]>();
@@ -48,7 +50,12 @@ export function QuestionList({
               {questions.length} generated
             </span>
           ) : totalDone !== null ? (
-            `${totalDone} total`
+            <>
+              {totalDone} total
+              {realWorldCount != null && realWorldCount > 0 && (
+                <span className="text-accent"> · {realWorldCount} real-world</span>
+              )}
+            </>
           ) : (
             `${questions.length}`
           )}
@@ -116,6 +123,11 @@ export function QuestionList({
                 <p className="text-xs text-text leading-relaxed">
                   {question.query}
                 </p>
+                {question.source === "real-world" && (
+                  <span className="inline-block text-[9px] text-accent bg-accent-dim px-1.5 py-0.5 rounded mt-1">
+                    real-world
+                  </span>
+                )}
                 <span className="text-[10px] text-text-dim mt-1 block">
                   {question.relevantSpans
                     ? `${question.relevantSpans.length} span${question.relevantSpans.length !== 1 ? "s" : ""}`

@@ -15,6 +15,7 @@ export interface GeneratedQuestion {
   docId: string;
   query: string;
   relevantSpans?: SpanInfo[];
+  source?: string;
 }
 
 export type StrategyType = "simple" | "dimension-driven" | "real-world-grounded";

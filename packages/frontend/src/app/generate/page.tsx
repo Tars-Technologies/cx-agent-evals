@@ -138,6 +138,7 @@ function GeneratePageContent() {
     docId: q.sourceDocId,
     query: q.queryText,
     relevantSpans: q.relevantSpans,
+    source: q.source,
   }));
 
   // Convert Convex documents to DocumentInfo format
@@ -200,6 +201,7 @@ function GeneratePageContent() {
           docId: q.sourceDocId,
           query: q.queryText,
           relevantSpans: q.relevantSpans,
+          source: q.source,
         }))
       : questions;
 
@@ -441,6 +443,11 @@ function GeneratePageContent() {
                   generating={displayGenerating}
                   totalDone={displayTotalDone}
                   phaseStatus={displayPhaseStatus}
+                  realWorldCount={
+                    !displayGenerating
+                      ? displayQuestions.filter((q) => q.source === "real-world").length
+                      : undefined
+                  }
                 />
               </div>
             )}
