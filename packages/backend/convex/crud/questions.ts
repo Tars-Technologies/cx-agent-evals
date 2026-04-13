@@ -35,6 +35,7 @@ export const insertBatch = internalMutation({
         sourceDocId: v.string(),
         relevantSpans: v.array(spanValidator),
         metadata: v.optional(v.any()),
+        source: v.optional(v.string()),
       }),
     ),
   },
@@ -58,6 +59,7 @@ export const insertBatch = internalMutation({
         sourceDocId: q.sourceDocId,
         relevantSpans: q.relevantSpans,
         metadata: q.metadata ?? {},
+        source: q.source,
       });
       ids.push(id);
     }

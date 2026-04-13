@@ -510,6 +510,18 @@ export const onDocGenerated = internalMutation({
     // Update docsProcessed
     const docsProcessed = (job.docsProcessed ?? 0) + 1;
 
+    // Accumulate return values from generateForDoc
+    let newQuestionsGenerated = job.questionsGenerated ?? 0;
+    let newMissedQuestions = job.missedQuestions ?? 0;
+    if (result.kind === "success" && result.returnValue) {
+      const rv = result.returnValue as {
+        questionsGenerated?: number;
+        missedQuestions?: number;
+      };
+      newQuestionsGenerated += rv.questionsGenerated ?? 0;
+      newMissedQuestions += rv.missedQuestions ?? 0;
+    }
+
     if (isComplete) {
       if (job.status === "canceling") {
         await ctx.db.patch(context.jobId, {
@@ -517,6 +529,8 @@ export const onDocGenerated = internalMutation({
           status: "canceled" as JobStatus,
           completedAt: Date.now(),
           docsProcessed,
+          questionsGenerated: newQuestionsGenerated,
+          missedQuestions: newMissedQuestions,
         });
         return;
       }
@@ -527,8 +541,13 @@ export const onDocGenerated = internalMutation({
         .withIndex("by_dataset", (q) => q.eq("datasetId", job.datasetId))
         .collect();
 
+      const realWorldQuestionCount = questions.filter(
+        (q) => q.source === "real-world"
+      ).length;
+
       await ctx.db.patch(job.datasetId, {
         questionCount: questions.length,
+        realWorldQuestionCount,
       });
 
       let status: JobStatus;
@@ -545,6 +564,8 @@ export const onDocGenerated = internalMutation({
         status,
         completedAt: Date.now(),
         docsProcessed,
+        questionsGenerated: newQuestionsGenerated,
+        missedQuestions: newMissedQuestions,
       });
 
       // Fire-and-forget LangSmith sync
@@ -557,6 +578,8 @@ export const onDocGenerated = internalMutation({
       await ctx.db.patch(context.jobId, {
         ...counterPatch(counters),
         docsProcessed,
+        questionsGenerated: newQuestionsGenerated,
+        missedQuestions: newMissedQuestions,
       });
     }
   },

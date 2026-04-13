@@ -324,7 +324,7 @@ export const generateForDoc = internalAction({
     model: v.string(),
   },
   handler: async (ctx, args) => {
-    if (args.quota === 0) return { questionsGenerated: 0 };
+    if (args.quota === 0) return { questionsGenerated: 0, failedCitations: 0, missedQuestions: 0 };
 
     // Read shared plan data from job record (stored once, not passed per-doc)
     const job = await ctx.runQuery(
@@ -342,62 +342,83 @@ export const generateForDoc = internalAction({
     });
     const llmClient = createLLMClient();
 
-    const rawQuestions = await generateForDocument({
-      docId: args.docId,
-      docContent: doc.content,
-      quota: args.quota,
-      matched: args.matchedQuestions ?? [],
-      combos: sharedPlan.validCombos ?? [],
-      preferences: sharedPlan.preferences ?? {
-        questionTypes: ["factoid", "procedural", "conditional"],
-        tone: "professional but accessible",
-        focusAreas: "",
-      },
-      llmClient,
-      model: args.model,
-    });
+    // Determine scenario for retry eligibility
+    const matchedCount = (args.matchedQuestions ?? []).length;
+    const isScenario1 = matchedCount >= args.quota;
 
-    // Validate citations and build question records
-    const validatedQuestions = [];
-    let failedCitations = 0;
+    const allValidated: Array<{
+      queryId: string;
+      queryText: string;
+      sourceDocId: string;
+      relevantSpans: Array<{ docId: string; start: number; end: number; text: string }>;
+      metadata: Record<string, unknown>;
+      source: string | undefined;
+    }> = [];
+    let totalFailedCitations = 0;
+    const MAX_RETRIES = 4;
 
-    for (const q of rawQuestions) {
-      const span = findCitationSpan(doc.content, q.citation);
-      if (span) {
-        validatedQuestions.push({
-          queryId: `unified_${args.docId}_q${validatedQuestions.length}`,
-          queryText: q.question,
-          sourceDocId: args.docId,
-          relevantSpans: [
-            {
-              docId: args.docId,
-              start: span.start,
-              end: span.end,
-              text: span.text,
+    for (let round = 0; round <= MAX_RETRIES; round++) {
+      const remaining = args.quota - allValidated.length;
+      if (remaining <= 0) break;
+
+      // Skip retry loop for scenario 1 (direct reuse only — fixed question set)
+      if (round > 0 && isScenario1) break;
+      // For retries, request shortfall + 2 buffer
+      if (round > 0 && remaining <= 0) break;
+
+      const requestCount = round === 0 ? args.quota : remaining + 2;
+      const excludeQuestions = round === 0
+        ? undefined
+        : allValidated.map((q) => q.queryText);
+
+      const rawQuestions = await generateForDocument({
+        docId: args.docId,
+        docContent: doc.content,
+        quota: requestCount,
+        matched: args.matchedQuestions ?? [],
+        combos: sharedPlan.validCombos ?? [],
+        preferences: sharedPlan.preferences ?? {
+          questionTypes: ["factoid", "procedural", "conditional"],
+          tone: "professional but accessible",
+          focusAreas: "",
+        },
+        llmClient,
+        model: args.model,
+        excludeQuestions,
+      });
+
+      // Validate citations
+      for (const q of rawQuestions) {
+        if (allValidated.length >= args.quota) break;
+
+        const span = findCitationSpan(doc.content, q.citation);
+        if (span) {
+          allValidated.push({
+            queryId: `unified_${args.docId}_q${allValidated.length}`,
+            queryText: q.question,
+            sourceDocId: args.docId,
+            relevantSpans: [
+              { docId: args.docId, start: span.start, end: span.end, text: span.text },
+            ],
+            metadata: {
+              source: q.source,
+              profile: q.profile ?? "",
+              citation: span.text,
             },
-          ],
-          metadata: {
-            source: q.source,
-            profile: q.profile ?? "",
-            citation: span.text,
-          },
-        });
-      } else {
-        failedCitations++;
+            source: q.source === "real-world" ? "real-world" : undefined,
+          });
+        } else {
+          totalFailedCitations++;
+        }
       }
     }
 
+    const missedQuestions = args.quota - allValidated.length;
+
     // Insert questions in batches
-    if (validatedQuestions.length > 0) {
-      for (
-        let i = 0;
-        i < validatedQuestions.length;
-        i += QUESTION_INSERT_BATCH_SIZE
-      ) {
-        const batch = validatedQuestions.slice(
-          i,
-          i + QUESTION_INSERT_BATCH_SIZE,
-        );
+    if (allValidated.length > 0) {
+      for (let i = 0; i < allValidated.length; i += QUESTION_INSERT_BATCH_SIZE) {
+        const batch = allValidated.slice(i, i + QUESTION_INSERT_BATCH_SIZE);
         await ctx.runMutation(internal.crud.questions.insertBatch, {
           datasetId: args.datasetId,
           questions: batch,
@@ -405,18 +426,16 @@ export const generateForDoc = internalAction({
       }
     }
 
-    // Report progress
+    // Report progress (once, after all retries)
     await ctx.runMutation(
       internal.generation.orchestration.updateDocProgress,
-      {
-        jobId: args.jobId,
-        docName: doc.title,
-      },
+      { jobId: args.jobId, docName: doc.title },
     );
 
     return {
-      questionsGenerated: validatedQuestions.length,
-      failedCitations,
+      questionsGenerated: allValidated.length,
+      failedCitations: totalFailedCitations,
+      missedQuestions: missedQuestions > 0 ? missedQuestions : 0,
     };
   },
 });
