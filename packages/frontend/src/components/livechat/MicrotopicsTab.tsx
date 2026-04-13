@@ -48,6 +48,7 @@ export function MicrotopicsTab({
   const [view, setView] = useState<"conversation" | "topicType">("conversation");
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<MicrotopicType>("question");
+  const [allExpanded, setAllExpanded] = useState(true);
 
   // Build indexes
   const byType = useMemo<MicrotopicsByType>(() => {
@@ -250,10 +251,18 @@ export function MicrotopicsTab({
                     #{selectedConvId}
                   </span>
                 </div>
-                <ExportButton
-                  data={selectedConvMicrotopics}
-                  filename={`microtopics-${selectedConvId}.json`}
-                />
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setAllExpanded(!allExpanded)}
+                    className="px-2 py-1 text-[10px] text-text-dim border border-border rounded hover:text-text hover:border-accent/40 transition-colors"
+                  >
+                    {allExpanded ? "Collapse All" : "Expand All"}
+                  </button>
+                  <ExportButton
+                    data={selectedConvMicrotopics}
+                    filename={`microtopics-${selectedConvId}.json`}
+                  />
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto p-3">
                 {selectedConvMicrotopics.botFlowInput && (
@@ -269,6 +278,7 @@ export function MicrotopicsTab({
                     key={i}
                     microtopic={mt}
                     agentName={selectedRawConv?.agentName}
+                    forceExpanded={allExpanded}
                   />
                 ))}
               </div>

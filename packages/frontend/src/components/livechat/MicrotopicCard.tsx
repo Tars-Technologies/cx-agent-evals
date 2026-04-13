@@ -17,11 +17,14 @@ const TYPE_COLORS: Record<string, { badge: string; border: string }> = {
 export function MicrotopicCard({
   microtopic,
   agentName,
+  forceExpanded,
 }: {
   microtopic: Microtopic;
   agentName?: string;
+  forceExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [localExpanded, setLocalExpanded] = useState(forceExpanded ?? false);
+  const expanded = forceExpanded ?? localExpanded;
   const colors = TYPE_COLORS[microtopic.type] ?? TYPE_COLORS.uncategorized;
   const msgCount = microtopic.exchanges.reduce(
     (s, e) => s + e.messages.length,
@@ -60,7 +63,7 @@ export function MicrotopicCard({
       } mb-1`}
     >
       <button
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => setLocalExpanded(!expanded)}
         className="w-full text-left px-2.5 py-1.5 flex justify-between items-center"
       >
         <div className="flex items-center gap-2 min-w-0">
