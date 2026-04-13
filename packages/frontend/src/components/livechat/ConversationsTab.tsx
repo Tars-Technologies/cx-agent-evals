@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, usePaginatedQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
@@ -82,6 +82,33 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
   const effectiveTranslationStatus = selectedConvId && pendingTranslate.has(selectedConvId)
     ? "running"
     : selectedConv?.translationStatus;
+
+  // Clear optimistic state when server state catches up
+  useEffect(() => {
+    if (!selectedConvId || !selectedConv) return;
+    if (
+      selectedConv.classificationStatus === "running" ||
+      selectedConv.classificationStatus === "done"
+    ) {
+      setPendingClassify((prev) => {
+        if (!prev.has(selectedConvId)) return prev;
+        const next = new Set(prev);
+        next.delete(selectedConvId);
+        return next;
+      });
+    }
+    if (
+      selectedConv.translationStatus === "running" ||
+      selectedConv.translationStatus === "done"
+    ) {
+      setPendingTranslate((prev) => {
+        if (!prev.has(selectedConvId)) return prev;
+        const next = new Set(prev);
+        next.delete(selectedConvId);
+        return next;
+      });
+    }
+  }, [selectedConvId, selectedConv?.classificationStatus, selectedConv?.translationStatus]);
 
   // Check if conversation has any messages needing translation
   const hasTranslatableMessages = useMemo(() => {
@@ -299,13 +326,7 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
                         <button
                           onClick={() => {
                             setPendingClassify((prev) => new Set(prev).add(selectedConvId!));
-                            classifySingle({ conversationId: selectedConvId! }).finally(() =>
-                              setPendingClassify((prev) => {
-                                const next = new Set(prev);
-                                next.delete(selectedConvId!);
-                                return next;
-                              }),
-                            );
+                            classifySingle({ conversationId: selectedConvId! });
                           }}
                           className="bg-accent text-bg font-medium px-3 py-1 rounded text-[10px] hover:opacity-90"
                         >
@@ -337,13 +358,7 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
                         <button
                           onClick={() => {
                             setPendingTranslate((prev) => new Set(prev).add(selectedConvId!));
-                            translateSingle({ conversationId: selectedConvId! }).finally(() =>
-                              setPendingTranslate((prev) => {
-                                const next = new Set(prev);
-                                next.delete(selectedConvId!);
-                                return next;
-                              }),
-                            );
+                            translateSingle({ conversationId: selectedConvId! });
                           }}
                           className="bg-[#c084fc] text-bg font-medium px-3 py-1 rounded text-[10px] hover:opacity-90"
                         >
