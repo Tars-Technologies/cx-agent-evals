@@ -1,43 +1,34 @@
 import type {
   RawTranscriptsFile,
-  MicrotopicsFile,
   BasicStats,
-  MicrotopicType,
-  Microtopic,
+  MessageTypeCategory,
+  MessageType,
+  Exchange,
+  ExtractedInfo,
 } from "rag-evaluation-system/data-analysis";
 
-export type LivechatTab = "stats" | "transcripts" | "microtopics";
+export type LivechatTab = "stats" | "conversations";
 
-// Types mirrored from the Convex row so components don't need
-// to import from the backend's _generated types.
-export type UploadStatus = "pending" | "parsing" | "ready" | "failed";
-export type MicrotopicsStatus =
-  | "pending"
-  | "running"
-  | "ready"
-  | "failed"
-  | "skipped";
+export type UploadStatus = "pending" | "parsing" | "ready" | "failed" | "deleting";
 
-export interface LoadedData {
-  basicStats: BasicStats | null;
-  rawTranscripts: RawTranscriptsFile | null;
-  microtopics: MicrotopicsFile | null;
-}
+export type ClassificationStatus = "none" | "running" | "done" | "failed";
+export type TranslationStatus = "none" | "running" | "done" | "failed";
 
-export interface MicrotopicByTypeItem {
+export interface MessageTypeItem {
   conversationId: string;
   visitorName: string;
   agentName: string;
   language: string;
-  microtopic: Microtopic;
+  messageType: MessageType;
 }
 
-export type MicrotopicsByType = Map<MicrotopicType, MicrotopicByTypeItem[]>;
+export type MessagesByType = Map<MessageTypeCategory, MessageTypeItem[]>;
 
 export type {
   RawTranscriptsFile,
-  MicrotopicsFile,
   BasicStats,
-  MicrotopicType,
-  Microtopic,
+  MessageTypeCategory,
+  MessageType,
+  Exchange,
+  ExtractedInfo,
 };
