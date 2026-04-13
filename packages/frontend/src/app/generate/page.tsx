@@ -185,7 +185,9 @@ function GeneratePageContent() {
 
   // Phase status from generation job
   const phaseStatus = job?.phase
-    ? `${job.phase}... (${job.processedItems}/${job.totalItems})`
+    ? job.phase === "preparing"
+      ? "Phase: Preparing │ Docs: — │ Questions: —"
+      : `Phase: Generating │ ${job.processedItems} of ${job.totalItems} docs │ ${job.questionsGenerated ?? 0} questions`
     : null;
   const totalDone = job?.status === "completed" || job?.status === "completed_with_errors"
     ? (questions.length || null)
@@ -210,7 +212,9 @@ function GeneratePageContent() {
   const displayPhaseStatus = mode === "generate"
     ? phaseStatus
     : browsingActiveDataset
-      ? `${activeJob.phase}... (${activeJob.processedItems}/${activeJob.totalItems})`
+      ? activeJob.phase === "preparing"
+        ? "Phase: Preparing │ Docs: — │ Questions: —"
+        : `Phase: Generating │ ${activeJob.processedItems} of ${activeJob.totalItems} docs │ ${activeJob.questionsGenerated ?? 0} questions`
       : null;
 
   // When a question is selected, load its source document
@@ -259,6 +263,7 @@ function GeneratePageContent() {
             phase={activeJob.phase}
             processedItems={activeJob.processedItems}
             totalItems={activeJob.totalItems}
+            questionsGenerated={activeJob.questionsGenerated ?? 0}
             onView={() => {
               // Switch to the KB and dataset of the active job
               if (activeJob.kbId !== selectedKbId) {
