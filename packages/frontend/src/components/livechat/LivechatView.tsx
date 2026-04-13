@@ -1,21 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
 import { ResizablePanel } from "../ResizablePanel";
 import { TabBar } from "./TabBar";
 import { StatsTab } from "./StatsTab";
-import { TranscriptsTab } from "./TranscriptsTab";
-import { MicrotopicsTab } from "./MicrotopicsTab";
-import type {
-  LivechatTab,
-  LoadedData,
-  RawTranscriptsFile,
-  MicrotopicsFile,
-  BasicStats,
-} from "./types";
+import { ConversationsTab } from "./ConversationsTab";
+import type { LivechatTab, BasicStats } from "./types";
 
 function DeleteConfirmModal({
   filename,
@@ -79,31 +72,11 @@ export function LivechatView() {
     useState<Id<"livechatUploads"> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Large blob state — fetched lazily via signed URLs
-  const [rawTranscriptsData, setRawTranscriptsData] =
-    useState<RawTranscriptsFile | null>(null);
-  const [microtopicsData, setMicrotopicsData] =
-    useState<MicrotopicsFile | null>(null);
-  const lastFetchedRawUrl = useRef<string | null>(null);
-  const lastFetchedMicroUrl = useRef<string | null>(null);
-
   // Reactive Convex queries
   const uploads = useQuery(api.livechat.orchestration.list) ?? [];
   const selectedUpload = useQuery(
     api.livechat.orchestration.get,
     selectedUploadId ? { id: selectedUploadId } : "skip",
-  );
-  const rawTranscriptsUrl = useQuery(
-    api.livechat.orchestration.getDownloadUrl,
-    selectedUploadId && selectedUpload?.status === "ready"
-      ? { id: selectedUploadId, type: "rawTranscripts" as const }
-      : "skip",
-  );
-  const microtopicsUrl = useQuery(
-    api.livechat.orchestration.getDownloadUrl,
-    selectedUploadId && selectedUpload?.microtopicsStatus === "ready"
-      ? { id: selectedUploadId, type: "microtopics" as const }
-      : "skip",
   );
 
   // Mutations
@@ -112,42 +85,6 @@ export function LivechatView() {
   );
   const createUpload = useMutation(api.livechat.orchestration.create);
   const removeUpload = useMutation(api.livechat.orchestration.remove);
-
-  // Clear blob state when selection changes
-  useEffect(() => {
-    setRawTranscriptsData(null);
-    setMicrotopicsData(null);
-    lastFetchedRawUrl.current = null;
-    lastFetchedMicroUrl.current = null;
-  }, [selectedUploadId]);
-
-  // Fetch raw transcripts JSON when URL is available
-  useEffect(() => {
-    if (!rawTranscriptsUrl) return;
-    if (lastFetchedRawUrl.current === rawTranscriptsUrl) return;
-    lastFetchedRawUrl.current = rawTranscriptsUrl;
-    fetch(rawTranscriptsUrl)
-      .then((r) => r.json())
-      .then((data: RawTranscriptsFile) => setRawTranscriptsData(data))
-      .catch((err) => {
-        console.error("Failed to fetch raw transcripts:", err);
-        lastFetchedRawUrl.current = null;
-      });
-  }, [rawTranscriptsUrl]);
-
-  // Fetch microtopics JSON when URL is available
-  useEffect(() => {
-    if (!microtopicsUrl) return;
-    if (lastFetchedMicroUrl.current === microtopicsUrl) return;
-    lastFetchedMicroUrl.current = microtopicsUrl;
-    fetch(microtopicsUrl)
-      .then((r) => r.json())
-      .then((data: MicrotopicsFile) => setMicrotopicsData(data))
-      .catch((err) => {
-        console.error("Failed to fetch microtopics:", err);
-        lastFetchedMicroUrl.current = null;
-      });
-  }, [microtopicsUrl]);
 
   async function handleUpload(file: File) {
     try {
@@ -180,12 +117,6 @@ export function LivechatView() {
       console.error("Delete failed:", err);
     }
   }
-
-  const loadedData: LoadedData = {
-    basicStats: (selectedUpload?.basicStats as BasicStats | undefined) ?? null,
-    rawTranscripts: rawTranscriptsData,
-    microtopics: microtopicsData,
-  };
 
   const deleteTargetUpload = uploads.find((u) => u._id === deleteTargetId) ?? null;
 
@@ -222,7 +153,7 @@ export function LivechatView() {
             const isBusy =
               upload.status === "pending" ||
               upload.status === "parsing" ||
-              upload.microtopicsStatus === "running";
+              upload.status === "deleting";
             return (
               <div
                 key={upload._id}
@@ -243,28 +174,21 @@ export function LivechatView() {
                         {upload.conversationCount.toLocaleString()} convos
                       </span>
                     )}
-                    <span
-                      className={`px-1 py-0.5 rounded text-[9px] ${
-                        upload.status === "ready"
-                          ? "bg-accent/10 text-accent"
-                          : upload.status === "failed"
-                            ? "bg-red-500/10 text-red-400"
-                            : "bg-yellow-500/10 text-yellow-400"
-                      }`}
-                    >
-                      {upload.status}
-                    </span>
-                    {upload.status === "ready" && (
+                    {upload.status === "parsing" && upload.parsedConversations != null ? (
+                      <span className="px-1 py-0.5 rounded text-[9px] bg-yellow-500/10 text-yellow-400">
+                        parsing {upload.parsedConversations}...
+                      </span>
+                    ) : (
                       <span
                         className={`px-1 py-0.5 rounded text-[9px] ${
-                          upload.microtopicsStatus === "ready"
+                          upload.status === "ready"
                             ? "bg-accent/10 text-accent"
-                            : upload.microtopicsStatus === "failed"
+                            : upload.status === "failed"
                               ? "bg-red-500/10 text-red-400"
                               : "bg-yellow-500/10 text-yellow-400"
                         }`}
                       >
-                        mt:{upload.microtopicsStatus}
+                        {upload.status}
                       </span>
                     )}
                   </div>
@@ -311,20 +235,10 @@ export function LivechatView() {
         <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
         <div className="flex-1 overflow-hidden">
           {activeTab === "stats" && (
-            <StatsTab stats={loadedData.basicStats} />
+            <StatsTab stats={(selectedUpload?.basicStats as BasicStats | undefined) ?? null} />
           )}
-          {activeTab === "transcripts" && (
-            <TranscriptsTab data={loadedData.rawTranscripts} />
-          )}
-          {activeTab === "microtopics" && (
-            <MicrotopicsTab
-              microtopicsData={loadedData.microtopics}
-              rawData={loadedData.rawTranscripts}
-              microtopicsStatus={
-                selectedUpload?.microtopicsStatus ?? "pending"
-              }
-              microtopicsError={selectedUpload?.microtopicsError}
-            />
+          {activeTab === "conversations" && selectedUpload && (
+            <ConversationsTab uploadId={selectedUpload._id} />
           )}
         </div>
       </div>

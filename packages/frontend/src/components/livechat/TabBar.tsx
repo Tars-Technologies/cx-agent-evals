@@ -4,8 +4,7 @@ import type { LivechatTab } from "./types";
 
 const TABS: { key: LivechatTab; label: string }[] = [
   { key: "stats", label: "Stats" },
-  { key: "transcripts", label: "Transcripts" },
-  { key: "microtopics", label: "Microtopics" },
+  { key: "conversations", label: "Conversations" },
 ];
 
 export function TabBar({
