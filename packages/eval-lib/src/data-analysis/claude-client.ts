@@ -6,11 +6,11 @@ import type {
 
 const SYSTEM_PROMPT = `You are analyzing customer support chat transcripts from a telecom company (Vodafone Qatar).
 
-Your task is to segment the conversation into microtopics and classify each one. You will receive messages with their IDs. Return ONLY message IDs and classifications — do NOT reproduce message text.
+Your task is to segment the conversation into message types and classify each one. You will receive messages with their IDs. Return ONLY message IDs and classifications — do NOT reproduce message text.
 
 Conversations may be in English, Arabic, or a mix of both. Classify based on the semantic content regardless of language.
 
-Microtopic types:
+Message type categories:
 - identity_info: User shares personal information (name, phone, email, address, QID) or agent asks for/confirms it
 - question: User asks a factual question about products, services, pricing, plans, coverage, features, etc.
 - request: User makes a request, negotiation, or states a preference (e.g., "I want X", "Can you give me Y", "I need a discount")
@@ -29,12 +29,12 @@ Rules:
 7. A single message from the agent (like a greeting or closing template) can be its own microtopic`;
 
 const TOOL_SCHEMA = {
-  name: "classify_microtopics",
-  description: "Classify conversation messages into microtopics",
+  name: "classify_message_types",
+  description: "Classify conversation messages into message types",
   input_schema: {
     type: "object" as const,
     properties: {
-      microtopics: {
+      messageTypes: {
         type: "array",
         items: {
           type: "object",
@@ -78,7 +78,7 @@ const TOOL_SCHEMA = {
         },
       },
     },
-    required: ["microtopics"],
+    required: ["messageTypes"],
   },
 };
 
@@ -103,7 +103,7 @@ export async function classifyConversation(
 ): Promise<LLMExtractionResult> {
   const userContent = `Messages:\n${JSON.stringify(
     messages.map((m) => ({ id: m.id, role: m.role, text: m.text }))
-  )}\n\nClassify these messages into microtopics using the classify_microtopics tool.`;
+  )}\n\nClassify these messages into message types using the classify_message_types tool.`;
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -112,7 +112,7 @@ export async function classifyConversation(
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         tools: [TOOL_SCHEMA],
-        tool_choice: { type: "tool", name: "classify_microtopics" },
+        tool_choice: { type: "tool", name: "classify_message_types" },
         messages: [{ role: "user", content: userContent }],
       });
 
@@ -121,7 +121,8 @@ export async function classifyConversation(
         throw new Error("No tool_use block in response");
       }
 
-      return toolBlock.input as LLMExtractionResult;
+      const raw = toolBlock.input as { messageTypes: any[] };
+      return { microtopics: raw.messageTypes };
     } catch (err: any) {
       if (attempt < retries && err?.status === 429) {
         const wait = Math.pow(2, attempt) * 1000;
