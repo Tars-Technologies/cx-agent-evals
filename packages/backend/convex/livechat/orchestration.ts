@@ -1,6 +1,12 @@
-import { internalMutation, mutation, query } from "../_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "../_generated/server";
 import { components, internal } from "../_generated/api";
 import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { Workpool, vOnCompleteArgs, type RunResult } from "@convex-dev/workpool";
 import { getAuthContext } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
@@ -15,7 +21,7 @@ const pool = new Workpool(components.livechatAnalysisPool, {
   retryActionsByDefault: false,
 });
 
-// ─── Internal mutations (called from the action) ───
+// ─── Internal mutations (parse pipeline) ───
 
 export const markParsing = internalMutation({
   args: { uploadId: v.id("livechatUploads") },
@@ -27,19 +33,30 @@ export const markParsing = internalMutation({
   },
 });
 
+export const markParsingProgress = internalMutation({
+  args: {
+    uploadId: v.id("livechatUploads"),
+    processed: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.uploadId, {
+      parsedConversations: args.processed,
+    });
+  },
+});
+
 export const markReady = internalMutation({
   args: {
     uploadId: v.id("livechatUploads"),
     basicStats: v.any(),
-    rawTranscriptsStorageId: v.id("_storage"),
     conversationCount: v.number(),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.uploadId, {
       status: "ready",
       basicStats: args.basicStats,
-      rawTranscriptsStorageId: args.rawTranscriptsStorageId,
       conversationCount: args.conversationCount,
+      completedAt: Date.now(),
     });
   },
 });
@@ -58,44 +75,138 @@ export const markFailed = internalMutation({
   },
 });
 
-export const markMicrotopicsRunning = internalMutation({
+export const insertConversationBatch = internalMutation({
+  args: {
+    uploadId: v.id("livechatUploads"),
+    orgId: v.string(),
+    conversations: v.array(v.any()),
+  },
+  handler: async (ctx, args) => {
+    for (const conv of args.conversations) {
+      await ctx.db.insert("livechatConversations", {
+        uploadId: args.uploadId,
+        orgId: args.orgId,
+        conversationId: conv.conversationId,
+        visitorId: conv.visitorId,
+        visitorName: conv.visitorName,
+        visitorPhone: conv.visitorPhone,
+        visitorEmail: conv.visitorEmail,
+        agentId: conv.agentId,
+        agentName: conv.agentName,
+        agentEmail: conv.agentEmail,
+        inbox: conv.inbox,
+        labels: conv.labels,
+        status: conv.status,
+        messages: conv.messages,
+        metadata: conv.metadata,
+        botFlowInput: conv.botFlowInput ?? undefined,
+        classificationStatus: "none",
+        classificationError: undefined,
+        translatedMessages: undefined,
+        translationStatus: "none",
+        translationError: undefined,
+        messageTypes: undefined,
+      });
+    }
+  },
+});
+
+// ─── Internal mutations (classify / translate) ───
+
+export const patchClassificationStatus = internalMutation({
+  args: {
+    conversationId: v.id("livechatConversations"),
+    status: v.union(
+      v.literal("none"),
+      v.literal("running"),
+      v.literal("done"),
+      v.literal("failed"),
+    ),
+    messageTypes: v.optional(v.any()),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.conversationId, {
+      classificationStatus: args.status,
+      ...(args.messageTypes !== undefined ? { messageTypes: args.messageTypes } : {}),
+      ...(args.error !== undefined ? { classificationError: args.error } : {}),
+    });
+  },
+});
+
+export const patchTranslationStatus = internalMutation({
+  args: {
+    conversationId: v.id("livechatConversations"),
+    status: v.union(
+      v.literal("none"),
+      v.literal("running"),
+      v.literal("done"),
+      v.literal("failed"),
+    ),
+    translatedMessages: v.optional(
+      v.array(
+        v.object({
+          id: v.number(),
+          text: v.string(),
+        }),
+      ),
+    ),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.conversationId, {
+      translationStatus: args.status,
+      ...(args.translatedMessages !== undefined
+        ? { translatedMessages: args.translatedMessages }
+        : {}),
+      ...(args.error !== undefined ? { translationError: args.error } : {}),
+    });
+  },
+});
+
+export const deleteConversationBatch = internalMutation({
+  args: {
+    ids: v.array(v.id("livechatConversations")),
+  },
+  handler: async (ctx, args) => {
+    for (const id of args.ids) {
+      await ctx.db.delete(id);
+    }
+  },
+});
+
+// ─── Internal queries (needed by actions) ───
+
+export const getUploadInternal = internalQuery({
   args: { uploadId: v.id("livechatUploads") },
+  handler: async (ctx, args) => ctx.db.get(args.uploadId),
+});
+
+export const getConversationInternal = internalQuery({
+  args: { id: v.id("livechatConversations") },
+  handler: async (ctx, args) => ctx.db.get(args.id),
+});
+
+export const getConversationBatchForDelete = internalQuery({
+  args: { uploadId: v.id("livechatUploads"), limit: v.number() },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.uploadId, {
-      microtopicsStatus: "running",
-    });
+    return await ctx.db
+      .query("livechatConversations")
+      .withIndex("by_upload", (q) => q.eq("uploadId", args.uploadId))
+      .take(args.limit);
   },
 });
 
-export const markMicrotopicsReady = internalMutation({
-  args: {
-    uploadId: v.id("livechatUploads"),
-    microtopicsStorageId: v.id("_storage"),
-    processedConversations: v.number(),
-    failedConversationCount: v.number(),
-  },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.uploadId, {
-      microtopicsStatus: "ready",
-      microtopicsStorageId: args.microtopicsStorageId,
-      processedConversations: args.processedConversations,
-      failedConversationCount: args.failedConversationCount,
-      completedAt: Date.now(),
-    });
-  },
-});
+// ─── Internal mutation (cascade delete) ───
 
-export const markMicrotopicsFailed = internalMutation({
+export const finalizeDelete = internalMutation({
   args: {
     uploadId: v.id("livechatUploads"),
-    error: v.string(),
+    csvStorageId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.uploadId, {
-      microtopicsStatus: "failed",
-      microtopicsError: args.error,
-      completedAt: Date.now(),
-    });
+    await ctx.storage.delete(args.csvStorageId);
+    await ctx.db.delete(args.uploadId);
   },
 });
 
@@ -129,7 +240,6 @@ export const create = mutation({
       filename: args.filename,
       csvStorageId: args.csvStorageId,
       status: "pending",
-      microtopicsStatus: "pending",
       createdAt: Date.now(),
     });
 
@@ -143,7 +253,7 @@ export const create = mutation({
       },
       {
         context: { uploadId },
-        onComplete: internal.livechat.orchestration.onAnalysisComplete,
+        onComplete: internal.livechat.orchestration.onParseComplete,
       },
     );
 
@@ -158,29 +268,112 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const { orgId } = await getAuthContext(ctx);
     const row = await ctx.db.get(args.id);
-    if (!row || row.orgId !== orgId) {
-      throw new Error("Upload not found");
+    if (!row || row.orgId !== orgId) throw new Error("Upload not found");
+    if (row.status === "pending" || row.status === "parsing") {
+      throw new Error("Cannot delete upload while parsing is in progress");
     }
-
-    // Reject if busy
-    const busy =
-      row.status === "pending" ||
-      row.status === "parsing" ||
-      row.microtopicsStatus === "running";
-    if (busy) {
-      throw new Error("Cannot delete upload while analysis is in progress");
-    }
-
-    await ctx.storage.delete(row.csvStorageId);
-    if (row.rawTranscriptsStorageId != null) {
-      await ctx.storage.delete(row.rawTranscriptsStorageId);
-    }
-    if (row.microtopicsStorageId != null) {
-      await ctx.storage.delete(row.microtopicsStorageId);
-    }
-    await ctx.db.delete(row._id);
-
+    await ctx.db.patch(args.id, { status: "deleting" });
+    await ctx.scheduler.runAfter(0, internal.livechat.actions.deleteUploadData, {
+      uploadId: args.id,
+      csvStorageId: row.csvStorageId,
+    });
     return { ok: true };
+  },
+});
+
+export const classifyBatch = mutation({
+  args: {
+    uploadId: v.id("livechatUploads"),
+    conversationIds: v.array(v.id("livechatConversations")),
+  },
+  handler: async (ctx, args): Promise<{ workId: string }> => {
+    const { orgId } = await getAuthContext(ctx);
+    if (args.conversationIds.length > 100) {
+      throw new Error("Cannot classify more than 100 conversations at once");
+    }
+    for (const convId of args.conversationIds) {
+      const conv = await ctx.db.get(convId);
+      if (!conv || conv.uploadId !== args.uploadId || conv.orgId !== orgId) {
+        throw new Error(`Conversation ${convId} not found or access denied`);
+      }
+    }
+    const workId = await pool.enqueueAction(
+      ctx,
+      internal.livechat.actions.classifyConversations,
+      { conversationIds: args.conversationIds },
+      {
+        context: { conversationIds: args.conversationIds },
+        onComplete: internal.livechat.orchestration.onClassifyComplete,
+      },
+    );
+    return { workId: workId as string };
+  },
+});
+
+export const translateBatch = mutation({
+  args: {
+    uploadId: v.id("livechatUploads"),
+    conversationIds: v.array(v.id("livechatConversations")),
+  },
+  handler: async (ctx, args): Promise<{ workId: string }> => {
+    const { orgId } = await getAuthContext(ctx);
+    if (args.conversationIds.length > 100) {
+      throw new Error("Cannot translate more than 100 conversations at once");
+    }
+    for (const convId of args.conversationIds) {
+      const conv = await ctx.db.get(convId);
+      if (!conv || conv.uploadId !== args.uploadId || conv.orgId !== orgId) {
+        throw new Error(`Conversation ${convId} not found or access denied`);
+      }
+    }
+    const workId = await pool.enqueueAction(
+      ctx,
+      internal.livechat.actions.translateConversations,
+      { conversationIds: args.conversationIds },
+      {
+        context: { conversationIds: args.conversationIds },
+        onComplete: internal.livechat.orchestration.onTranslateComplete,
+      },
+    );
+    return { workId: workId as string };
+  },
+});
+
+export const classifySingle = mutation({
+  args: { conversationId: v.id("livechatConversations") },
+  handler: async (ctx, args): Promise<{ workId: string }> => {
+    const { orgId } = await getAuthContext(ctx);
+    const conv = await ctx.db.get(args.conversationId);
+    if (!conv || conv.orgId !== orgId) throw new Error("Conversation not found");
+    const workId = await pool.enqueueAction(
+      ctx,
+      internal.livechat.actions.classifyConversations,
+      { conversationIds: [args.conversationId] },
+      {
+        context: { conversationIds: [args.conversationId] },
+        onComplete: internal.livechat.orchestration.onClassifyComplete,
+      },
+    );
+    return { workId: workId as string };
+  },
+});
+
+export const translateSingle = mutation({
+  args: { conversationId: v.id("livechatConversations") },
+  handler: async (ctx, args): Promise<{ workId: string }> => {
+    const { orgId } = await getAuthContext(ctx);
+    const conv = await ctx.db.get(args.conversationId);
+    if (!conv || conv.orgId !== orgId) throw new Error("Conversation not found");
+    const workId = await pool.enqueueAction(
+      ctx,
+      internal.livechat.actions.translateConversations,
+      { conversationIds: [args.conversationId] },
+      {
+        context: { conversationIds: [args.conversationId] },
+        onComplete: internal.livechat.orchestration.onTranslateComplete,
+      },
+    );
+    return { workId: workId as string };
   },
 });
 
@@ -211,32 +404,77 @@ export const get = query({
   },
 });
 
-export const getDownloadUrl = query({
+export const listConversations = query({
   args: {
-    id: v.id("livechatUploads"),
-    type: v.union(
-      v.literal("rawTranscripts"),
-      v.literal("microtopics"),
-    ),
+    uploadId: v.id("livechatUploads"),
+    paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
     const { orgId } = await getAuthContext(ctx);
-    const row = await ctx.db.get(args.id);
-    if (!row || row.orgId !== orgId) {
-      return null;
-    }
-    const storageId =
-      args.type === "rawTranscripts"
-        ? row.rawTranscriptsStorageId
-        : row.microtopicsStorageId;
-    if (!storageId) return null;
-    return await ctx.storage.getUrl(storageId);
+    const upload = await ctx.db.get(args.uploadId);
+    if (!upload || upload.orgId !== orgId)
+      return { page: [], isDone: true, continueCursor: "" };
+
+    return await ctx.db
+      .query("livechatConversations")
+      .withIndex("by_upload", (q) => q.eq("uploadId", args.uploadId))
+      .paginate(args.paginationOpts);
   },
 });
 
-// ─── WorkPool onComplete callback ───
+export const getConversation = query({
+  args: { id: v.id("livechatConversations") },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+    const row = await ctx.db.get(args.id);
+    if (!row || row.orgId !== orgId) return null;
+    return row;
+  },
+});
 
-export const onAnalysisComplete = internalMutation({
+export const getClassificationCounts = query({
+  args: { uploadId: v.id("livechatUploads") },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+    const upload = await ctx.db.get(args.uploadId);
+    if (!upload || upload.orgId !== orgId)
+      return { total: 0, classified: 0, running: 0, failed: 0 };
+    const all = await ctx.db
+      .query("livechatConversations")
+      .withIndex("by_upload", (q) => q.eq("uploadId", args.uploadId))
+      .collect();
+    return {
+      total: all.length,
+      classified: all.filter((c) => c.classificationStatus === "done").length,
+      running: all.filter((c) => c.classificationStatus === "running").length,
+      failed: all.filter((c) => c.classificationStatus === "failed").length,
+    };
+  },
+});
+
+export const listByMessageType = query({
+  args: { uploadId: v.id("livechatUploads"), type: v.string() },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+    const upload = await ctx.db.get(args.uploadId);
+    if (!upload || upload.orgId !== orgId) return [];
+    const classified = await ctx.db
+      .query("livechatConversations")
+      .withIndex("by_upload_classification", (q) =>
+        q.eq("uploadId", args.uploadId).eq("classificationStatus", "done"),
+      )
+      .collect();
+    return classified.filter(
+      (c) =>
+        Array.isArray(c.messageTypes) &&
+        c.messageTypes.some((mt: any) => mt.type === args.type),
+    );
+  },
+});
+
+// ─── WorkPool onComplete callbacks ───
+
+export const onParseComplete = internalMutation({
   args: vOnCompleteArgs(
     v.object({
       uploadId: v.id("livechatUploads"),
@@ -244,38 +482,103 @@ export const onAnalysisComplete = internalMutation({
   ),
   handler: async (
     ctx,
-    { context, result }: {
+    {
+      context,
+      result,
+    }: {
       workId: string;
       context: { uploadId: Id<"livechatUploads"> };
       result: RunResult;
     },
   ) => {
-    // If the action crashed before writing any terminal status to the row,
-    // patch it as failed here. If it already wrote a terminal status, this
-    // callback is a no-op.
     const row = await ctx.db.get(context.uploadId);
     if (!row) return;
 
-    const alreadyTerminal =
-      row.status === "ready" ||
-      row.status === "failed" ||
-      row.microtopicsStatus === "ready" ||
-      row.microtopicsStatus === "failed";
-
+    const alreadyTerminal = row.status === "ready" || row.status === "failed";
     if (alreadyTerminal) return;
 
     if (result.kind === "failed") {
       await ctx.db.patch(context.uploadId, {
         status: "failed",
-        error: result.error ?? "Analysis action crashed without writing status",
+        error: result.error ?? "Parse action crashed without writing status",
         completedAt: Date.now(),
       });
     } else if (result.kind === "canceled") {
       await ctx.db.patch(context.uploadId, {
         status: "failed",
-        error: "Analysis was canceled",
+        error: "Parse was canceled",
         completedAt: Date.now(),
       });
+    }
+  },
+});
+
+export const onClassifyComplete = internalMutation({
+  args: vOnCompleteArgs(
+    v.object({
+      conversationIds: v.array(v.id("livechatConversations")),
+    }),
+  ),
+  handler: async (
+    ctx,
+    {
+      context,
+      result,
+    }: {
+      workId: string;
+      context: { conversationIds: Id<"livechatConversations">[] };
+      result: RunResult;
+    },
+  ) => {
+    if (result.kind === "success") return;
+
+    // Action crashed — patch any conversations still in "running" to "failed"
+    for (const convId of context.conversationIds) {
+      const conv = await ctx.db.get(convId);
+      if (conv && conv.classificationStatus === "running") {
+        await ctx.db.patch(convId, {
+          classificationStatus: "failed",
+          classificationError:
+            result.kind === "failed"
+              ? (result.error ?? "Classification action crashed")
+              : "Classification was canceled",
+        });
+      }
+    }
+  },
+});
+
+export const onTranslateComplete = internalMutation({
+  args: vOnCompleteArgs(
+    v.object({
+      conversationIds: v.array(v.id("livechatConversations")),
+    }),
+  ),
+  handler: async (
+    ctx,
+    {
+      context,
+      result,
+    }: {
+      workId: string;
+      context: { conversationIds: Id<"livechatConversations">[] };
+      result: RunResult;
+    },
+  ) => {
+    if (result.kind === "success") return;
+
+    // Action crashed — patch any conversations still in "running" to "failed"
+    for (const convId of context.conversationIds) {
+      const conv = await ctx.db.get(convId);
+      if (conv && conv.translationStatus === "running") {
+        await ctx.db.patch(convId, {
+          translationStatus: "failed",
+          translationError:
+            result.kind === "failed"
+              ? (result.error ?? "Translation action crashed")
+              : "Translation was canceled",
+        });
+      }
     }
   },
 });
