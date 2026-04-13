@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Microtopic } from "rag-evaluation-system/data-analysis";
+import type { MessageType } from "rag-evaluation-system/data-analysis";
 import { ChatBubble } from "./ChatBubble";
 
 const TYPE_COLORS: Record<string, { badge: string; border: string }> = {
@@ -14,31 +14,31 @@ const TYPE_COLORS: Record<string, { badge: string; border: string }> = {
   uncategorized: { badge: "bg-bg-surface text-text-dim", border: "border-border" },
 };
 
-export function MicrotopicCard({
-  microtopic,
+export function MessageTypeCard({
+  messageType,
   agentName,
   forceExpanded,
 }: {
-  microtopic: Microtopic;
+  messageType: MessageType;
   agentName?: string;
   forceExpanded?: boolean;
 }) {
   const [localExpanded, setLocalExpanded] = useState(forceExpanded ?? false);
   const expanded = forceExpanded ?? localExpanded;
-  const colors = TYPE_COLORS[microtopic.type] ?? TYPE_COLORS.uncategorized;
-  const msgCount = microtopic.exchanges.reduce(
+  const colors = TYPE_COLORS[messageType.type] ?? TYPE_COLORS.uncategorized;
+  const msgCount = messageType.exchanges.reduce(
     (s, e) => s + e.messages.length,
     0
   );
 
   // For uncategorized workflow messages, show compact inline
   if (
-    microtopic.type === "uncategorized" &&
-    microtopic.exchanges.every((e) =>
+    messageType.type === "uncategorized" &&
+    messageType.exchanges.every((e) =>
       e.messages.every((m) => m.role === "workflow_input")
     )
   ) {
-    const text = microtopic.exchanges
+    const text = messageType.exchanges
       .flatMap((e) => e.messages)
       .map((m) => m.text)
       .join(" · ");
@@ -50,10 +50,10 @@ export function MicrotopicCard({
   }
 
   const previewText =
-    microtopic.type === "identity_info" && microtopic.extracted?.length
-      ? microtopic.extracted.map((e) => `${e.type}: ${e.value}`).join(" · ")
-      : microtopic.exchanges[0]?.messages.find((m) => m.role === "user")?.text ??
-        microtopic.exchanges[0]?.messages[0]?.text ??
+    messageType.type === "identity_info" && messageType.extracted?.length
+      ? messageType.extracted.map((e) => `${e.type}: ${e.value}`).join(" · ")
+      : messageType.exchanges[0]?.messages.find((m) => m.role === "user")?.text ??
+        messageType.exchanges[0]?.messages[0]?.text ??
         "";
 
   return (
@@ -71,7 +71,7 @@ export function MicrotopicCard({
           <span
             className={`text-[9px] px-1.5 py-0 rounded ${colors.badge}`}
           >
-            {microtopic.type}
+            {messageType.type}
           </span>
           {!expanded && (
             <span className="text-text-muted text-xs truncate">
@@ -80,13 +80,13 @@ export function MicrotopicCard({
           )}
         </div>
         <span className="text-text-dim text-[10px] ml-2 whitespace-nowrap">
-          {msgCount} msgs · {microtopic.exchanges.length} ex
+          {msgCount} msgs · {messageType.exchanges.length} ex
         </span>
       </button>
 
       {expanded && (
         <div className="border-t border-border">
-          {microtopic.exchanges.map((exchange, i) => (
+          {messageType.exchanges.map((exchange, i) => (
             <div
               key={i}
               className={
@@ -111,9 +111,9 @@ export function MicrotopicCard({
               </div>
             </div>
           ))}
-          {microtopic.extracted && microtopic.extracted.length > 0 && (
+          {messageType.extracted && messageType.extracted.length > 0 && (
             <div className="px-2.5 py-1.5 border-t border-border/50 flex gap-1 flex-wrap">
-              {microtopic.extracted.map((info, i) => (
+              {messageType.extracted.map((info, i) => (
                 <span
                   key={i}
                   className="text-[9px] bg-bg-hover text-text-muted rounded px-1.5 py-0.5"
