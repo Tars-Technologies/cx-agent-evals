@@ -8,6 +8,7 @@ import type {
   MicrotopicType,
 } from "rag-evaluation-system/data-analysis";
 import type { MicrotopicByTypeItem, MicrotopicsByType } from "./types";
+import { ResizablePanel } from "../ResizablePanel";
 import { ConversationList } from "./ConversationList";
 import { MicrotopicCard } from "./MicrotopicCard";
 import { TopicTypeFeed } from "./TopicTypeFeed";
@@ -152,7 +153,7 @@ export function MicrotopicsTab({
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left panel */}
-      <div className="w-[220px] border-r border-border flex flex-col">
+      <ResizablePanel storageKey="livechat-microtopics-panel" defaultWidth={220} className="border-r border-border flex flex-col">
         {/* Toggle */}
         <div className="p-1.5 border-b border-border">
           <div className="flex bg-bg-surface rounded border border-border overflow-hidden">
@@ -233,7 +234,7 @@ export function MicrotopicsTab({
             })}
           </div>
         )}
-      </div>
+      </ResizablePanel>
 
       {/* Right panel */}
       <div className="flex-1 flex flex-col overflow-hidden">

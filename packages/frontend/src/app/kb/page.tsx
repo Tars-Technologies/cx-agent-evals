@@ -11,6 +11,7 @@ import { CreateKBModal } from "@/components/CreateKBModal";
 import { ImportUrlModal } from "@/components/ImportUrlModal";
 import { MarkdownViewer } from "@/components/MarkdownViewer";
 import { INDUSTRIES } from "@/lib/constants";
+import { ResizablePanel } from "@/components/ResizablePanel";
 import { LivechatView } from "@/components/livechat/LivechatView";
 
 export default function KBPage() {
@@ -227,7 +228,7 @@ function KBPageContent() {
         ) : (
           <>
         {/* Document Panel (left, ~30%) */}
-        <div className="w-[360px] border-r border-border flex flex-col bg-bg-elevated">
+        <ResizablePanel storageKey="kb-documents" defaultWidth={360} className="border-r border-border flex flex-col bg-bg-elevated">
           {selectedKbId ? (
             <>
               {/* Search */}
@@ -364,7 +365,7 @@ function KBPageContent() {
               Select a knowledge base to manage its documents.
             </div>
           )}
-        </div>
+        </ResizablePanel>
 
         {/* Content Viewer (right, ~70%) */}
         <div className="flex-1 overflow-hidden flex flex-col bg-bg">

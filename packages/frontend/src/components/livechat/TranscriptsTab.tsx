@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import type { RawTranscriptsFile, RawConversation } from "rag-evaluation-system/data-analysis";
+import { ResizablePanel } from "../ResizablePanel";
 import { ConversationList } from "./ConversationList";
 import { ChatBubble } from "./ChatBubble";
 
@@ -35,13 +36,13 @@ export function TranscriptsTab({
   return (
     <div className="flex h-full overflow-hidden">
       {/* Conversation list */}
-      <div className="w-[220px] border-r border-border">
+      <ResizablePanel storageKey="livechat-transcripts-convos" defaultWidth={220} className="border-r border-border">
         <ConversationList
           conversations={conversations}
           selectedId={selectedConvId}
           onSelect={setSelectedConvId}
         />
-      </div>
+      </ResizablePanel>
 
       {/* Chat detail */}
       <div className="flex-1 flex flex-col overflow-hidden">

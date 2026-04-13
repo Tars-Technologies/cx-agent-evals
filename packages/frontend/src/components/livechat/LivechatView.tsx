@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
+import { ResizablePanel } from "../ResizablePanel";
 import { TabBar } from "./TabBar";
 import { StatsTab } from "./StatsTab";
 import { TranscriptsTab } from "./TranscriptsTab";
@@ -191,7 +192,7 @@ export function LivechatView() {
   return (
     <div className="flex flex-1 overflow-hidden">
       {/* Upload Sidebar */}
-      <div className="w-[360px] border-r border-border flex flex-col bg-bg-elevated">
+      <ResizablePanel storageKey="livechat-uploads" defaultWidth={360} className="border-r border-border flex flex-col bg-bg-elevated">
         <div className="p-3 border-b border-border">
           <input
             ref={fileInputRef}
@@ -303,7 +304,7 @@ export function LivechatView() {
             );
           })}
         </div>
-      </div>
+      </ResizablePanel>
 
       {/* Tab Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
