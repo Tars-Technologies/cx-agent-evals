@@ -1,12 +1,12 @@
 "use client";
 
-import type { MicrotopicByTypeItem } from "./types";
+import type { MessageTypeItem } from "./types";
 
-export function TopicTypeFeed({ items }: { items: MicrotopicByTypeItem[] }) {
+export function MessageTypeFeed({ items }: { items: MessageTypeItem[] }) {
   return (
     <div className="flex-1 overflow-y-auto p-3">
       {items.map((item, i) => {
-        const primaryExchange = item.microtopic.exchanges.find(
+        const primaryExchange = item.messageType.exchanges.find(
           (e) => e.label === "primary"
         );
         const userMsgs = primaryExchange?.messages.filter(
