@@ -268,6 +268,7 @@ export default defineSchema({
     name: v.string(),
     retrieverId: v.optional(v.id("retrievers")),
     retrieverConfig: v.optional(v.any()),
+    experimentRunId: v.optional(v.id("experimentRuns")),
     experimentType: v.optional(
       v.union(v.literal("retriever"), v.literal("agent")),
     ),
@@ -313,7 +314,44 @@ export default defineSchema({
     .index("by_dataset", ["datasetId"])
     .index("by_retriever", ["retrieverId"])
     .index("by_kb", ["kbId"])
-    .index("by_agent", ["agentId"]),
+    .index("by_agent", ["agentId"])
+    .index("by_run", ["experimentRunId"]),
+
+  // ─── Experiment Runs (groups of retriever experiments) ───
+  experimentRuns: defineTable({
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    datasetId: v.id("datasets"),
+    name: v.string(),
+    retrieverIds: v.array(v.id("retrievers")),
+    metricNames: v.array(v.string()),
+    scoringWeights: v.object({
+      recall: v.number(),
+      precision: v.number(),
+    }),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("completed_with_errors"),
+      v.literal("failed"),
+      v.literal("canceling"),
+      v.literal("canceled"),
+    ),
+    totalRetrievers: v.number(),
+    completedRetrievers: v.number(),
+    failedRetrievers: v.number(),
+    winnerId: v.optional(v.id("retrievers")),
+    winnerName: v.optional(v.string()),
+    winnerScore: v.optional(v.number()),
+    error: v.optional(v.string()),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_kb", ["kbId"])
+    .index("by_dataset", ["datasetId"]),
 
   // ─── Experiment Results (per-question evaluation results) ───
   experimentResults: defineTable({
