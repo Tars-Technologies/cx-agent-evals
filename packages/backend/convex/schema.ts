@@ -163,6 +163,101 @@ export default defineSchema({
     .index("by_org", ["orgId"])
     .index("by_status", ["orgId", "status"]),
 
+  // ── Livechat uploads ──
+  livechatUploads: defineTable({
+    orgId: v.string(),
+    createdBy: v.id("users"),
+    filename: v.string(),
+    csvStorageId: v.id("_storage"),
+
+    status: v.union(
+      v.literal("pending"),
+      v.literal("parsing"),
+      v.literal("ready"),
+      v.literal("failed"),
+      v.literal("deleting"),
+    ),
+    error: v.optional(v.string()),
+
+    conversationCount: v.optional(v.number()),
+    parsedConversations: v.optional(v.number()),
+    basicStats: v.optional(v.any()),
+
+    createdAt: v.number(),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    workIds: v.optional(v.array(v.string())),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_org_created", ["orgId", "createdAt"]),
+
+  // ── Livechat conversations (one row per conversation per upload) ──
+  livechatConversations: defineTable({
+    uploadId: v.id("livechatUploads"),
+    orgId: v.string(),
+
+    conversationId: v.string(),
+    visitorId: v.string(),
+    visitorName: v.string(),
+    visitorPhone: v.string(),
+    visitorEmail: v.string(),
+    agentId: v.string(),
+    agentName: v.string(),
+    agentEmail: v.string(),
+    inbox: v.string(),
+    labels: v.array(v.string()),
+    status: v.string(),
+
+    messages: v.array(
+      v.object({
+        id: v.number(),
+        role: v.union(
+          v.literal("user"),
+          v.literal("human_agent"),
+          v.literal("workflow_input"),
+        ),
+        text: v.string(),
+      }),
+    ),
+
+    metadata: v.any(),
+
+    botFlowInput: v.optional(
+      v.object({
+        intent: v.string(),
+        language: v.string(),
+      }),
+    ),
+
+    messageTypes: v.optional(v.any()),
+    classificationStatus: v.union(
+      v.literal("none"),
+      v.literal("running"),
+      v.literal("done"),
+      v.literal("failed"),
+    ),
+    classificationError: v.optional(v.string()),
+
+    translatedMessages: v.optional(
+      v.array(
+        v.object({
+          id: v.number(),
+          text: v.string(),
+        }),
+      ),
+    ),
+    translationStatus: v.union(
+      v.literal("none"),
+      v.literal("running"),
+      v.literal("done"),
+      v.literal("failed"),
+    ),
+    translationError: v.optional(v.string()),
+  })
+    .index("by_upload", ["uploadId"])
+    .index("by_upload_classification", ["uploadId", "classificationStatus"])
+    .index("by_org", ["orgId"]),
+
   // ─── Experiments (evaluation runs against a dataset) ───
   experiments: defineTable({
     orgId: v.string(),
