@@ -2,7 +2,7 @@
 
 interface RankedResult {
   experimentId: string;
-  retrieverId: string | null;
+  retrieverId: string | undefined;
   retrieverName: string;
   compositeScore: number;
   recall: number;

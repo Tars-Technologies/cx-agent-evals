@@ -21,6 +21,7 @@ import type * as crud_knowledgeBases from "../crud/knowledgeBases.js";
 import type * as crud_questions from "../crud/questions.js";
 import type * as crud_retrievers from "../crud/retrievers.js";
 import type * as crud_users from "../crud/users.js";
+import type * as experimentRuns_orchestration from "../experimentRuns/orchestration.js";
 import type * as experiments_actions from "../experiments/actions.js";
 import type * as experiments_agentActions from "../experiments/agentActions.js";
 import type * as experiments_agentResults from "../experiments/agentResults.js";
@@ -65,6 +66,7 @@ declare const fullApi: ApiFromModules<{
   "crud/questions": typeof crud_questions;
   "crud/retrievers": typeof crud_retrievers;
   "crud/users": typeof crud_users;
+  "experimentRuns/orchestration": typeof experimentRuns_orchestration;
   "experiments/actions": typeof experiments_actions;
   "experiments/agentActions": typeof experiments_agentActions;
   "experiments/agentResults": typeof experiments_agentResults;
