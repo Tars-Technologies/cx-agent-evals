@@ -75,6 +75,10 @@
     "./registry": {
       "types": "./dist/registry/index.d.ts",
       "import": "./dist/registry/index.js"
+    },
+    "./data-analysis": {
+      "types": "./dist/data-analysis/index.d.ts",
+      "import": "./dist/data-analysis/index.js"
     }
   },
   "files": [
@@ -105,6 +109,7 @@
   },
   "dependencies": {
     "@langchain/core": "^1.1.0",
+    "csv-parse": "^6.2.1",
     "js-tiktoken": "^1.0.21",
     "langsmith": "^0.5.0",
     "linkedom": "^0.18.12",
@@ -114,6 +119,7 @@
     "zod": "^3.23"
   },
   "optionalDependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
     "cohere-ai": ">=7.0",
     "openai": ">=4.0"
   },
