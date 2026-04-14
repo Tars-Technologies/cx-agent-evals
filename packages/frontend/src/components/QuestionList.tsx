@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { GeneratedQuestion } from "@/lib/types";
 
 export function QuestionList({
@@ -21,11 +22,21 @@ export function QuestionList({
   onUpload?: () => void;
   realWorldCount?: number;
 }) {
-  // Group by docId
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Filter questions by search query
+  const filteredQuestions = searchQuery
+    ? questions.filter((q) =>
+        q.query.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : questions;
+
+  // Group by docId (use original index for correct selection)
   const grouped = new Map<string, { question: GeneratedQuestion; index: number }[]>();
-  questions.forEach((q, i) => {
+  filteredQuestions.forEach((q) => {
+    const originalIndex = questions.indexOf(q);
     const list = grouped.get(q.docId) || [];
-    list.push({ question: q, index: i });
+    list.push({ question: q, index: originalIndex });
     grouped.set(q.docId, list);
   });
 
@@ -61,6 +72,19 @@ export function QuestionList({
           )}
         </span>
       </div>
+
+      {/* Search */}
+      {questions.length > 0 && (
+        <div className="px-3 py-2 border-b border-border">
+          <input
+            type="text"
+            placeholder="Search questions..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-xs text-text placeholder:text-text-dim focus:border-accent outline-none"
+          />
+        </div>
+      )}
 
       {/* Phase status banner */}
       {generating && phaseStatus && questions.length === 0 && (
