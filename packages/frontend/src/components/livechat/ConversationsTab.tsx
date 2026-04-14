@@ -49,6 +49,11 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
   // Optimistic UI: track pending operations so buttons react immediately
   const [pendingClassify, setPendingClassify] = useState<Set<string>>(new Set());
   const [pendingTranslate, setPendingTranslate] = useState<Set<string>>(new Set());
+  // Batch progress tracking: remembers which IDs were submitted and what operation
+  const [batchOp, setBatchOp] = useState<{
+    type: "classify" | "translate";
+    ids: Set<string>;
+  } | null>(null);
 
   // --- Queries ---
   const { results, status, loadMore } = usePaginatedQuery(
@@ -110,6 +115,27 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
     }
   }, [selectedConvId, selectedConv?.classificationStatus, selectedConv?.translationStatus]);
 
+  // Batch progress: count how many are done vs total
+  const batchProgress = useMemo(() => {
+    if (!batchOp) return null;
+    const total = batchOp.ids.size;
+    const statusField = batchOp.type === "classify" ? "classificationStatus" : "translationStatus";
+    let done = 0;
+    for (const conv of allConversations) {
+      if (!batchOp.ids.has(conv._id)) continue;
+      if (conv[statusField] === "done" || conv[statusField] === "failed") done++;
+    }
+    return { total, done, type: batchOp.type };
+  }, [batchOp, allConversations]);
+
+  // Auto-clear batch op when all done
+  useEffect(() => {
+    if (batchProgress && batchProgress.done >= batchProgress.total) {
+      const timer = setTimeout(() => setBatchOp(null), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [batchProgress]);
+
   // Check if conversation has any messages needing translation
   const hasTranslatableMessages = useMemo(() => {
     if (!selectedConv) return false;
@@ -170,12 +196,18 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
   function handleBatchClassify() {
     if (selectedIds.size === 0) return;
     const ids = Array.from(selectedIds) as Id<"livechatConversations">[];
+    setBatchOp({ type: "classify", ids: new Set(selectedIds) });
+    setSelectionMode(false);
+    setSelectedIds(new Set());
     classifyBatch({ uploadId, conversationIds: ids });
   }
 
   function handleBatchTranslate() {
     if (selectedIds.size === 0) return;
     const ids = Array.from(selectedIds) as Id<"livechatConversations">[];
+    setBatchOp({ type: "translate", ids: new Set(selectedIds) });
+    setSelectionMode(false);
+    setSelectedIds(new Set());
     translateBatch({ uploadId, conversationIds: ids });
   }
 
@@ -214,12 +246,32 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
           </button>
         </div>
         {view === "conversation" && (
-          <button
-            onClick={handleToggleSelectionMode}
-            className="text-[10px] text-text-muted hover:text-accent border border-border rounded px-2 py-0.5 transition-colors"
-          >
-            {selectionMode ? "Done Selecting" : "Select Conversations"}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Batch progress indicator */}
+            {batchProgress && (
+              <div className="flex items-center gap-1.5">
+                <span className="animate-spin text-[10px]">&#x27F3;</span>
+                <span className="text-[10px] text-text-muted">
+                  {batchProgress.type === "classify" ? "Classifying" : "Translating"}{" "}
+                  {batchProgress.done}/{batchProgress.total}
+                </span>
+                <div className="w-16 h-1 bg-bg-surface rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      batchProgress.type === "classify" ? "bg-accent" : "bg-[#c084fc]"
+                    }`}
+                    style={{ width: `${(batchProgress.done / batchProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            <button
+              onClick={handleToggleSelectionMode}
+              className="text-[10px] text-text-muted hover:text-accent border border-border rounded px-2 py-0.5 transition-colors"
+            >
+              {selectionMode ? "Done Selecting" : "Select Conversations"}
+            </button>
+          </div>
         )}
       </div>
 
