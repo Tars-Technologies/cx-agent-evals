@@ -50,6 +50,7 @@ experimentRuns: defineTable({
   completedRetrievers: v.number(),
   failedRetrievers: v.number(),
   winnerId: v.optional(v.id("retrievers")),
+  winnerName: v.optional(v.string()),
   winnerScore: v.optional(v.number()),
   error: v.optional(v.string()),
   createdBy: v.id("users"),
@@ -170,8 +171,8 @@ Triggered by "Create Experiment" button in experiment mode. Fields:
 1. **Experiment Name** — text input (auto-suggested: "{KB name} comparison")
 2. **Dataset** — dropdown (datasets for selected KB)
 3. **Retrievers** — multi-select checkboxes (ready retrievers for selected KB)
-4. **Metrics** — checkboxes: Recall (default on), Precision (default on), F1, IoU
-5. **Ranking Formula** — two number inputs for weights (default 0.7 recall, 0.3 precision), must sum to 1.0
+4. **Metrics** — checkboxes: Recall (default on), Precision (default on), F1, IoU. All selected metrics are computed and stored. F1 and IoU are **display-only** — shown in the results table as additional columns but not used in ranking. At least Recall or Precision must be selected (they feed the ranking formula).
+5. **Ranking Formula** — two number inputs for weights (default 0.7 recall, 0.3 precision), must sum to 1.0. Only Recall and Precision participate in ranking.
 
 On submit: creates the `experimentRun` record, then creates one `experiment` per selected retriever (linked via `experimentRunId`), triggers evaluation.
 
@@ -189,10 +190,10 @@ On submit: creates the `experimentRun` record, then creates one `experiment` per
 
 ### Orchestration Flow
 
-1. `experimentRuns.create` inserts the parent run + schedules child experiments
-2. Each child experiment runs via existing `experiments.orchestration.start` flow (with `experimentRunId` set)
-3. As each child completes, `experimentRuns.onChildComplete` increments `completedRetrievers`
-4. When all children done: compute composite scores, determine winner, set status to completed
+1. `experimentRuns.create` (public mutation with auth) inserts the parent `experimentRun` record, then **directly inserts** child `experiments` rows (setting `experimentRunId`, `retrieverId`, `datasetId`, `metricNames` from the run, `status: "pending"`, and `createdBy` from the current auth context). It then schedules one `internal.experiments.actions.runExperiment` per child via `ctx.scheduler.runAfter(0, ...)` — this reuses the **full existing pipeline** (retriever config loading, indexing verification, LangSmith dataset sync, status phase updates, WorkPool enqueue). The only difference from the standalone flow is that child experiments have `experimentRunId` set.
+2. Each child experiment goes through the complete existing pipeline: `runExperiment` action → loads retriever config → checks indexing → syncs LangSmith → calls `enqueueExperiment` → WorkPool runs `runEvaluation`. The existing `experimentPool` has `maxParallelism: 1`, so children serialize through the WorkPool.
+3. The existing `onExperimentComplete` callback fires when each child experiment finishes. A new check is added there: if the experiment has an `experimentRunId`, it additionally calls `internal.experimentRuns.onChildComplete` to update the parent run's progress.
+4. `experimentRuns.onChildComplete` increments `completedRetrievers` (or `failedRetrievers`). When all children are done: queries all child experiment scores, computes composite scores using the run's `scoringWeights`, determines the winner, and patches the run with `winnerId`, `winnerName`, `winnerScore`, `status: "completed"`, and `completedAt`.
 
 ### Existing Code Untouched
 
