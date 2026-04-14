@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useQuery, usePaginatedQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
 import { MarkdownViewer } from "@/components/MarkdownViewer";
@@ -281,9 +281,13 @@ function DocumentListPanel({
   selectedDocId: Id<"documents"> | null;
   onSelect: (id: Id<"documents">) => void;
 }) {
-  const docs = useQuery(api.crud.documents.listByKb, { kbId });
+  const { results: docs, status, loadMore } = usePaginatedQuery(
+    api.crud.documents.listByKb,
+    { kbId },
+    { initialNumItems: 50 },
+  );
 
-  if (docs === undefined) {
+  if (status === "LoadingFirstPage") {
     return (
       <div className="flex items-center justify-center h-full">
         <Spinner />
@@ -319,6 +323,20 @@ function DocumentListPanel({
           </button>
         );
       })}
+      {status === "CanLoadMore" && (
+        <button
+          type="button"
+          onClick={() => loadMore(50)}
+          className="w-full px-3 py-2 text-xs text-accent hover:bg-bg-elevated transition-colors"
+        >
+          Load more...
+        </button>
+      )}
+      {status === "LoadingMore" && (
+        <div className="flex items-center justify-center p-2">
+          <Spinner />
+        </div>
+      )}
     </div>
   );
 }

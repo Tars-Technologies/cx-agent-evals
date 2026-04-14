@@ -1,6 +1,7 @@
 import { expect, describe, it, beforeEach } from "vitest";
 import { setupTest, seedUser, seedKB, seedDocument, testIdentity, TEST_ORG_ID } from "./helpers";
 import { api } from "../convex/_generated/api";
+import { Id } from "../convex/_generated/dataModel";
 
 describe("knowledgeBases: create with metadata", () => {
   let t: ReturnType<typeof import("convex-test").convexTest>;
@@ -157,5 +158,70 @@ describe("knowledgeBases: listWithDocCounts", () => {
     expect(results).toHaveLength(1);
     expect(results[0].name).toBe("Finance KB");
     expect(results[0].documentCount).toBe(0);
+  });
+});
+
+describe("documentCount: increment/decrement", () => {
+  let t: ReturnType<typeof import("convex-test").convexTest>;
+  beforeEach(() => { t = setupTest(); });
+
+  it("increments documentCount when a document is created", async () => {
+    const userId = await seedUser(t);
+    const kbId = await seedKB(t, userId);
+
+    // KB starts with no documentCount
+    let kb = await t.run(async (ctx) => ctx.db.get(kbId));
+    expect(kb!.documentCount).toBeUndefined();
+
+    // Seed a document (seedDocument now increments the count)
+    await seedDocument(t, kbId, { title: "Doc 1" });
+    kb = await t.run(async (ctx) => ctx.db.get(kbId));
+    expect(kb!.documentCount).toBe(1);
+
+    await seedDocument(t, kbId, { title: "Doc 2" });
+    kb = await t.run(async (ctx) => ctx.db.get(kbId));
+    expect(kb!.documentCount).toBe(2);
+  });
+
+  it("decrements documentCount when a document is removed", async () => {
+    const userId = await seedUser(t);
+    const kbId = await seedKB(t, userId);
+
+    const docId = await seedDocument(t, kbId, { title: "Doc 1" });
+    await seedDocument(t, kbId, { title: "Doc 2" });
+
+    let kb = await t.run(async (ctx) => ctx.db.get(kbId));
+    expect(kb!.documentCount).toBe(2);
+
+    const authedT = t.withIdentity(testIdentity);
+    await authedT.mutation(api.crud.documents.remove, { id: docId as Id<"documents"> });
+
+    kb = await t.run(async (ctx) => ctx.db.get(kbId));
+    expect(kb!.documentCount).toBe(1);
+  });
+
+  it("does not go below zero on decrement", async () => {
+    const userId = await seedUser(t);
+    const kbId = await seedKB(t, userId);
+
+    // Manually insert a doc without incrementing count (simulates pre-backfill state)
+    const docId = await t.run(async (ctx) =>
+      ctx.db.insert("documents", {
+        orgId: TEST_ORG_ID,
+        kbId,
+        docId: "orphan",
+        title: "orphan",
+        content: "test",
+        contentLength: 4,
+        metadata: {},
+        createdAt: Date.now(),
+      }),
+    );
+
+    const authedT = t.withIdentity(testIdentity);
+    await authedT.mutation(api.crud.documents.remove, { id: docId });
+
+    const kb = await t.run(async (ctx) => ctx.db.get(kbId));
+    expect(kb!.documentCount).toBe(0);
   });
 });
