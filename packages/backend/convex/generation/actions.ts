@@ -12,6 +12,11 @@ import {
   OpenAIEmbedder,
   createCorpusFromDocuments,
   parseDimensions,
+  calculateQuotas,
+  matchRealWorldQuestions,
+  filterCombinations,
+  generateForDocument,
+  findCitationSpan,
 } from "rag-evaluation-system";
 import { createLLMClient, getModel } from "rag-evaluation-system/llm";
 import { QUESTION_INSERT_BATCH_SIZE } from "rag-evaluation-system/shared";
@@ -173,6 +178,305 @@ export const generateRealWorldGrounded = internalAction({
     }
 
     return { questionsGenerated: queries.length };
+  },
+});
+
+// ─── Unified Pipeline: Phase 1 — Prepare Generation Plan ───
+
+export const prepareGeneration = internalAction({
+  args: {
+    jobId: v.id("generationJobs"),
+    datasetId: v.id("datasets"),
+    kbId: v.id("knowledgeBases"),
+    strategyConfig: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const config = args.strategyConfig as Record<string, unknown>;
+    const { corpus, docs } = await loadCorpusFromKb(ctx, args.kbId);
+    const llmClient = createLLMClient();
+    const model = getModel(config);
+
+    // Read document priorities
+    const docPriorities = docs.map((d: any) => ({
+      id: d.docId as string,
+      priority: (d.priority as number) ?? 3,
+    }));
+
+    // Quota allocation
+    const totalQuestions = (config.totalQuestions as number) ?? 30;
+    const overrides = config.allocationOverrides as
+      | Record<string, number>
+      | undefined;
+    const quotas = calculateQuotas(docPriorities, totalQuestions, overrides);
+
+    // Real-world question matching (if provided)
+    let matchedByDoc: Record<string, any[]> = {};
+    let unmatchedQuestions: string[] = [];
+    const realWorldQuestions = config.realWorldQuestions as
+      | string[]
+      | undefined;
+    if (realWorldQuestions?.length) {
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const embedder = new OpenAIEmbedder({
+        model:
+          (config.embeddingModel as string) ?? "text-embedding-3-small",
+        client: openai,
+      });
+      const result = await matchRealWorldQuestions(
+        corpus,
+        realWorldQuestions,
+        embedder,
+      );
+      matchedByDoc = result.matchedByDoc;
+      unmatchedQuestions = result.unmatchedQuestions;
+    }
+
+    // Dimension filtering (if provided)
+    let validCombos: Record<string, string>[] = [];
+    const dimensions = config.dimensions as any[] | undefined;
+    if (dimensions?.length) {
+      const parsed = parseDimensions(dimensions);
+      validCombos = await filterCombinations(parsed, llmClient, model);
+    }
+
+    // Truncate arrays to stay within Convex's 8192 array element limit
+    const MAX_STYLE_EXAMPLES = 50;
+    const MAX_COMBOS = 200;
+    const MAX_UNMATCHED = 500;
+
+    // Build doc-level plan data — limit matched questions to doc's quota
+    const docPlans = docs.map((d: any) => {
+      const docQuota = quotas.get(d.docId as string) ?? 0;
+      const matched = matchedByDoc[d.docId as string] ?? [];
+      return {
+        docConvexId: d._id as string,
+        docId: d.docId as string,
+        title: d.title as string,
+        quota: docQuota,
+        matchedQuestions: matched.slice(0, Math.max(docQuota, 10)),
+      };
+    });
+
+    // Collect global style examples (capped)
+    const globalStyleExamples = Object.values(matchedByDoc)
+      .flat()
+      .map((m: any) => m.question as string)
+      .slice(0, MAX_STYLE_EXAMPLES);
+
+    const truncatedCombos = validCombos.slice(0, MAX_COMBOS);
+    const truncatedUnmatched = unmatchedQuestions.slice(0, MAX_UNMATCHED);
+
+    const preferences = (config.promptPreferences as any) ?? {
+      questionTypes: ["factoid", "procedural", "conditional"],
+      tone: "professional but accessible",
+      focusAreas: "",
+    };
+
+    // Step 1: Store shared plan data on the job record (avoids duplicating
+    // large arrays in every per-doc action call)
+    await ctx.runMutation(
+      internal.generation.orchestration.storeGenerationPlan,
+      {
+        jobId: args.jobId,
+        sharedPlan: {
+          validCombos: truncatedCombos,
+          globalStyleExamples,
+          preferences,
+          model,
+        },
+      },
+    );
+
+    // Step 2: Enqueue per-doc actions with only doc-specific data
+    await ctx.runMutation(
+      internal.generation.orchestration.savePlanAndEnqueueDocs,
+      {
+        jobId: args.jobId,
+        datasetId: args.datasetId,
+        kbId: args.kbId,
+        strategyConfig: args.strategyConfig,
+        plan: {
+          quotas: Object.fromEntries(quotas),
+          unmatchedQuestions: truncatedUnmatched,
+          docPlans,
+          model,
+        },
+      },
+    );
+
+    return {
+      phase: "prepared",
+      totalDocs: docPlans.filter((d: { quota: number }) => d.quota > 0).length,
+    };
+  },
+});
+
+// ─── Unified Pipeline: Phase 2 — Generate Questions for a Single Document ───
+
+export const generateForDoc = internalAction({
+  args: {
+    jobId: v.id("generationJobs"),
+    datasetId: v.id("datasets"),
+    docConvexId: v.id("documents"),
+    docId: v.string(),
+    quota: v.number(),
+    matchedQuestions: v.any(),
+    model: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (args.quota === 0) return { questionsGenerated: 0, failedCitations: 0, missedQuestions: 0 };
+
+    // Read shared plan data from job record (stored once, not passed per-doc)
+    const job = await ctx.runQuery(
+      internal.generation.orchestration.getJobInternal,
+      { jobId: args.jobId },
+    );
+    const sharedPlan = (job?.generationPlan ?? {}) as {
+      validCombos?: Record<string, string>[];
+      globalStyleExamples?: string[];
+      preferences?: any;
+    };
+
+    const doc = await ctx.runQuery(internal.crud.documents.getInternal, {
+      id: args.docConvexId,
+    });
+    const llmClient = createLLMClient();
+
+    // Determine scenario for retry eligibility
+    const matchedCount = (args.matchedQuestions ?? []).length;
+    const isScenario1 = matchedCount >= args.quota;
+
+    const allValidated: Array<{
+      queryId: string;
+      queryText: string;
+      sourceDocId: string;
+      relevantSpans: Array<{ docId: string; start: number; end: number; text: string }>;
+      metadata: Record<string, unknown>;
+      source: string | undefined;
+    }> = [];
+    let totalFailedCitations = 0;
+    const MAX_RETRIES = 4;
+
+    for (let round = 0; round <= MAX_RETRIES; round++) {
+      const remaining = args.quota - allValidated.length;
+      if (remaining <= 0) break;
+
+      // Skip retry loop for scenario 1 (direct reuse only — fixed question set)
+      if (round > 0 && isScenario1) break;
+      // For retries, request shortfall + 2 buffer
+      if (round > 0 && remaining <= 0) break;
+
+      const requestCount = round === 0 ? args.quota : remaining + 2;
+      const excludeQuestions = round === 0
+        ? undefined
+        : allValidated.map((q) => q.queryText);
+
+      const rawQuestions = await generateForDocument({
+        docId: args.docId,
+        docContent: doc.content,
+        quota: requestCount,
+        matched: args.matchedQuestions ?? [],
+        combos: sharedPlan.validCombos ?? [],
+        preferences: sharedPlan.preferences ?? {
+          questionTypes: ["factoid", "procedural", "conditional"],
+          tone: "professional but accessible",
+          focusAreas: "",
+        },
+        llmClient,
+        model: args.model,
+        excludeQuestions,
+      });
+
+      // Validate citations
+      for (const q of rawQuestions) {
+        if (allValidated.length >= args.quota) break;
+
+        const span = findCitationSpan(doc.content, q.citation);
+        if (span) {
+          allValidated.push({
+            queryId: `unified_${args.docId}_q${allValidated.length}`,
+            queryText: q.question,
+            sourceDocId: args.docId,
+            relevantSpans: [
+              { docId: args.docId, start: span.start, end: span.end, text: span.text },
+            ],
+            metadata: {
+              source: q.source,
+              profile: q.profile ?? "",
+              citation: span.text,
+            },
+            source: q.source === "real-world" ? "real-world" : undefined,
+          });
+        } else {
+          totalFailedCitations++;
+        }
+      }
+    }
+
+    const missedQuestions = args.quota - allValidated.length;
+
+    // Pass 2: Enrich with multi-span ground truth
+    const assigner = new GroundTruthAssigner();
+    const singleDocCorpus = createCorpusFromDocuments([
+      { id: args.docId, content: doc.content },
+    ]);
+
+    let pass2Enriched = 0;
+    let pass2Unchanged = 0;
+
+    for (const question of allValidated) {
+      try {
+        const results = await assigner.assign(
+          [
+            {
+              query: question.queryText,
+              targetDocId: question.sourceDocId,
+              metadata: (question.metadata ?? {}) as Record<string, string>,
+            },
+          ],
+          { corpus: singleDocCorpus, llmClient, model: args.model },
+        );
+
+        if (results.length > 0 && results[0].relevantSpans.length > 1) {
+          question.relevantSpans = results[0].relevantSpans.map((s) => ({
+            docId: String(s.docId),
+            start: s.start,
+            end: s.end,
+            text: s.text,
+          }));
+          pass2Enriched++;
+        } else {
+          pass2Unchanged++;
+        }
+      } catch {
+        pass2Unchanged++;
+      }
+    }
+
+    // Insert questions in batches
+    if (allValidated.length > 0) {
+      for (let i = 0; i < allValidated.length; i += QUESTION_INSERT_BATCH_SIZE) {
+        const batch = allValidated.slice(i, i + QUESTION_INSERT_BATCH_SIZE);
+        await ctx.runMutation(internal.crud.questions.insertBatch, {
+          datasetId: args.datasetId,
+          questions: batch,
+        });
+      }
+    }
+
+    // Report progress (once, after all retries)
+    await ctx.runMutation(
+      internal.generation.orchestration.updateDocProgress,
+      { jobId: args.jobId, docName: doc.title },
+    );
+
+    return {
+      questionsGenerated: allValidated.length,
+      failedCitations: totalFailedCitations,
+      missedQuestions: missedQuestions > 0 ? missedQuestions : 0,
+      pass2Enriched,
+      pass2Unchanged,
+    };
   },
 });
 

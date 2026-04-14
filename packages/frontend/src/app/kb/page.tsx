@@ -10,7 +10,6 @@ import { FileUploader } from "@/components/FileUploader";
 import { CreateKBModal } from "@/components/CreateKBModal";
 import { ImportUrlModal } from "@/components/ImportUrlModal";
 import { MarkdownViewer } from "@/components/MarkdownViewer";
-import { INDUSTRIES } from "@/lib/constants";
 import { ResizablePanel } from "@/components/ResizablePanel";
 import { LivechatView } from "@/components/livechat/LivechatView";
 
@@ -25,7 +24,6 @@ export default function KBPage() {
 function KBPageContent() {
   // --- KB selection ---
   const [selectedKbId, setSelectedKbId] = useKbFromUrl();
-  const [industryFilter, setIndustryFilter] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [kbMode, setKbMode] = useState<"documents" | "livechat">("documents");
 
@@ -41,7 +39,7 @@ function KBPageContent() {
   // --- Queries ---
   const kbs = useQuery(
     api.crud.knowledgeBases.listWithDocCounts,
-    industryFilter ? { industry: industryFilter } : {},
+    {},
   );
   const documents = useQuery(
     api.crud.documents.listByKb,
@@ -96,9 +94,8 @@ function KBPageContent() {
     <div className="flex flex-col h-screen">
       <Header mode="kb" kbId={selectedKbId} />
 
-      {/* ── KB Selection & Metadata Bar ── */}
-      <div className="border-b border-border bg-bg-elevated px-6 py-3 space-y-2">
-        {/* Row 1: KB dropdown, industry filter, create button */}
+      {/* ── KB Selection Bar ── */}
+      <div className="border-b border-border bg-bg-elevated px-6 py-3">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 flex-1">
             <label className="text-xs text-text-muted uppercase tracking-wide whitespace-nowrap">
@@ -130,24 +127,6 @@ function KBPageContent() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-text-muted uppercase tracking-wide whitespace-nowrap">
-              Industry
-            </label>
-            <select
-              value={industryFilter}
-              onChange={(e) => setIndustryFilter(e.target.value)}
-              className="bg-bg border border-border rounded px-3 py-1.5 text-sm text-text focus:border-accent outline-none"
-            >
-              <option value="">All</option>
-              {INDUSTRIES.map((ind) => (
-                <option key={ind} value={ind}>
-                  {ind.charAt(0).toUpperCase() + ind.slice(1)}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <button
             onClick={() => setShowCreateModal(true)}
             className="px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors whitespace-nowrap"
@@ -155,39 +134,6 @@ function KBPageContent() {
             + Create KB
           </button>
         </div>
-
-        {/* Row 2: Metadata line */}
-        {selectedKb && (
-          <div className="flex items-center gap-3 text-xs text-text-dim">
-            {selectedKb.company && <span>Company: {selectedKb.company}</span>}
-            {selectedKb.company && selectedKb.entityType && (
-              <span className="text-border">|</span>
-            )}
-            {selectedKb.entityType && (
-              <span>Entity: {selectedKb.entityType}</span>
-            )}
-            {(selectedKb.company || selectedKb.entityType) && (
-              <span className="text-border">|</span>
-            )}
-            <span>
-              {selectedKb.documentCount} document
-              {selectedKb.documentCount !== 1 ? "s" : ""}
-            </span>
-            {selectedKb.sourceUrl && (
-              <>
-                <span className="text-border">|</span>
-                <a
-                  href={selectedKb.sourceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent hover:text-accent/80 transition-colors"
-                >
-                  {selectedKb.sourceUrl}
-                </a>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       {/* ── Master-Detail Split ── */}

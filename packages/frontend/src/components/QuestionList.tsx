@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { GeneratedQuestion } from "@/lib/types";
 
 export function QuestionList({
@@ -10,6 +11,7 @@ export function QuestionList({
   totalDone,
   phaseStatus,
   onUpload,
+  realWorldCount,
 }: {
   questions: GeneratedQuestion[];
   selectedIndex: number | null;
@@ -18,12 +20,23 @@ export function QuestionList({
   totalDone: number | null;
   phaseStatus?: string | null;
   onUpload?: () => void;
+  realWorldCount?: number;
 }) {
-  // Group by docId
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Filter questions by search query
+  const filteredQuestions = searchQuery
+    ? questions.filter((q) =>
+        q.query.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : questions;
+
+  // Group by docId (use original index for correct selection)
   const grouped = new Map<string, { question: GeneratedQuestion; index: number }[]>();
-  questions.forEach((q, i) => {
+  filteredQuestions.forEach((q) => {
+    const originalIndex = questions.indexOf(q);
     const list = grouped.get(q.docId) || [];
-    list.push({ question: q, index: i });
+    list.push({ question: q, index: originalIndex });
     grouped.set(q.docId, list);
   });
 
@@ -48,12 +61,30 @@ export function QuestionList({
               {questions.length} generated
             </span>
           ) : totalDone !== null ? (
-            `${totalDone} total`
+            <>
+              {totalDone} total
+              {realWorldCount != null && realWorldCount > 0 && (
+                <span className="text-accent"> · {realWorldCount} real-world</span>
+              )}
+            </>
           ) : (
             `${questions.length}`
           )}
         </span>
       </div>
+
+      {/* Search */}
+      {questions.length > 0 && (
+        <div className="px-3 py-2 border-b border-border">
+          <input
+            type="text"
+            placeholder="Search questions..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-xs text-text placeholder:text-text-dim focus:border-accent outline-none"
+          />
+        </div>
+      )}
 
       {/* Phase status banner */}
       {generating && phaseStatus && questions.length === 0 && (
@@ -116,6 +147,11 @@ export function QuestionList({
                 <p className="text-xs text-text leading-relaxed">
                   {question.query}
                 </p>
+                {question.source === "real-world" && (
+                  <span className="inline-block text-[9px] text-accent bg-accent-dim px-1.5 py-0.5 rounded mt-1">
+                    real-world
+                  </span>
+                )}
                 <span className="text-[10px] text-text-dim mt-1 block">
                   {question.relevantSpans
                     ? `${question.relevantSpans.length} span${question.relevantSpans.length !== 1 ? "s" : ""}`

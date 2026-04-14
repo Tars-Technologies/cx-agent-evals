@@ -31,6 +31,21 @@ export {
 export { GroundTruthAssigner } from "./ground-truth/token-level.js";
 export type { Assigner, GroundTruthAssignerInterface, GroundTruthAssignerContext } from "./ground-truth/types.js";
 
+// Unified pipeline
+export { UnifiedQuestionGenerator } from "./unified/index.js";
+export type {
+  UnifiedGenerationConfig,
+  PromptPreferences,
+  DocQuota,
+  MatchedRealWorldQuestion,
+  GenerationPlan,
+  UnifiedQuestion,
+  ValidatedQuestion,
+  DocGenerationResult,
+  GenerationScenario,
+  UnifiedGeneratorContext,
+} from "./unified/index.js";
+
 export interface GenerateOptions {
   readonly strategy: QuestionStrategy;
   readonly corpus: Corpus;

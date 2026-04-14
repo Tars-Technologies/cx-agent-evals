@@ -161,6 +161,28 @@ export type {
   ProgressEvent,
 } from "./synthetic-datagen/strategies/types.js";
 
+// Unified question generation pipeline
+export { UnifiedQuestionGenerator } from "./synthetic-datagen/unified/index.js";
+export { calculateQuotas } from "./synthetic-datagen/unified/index.js";
+export { matchRealWorldQuestions } from "./synthetic-datagen/unified/index.js";
+export type { MatchingResult } from "./synthetic-datagen/unified/index.js";
+export { findCitationSpan } from "./synthetic-datagen/unified/index.js";
+export type { CitationSpan } from "./synthetic-datagen/unified/index.js";
+export { generateForDocument } from "./synthetic-datagen/unified/index.js";
+export { filterCombinations } from "./synthetic-datagen/unified/index.js";
+export type {
+  UnifiedGenerationConfig,
+  PromptPreferences,
+  DocQuota,
+  MatchedRealWorldQuestion,
+  GenerationPlan,
+  UnifiedQuestion,
+  ValidatedQuestion,
+  DocGenerationResult,
+  GenerationScenario,
+  UnifiedGeneratorContext,
+} from "./synthetic-datagen/unified/index.js";
+
 // Utils
 export { generatePaChunkId } from "./utils/hashing.js";
 export { spanOverlaps, spanOverlapChars, spanLength } from "./utils/span.js";

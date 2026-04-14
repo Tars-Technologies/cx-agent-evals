@@ -69,4 +69,89 @@ describe("GroundTruthAssigner", () => {
 
     expect(results).toHaveLength(0);
   });
+
+  it("should return multiple spans when LLM provides multiple excerpts", async () => {
+    const llm = makeLLM(
+      JSON.stringify({
+        excerpts: [
+          "RAG combines retrieval with generation",
+          "It uses relevant documents to answer questions",
+        ],
+      }),
+    );
+
+    const assigner = new GroundTruthAssigner();
+    const queries: GeneratedQuery[] = [
+      { query: "What is RAG?", targetDocId: "test.md", metadata: {} },
+    ];
+
+    const results = await assigner.assign(queries, {
+      corpus,
+      llmClient: llm,
+      model: "gpt-4o",
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].relevantSpans).toHaveLength(2);
+    expect(results[0].relevantSpans[0].text).toBe(
+      "RAG combines retrieval with generation",
+    );
+    expect(results[0].relevantSpans[1].text).toBe(
+      "It uses relevant documents to answer questions",
+    );
+  });
+
+  it("should fuzzy-match excerpts with minor differences", async () => {
+    // The excerpt has a small difference ("combines" → "combined") — within 15% threshold
+    const llm = makeLLM(
+      JSON.stringify({
+        excerpts: ["RAG combined retrieval with generation."],
+      }),
+    );
+
+    const assigner = new GroundTruthAssigner();
+    const queries: GeneratedQuery[] = [
+      { query: "What does RAG do?", targetDocId: "test.md", metadata: {} },
+    ];
+
+    const results = await assigner.assign(queries, {
+      corpus,
+      llmClient: llm,
+      model: "gpt-4o",
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].relevantSpans.length).toBeGreaterThanOrEqual(1);
+    // The span should be from the actual document text, not the LLM's paraphrase
+    expect(results[0].relevantSpans[0].text).toContain("RAG combines retrieval");
+  });
+
+  it("should report failed excerpts without crashing", async () => {
+    const llm = makeLLM(
+      JSON.stringify({
+        excerpts: [
+          "RAG combines retrieval with generation",
+          "Completely unrelated text that is absolutely nowhere in the document whatsoever at all",
+        ],
+      }),
+    );
+
+    const assigner = new GroundTruthAssigner();
+    const queries: GeneratedQuery[] = [
+      { query: "What is RAG?", targetDocId: "test.md", metadata: {} },
+    ];
+
+    const results = await assigner.assign(queries, {
+      corpus,
+      llmClient: llm,
+      model: "gpt-4o",
+    });
+
+    // Should still return the one valid span
+    expect(results).toHaveLength(1);
+    expect(results[0].relevantSpans).toHaveLength(1);
+    expect(results[0].relevantSpans[0].text).toBe(
+      "RAG combines retrieval with generation",
+    );
+  });
 });

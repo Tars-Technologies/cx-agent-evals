@@ -42,6 +42,7 @@ export default defineSchema({
     metadata: v.any(),
     sourceUrl: v.optional(v.string()),
     sourceType: v.optional(v.string()),
+    priority: v.optional(v.number()),  // 1-5, default 3
     createdAt: v.number(),
   })
     .index("by_kb", ["kbId"])
@@ -63,6 +64,7 @@ export default defineSchema({
     langsmithUrl: v.optional(v.string()),
     langsmithSyncStatus: v.optional(v.string()),
     metadata: v.any(),
+    realWorldQuestionCount: v.optional(v.number()),
     createdBy: v.id("users"),
     createdAt: v.number(),
   })
@@ -79,6 +81,7 @@ export default defineSchema({
     relevantSpans: v.array(spanValidator),
     langsmithExampleId: v.optional(v.string()),
     metadata: v.any(),
+    source: v.optional(v.string()),
   })
     .index("by_dataset", ["datasetId"])
     .index("by_source_doc", ["datasetId", "sourceDocId"]),
@@ -148,6 +151,15 @@ export default defineSchema({
     createdBy: v.id("users"),
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
+    totalDocs: v.optional(v.number()),
+    docsProcessed: v.optional(v.number()),
+    currentDocName: v.optional(v.string()),
+    // Shared generation plan data — stored once, read by per-doc actions
+    generationPlan: v.optional(v.any()),
+    questionsGenerated: v.optional(v.number()),
+    missedQuestions: v.optional(v.number()),
+    pass2Enriched: v.optional(v.number()),
+    pass2Unchanged: v.optional(v.number()),
   })
     .index("by_dataset", ["datasetId"])
     .index("by_org", ["orgId"])

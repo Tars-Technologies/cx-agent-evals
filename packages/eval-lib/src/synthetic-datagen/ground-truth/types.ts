@@ -6,7 +6,7 @@ export interface GroundTruthAssignerContext {
   readonly corpus: Corpus;
   readonly llmClient: LLMClient;
   readonly model: string;
-  /** Maximum characters of document content sent to the LLM for excerpt extraction. Default: 8000. */
+  /** Maximum characters of document content sent to the LLM for excerpt extraction. Default: 15000. */
   readonly maxDocumentChars?: number;
 }
 
