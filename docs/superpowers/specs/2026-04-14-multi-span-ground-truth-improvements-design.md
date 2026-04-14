@@ -100,8 +100,8 @@ if (start === -1) {
     let bestStart = -1;
 
     for (let i = 0; i <= docContent.length - windowSize; i += 10) {
-      const window = docContent.substring(i, i + windowSize);
-      const d = distance(trimmed.toLowerCase(), window.toLowerCase());
+      const windowText = docContent.substring(i, i + windowSize);
+      const d = distance(trimmed.toLowerCase(), windowText.toLowerCase());
       if (d < bestScore) {
         bestScore = d;
         bestStart = i;
@@ -111,13 +111,18 @@ if (start === -1) {
     // Accept if edit distance < 15% of string length
     const threshold = Math.ceil(trimmed.length * 0.15);
     if (bestScore <= threshold && bestStart !== -1) {
-      const end = bestStart + windowSize;
+      // Snap to word boundaries: expand start backward to nearest space/newline,
+      // expand end forward to nearest space/newline
+      while (bestStart > 0 && !/\s/.test(docContent[bestStart - 1])) bestStart--;
+      let bestEnd = bestStart + windowSize;
+      while (bestEnd < docContent.length && !/\s/.test(docContent[bestEnd])) bestEnd++;
+
       try {
         spans.push(createCharacterSpan({
           docId,
           start: bestStart,
-          end,
-          text: docContent.substring(bestStart, end),
+          end: bestEnd,
+          text: docContent.substring(bestStart, bestEnd),
         }));
       } catch { /* skip invalid span */ }
     }
@@ -126,6 +131,8 @@ if (start === -1) {
 ```
 
 **Performance note:** The sliding window with step=10 is O(n * m / 10) per sentence where n=document length and m=sentence length. For a 10,000-char document and 3 sentences of ~100 chars each, this is ~3,000 comparisons per sentence — fast enough for the per-question context.
+
+**Word boundary snapping:** After finding the best window position, the start/end are adjusted to word boundaries to avoid mid-word span edges. This may slightly change the span length, but ensures clean, readable span text.
 
 **Alternative considered:** Using the existing `normalizedFind` with a Levenshtein pre-filter. Rejected because the normalized find already handles whitespace/case differences — the remaining failures are genuine wording differences that need fuzzy matching.
 
@@ -258,10 +265,11 @@ Update `assign()` to use the new return type. The `failedExcerpts` are not store
 | 4. Observability | `actions.ts`, `orchestration.ts`, `schema.ts` | pass2Enriched/pass2Unchanged counters |
 | 5. Diagnostic logging | `token-level.ts` | Return failedExcerpts from span finding |
 
-**Eval-lib changes:** 1 file (`token-level.ts`) + types file update
+**Eval-lib changes:** 1 file (`token-level.ts`) — all of Sections 1, 2, 3, 5 modify this file, so they should be implemented together in one task to avoid merge conflicts
 **Backend changes:** 3 files (`schema.ts`, `actions.ts`, `orchestration.ts`)
 **Frontend changes:** None
 **New dependencies:** None (`fastest-levenshtein` already in eval-lib)
+**Test impact:** Existing `GroundTruthAssigner` tests need updating for the new `_findSpanPositions` return type (Section 5). New tests needed for fuzzy matching (Section 2)
 
 ---
 
