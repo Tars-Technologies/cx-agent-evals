@@ -30,6 +30,7 @@ export function WizardStepDimensions({ kbId, dimensions, onChange, onNext, onSki
   }, [kbId]);
   const [discovering, setDiscovering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [newValueInputs, setNewValueInputs] = useState<Record<number, string>>({});
 
   const handleDiscover = useCallback(async () => {
     if (!url.trim()) return;
@@ -50,19 +51,35 @@ export function WizardStepDimensions({ kbId, dimensions, onChange, onNext, onSki
     } finally {
       setDiscovering(false);
     }
-  }, [url, onChange]);
+  }, [url, onChange, kbId]);
+
+  const addDimension = () => {
+    onChange([...dimensions, { name: "", description: "", values: [] }]);
+  };
 
   const removeDimension = (idx: number) => {
     onChange(dimensions.filter((_, i) => i !== idx));
   };
 
+  const updateDimension = (idx: number, updates: Partial<Dimension>) => {
+    onChange(dimensions.map((d, i) => (i === idx ? { ...d, ...updates } : d)));
+  };
+
+  const addValue = (dimIdx: number) => {
+    const val = (newValueInputs[dimIdx] ?? "").trim();
+    if (!val) return;
+    const dim = dimensions[dimIdx];
+    if (dim.values.includes(val)) return;
+    onChange(dimensions.map((d, i) =>
+      i === dimIdx ? { ...d, values: [...d.values, val] } : d,
+    ));
+    setNewValueInputs((prev) => ({ ...prev, [dimIdx]: "" }));
+  };
+
   const removeValue = (dimIdx: number, valIdx: number) => {
-    const updated = [...dimensions];
-    updated[dimIdx] = {
-      ...updated[dimIdx],
-      values: updated[dimIdx].values.filter((_, i) => i !== valIdx),
-    };
-    onChange(updated);
+    onChange(dimensions.map((d, i) =>
+      i === dimIdx ? { ...d, values: d.values.filter((_, vi) => vi !== valIdx) } : d,
+    ));
   };
 
   return (
@@ -93,14 +110,20 @@ export function WizardStepDimensions({ kbId, dimensions, onChange, onNext, onSki
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
 
-      {/* Dimension chips */}
+      {/* Dimension cards */}
       {dimensions.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {dimensions.map((dim, di) => (
-            <div key={di} className="p-3 border border-border rounded">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-text">{dim.name}</span>
-                <button onClick={() => removeDimension(di)} className="text-xs text-text-dim hover:text-red-400">×</button>
+            <div key={di} className="p-3 border border-border rounded space-y-2">
+              <div className="flex items-center justify-between">
+                <input
+                  placeholder="Dimension name"
+                  value={dim.name}
+                  onChange={(e) => updateDimension(di, { name: e.target.value })}
+                  className="flex-1 bg-transparent text-xs font-medium text-text placeholder:text-text-dim/40
+                             border-b border-border/50 pb-1 focus:outline-none focus:border-accent/50 transition-colors"
+                />
+                <button onClick={() => removeDimension(di)} className="text-xs text-text-dim hover:text-red-400 ml-2">×</button>
               </div>
               <div className="flex flex-wrap gap-1">
                 {dim.values.map((val, vi) => (
@@ -110,10 +133,41 @@ export function WizardStepDimensions({ kbId, dimensions, onChange, onNext, onSki
                   </span>
                 ))}
               </div>
+              {/* Add value input */}
+              <div className="flex gap-1.5">
+                <input
+                  placeholder="Add value..."
+                  value={newValueInputs[di] ?? ""}
+                  onChange={(e) => setNewValueInputs((prev) => ({ ...prev, [di]: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); addValue(di); }
+                  }}
+                  className="flex-1 bg-bg-secondary border border-border/50 rounded px-2 py-1 text-[11px] text-text
+                             placeholder:text-text-dim/30 focus:outline-none focus:border-accent/40 transition-colors"
+                />
+                <button
+                  onClick={() => addValue(di)}
+                  disabled={!(newValueInputs[di] ?? "").trim()}
+                  className="px-2 py-1 rounded border border-border/50 text-[10px] text-text-dim
+                             hover:border-accent/30 hover:text-accent transition-all cursor-pointer
+                             disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  Add
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Add dimension button */}
+      <button
+        onClick={addDimension}
+        className="w-full py-2 rounded border border-dashed border-border text-xs text-text-dim
+                   hover:border-accent/30 hover:text-accent transition-all cursor-pointer"
+      >
+        + Add Dimension
+      </button>
 
       <div className="flex justify-between">
         <button onClick={onBack} className="px-3 py-1.5 text-xs text-text-dim hover:text-text transition-colors">← Back</button>
