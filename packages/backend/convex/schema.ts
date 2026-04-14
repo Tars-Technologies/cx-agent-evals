@@ -158,6 +158,8 @@ export default defineSchema({
     generationPlan: v.optional(v.any()),
     questionsGenerated: v.optional(v.number()),
     missedQuestions: v.optional(v.number()),
+    pass2Enriched: v.optional(v.number()),
+    pass2Unchanged: v.optional(v.number()),
   })
     .index("by_dataset", ["datasetId"])
     .index("by_org", ["orgId"])
