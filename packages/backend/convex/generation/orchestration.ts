@@ -513,13 +513,19 @@ export const onDocGenerated = internalMutation({
     // Accumulate return values from generateForDoc
     let newQuestionsGenerated = job.questionsGenerated ?? 0;
     let newMissedQuestions = job.missedQuestions ?? 0;
+    let newPass2Enriched = job.pass2Enriched ?? 0;
+    let newPass2Unchanged = job.pass2Unchanged ?? 0;
     if (result.kind === "success" && result.returnValue) {
       const rv = result.returnValue as {
         questionsGenerated?: number;
         missedQuestions?: number;
+        pass2Enriched?: number;
+        pass2Unchanged?: number;
       };
       newQuestionsGenerated += rv.questionsGenerated ?? 0;
       newMissedQuestions += rv.missedQuestions ?? 0;
+      newPass2Enriched += rv.pass2Enriched ?? 0;
+      newPass2Unchanged += rv.pass2Unchanged ?? 0;
     }
 
     if (isComplete) {
@@ -531,6 +537,8 @@ export const onDocGenerated = internalMutation({
           docsProcessed,
           questionsGenerated: newQuestionsGenerated,
           missedQuestions: newMissedQuestions,
+          pass2Enriched: newPass2Enriched,
+          pass2Unchanged: newPass2Unchanged,
         });
         return;
       }
@@ -566,6 +574,8 @@ export const onDocGenerated = internalMutation({
         docsProcessed,
         questionsGenerated: newQuestionsGenerated,
         missedQuestions: newMissedQuestions,
+        pass2Enriched: newPass2Enriched,
+        pass2Unchanged: newPass2Unchanged,
       });
 
       // Fire-and-forget LangSmith sync
@@ -580,6 +590,8 @@ export const onDocGenerated = internalMutation({
         docsProcessed,
         questionsGenerated: newQuestionsGenerated,
         missedQuestions: newMissedQuestions,
+        pass2Enriched: newPass2Enriched,
+        pass2Unchanged: newPass2Unchanged,
       });
     }
   },

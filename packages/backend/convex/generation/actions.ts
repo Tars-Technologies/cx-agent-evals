@@ -421,6 +421,9 @@ export const generateForDoc = internalAction({
       { id: args.docId, content: doc.content },
     ]);
 
+    let pass2Enriched = 0;
+    let pass2Unchanged = 0;
+
     for (const question of allValidated) {
       try {
         const results = await assigner.assign(
@@ -434,17 +437,19 @@ export const generateForDoc = internalAction({
           { corpus: singleDocCorpus, llmClient, model: args.model },
         );
 
-        if (results.length > 0 && results[0].relevantSpans.length > 0) {
+        if (results.length > 0 && results[0].relevantSpans.length > 1) {
           question.relevantSpans = results[0].relevantSpans.map((s) => ({
             docId: String(s.docId),
             start: s.start,
             end: s.end,
             text: s.text,
           }));
+          pass2Enriched++;
+        } else {
+          pass2Unchanged++;
         }
-        // If no results or empty spans, keep the original single span from pass 1
       } catch {
-        // Swallow — keep original single span
+        pass2Unchanged++;
       }
     }
 
@@ -469,6 +474,8 @@ export const generateForDoc = internalAction({
       questionsGenerated: allValidated.length,
       failedCitations: totalFailedCitations,
       missedQuestions: missedQuestions > 0 ? missedQuestions : 0,
+      pass2Enriched,
+      pass2Unchanged,
     };
   },
 });
