@@ -10,7 +10,7 @@ Add an Experiment mode to the existing Agents page, giving it the same two-mode 
 - Enable inline annotation (rating, tags, comments) without leaving the agents page
 - Support live annotation while experiments are still running
 - Resizable panes with persisted widths for flexible workspace customization
-- No backend changes — reuse all existing mutations, queries, and schema
+- Minimal backend changes — one new query; reuse all existing mutations and schema
 
 ## Non-Goals
 
@@ -56,7 +56,7 @@ The agents page gains a mode toggle in the top bar, matching the retrievers page
 
 ### Runs Pane (Experiment Runs Sidebar)
 
-- Lists agent experiment runs for the org (uses existing `experiments.orchestration` queries filtered by `experimentType: "agent"`)
+- Lists agent experiment runs for the org (uses new `experiments.orchestration.byOrg` query filtered by `experimentType: "agent"` — the `by_org` index already exists on the schema)
 - Each run shows: experiment name, dataset name, question count, status badge (completed/running/failed)
 - Collapsible via « button — collapses to a thin strip (~28px) with a » expand button
 - When collapsed, selected run name appears in the top bar for context
@@ -85,9 +85,10 @@ The agents page gains a mode toggle in the top bar, matching the retrievers page
 - **Rating buttons**: Great [1], Good Enough [2], Bad [3]
   - Keyboard shortcuts: 1/2/3
   - Selected rating highlighted with color (green/yellow/red)
-  - Immediately persisted via `annotations.crud.upsert`
+  - Immediately persisted via `annotations.crud.upsert` (takes `resultId` — the `agentExperimentResults._id` for the selected question)
+  - Rating disabled for pending questions (no result record yet)
 - **Tags**: inline tag chips with autocomplete
-  - "+ add tag" button with autocomplete from existing tags (`annotations.crud.allTags`)
+  - "+ add tag" button with autocomplete from existing tags (`annotations.crud.allTags`, scoped per experiment)
   - Only editable after a rating is set
   - Persisted via `annotations.crud.updateTags`
 - **Comment**: textarea, optional
@@ -127,7 +128,7 @@ When a running experiment is selected:
 - **Question list**: completed questions appear as they stream in, with "N more pending..." indicator at bottom
 - **Annotation**: completed questions are fully annotatable while experiment continues
 - **Pending questions**: if selected, show skeleton loading state in answer pane
-- Cancel button calls existing cancellation mutation
+- Cancel button calls `experiments.orchestration.cancelAgentExperiment`
 
 ### Keyboard Shortcuts
 
@@ -143,7 +144,7 @@ All new components located in `src/components/agent-experiments/`:
 
 | Component | Purpose |
 |-----------|---------|
-| `ExperimentModeLayout` | Orchestrates 4-pane layout, manages selectedRunId/selectedQuestionIdx state |
+| `ExperimentModeLayout` | Orchestrates 4-pane layout, manages selectedRunId/selectedQuestionIdx state, resolves resultId from results query |
 | `ExperimentRunsSidebar` | Collapsible runs list with status badges |
 | `ExperimentQuestionList` | Question list with filters, search, progress, keyboard nav |
 | `ExperimentAnnotationPane` | Answer display + rating + tags + comment |
@@ -163,7 +164,6 @@ All new components located in `src/components/agent-experiments/`:
 - `AgentConfigPanel.tsx` — no changes
 - `AgentPlayground.tsx` — no changes
 - All files under `src/app/experiments/` — no changes
-- All backend files — no changes
 
 ### State Management
 
@@ -172,19 +172,21 @@ All new components located in `src/components/agent-experiments/`:
 | `pageMode` | local React state | none (defaults to Create) |
 | `selectedRunId` | local React state | none |
 | `selectedQuestionIdx` | local React state | none (resets on run change) |
+| `selectedResultId` | derived from results query + selectedQuestionIdx | none (computed) |
 | `runsCollapsed` | local React state | localStorage |
 | pane widths | ResizablePanes internal | localStorage (`agents-experiment-pane-widths`) |
 | experiment data | Convex `useQuery` | real-time from backend |
 | annotation data | Convex `useQuery`/`useMutation` | real-time from backend |
 
-### Backend Integration (No Changes)
+### Backend Integration
 
-All existing backend functions reused as-is:
+One new query; all other functions reused as-is:
 
 **Experiments:**
-- `experiments.orchestration.startAgentExperiment` — create + run
-- `experiments.orchestration.get` — single experiment
-- `experiments.orchestration.byDataset` — list experiments (filter client-side by `experimentType: "agent"`)
+- `experiments.orchestration.startAgentExperiment` — create + run (existing)
+- `experiments.orchestration.get` — single experiment (existing)
+- `experiments.orchestration.byOrg` — **NEW**: list experiments by orgId, filtered client-side by `experimentType: "agent"` (uses existing `by_org` index)
+- `experiments.orchestration.cancelAgentExperiment` — cancel running experiment (existing)
 
 **Results:**
 - `experiments.agentResults.byExperiment` — all results for a run
