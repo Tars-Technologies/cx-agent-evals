@@ -66,7 +66,7 @@ function CollapsibleSection({
   );
 }
 
-export default function ExperimentMetadataPane({
+export function ExperimentMetadataPane({
   result,
   question,
 }: ExperimentMetadataPaneProps) {

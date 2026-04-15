@@ -8,7 +8,7 @@ import { ResizablePanes } from "./ResizablePanes";
 import { ExperimentRunsSidebar } from "./ExperimentRunsSidebar";
 import { ExperimentQuestionList } from "./ExperimentQuestionList";
 import { ExperimentAnnotationPane } from "./ExperimentAnnotationPane";
-import ExperimentMetadataPane from "./ExperimentMetadataPane";
+import { ExperimentMetadataPane } from "./ExperimentMetadataPane";
 import { CreateAgentExperimentModal } from "./CreateAgentExperimentModal";
 
 function LiveBanner({ experiment, onCancel }: { experiment: any; onCancel: () => void }) {
@@ -363,6 +363,7 @@ export function ExperimentModeLayout() {
                 }
                 allTags={allTags}
                 isPending={isPending}
+                comment={comment}
                 onRate={handleRate}
                 onCommentChange={handleCommentChange}
                 onTagsChange={handleTagsChange}

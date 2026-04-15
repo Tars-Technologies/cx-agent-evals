@@ -23,6 +23,7 @@ interface ExperimentAnnotationPaneProps {
   } | null;
   allTags: string[];
   isPending: boolean;
+  comment: string;
   onRate: (rating: Rating) => void;
   onCommentChange: (comment: string) => void;
   onTagsChange: (tags: string[]) => void;
@@ -157,11 +158,11 @@ export function ExperimentAnnotationPane({
   annotation,
   allTags,
   isPending,
+  comment,
   onRate,
   onCommentChange,
   onTagsChange,
 }: ExperimentAnnotationPaneProps) {
-  const comment = annotation?.comment ?? "";
   const currentTags = annotation?.tags ?? [];
 
   // Empty state

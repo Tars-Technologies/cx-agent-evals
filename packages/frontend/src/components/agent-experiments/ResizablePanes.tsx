@@ -107,22 +107,42 @@ export function ResizablePanes({
       }
 
       if (!leftPane || !rightPane) return;
-      // Only resize if neither is a flex pane
-      if (leftPane.flex || rightPane.flex) return;
 
-      const leftStart = drag.startWidths.get(leftPane.id) ?? leftPane.defaultWidth;
-      const rightStart = drag.startWidths.get(rightPane.id) ?? rightPane.defaultWidth;
+      // When one pane is flex, only resize the non-flex pane
+      if (leftPane.flex && rightPane.flex) return;
 
-      const newLeft = Math.max(leftPane.minWidth, leftStart + delta);
-      const actualDelta = newLeft - leftStart;
-      const newRight = Math.max(rightPane.minWidth, rightStart - actualDelta);
-
-      setWidths((prev) => {
-        const next = new Map(prev);
-        next.set(leftPane.id, newLeft);
-        next.set(rightPane!.id, newRight);
-        return next;
-      });
+      if (leftPane.flex) {
+        // Only resize the right (non-flex) pane — flex pane absorbs the difference
+        const rightStart = drag.startWidths.get(rightPane.id) ?? rightPane.defaultWidth;
+        const newRight = Math.max(rightPane.minWidth, rightStart - delta);
+        setWidths((prev) => {
+          const next = new Map(prev);
+          next.set(rightPane!.id, newRight);
+          return next;
+        });
+      } else if (rightPane.flex) {
+        // Only resize the left (non-flex) pane — flex pane absorbs the difference
+        const leftStart = drag.startWidths.get(leftPane.id) ?? leftPane.defaultWidth;
+        const newLeft = Math.max(leftPane.minWidth, leftStart + delta);
+        setWidths((prev) => {
+          const next = new Map(prev);
+          next.set(leftPane.id, newLeft);
+          return next;
+        });
+      } else {
+        // Both are fixed — resize both
+        const leftStart = drag.startWidths.get(leftPane.id) ?? leftPane.defaultWidth;
+        const rightStart = drag.startWidths.get(rightPane.id) ?? rightPane.defaultWidth;
+        const newLeft = Math.max(leftPane.minWidth, leftStart + delta);
+        const actualDelta = newLeft - leftStart;
+        const newRight = Math.max(rightPane.minWidth, rightStart - actualDelta);
+        setWidths((prev) => {
+          const next = new Map(prev);
+          next.set(leftPane.id, newLeft);
+          next.set(rightPane!.id, newRight);
+          return next;
+        });
+      }
     }
 
     function onMouseUp() {
