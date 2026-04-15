@@ -133,11 +133,6 @@ function RetrieversPageContent() {
   // --- Shared query state (persists across query-search and refine tabs) ---
   const [query, setQuery] = useState("");
 
-  // --- Playground multi-select ---
-  const [selectedRetrieverIds, setSelectedRetrieverIds] = useState<
-    Set<Id<"retrievers">>
-  >(new Set());
-
   // --- Wizard modal ---
   const [showWizard, setShowWizard] = useState(false);
 
@@ -165,18 +160,6 @@ function RetrieversPageContent() {
 
   // --- Handlers ---
 
-  const handleToggleRetrieverCheck = useCallback((id: Id<"retrievers">) => {
-    setSelectedRetrieverIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }, []);
-
   const handleRetrieverSelect = useCallback(
     (id: Id<"retrievers"> | null) => {
       setSelectedRetrieverId(id);
@@ -188,7 +171,6 @@ function RetrieversPageContent() {
     (kbId: Id<"knowledgeBases"> | null) => {
       setSelectedKbId(kbId);
       setSelectedRetrieverId(null);
-      setSelectedRetrieverIds(new Set());
       setSelectedRunId(null);
     },
     [setSelectedKbId],
@@ -308,8 +290,14 @@ function RetrieversPageContent() {
                   )}
                   {activeTab === "playground" && (
                     <PlaygroundTab
-                      selectedRetrieverIds={selectedRetrieverIds}
-                      retrievers={allRetrievers ?? []}
+                      selectedRetrieverIds={
+                        selectedRetrieverId
+                          ? new Set([selectedRetrieverId])
+                          : new Set()
+                      }
+                      retrievers={
+                        selectedRetriever ? [selectedRetriever] : []
+                      }
                     />
                   )}
                 </div>
