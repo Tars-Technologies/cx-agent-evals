@@ -51,12 +51,12 @@ export function CreateAgentExperimentModal({
     setError(null);
     setCreating(true);
     try {
-      const experimentId = await startExperiment({
+      const result = await startExperiment({
         datasetId: selectedDatasetId,
         agentId: selectedAgentId,
         name: name.trim(),
       });
-      onCreated(experimentId);
+      onCreated(result.experimentId);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start experiment");
