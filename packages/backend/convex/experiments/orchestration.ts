@@ -374,7 +374,14 @@ export const onExperimentComplete = internalMutation({
 
     if (result.kind === "success") {
       // The action itself marks the experiment as completed with scores.
-      // Nothing more to do here.
+      // If part of a run, notify the parent.
+      if (experiment.experimentRunId) {
+        await ctx.scheduler.runAfter(0, internal.experimentRuns.orchestration.onChildComplete, {
+          experimentRunId: experiment.experimentRunId,
+          experimentId: context.experimentId,
+          success: true,
+        });
+      }
       return;
     }
 
@@ -383,6 +390,14 @@ export const onExperimentComplete = internalMutation({
         status: "canceled",
         completedAt: Date.now(),
       });
+      // Notify parent run (count as failed)
+      if (experiment.experimentRunId) {
+        await ctx.scheduler.runAfter(0, internal.experimentRuns.orchestration.onChildComplete, {
+          experimentRunId: experiment.experimentRunId,
+          experimentId: context.experimentId,
+          success: false,
+        });
+      }
       return;
     }
 
@@ -392,6 +407,14 @@ export const onExperimentComplete = internalMutation({
         status: "failed",
         error: result.error ?? "Evaluation action failed",
         completedAt: Date.now(),
+      });
+    }
+    // Notify parent run
+    if (experiment.experimentRunId) {
+      await ctx.runMutation(internal.experimentRuns.orchestration.onChildComplete, {
+        experimentRunId: experiment.experimentRunId,
+        experimentId: context.experimentId,
+        success: false,
       });
     }
   },

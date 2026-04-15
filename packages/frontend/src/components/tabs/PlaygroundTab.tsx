@@ -148,10 +148,10 @@ export function PlaygroundTab({
           }}
           placeholder={
             noRetrieversSelected
-              ? "Select one or more retrievers from the sidebar..."
+              ? "Select a retriever from the dropdown above..."
               : noReadyRetrievers
-                ? "No selected retrievers are ready..."
-                : "Enter a query to test across retrievers..."
+                ? "Selected retriever is not ready..."
+                : "Enter a query to test retrieval..."
           }
           disabled={noReadyRetrievers}
           className={`flex-1 bg-bg-surface border border-border rounded px-3 py-2 text-sm text-text placeholder:text-text-dim focus:border-accent/50 focus:outline-none transition-colors ${
@@ -179,7 +179,7 @@ export function PlaygroundTab({
       {noRetrieversSelected && (
         <div className="flex-1 flex items-center justify-center">
           <p className="text-sm text-text-dim">
-            Select one or more retrievers from the sidebar.
+            Select a retriever from the dropdown above.
           </p>
         </div>
       )}
