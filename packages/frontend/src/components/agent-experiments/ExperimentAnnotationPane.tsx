@@ -200,59 +200,60 @@ export function ExperimentAnnotationPane({
     );
   }
 
-  // Active state
+  // Active state — scrollable question+answer on top, sticky controls at bottom
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-6 space-y-6">
-      {/* Question section */}
-      <div>
-        <div className="text-xs text-text-dim uppercase tracking-wider mb-2">
-          Question
-        </div>
-        <div className="text-text text-base">{question.queryText}</div>
-      </div>
-
-      {/* Agent Answer section */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-xs text-text-dim uppercase tracking-wider">
-            Agent Answer
+    <div className="flex-1 flex flex-col min-h-0">
+      {/* Scrollable content: question + answer */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-6">
+        {/* Question section */}
+        <div>
+          <div className="text-xs text-text-dim uppercase tracking-wider mb-2">
+            Question
           </div>
+          <div className="text-text text-base">{question.queryText}</div>
         </div>
 
-        {result?.status === "error" ? (
-          <div className="bg-bg-elevated rounded-md p-3">
-            <div className="text-sm text-red-400">
-              {result.error ?? "An error occurred"}
+        {/* Agent Answer section */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs text-text-dim uppercase tracking-wider">
+              Agent Answer
             </div>
           </div>
-        ) : result ? (
-          <div className="bg-bg-elevated rounded-md overflow-hidden">
-            <MarkdownViewer
-              content={result.answerText}
-              showToggle={true}
-            />
-          </div>
-        ) : null}
 
-        {result && result.status !== "error" && (
-          <div className="mt-2 text-[10px] text-text-dim">
-            {result.usage
-              ? `${result.usage.promptTokens} prompt + ${result.usage.completionTokens} completion tokens | `
-              : ""}
-            {(result.latencyMs / 1000).toFixed(1)}s
-          </div>
-        )}
+          {result?.status === "error" ? (
+            <div className="bg-bg-elevated rounded-md p-3">
+              <div className="text-sm text-red-400">
+                {result.error ?? "An error occurred"}
+              </div>
+            </div>
+          ) : result ? (
+            <div className="bg-bg-elevated rounded-md overflow-hidden">
+              <MarkdownViewer
+                content={result.answerText}
+                showToggle={true}
+              />
+            </div>
+          ) : null}
+
+          {result && result.status !== "error" && (
+            <div className="mt-2 text-[10px] text-text-dim">
+              {result.usage
+                ? `${result.usage.promptTokens} prompt + ${result.usage.completionTokens} completion tokens | `
+                : ""}
+              {(result.latencyMs / 1000).toFixed(1)}s
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Rating row */}
-      <div>
-        <div className="text-xs text-text-dim uppercase tracking-wider mb-2">
-          Rating
-        </div>
+      {/* Sticky bottom: rating + tags + comment */}
+      <div className="flex-shrink-0 border-t border-border bg-bg p-4 space-y-3">
+        {/* Rating row */}
         <div className="flex gap-2">
           <button
             onClick={() => onRate("great")}
-            className={`flex-1 py-2.5 px-4 rounded-lg border text-sm font-medium transition-colors ${
+            className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
               annotation?.rating === "great"
                 ? "bg-accent/20 border-accent/50 text-accent"
                 : "border-border text-text-dim hover:border-accent/30 hover:text-accent"
@@ -263,7 +264,7 @@ export function ExperimentAnnotationPane({
           </button>
           <button
             onClick={() => onRate("good_enough")}
-            className={`flex-1 py-2.5 px-4 rounded-lg border text-sm font-medium transition-colors ${
+            className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
               annotation?.rating === "good_enough"
                 ? "bg-yellow-500/20 border-yellow-500/50 text-yellow-400"
                 : "border-border text-text-dim hover:border-yellow-500/30 hover:text-yellow-400"
@@ -274,7 +275,7 @@ export function ExperimentAnnotationPane({
           </button>
           <button
             onClick={() => onRate("bad")}
-            className={`flex-1 py-2.5 px-4 rounded-lg border text-sm font-medium transition-colors ${
+            className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
               annotation?.rating === "bad"
                 ? "bg-red-500/20 border-red-500/50 text-red-400"
                 : "border-border text-text-dim hover:border-red-500/30 hover:text-red-400"
@@ -284,33 +285,23 @@ export function ExperimentAnnotationPane({
             <span className="text-[10px] opacity-50 ml-1">[3]</span>
           </button>
         </div>
-      </div>
 
-      {/* Tags row — only visible if rated */}
-      {annotation?.rating && (
-        <div>
-          <div className="text-xs text-text-dim uppercase tracking-wider mb-2">
-            Tags
-          </div>
+        {/* Tags — only visible if rated */}
+        {annotation?.rating && (
           <TagsSection
             currentTags={currentTags}
             allTags={allTags}
             onTagsChange={onTagsChange}
           />
-        </div>
-      )}
+        )}
 
-      {/* Comment textarea */}
-      <div>
-        <div className="text-xs text-text-dim uppercase tracking-wider mb-2">
-          Comment
-        </div>
+        {/* Comment */}
         <textarea
           value={comment}
           onChange={(e) => onCommentChange(e.target.value)}
           placeholder="Optional comment..."
           rows={2}
-          className="w-full bg-bg border border-border rounded px-3 py-2 text-sm text-text placeholder:text-text-dim/50 focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none resize-none"
+          className="w-full bg-bg-elevated border border-border rounded px-3 py-2 text-sm text-text placeholder:text-text-dim/50 focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none resize-none"
         />
       </div>
     </div>
