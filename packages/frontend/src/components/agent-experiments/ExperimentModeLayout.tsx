@@ -38,8 +38,21 @@ function LiveBanner({ experiment, onCancel }: { experiment: any; onCancel: () =>
   );
 }
 
-export function ExperimentModeLayout() {
-  const [selectedRunId, setSelectedRunId] = useState<Id<"experiments"> | null>(null);
+interface ExperimentModeLayoutProps {
+  selectedRunId: Id<"experiments"> | null;
+  onSelectRun: (id: Id<"experiments"> | null) => void;
+  showCreateModal: boolean;
+  onCloseCreateModal: () => void;
+  onCreated: (id: Id<"experiments">) => void;
+}
+
+export function ExperimentModeLayout({
+  selectedRunId,
+  onSelectRun,
+  showCreateModal,
+  onCloseCreateModal,
+  onCreated,
+}: ExperimentModeLayoutProps) {
   const [selectedQuestionId, setSelectedQuestionId] = useState<Id<"questions"> | null>(null);
   const [runsCollapsed, setRunsCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -49,45 +62,49 @@ export function ExperimentModeLayout() {
       return false;
     }
   });
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [comment, setComment] = useState("");
+
+  // Reset question selection on run change
+  useEffect(() => {
+    setSelectedQuestionId(null);
+  }, [selectedRunId]);
 
   // Queries
   const experiments = useQuery(api.experiments.orchestration.byOrg);
   const agentExperiments = useMemo(
     () => experiments?.filter((e: any) => e.experimentType === "agent") ?? [],
-    [experiments]
+    [experiments],
   );
 
   const selectedExperiment = useQuery(
     api.experiments.orchestration.get,
-    selectedRunId ? { id: selectedRunId } : "skip"
+    selectedRunId ? { id: selectedRunId } : "skip",
   );
 
   const results = useQuery(
     api.experiments.agentResults.byExperiment,
-    selectedRunId ? { experimentId: selectedRunId } : "skip"
+    selectedRunId ? { experimentId: selectedRunId } : "skip",
   );
 
   const annotations = useQuery(
     api.annotations.crud.byExperiment,
-    selectedRunId ? { experimentId: selectedRunId } : "skip"
+    selectedRunId ? { experimentId: selectedRunId } : "skip",
   );
 
   const annotationStats = useQuery(
     api.annotations.crud.stats,
-    selectedRunId ? { experimentId: selectedRunId } : "skip"
+    selectedRunId ? { experimentId: selectedRunId } : "skip",
   );
 
   const allTags =
     useQuery(
       api.annotations.crud.allTags,
-      selectedRunId ? { experimentId: selectedRunId } : "skip"
+      selectedRunId ? { experimentId: selectedRunId } : "skip",
     ) ?? [];
 
   const questions = useQuery(
     api.crud.questions.byDataset,
-    selectedExperiment?.datasetId ? { datasetId: selectedExperiment.datasetId } : "skip"
+    selectedExperiment?.datasetId ? { datasetId: selectedExperiment.datasetId } : "skip",
   );
 
   // Derived state
@@ -148,7 +165,7 @@ export function ExperimentModeLayout() {
         comment: comment || undefined,
       });
     },
-    [currentItem, comment, upsertAnnotation]
+    [currentItem, comment, upsertAnnotation],
   );
 
   const handleCommentChange = useCallback((newComment: string) => {
@@ -160,7 +177,7 @@ export function ExperimentModeLayout() {
       if (!currentItem?.resultId) return;
       await updateTags({ resultId: currentItem.resultId, tags });
     },
-    [currentItem, updateTags]
+    [currentItem, updateTags],
   );
 
   const cancelExperiment = useMutation(api.experiments.orchestration.cancelAgentExperiment);
@@ -174,22 +191,13 @@ export function ExperimentModeLayout() {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
-      if (e.key === "1") {
-        e.preventDefault();
-        handleRate("great");
-      }
-      if (e.key === "2") {
-        e.preventDefault();
-        handleRate("good_enough");
-      }
-      if (e.key === "3") {
-        e.preventDefault();
-        handleRate("bad");
-      }
+      if (e.key === "1") { e.preventDefault(); handleRate("great"); }
+      if (e.key === "2") { e.preventDefault(); handleRate("good_enough"); }
+      if (e.key === "3") { e.preventDefault(); handleRate("bad"); }
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         e.preventDefault();
         const currentIdx = questionItems.findIndex(
-          (q: any) => q.questionId === selectedQuestionId
+          (q: any) => q.questionId === selectedQuestionId,
         );
         const nextIdx =
           e.key === "ArrowUp"
@@ -222,24 +230,42 @@ export function ExperimentModeLayout() {
     return () => clearTimeout(timer);
   }, [comment, currentItem?.resultId, currentAnnotation]);
 
+  const handleToggleCollapse = useCallback(() => {
+    setRunsCollapsed((prev: boolean) => {
+      const next = !prev;
+      localStorage.setItem("agents-experiment-runs-collapsed", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Top bar */}
+      {/* Sub-bar — expand button, annotation stats, keyboard hints */}
       <div className="flex items-center gap-3 border-b border-border bg-bg px-4 py-1.5">
+        {/* Sidebar expand button — always visible when collapsed */}
+        {runsCollapsed && (
+          <button
+            onClick={handleToggleCollapse}
+            className="flex items-center gap-1.5 px-2 py-1 rounded border border-accent/30 bg-accent/5 text-accent hover:bg-accent/10 transition-colors text-xs"
+            title="Show experiment runs"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+            <span>Runs</span>
+          </button>
+        )}
+
+        {/* Selected experiment name badge (when sidebar collapsed) */}
         {runsCollapsed && selectedExperiment && (
           <>
-            <button
-              onClick={() => setRunsCollapsed(false)}
-              className="text-text-dim hover:text-text text-xs"
-            >
-              »
-            </button>
-            <span className="text-text-dim text-xs bg-bg-elevated px-2 py-0.5 rounded">
+            <span className="text-text-dim text-xs bg-bg-elevated px-2 py-0.5 rounded truncate max-w-48">
               {selectedExperiment.name}
             </span>
-            <span className="text-border">|</span>
+            <div className="w-px h-4 bg-border" />
           </>
         )}
+
         {annotationStats && (
           <div className="flex gap-3 text-xs text-text-dim">
             <span className="flex items-center gap-1">
@@ -256,15 +282,9 @@ export function ExperimentModeLayout() {
             </span>
           </div>
         )}
-        <span className="text-border">|</span>
-        <span className="text-xs text-text-dim">keyboard: 1/2/3 rate, up/down nav</span>
-        <div className="flex-1" />
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="px-3 py-1 bg-accent text-[#0a0a0a] rounded text-xs font-semibold hover:bg-accent/90"
-        >
-          + New Experiment
-        </button>
+
+        <div className="w-px h-4 bg-border" />
+        <span className="text-xs text-text-dim">1/2/3 rate · ↑↓ nav</span>
       </div>
 
       {/* Live banner */}
@@ -275,11 +295,8 @@ export function ExperimentModeLayout() {
       {/* Create modal */}
       <CreateAgentExperimentModal
         open={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onCreated={(id) => {
-          setSelectedRunId(id);
-          setSelectedQuestionId(null);
-        }}
+        onClose={onCloseCreateModal}
+        onCreated={onCreated}
       />
 
       {/* 4-pane layout */}
@@ -295,21 +312,9 @@ export function ExperimentModeLayout() {
               <ExperimentRunsSidebar
                 experiments={agentExperiments}
                 selectedRunId={selectedRunId}
-                onSelect={(id) => {
-                  setSelectedRunId(id);
-                  setSelectedQuestionId(null);
-                }}
+                onSelect={(id) => onSelectRun(id)}
                 collapsed={runsCollapsed}
-                onToggleCollapse={() =>
-                  setRunsCollapsed((prev: boolean) => {
-                    const next = !prev;
-                    localStorage.setItem(
-                      "agents-experiment-runs-collapsed",
-                      JSON.stringify(next)
-                    );
-                    return next;
-                  })
-                }
+                onToggleCollapse={handleToggleCollapse}
               />
             ),
           },
@@ -372,8 +377,8 @@ export function ExperimentModeLayout() {
           },
           {
             id: "metadata",
-            defaultWidth: 300,
-            minWidth: 200,
+            defaultWidth: 240,
+            minWidth: 180,
             content: (
               <ExperimentMetadataPane
                 result={
