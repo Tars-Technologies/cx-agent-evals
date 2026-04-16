@@ -167,7 +167,7 @@ export function ResizablePanes({
     .filter(({ pane }) => !collapsedPanes.has(pane.id));
 
   return (
-    <div ref={containerRef} className="flex h-full min-h-0 w-full overflow-hidden">
+    <div ref={containerRef} className="flex flex-1 min-h-0 w-full overflow-hidden">
       {panes.map((pane, i) => {
         const isCollapsed = collapsedPanes.has(pane.id);
 
@@ -189,7 +189,7 @@ export function ResizablePanes({
           <div key={pane.id} className="flex h-full min-h-0">
             {/* Pane content */}
             <div
-              className="h-full min-h-0 overflow-hidden border-r border-border"
+              className="h-full min-h-0 flex flex-col overflow-hidden border-r border-border"
               style={
                 pane.flex
                   ? { flex: 1, minWidth: pane.minWidth }
