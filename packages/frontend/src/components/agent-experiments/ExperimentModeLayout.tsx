@@ -122,18 +122,33 @@ export function ExperimentModeLayout({
 
   const questionItems = useMemo(() => {
     if (!questions) return [];
-    return questions.map((q: any) => {
-      const result = resultMap.get(q._id.toString());
-      const annotation = result ? annotationMap.get(result._id.toString()) : null;
-      return {
-        questionId: q._id,
-        queryText: q.queryText,
-        resultId: result?._id ?? null,
-        rating: annotation?.rating ?? null,
-        hasComment: !!annotation?.comment,
-      };
-    });
-  }, [questions, resultMap, annotationMap]);
+    const experimentDone =
+      selectedExperiment?.status === "completed" || selectedExperiment?.status === "failed";
+    return questions
+      .filter((q: any) => {
+        const hasResult = resultMap.has(q._id.toString());
+        // If experiment is done, only show questions that were actually evaluated.
+        // The backend filters out questions without ground truth spans, so some
+        // dataset questions may never get results.
+        if (experimentDone && !hasResult) return false;
+        // While running, show questions with ground truth (matching backend filter)
+        if (!experimentDone && !hasResult) {
+          return Array.isArray(q.relevantSpans) && q.relevantSpans.length > 0;
+        }
+        return true;
+      })
+      .map((q: any) => {
+        const result = resultMap.get(q._id.toString());
+        const annotation = result ? annotationMap.get(result._id.toString()) : null;
+        return {
+          questionId: q._id,
+          queryText: q.queryText,
+          resultId: result?._id ?? null,
+          rating: annotation?.rating ?? null,
+          hasComment: !!annotation?.comment,
+        };
+      });
+  }, [questions, resultMap, annotationMap, selectedExperiment?.status]);
 
   const currentItem = selectedQuestionId
     ? questionItems.find((q: any) => q.questionId === selectedQuestionId) ?? null
