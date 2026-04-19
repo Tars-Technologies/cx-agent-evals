@@ -6,7 +6,7 @@ import { Id } from "@convex/_generated/dataModel";
 import { buildKbLink } from "@/lib/useKbFromUrl";
 
 interface HeaderProps {
-  mode?: "kb" | "generate" | "retrievers" | "agents" | "experiments";
+  mode?: "kb" | "dataset" | "retrievers" | "agents" | "experiments";
   kbId?: Id<"knowledgeBases"> | null;
   onReset?: () => void;
 }
@@ -37,14 +37,14 @@ export function Header({ mode, kbId, onReset }: HeaderProps) {
                   Knowledge Base
                 </Link>
                 <Link
-                  href={buildKbLink("/generate", kbId ?? null)}
+                  href={buildKbLink("/dataset", kbId ?? null)}
                   className={`px-3 py-1 text-xs rounded transition-colors ${
-                    mode === "generate"
+                    mode === "dataset"
                       ? "bg-bg-elevated text-accent"
                       : "text-text-muted hover:text-text"
                   }`}
                 >
-                  Generate
+                  Dataset
                 </Link>
                 <Link
                   href={buildKbLink("/retrievers", kbId ?? null)}
