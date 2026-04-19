@@ -88,14 +88,24 @@ function renderHighlightedText(content: string, highlights: HighlightSpan[]) {
 export function DocumentViewer({
   doc,
   question,
+  allDocIds,
+  onNavigateDoc,
 }: {
   doc: DocumentInfo | null;
   question: GeneratedQuestion | null;
+  /** All document IDs relevant to the current question (source + span docs) */
+  allDocIds?: string[];
+  /** Called when user navigates to a different doc */
+  onNavigateDoc?: (docId: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const highlights = question && doc ? computeHighlights(doc, question) : [];
   const hasHighlights = highlights.length > 0;
+
+  // Multi-doc navigation
+  const showDocNav = allDocIds && allDocIds.length > 1 && doc;
+  const currentDocIndex = showDocNav ? allDocIds.indexOf(doc.id) : -1;
 
   const [viewMode, setViewMode] = useState<ViewMode>(
     hasHighlights ? "raw" : "rendered",
@@ -133,13 +143,34 @@ export function DocumentViewer({
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-elevated/50">
         <span className="text-xs text-accent font-medium">{doc.id}</span>
         <div className="flex items-center gap-3">
+          {showDocNav && (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => onNavigateDoc!(allDocIds[currentDocIndex - 1])}
+                disabled={currentDocIndex <= 0}
+                className="px-1.5 py-0.5 text-[10px] text-text-muted border border-border rounded hover:text-accent hover:border-accent/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+              >
+                ‹
+              </button>
+              <span className="text-[10px] text-text-muted">
+                {currentDocIndex + 1} of {allDocIds.length} docs
+              </span>
+              <button
+                onClick={() => onNavigateDoc!(allDocIds[currentDocIndex + 1])}
+                disabled={currentDocIndex >= allDocIds.length - 1}
+                className="px-1.5 py-0.5 text-[10px] text-text-muted border border-border rounded hover:text-accent hover:border-accent/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+              >
+                ›
+              </button>
+            </div>
+          )}
           {hasHighlights && (
             <span className="text-[10px] text-text-muted">
-              {highlights.length} highlight{highlights.length !== 1 ? "s" : ""}
+              {highlights.length} span{highlights.length !== 1 ? "s" : ""}
             </span>
           )}
-          <span className="text-[10px] text-text-dim">
-            {doc.contentLength.toLocaleString()} chars
+          <span className="text-[10px] text-text-dim" title={`${doc.contentLength.toLocaleString()} characters`}>
+            {doc.contentLength >= 1000 ? `${Math.round(doc.contentLength / 1000)}k chars` : `${doc.contentLength} chars`}
           </span>
           <div className="inline-flex items-center bg-elevated border border-border rounded-full text-[10px] overflow-hidden">
             <button

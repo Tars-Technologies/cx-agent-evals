@@ -199,14 +199,19 @@ function GeneratePageContent() {
 
   // When a question is selected, load its source document
   const selectedQ = selectedQuestion !== null ? displayQuestions[selectedQuestion] : null;
+  const prevSelectedQuestion = useRef<number | null>(null);
   useEffect(() => {
+    // Only auto-navigate to source doc when the selected question *changes*,
+    // not on every render — otherwise it fights manual doc navigation.
+    if (selectedQuestion === prevSelectedQuestion.current) return;
+    prevSelectedQuestion.current = selectedQuestion;
     if (selectedQ && documentsData) {
       const doc = documentsData.find((d) => d.docId === selectedQ.docId);
       if (doc) {
         setSelectedDocId(doc._id);
       }
     }
-  }, [selectedQ, documentsData]);
+  }, [selectedQuestion, selectedQ, documentsData]);
 
   // Build doc info for DocumentViewer
   const selectedDoc: DocumentInfo | null = selectedDocData
@@ -216,6 +221,25 @@ function GeneratePageContent() {
         contentLength: selectedDocData.contentLength,
       }
     : null;
+
+  // Collect all unique doc IDs for the selected question (source + span docs)
+  const selectedQDocIds = (() => {
+    if (!selectedQ) return undefined;
+    const ids = new Set<string>();
+    ids.add(selectedQ.docId); // source doc always first
+    if (selectedQ.relevantSpans) {
+      for (const s of selectedQ.relevantSpans) {
+        ids.add(s.docId);
+      }
+    }
+    return ids.size > 1 ? [...ids] : undefined;
+  })();
+
+  function handleNavigateDoc(docId: string) {
+    if (!documentsData) return;
+    const doc = documentsData.find((d) => d.docId === docId);
+    if (doc) setSelectedDocId(doc._id);
+  }
 
   // When generation completes, switch to browsing the new dataset
   useEffect(() => {
@@ -374,7 +398,12 @@ function GeneratePageContent() {
 
             {/* Right: document viewer */}
             <div className="flex-1 min-w-0 bg-bg overflow-hidden">
-              <DocumentViewer doc={selectedDoc} question={selectedQ} />
+              <DocumentViewer
+                doc={selectedDoc}
+                question={selectedQ}
+                allDocIds={selectedQDocIds}
+                onNavigateDoc={handleNavigateDoc}
+              />
             </div>
           </>
         )}

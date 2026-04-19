@@ -83,6 +83,9 @@ export function EditQuestionModal({
     (d) => !docsWithSpans.has(d.docId),
   );
 
+  // Focused span for scroll-to + glow
+  const [focusedSpanIndex, setFocusedSpanIndex] = useState<number | null>(null);
+
   function handleDeleteSpan(index: number) {
     setSpans((prev) => prev.filter((_, i) => i !== index));
     setConfirmDeleteIndex(null);
@@ -90,6 +93,12 @@ export function EditQuestionModal({
 
   function handleAddSpan(span: SpanInfo) {
     setSpans((prev) => [...prev, span]);
+  }
+
+  // Navigate to a span: open its document and focus it
+  function handleSpanClick(globalIndex: number, span: SpanInfo) {
+    navigateToDoc(span.docId);
+    setFocusedSpanIndex(globalIndex);
   }
 
   async function handleSave() {
@@ -202,7 +211,8 @@ export function EditQuestionModal({
                   {items.map(({ span, globalIndex }) => (
                     <div
                       key={globalIndex}
-                      className={`relative bg-bg border border-border rounded mx-1 my-1 px-2.5 py-2 text-[10px] leading-relaxed transition-colors group/span hover:border-border-bright ${
+                      onClick={() => handleSpanClick(globalIndex, span)}
+                      className={`relative bg-bg border border-border rounded mx-1 my-1 px-2.5 py-2 text-[10px] leading-relaxed transition-colors group/span hover:border-border-bright cursor-pointer ${
                         confirmDeleteIndex === globalIndex
                           ? "border-red-500/30 bg-red-500/5"
                           : ""
@@ -291,6 +301,8 @@ export function EditQuestionModal({
               onSelectDoc={setSelectedDocId}
               existingSpans={spans}
               onAddSpan={handleAddSpan}
+              focusedSpanIndex={focusedSpanIndex}
+              onFocusHandled={() => setFocusedSpanIndex(null)}
             />
           </div>
         </div>
@@ -317,12 +329,16 @@ function RightPanel({
   onSelectDoc,
   existingSpans,
   onAddSpan,
+  focusedSpanIndex,
+  onFocusHandled,
 }: {
   documents: { _id: Id<"documents">; docId: string; title: string }[];
   selectedDocId: Id<"documents"> | null;
   onSelectDoc: (id: Id<"documents">) => void;
   existingSpans: SpanInfo[];
   onAddSpan: (span: SpanInfo) => void;
+  focusedSpanIndex: number | null;
+  onFocusHandled: () => void;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -410,6 +426,24 @@ function RightPanel({
     window.getSelection()?.removeAllRanges();
   }
 
+  // Scroll to and glow focused span
+  useEffect(() => {
+    if (focusedSpanIndex === null || !docContent) return;
+    // Small delay to let the document render after navigation
+    const timer = setTimeout(() => {
+      const container = document.getElementById("doc-content-area");
+      if (!container) return;
+      const mark = container.querySelector(`[data-span-index="${focusedSpanIndex}"]`);
+      if (mark) {
+        mark.scrollIntoView({ behavior: "smooth", block: "center" });
+        mark.classList.add("span-glow");
+        setTimeout(() => mark.classList.remove("span-glow"), 2000);
+      }
+      onFocusHandled();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [focusedSpanIndex, docContent, onFocusHandled]);
+
   // Highlights for existing spans in the currently viewed doc
   const docSpans = docContent
     ? existingSpans
@@ -432,6 +466,7 @@ function RightPanel({
       parts.push(
         <mark
           key={`h-${i}`}
+          data-span-index={span.colorIndex}
           style={{
             backgroundColor: SPAN_COLORS[span.colorIndex % SPAN_COLORS.length],
             color: "var(--color-text)",

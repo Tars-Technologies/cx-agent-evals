@@ -150,9 +150,12 @@ export function QuestionList({
         {filteredQuestions.map(({ question, originalIndex }) => {
           const docCount = spanDocCount(question);
           return (
-            <button
+            <div
               key={originalIndex}
               onClick={() => onSelect(originalIndex)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect(originalIndex); }}
               className={`group w-full text-left px-3 py-2.5 border-b border-border/30 transition-colors
                          cursor-pointer animate-slide-in
                          ${
@@ -198,7 +201,7 @@ export function QuestionList({
                   </span>
                 )}
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
