@@ -34,7 +34,9 @@ Frontend-only cosmetic + routing change:
 | Nav label in `Header.tsx` | `Generate` | `Dataset` |
 | URL route | `/generate` | `/dataset` |
 | Frontend directory | `src/app/generate/` | `src/app/dataset/` |
-| Mode identifier | `"generate"` | `"dataset"` |
+| Header mode prop | `"generate"` | `"dataset"` |
+
+> **Note:** The page.tsx has an internal `PageMode = "browse" | "generate"` type (line 67) that controls the page's internal tab state. This is **not** related to the Header mode prop and should NOT be renamed.
 
 ### 2. Backend: New Public Mutation
 
