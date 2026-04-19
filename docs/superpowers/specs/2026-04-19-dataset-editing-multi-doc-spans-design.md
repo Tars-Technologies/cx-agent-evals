@@ -105,7 +105,7 @@ Wide modal (95vw, max 1200px, 80vh height) with two panels:
   - Text selection → floating action bar at bottom: "Selected · [char count] · [line range] · [+ Add as Span]"
   - Click "+ Add as Span" → span added to left panel list with green flash animation
 
-#### Document Navigation (two paths)
+#### Document Navigation (three paths)
 
 1. Click a document name in the left panel span list → right panel switches to that doc (dropdown syncs)
 2. Use the dropdown in the right panel toolbar
@@ -142,7 +142,8 @@ The evaluation metrics already support multi-document spans:
 
 | Component | Action |
 |-----------|--------|
-| `Header.tsx` | Modify — rename nav label + mode |
+| `Header.tsx` | Modify — rename nav label, mode type union (`"generate"` → `"dataset"`) |
+| `ModeSelector.tsx` | Modify — update `/generate` link to `/dataset` |
 | `src/app/generate/` | Rename directory → `src/app/dataset/` |
 | `src/app/dataset/page.tsx` | Modify — update imports if needed |
 | `QuestionList.tsx` | Modify — flat list, filters, edit button |
