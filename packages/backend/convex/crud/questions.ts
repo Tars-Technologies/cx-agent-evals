@@ -1,4 +1,4 @@
-import { query, internalMutation, internalQuery } from "../_generated/server";
+import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { getAuthContext } from "../lib/auth";
 import { spanValidator } from "../lib/validators";
@@ -18,6 +18,36 @@ export const byDataset = query({
       .query("questions")
       .withIndex("by_dataset", (q) => q.eq("datasetId", args.datasetId))
       .collect();
+  },
+});
+
+/**
+ * Public mutation: update a question's text and/or spans.
+ * Clears langsmithExampleId to force re-sync on next experiment.
+ */
+export const updateQuestion = mutation({
+  args: {
+    questionId: v.id("questions"),
+    queryText: v.optional(v.string()),
+    relevantSpans: v.optional(v.array(spanValidator)),
+  },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+
+    const question = await ctx.db.get(args.questionId);
+    if (!question) throw new Error("Question not found");
+
+    // Verify org access via dataset
+    const dataset = await ctx.db.get(question.datasetId);
+    if (!dataset || dataset.orgId !== orgId) {
+      throw new Error("Question not found");
+    }
+
+    await ctx.db.patch(args.questionId, {
+      langsmithExampleId: undefined,
+      ...(args.queryText !== undefined && { queryText: args.queryText }),
+      ...(args.relevantSpans !== undefined && { relevantSpans: args.relevantSpans }),
+    });
   },
 });
 

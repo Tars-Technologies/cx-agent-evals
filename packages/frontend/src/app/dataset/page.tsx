@@ -11,13 +11,14 @@ import { QuestionList } from "@/components/QuestionList";
 import { DocumentViewer } from "@/components/DocumentViewer";
 import { GenerationWizard } from "@/components/GenerationWizard";
 import { DeleteDatasetModal } from "@/components/DeleteDatasetModal";
+import { EditQuestionModal } from "@/components/EditQuestionModal";
 import { GenerationBanner } from "@/components/GenerationBanner";
 import { ResizablePanel } from "@/components/ResizablePanel";
 import { DocumentInfo, GeneratedQuestion } from "@/lib/types";
 
 export default function GeneratePage() {
   return (
-    <Suspense fallback={<div className="flex flex-col h-screen"><Header mode="generate" /></div>}>
+    <Suspense fallback={<div className="flex flex-col h-screen"><Header mode="dataset" /></div>}>
       <GeneratePageContent />
     </Suspense>
   );
@@ -129,6 +130,7 @@ function GeneratePageContent() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // Selected document for viewing
   const [selectedDocId, setSelectedDocId] = useState<Id<"documents"> | null>(null);
+  const [editingQuestionIndex, setEditingQuestionIndex] = useState<number | null>(null);
   const selectedDocData = useQuery(
     api.crud.documents.get,
     selectedDocId ? { id: selectedDocId } : "skip",
@@ -197,14 +199,19 @@ function GeneratePageContent() {
 
   // When a question is selected, load its source document
   const selectedQ = selectedQuestion !== null ? displayQuestions[selectedQuestion] : null;
+  const prevSelectedQuestion = useRef<number | null>(null);
   useEffect(() => {
+    // Only auto-navigate to source doc when the selected question *changes*,
+    // not on every render — otherwise it fights manual doc navigation.
+    if (selectedQuestion === prevSelectedQuestion.current) return;
+    prevSelectedQuestion.current = selectedQuestion;
     if (selectedQ && documentsData) {
       const doc = documentsData.find((d) => d.docId === selectedQ.docId);
       if (doc) {
         setSelectedDocId(doc._id);
       }
     }
-  }, [selectedQ, documentsData]);
+  }, [selectedQuestion, selectedQ, documentsData]);
 
   // Build doc info for DocumentViewer
   const selectedDoc: DocumentInfo | null = selectedDocData
@@ -214,6 +221,25 @@ function GeneratePageContent() {
         contentLength: selectedDocData.contentLength,
       }
     : null;
+
+  // Collect all unique doc IDs for the selected question (source + span docs)
+  const selectedQDocIds = (() => {
+    if (!selectedQ) return undefined;
+    const ids = new Set<string>();
+    ids.add(selectedQ.docId); // source doc always first
+    if (selectedQ.relevantSpans) {
+      for (const s of selectedQ.relevantSpans) {
+        ids.add(s.docId);
+      }
+    }
+    return ids.size > 1 ? [...ids] : undefined;
+  })();
+
+  function handleNavigateDoc(docId: string) {
+    if (!documentsData) return;
+    const doc = documentsData.find((d) => d.docId === docId);
+    if (doc) setSelectedDocId(doc._id);
+  }
 
   // When generation completes, switch to browsing the new dataset
   useEffect(() => {
@@ -231,7 +257,7 @@ function GeneratePageContent() {
 
   return (
     <div className="flex flex-col h-screen">
-      <Header mode="generate" kbId={selectedKbId} />
+      <Header mode="dataset" kbId={selectedKbId} />
 
         {/* Generation Banner — shown when any job is active */}
         {activeJob && (
@@ -357,6 +383,7 @@ function GeneratePageContent() {
                   questions={displayQuestions}
                   selectedIndex={selectedQuestion}
                   onSelect={setSelectedQuestion}
+                  onEdit={(index) => setEditingQuestionIndex(index)}
                   generating={displayGenerating}
                   totalDone={displayTotalDone}
                   phaseStatus={displayPhaseStatus}
@@ -371,7 +398,12 @@ function GeneratePageContent() {
 
             {/* Right: document viewer */}
             <div className="flex-1 min-w-0 bg-bg overflow-hidden">
-              <DocumentViewer doc={selectedDoc} question={selectedQ} />
+              <DocumentViewer
+                doc={selectedDoc}
+                question={selectedQ}
+                allDocIds={selectedQDocIds}
+                onNavigateDoc={handleNavigateDoc}
+              />
             </div>
           </>
         )}
@@ -419,6 +451,23 @@ function GeneratePageContent() {
           onClose={() => { setDeleteTarget(null); setDeleteError(null); }}
         />
       )}
+
+      {/* Edit Question Modal */}
+      {editingQuestionIndex !== null &&
+        browseDatasetId &&
+        selectedKbId &&
+        browseQuestions?.[editingQuestionIndex] && (
+          <EditQuestionModal
+            question={{
+              _id: browseQuestions[editingQuestionIndex]._id,
+              queryText: browseQuestions[editingQuestionIndex].queryText,
+              sourceDocId: browseQuestions[editingQuestionIndex].sourceDocId,
+              relevantSpans: browseQuestions[editingQuestionIndex].relevantSpans,
+            }}
+            kbId={selectedKbId}
+            onClose={() => setEditingQuestionIndex(null)}
+          />
+        )}
 
       {/* Generation error toast */}
       {(genError || job?.error) && (
