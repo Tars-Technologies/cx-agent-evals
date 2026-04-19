@@ -129,6 +129,7 @@ function GeneratePageContent() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // Selected document for viewing
   const [selectedDocId, setSelectedDocId] = useState<Id<"documents"> | null>(null);
+  const [editingQuestionIndex, setEditingQuestionIndex] = useState<number | null>(null);
   const selectedDocData = useQuery(
     api.crud.documents.get,
     selectedDocId ? { id: selectedDocId } : "skip",
@@ -357,6 +358,7 @@ function GeneratePageContent() {
                   questions={displayQuestions}
                   selectedIndex={selectedQuestion}
                   onSelect={setSelectedQuestion}
+                  onEdit={(index) => setEditingQuestionIndex(index)}
                   generating={displayGenerating}
                   totalDone={displayTotalDone}
                   phaseStatus={displayPhaseStatus}
