@@ -11,6 +11,7 @@ import { QuestionList } from "@/components/QuestionList";
 import { DocumentViewer } from "@/components/DocumentViewer";
 import { GenerationWizard } from "@/components/GenerationWizard";
 import { DeleteDatasetModal } from "@/components/DeleteDatasetModal";
+import { EditQuestionModal } from "@/components/EditQuestionModal";
 import { GenerationBanner } from "@/components/GenerationBanner";
 import { ResizablePanel } from "@/components/ResizablePanel";
 import { DocumentInfo, GeneratedQuestion } from "@/lib/types";
@@ -421,6 +422,23 @@ function GeneratePageContent() {
           onClose={() => { setDeleteTarget(null); setDeleteError(null); }}
         />
       )}
+
+      {/* Edit Question Modal */}
+      {editingQuestionIndex !== null &&
+        browseDatasetId &&
+        selectedKbId &&
+        browseQuestions?.[editingQuestionIndex] && (
+          <EditQuestionModal
+            question={{
+              _id: browseQuestions[editingQuestionIndex]._id,
+              queryText: browseQuestions[editingQuestionIndex].queryText,
+              sourceDocId: browseQuestions[editingQuestionIndex].sourceDocId,
+              relevantSpans: browseQuestions[editingQuestionIndex].relevantSpans,
+            }}
+            kbId={selectedKbId}
+            onClose={() => setEditingQuestionIndex(null)}
+          />
+        )}
 
       {/* Generation error toast */}
       {(genError || job?.error) && (
