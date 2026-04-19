@@ -17,7 +17,7 @@ import { DocumentInfo, GeneratedQuestion } from "@/lib/types";
 
 export default function GeneratePage() {
   return (
-    <Suspense fallback={<div className="flex flex-col h-screen"><Header mode="generate" /></div>}>
+    <Suspense fallback={<div className="flex flex-col h-screen"><Header mode="dataset" /></div>}>
       <GeneratePageContent />
     </Suspense>
   );
@@ -231,7 +231,7 @@ function GeneratePageContent() {
 
   return (
     <div className="flex flex-col h-screen">
-      <Header mode="generate" kbId={selectedKbId} />
+      <Header mode="dataset" kbId={selectedKbId} />
 
         {/* Generation Banner — shown when any job is active */}
         {activeJob && (
