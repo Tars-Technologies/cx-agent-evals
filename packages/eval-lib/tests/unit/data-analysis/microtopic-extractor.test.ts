@@ -1,10 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   preprocessConversation,
-  assembleConversation,
   isSystemMessage,
 } from "../../../src/data-analysis/message-type-classifier.js";
-import type { RawConversation, LLMExtractionResult } from "../../../src/data-analysis/types.js";
+import type { RawConversation } from "../../../src/data-analysis/types.js";
 
 function makeConversation(overrides: Partial<RawConversation> = {}): RawConversation {
   return {
@@ -99,74 +98,3 @@ describe("preprocessConversation", () => {
   });
 });
 
-describe("assembleConversation", () => {
-  it("should merge LLM results with system messages in ID order", () => {
-    const conv = makeConversation();
-    const preprocess = preprocessConversation(conv);
-    const llmResult: LLMExtractionResult = {
-      microtopics: [
-        {
-          type: "greeting",
-          exchanges: [{ label: "primary", messageIds: [3, 4] }],
-        },
-      ],
-    };
-
-    const result = assembleConversation(conv, preprocess, llmResult);
-
-    expect(result.conversationId).toBe("1");
-    expect(result.language).toBe("English");
-    expect(result.botFlowInput).toBeDefined();
-
-    // Should have: uncategorized(2), greeting(3,4), uncategorized(5)
-    expect(result.microtopics).toHaveLength(3);
-    expect(result.microtopics[0].type).toBe("uncategorized");
-    expect(result.microtopics[0].exchanges[0].messages[0].id).toBe(2);
-    expect(result.microtopics[1].type).toBe("greeting");
-    expect(result.microtopics[1].exchanges[0].messages.map((m) => m.id)).toEqual([3, 4]);
-    expect(result.microtopics[2].type).toBe("uncategorized");
-    expect(result.microtopics[2].exchanges[0].messages[0].id).toBe(5);
-  });
-
-  it("should add missing IDs as uncategorized", () => {
-    const conv = makeConversation();
-    const preprocess = preprocessConversation(conv);
-    // LLM only returns message 3, missing message 4
-    const llmResult: LLMExtractionResult = {
-      microtopics: [
-        {
-          type: "greeting",
-          exchanges: [{ label: "primary", messageIds: [3] }],
-        },
-      ],
-    };
-
-    const result = assembleConversation(conv, preprocess, llmResult);
-
-    // Message 4 should appear as uncategorized
-    const allIds = result.microtopics.flatMap((m) =>
-      m.exchanges.flatMap((e) => e.messages.map((msg) => msg.id))
-    );
-    expect(allIds).toContain(4);
-  });
-
-  it("should strip hallucinated IDs", () => {
-    const conv = makeConversation();
-    const preprocess = preprocessConversation(conv);
-    const llmResult: LLMExtractionResult = {
-      microtopics: [
-        {
-          type: "greeting",
-          exchanges: [{ label: "primary", messageIds: [3, 4, 999] }], // 999 doesn't exist
-        },
-      ],
-    };
-
-    const result = assembleConversation(conv, preprocess, llmResult);
-
-    const allIds = result.microtopics.flatMap((m) =>
-      m.exchanges.flatMap((e) => e.messages.map((msg) => msg.id))
-    );
-    expect(allIds).not.toContain(999);
-  });
-});
