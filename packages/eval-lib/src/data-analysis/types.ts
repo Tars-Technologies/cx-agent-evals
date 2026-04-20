@@ -162,3 +162,60 @@ export interface MicrotopicsFile {
   processedConversations?: number;
   failures?: string[];
 }
+
+// ── Classification Templates ──
+
+export interface FewShotExample {
+  message: string;
+  role: "user" | "human_agent";
+  context?: string;
+}
+
+export interface CategoryDefinition {
+  id: string;
+  name: string;
+  description: string;
+  examples: FewShotExample[];
+  extractFields?: boolean;
+}
+
+export interface AgentRoleDefinition {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface ClassificationTemplate {
+  id: string;
+  name: string;
+  description: string;
+  categories: CategoryDefinition[];
+  agentRoles: AgentRoleDefinition[];
+  disambiguationRules: string[];
+}
+
+// ── Classification Output ──
+
+export interface LLMClassifiedMessage {
+  messageId: number;
+  label: string;
+  intentOpenCode?: string;
+  confidence: "high" | "low";
+  isFollowUp: boolean;
+  followUpType?: "clarification" | "correction" | "feedback";
+  standaloneVersion?: string;
+}
+
+export interface ClassifiedMessage extends LLMClassifiedMessage {
+  source: "llm" | "human";
+}
+
+export interface ConversationBlock {
+  label: string;
+  intentOpenCode?: string;
+  confidence: "high" | "low";
+  isFollowUp: boolean;
+  followUpType?: "clarification" | "correction" | "feedback";
+  standaloneVersion?: string;
+  messageIds: number[];
+}
