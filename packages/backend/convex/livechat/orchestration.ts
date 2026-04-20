@@ -21,6 +21,34 @@ const pool = new Workpool(components.livechatAnalysisPool, {
   retryActionsByDefault: false,
 });
 
+// ─── Helper functions ───
+
+function recomputeBlocks(
+  classifiedMessages: Array<{ messageId: number; label: string; intentOpenCode?: string; confidence: string; isFollowUp: boolean; followUpType?: string; standaloneVersion?: string; source: string }>,
+  conversationMessages: Array<{ id: number; role: string }>,
+) {
+  const roleMap = new Map(conversationMessages.map(m => [m.id, m.role]));
+  const blocks: Array<{ label: string; intentOpenCode?: string; confidence: string; isFollowUp: boolean; followUpType?: string; standaloneVersion?: string; messageIds: number[] }> = [];
+  let current: { messageIds: number[]; anchor?: typeof classifiedMessages[0] } = { messageIds: [] };
+  let lastRole: string | null = null;
+
+  for (const msg of classifiedMessages) {
+    const role = roleMap.get(msg.messageId) ?? "user";
+    const isUser = role === "user";
+    if (isUser && lastRole === "human_agent" && current.messageIds.length > 0) {
+      if (current.anchor) blocks.push({ label: current.anchor.label, intentOpenCode: current.anchor.intentOpenCode, confidence: current.anchor.confidence, isFollowUp: current.anchor.isFollowUp, followUpType: current.anchor.followUpType, standaloneVersion: current.anchor.standaloneVersion, messageIds: current.messageIds });
+      current = { messageIds: [] };
+    }
+    current.messageIds.push(msg.messageId);
+    if (isUser && !current.anchor) current.anchor = msg;
+    lastRole = role;
+  }
+  if (current.messageIds.length > 0 && current.anchor) {
+    blocks.push({ label: current.anchor.label, intentOpenCode: current.anchor.intentOpenCode, confidence: current.anchor.confidence, isFollowUp: current.anchor.isFollowUp, followUpType: current.anchor.followUpType, standaloneVersion: current.anchor.standaloneVersion, messageIds: current.messageIds });
+  }
+  return blocks;
+}
+
 // ─── Internal mutations (parse pipeline) ───
 
 export const markParsing = internalMutation({
@@ -123,14 +151,19 @@ export const patchClassificationStatus = internalMutation({
       v.literal("failed"),
     ),
     messageTypes: v.optional(v.any()),
+    classifiedMessages: v.optional(v.any()),
+    blocks: v.optional(v.any()),
+    templateId: v.optional(v.string()),
     error: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.conversationId, {
-      classificationStatus: args.status,
-      ...(args.messageTypes !== undefined ? { messageTypes: args.messageTypes } : {}),
-      ...(args.error !== undefined ? { classificationError: args.error } : {}),
-    });
+    const patch: any = { classificationStatus: args.status };
+    if (args.messageTypes !== undefined) patch.messageTypes = args.messageTypes;
+    if (args.classifiedMessages !== undefined) patch.classifiedMessages = args.classifiedMessages;
+    if (args.blocks !== undefined) patch.blocks = args.blocks;
+    if (args.templateId !== undefined) patch.templateId = args.templateId;
+    if (args.error !== undefined) patch.classificationError = args.error;
+    await ctx.db.patch(args.conversationId, patch);
   },
 });
 
@@ -285,6 +318,7 @@ export const classifyBatch = mutation({
   args: {
     uploadId: v.id("livechatUploads"),
     conversationIds: v.array(v.id("livechatConversations")),
+    templateId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<{ workId: string }> => {
     const { orgId } = await getAuthContext(ctx);
@@ -300,7 +334,7 @@ export const classifyBatch = mutation({
     const workId = await pool.enqueueAction(
       ctx,
       internal.livechat.actions.classifyConversations,
-      { conversationIds: args.conversationIds },
+      { conversationIds: args.conversationIds, templateId: args.templateId ?? "cx-transcript-analysis" },
       {
         context: { conversationIds: args.conversationIds },
         onComplete: internal.livechat.orchestration.onClassifyComplete,
@@ -340,7 +374,10 @@ export const translateBatch = mutation({
 });
 
 export const classifySingle = mutation({
-  args: { conversationId: v.id("livechatConversations") },
+  args: {
+    conversationId: v.id("livechatConversations"),
+    templateId: v.optional(v.string()),
+  },
   handler: async (ctx, args): Promise<{ workId: string }> => {
     const { orgId } = await getAuthContext(ctx);
     const conv = await ctx.db.get(args.conversationId);
@@ -348,7 +385,7 @@ export const classifySingle = mutation({
     const workId = await pool.enqueueAction(
       ctx,
       internal.livechat.actions.classifyConversations,
-      { conversationIds: [args.conversationId] },
+      { conversationIds: [args.conversationId], templateId: args.templateId ?? "cx-transcript-analysis" },
       {
         context: { conversationIds: [args.conversationId] },
         onComplete: internal.livechat.orchestration.onClassifyComplete,
@@ -374,6 +411,48 @@ export const translateSingle = mutation({
       },
     );
     return { workId: workId as string };
+  },
+});
+
+export const patchMessageLabel = mutation({
+  args: {
+    conversationId: v.id("livechatConversations"),
+    messageId: v.number(),
+    newLabel: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+    const conv = await ctx.db.get(args.conversationId);
+    if (!conv || conv.orgId !== orgId) throw new Error("Not found");
+    if (!conv.classifiedMessages) throw new Error("Not classified");
+
+    const updated = (conv.classifiedMessages as any[]).map((m) =>
+      m.messageId === args.messageId ? { ...m, label: args.newLabel, source: "human" } : m
+    );
+
+    const blocks = recomputeBlocks(updated, conv.messages);
+    await ctx.db.patch(args.conversationId, { classifiedMessages: updated, blocks });
+  },
+});
+
+export const patchStandaloneVersion = mutation({
+  args: {
+    conversationId: v.id("livechatConversations"),
+    messageId: v.number(),
+    standaloneVersion: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+    const conv = await ctx.db.get(args.conversationId);
+    if (!conv || conv.orgId !== orgId) throw new Error("Not found");
+    if (!conv.classifiedMessages) throw new Error("Not classified");
+
+    const updated = (conv.classifiedMessages as any[]).map((m) =>
+      m.messageId === args.messageId ? { ...m, standaloneVersion: args.standaloneVersion, source: "human" } : m
+    );
+
+    const blocks = recomputeBlocks(updated, conv.messages);
+    await ctx.db.patch(args.conversationId, { classifiedMessages: updated, blocks });
   },
 });
 
