@@ -47,6 +47,7 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // Optimistic UI: track pending operations so buttons react immediately
+  const [templateId, setTemplateId] = useState("cx-transcript-analysis");
   const [pendingClassify, setPendingClassify] = useState<Set<string>>(new Set());
   const [pendingTranslate, setPendingTranslate] = useState<Set<string>>(new Set());
   // Batch progress tracking: remembers which IDs were submitted and what operation
@@ -199,7 +200,7 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
     setBatchOp({ type: "classify", ids: new Set(selectedIds) });
     setSelectionMode(false);
     setSelectedIds(new Set());
-    classifyBatch({ uploadId, conversationIds: ids });
+    classifyBatch({ uploadId, conversationIds: ids, templateId });
   }
 
   function handleBatchTranslate() {
@@ -265,6 +266,14 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
                 </div>
               </div>
             )}
+            <select
+              value={templateId}
+              onChange={(e) => setTemplateId(e.target.value)}
+              className="bg-bg-surface border border-border rounded px-2 py-0.5 text-[10px] text-text"
+            >
+              <option value="cx-transcript-analysis">CX Transcript Analysis</option>
+              <option value="eval-dataset-extraction">Eval Dataset Extraction</option>
+            </select>
             <button
               onClick={handleToggleSelectionMode}
               className="text-[10px] text-text-muted hover:text-accent border border-border rounded px-2 py-0.5 transition-colors"
@@ -378,7 +387,7 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
                         <button
                           onClick={() => {
                             setPendingClassify((prev) => new Set(prev).add(selectedConvId!));
-                            classifySingle({ conversationId: selectedConvId! });
+                            classifySingle({ conversationId: selectedConvId!, templateId });
                           }}
                           className="bg-accent text-bg font-medium px-3 py-1 rounded text-[10px] hover:opacity-90"
                         >
@@ -458,18 +467,33 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
 
                   {showMessageTypes &&
                   selectedConv.classificationStatus === "done" &&
-                  selectedConv.messageTypes ? (
+                  (selectedConv.messageTypes || (selectedConv as any).blocks) ? (
                     /* Accordion cards view */
-                    (selectedConv.messageTypes as any[]).map(
-                      (mt: any, i: number) => (
+                    (selectedConv as any).blocks ? (
+                      ((selectedConv as any).blocks as any[]).map((block: any, i: number) => (
                         <MessageTypeCard
                           key={i}
-                          messageType={mt}
+                          block={block}
+                          classifiedMessages={(selectedConv as any).classifiedMessages}
+                          messages={selectedConv.messages}
+                          conversationId={selectedConvId!}
                           agentName={selectedConv.agentName}
                           forceExpanded={allExpanded}
                           translatedMessages={(selectedConv as any).translatedMessages}
                         />
-                      ),
+                      ))
+                    ) : (
+                      (selectedConv.messageTypes as any[]).map(
+                        (mt: any, i: number) => (
+                          <MessageTypeCard
+                            key={i}
+                            messageType={mt}
+                            agentName={selectedConv.agentName}
+                            forceExpanded={allExpanded}
+                            translatedMessages={(selectedConv as any).translatedMessages}
+                          />
+                        ),
+                      )
                     )
                   ) : (
                     /* Flat chat bubble view */

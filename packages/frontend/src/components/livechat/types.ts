@@ -32,3 +32,29 @@ export type {
   Exchange,
   ExtractedInfo,
 };
+
+export interface ClassifiedMessage {
+  messageId: number;
+  label: string;
+  intentOpenCode?: string;
+  confidence: "high" | "low";
+  isFollowUp: boolean;
+  followUpType?: "clarification" | "correction" | "feedback";
+  standaloneVersion?: string;
+  source: "llm" | "human";
+}
+
+export interface ConversationBlock {
+  label: string;
+  intentOpenCode?: string;
+  confidence: "high" | "low";
+  isFollowUp: boolean;
+  followUpType?: "clarification" | "correction" | "feedback";
+  standaloneVersion?: string;
+  messageIds: number[];
+}
+
+export const TEMPLATE_OPTIONS = [
+  { id: "cx-transcript-analysis", name: "CX Transcript Analysis" },
+  { id: "eval-dataset-extraction", name: "Eval Dataset Extraction" },
+] as const;
