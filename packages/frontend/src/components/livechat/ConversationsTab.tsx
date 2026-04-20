@@ -163,6 +163,64 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
     return map;
   }, [allConversations]);
 
+  // Build new-format feed items from blocks + classifiedMessages
+  const newFeedItems = useMemo(() => {
+    const map = new Map<string, any[]>();
+    for (const conv of allConversations) {
+      if (conv.classificationStatus !== "done") continue;
+      const blocks = (conv as any).blocks;
+      const classifiedMessages = (conv as any).classifiedMessages;
+      if (!blocks || !classifiedMessages) continue;
+
+      for (const block of blocks as any[]) {
+        // Only include user-initiated blocks with meaningful labels
+        if (!block.label || block.label === "procedural" || block.label === "response" || block.label === "proactive") continue;
+
+        const firstUserMsgId = block.messageIds.find((id: number) => {
+          const msg = conv.messages.find((m: any) => m.id === id);
+          return msg?.role === "user";
+        });
+        if (!firstUserMsgId) continue;
+
+        const firstUserMsg = conv.messages.find((m: any) => m.id === firstUserMsgId);
+        if (!firstUserMsg) continue;
+
+        const classified = classifiedMessages.find((cm: any) => cm.messageId === firstUserMsgId);
+
+        // Find agent response in this block
+        const agentMsgId = block.messageIds.find((id: number) => {
+          const msg = conv.messages.find((m: any) => m.id === id);
+          return msg?.role === "human_agent";
+        });
+        const agentMsg = agentMsgId ? conv.messages.find((m: any) => m.id === agentMsgId) : undefined;
+
+        // Get preceding messages (up to 3 messages before the first message in this block)
+        const firstBlockMsgIdx = conv.messages.findIndex((m: any) => m.id === block.messageIds[0]);
+        const precedingMessages = conv.messages.slice(Math.max(0, firstBlockMsgIdx - 3), firstBlockMsgIdx);
+
+        const items = map.get(block.label) || [];
+        items.push({
+          conversationId: conv.conversationId,
+          convDocId: conv._id,
+          visitorName: conv.visitorName,
+          agentName: conv.agentName,
+          label: block.label,
+          intentOpenCode: block.intentOpenCode,
+          confidence: block.confidence,
+          isFollowUp: block.isFollowUp,
+          followUpType: block.followUpType,
+          standaloneVersion: classified?.standaloneVersion ?? block.standaloneVersion,
+          messageId: firstUserMsgId,
+          originalText: firstUserMsg.text,
+          agentResponse: agentMsg?.text,
+          precedingMessages,
+        });
+        map.set(block.label, items);
+      }
+    }
+    return map;
+  }, [allConversations]);
+
   // Total classified count from the messagesByType map
   const classifiedCount = counts?.classified ?? 0;
 
@@ -587,7 +645,10 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
                 filename={`${selectedType}-export.json`}
               />
             </div>
-            <MessageTypeFeed items={messagesByType.get(selectedType) ?? []} />
+            <MessageTypeFeed
+              items={messagesByType.get(selectedType) ?? []}
+              newItems={newFeedItems.get(selectedType)}
+            />
           </div>
         </div>
       )}
