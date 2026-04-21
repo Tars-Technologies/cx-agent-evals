@@ -120,6 +120,12 @@ export const insertMessage = internalMutation({
       v.literal("complete"),
       v.literal("error"),
     ),
+    usage: v.optional(
+      v.object({
+        promptTokens: v.number(),
+        completionTokens: v.number(),
+      }),
+    ),
   },
   handler: async (ctx, args) => {
     return ctx.db.insert("messages", {

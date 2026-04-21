@@ -1,4 +1,4 @@
-import { mutation, query, internalMutation } from "../_generated/server";
+import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
 import { components, internal } from "../_generated/api";
 import { v } from "convex/values";
 import {
@@ -252,6 +252,12 @@ export const byOrg = query({
       .order("desc")
       .collect();
   },
+});
+
+// Internal get (for actions — no auth)
+export const getInternal = internalQuery({
+  args: { id: v.id("conversationSimulations") },
+  handler: async (ctx, { id }) => ctx.db.get(id),
 });
 
 // List simulations for specific agent
