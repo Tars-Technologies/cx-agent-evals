@@ -552,6 +552,18 @@ export const byDataset = query({
   },
 });
 
+export const byOrg = query({
+  args: {},
+  handler: async (ctx) => {
+    const { orgId } = await getAuthContext(ctx);
+    return await ctx.db
+      .query("experiments")
+      .withIndex("by_org", (q) => q.eq("orgId", orgId))
+      .order("desc")
+      .collect();
+  },
+});
+
 export const byKb = query({
   args: { kbId: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
