@@ -51,7 +51,7 @@ Convex actions have a 10-minute timeout (15 min on pro plans). **For v1, each Co
 
 Why not per-turn chaining? Per-turn chaining (scheduling a new action for each turn) creates complexity with WorkPool interaction — WorkPool's `onComplete` fires when the initial action returns, not when the chain finishes. A single action per run keeps things simple and works naturally with WorkPool concurrency control.
 
-**Safeguards:** `maxTurns` default of 20, elapsed time check before each turn pair, and `timeoutMs` config (default 5 min). If a conversation is genuinely long-running, the timeout terminates it gracefully.
+**Safeguards:** `maxTurns` default of 20 (turn pairs, so 40 total messages max), elapsed time check before each turn pair, and `timeoutMs` config (default 5 min). If a conversation is genuinely long-running, the timeout terminates it gracefully.
 
 ### Agent Turn Execution
 
@@ -232,7 +232,7 @@ ConversationSimulation {
   k: number                          // passes per scenario, default 1
   passThreshold: number              // default 0.8 (can override evaluator set)
   concurrency: number                // WorkPool parallelism, default 3
-  maxTurns: number                   // per conversation, default 30
+  maxTurns: number                   // per conversation turn pairs, default 20
   timeoutMs: number                  // per run timeout, default 300000 (5 minutes)
   userSimModel: string               // LLM model for user-simulator, default "claude-sonnet-4-20250514"
   seed: number | null                // variation inducer for user-simulator
