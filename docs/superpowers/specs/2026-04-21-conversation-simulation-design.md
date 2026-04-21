@@ -45,24 +45,56 @@ This is an evolution of the dataset module. Where question datasets evaluate ret
 
 ## Technical Constraints & Decisions
 
-### Convex Action Timeout
+### Convex Action Timeout & Single-Action Approach
 
-Convex actions have a 10-minute timeout (15 min on pro plans). A multi-turn conversation with LLM calls for both the user-simulator and agent per turn could exceed this. **Solution: chain per-turn via scheduler.** The orchestrator does NOT run the entire conversation in one action. Instead:
+Convex actions have a 10-minute timeout (15 min on pro plans). **For v1, each ConversationSimRun executes as a single action** that loops through all turns. Typical conversations (5-15 turns at ~5-8s per turn pair) complete in 1-3 minutes, well within timeout. The action monitors elapsed time and terminates with `"timeout"` if approaching the limit.
 
-1. A mutation creates the run and schedules the first turn action
-2. Each turn action (user-sim or agent) executes one turn, writes the message via mutation, checks termination, and if not done, schedules the next turn action via `ctx.scheduler.runAfter`
-3. After the final turn, the evaluation action runs (also scheduled)
-4. Evaluation results are saved via mutation, which updates aggregates
+Why not per-turn chaining? Per-turn chaining (scheduling a new action for each turn) creates complexity with WorkPool interaction — WorkPool's `onComplete` fires when the initial action returns, not when the chain finishes. A single action per run keeps things simple and works naturally with WorkPool concurrency control.
 
-This per-turn chaining pattern avoids timeout issues and allows Convex to manage backpressure naturally.
+**Safeguards:** `maxTurns` default of 20, elapsed time check before each turn pair, and `timeoutMs` config (default 5 min). If a conversation is genuinely long-running, the timeout terminates it gracefully.
 
 ### Agent Turn Execution
 
-The existing `runAgent` action cannot be called from another action in Convex. **Solution: extract the core agent loop** (model resolution, tool construction, agentic loop with `streamText`) into a shared Node.js function that both the existing `runAgent` action and the simulation turn action can import. The simulation action does NOT need streaming to a frontend — it only needs the final response + tool calls recorded.
+The existing `runAgent` action cannot be called from another action in Convex. **Solution: extract the core agent loop** (model resolution, tool construction, agentic loop) into a shared Node.js function. Key differences from the playground flow:
+
+- Uses `generateText` (not `streamText`) — no frontend streaming needed
+- Returns final response + all tool calls + usage stats
+- Same model resolution logic (anthropic/openai), same tool construction
+- Both `agents/actions.ts` and `conversationSim/actions.ts` call this shared function
+
+**File:** `convex/lib/agentLoop.ts` — plain async function, NOT a Convex action.
+
+### User Simulator Model
+
+The user-simulator LLM model is configured at the simulation level. Default: `claude-sonnet-4-20250514` (fast, cheap, good at role-playing). The model is specified in the `ConversationSimulation` config, NOT hardcoded, so users can experiment with different simulator models.
 
 ### Conversations Table Differentiation
 
-Simulation conversations reuse the existing `conversations` table. **A `source` field is added** (`"playground" | "simulation" | "experiment"`) to distinguish them. Existing rows are migrated with default `"playground"`. The playground query (`getOrCreatePlayground`) filters by `source: "playground"` to avoid pollution.
+Simulation conversations reuse the existing `conversations` table. **A `source` field is added** as `v.optional(v.union(v.literal("playground"), v.literal("simulation"), v.literal("experiment")))`. Missing/undefined treated as `"playground"` — no migration needed. The playground query (`getOrCreatePlayground`) adds a filter for `source !== "simulation"` to avoid pollution.
+
+### Indices for New Tables
+
+```
+conversationScenarios:
+  .index("by_dataset", ["datasetId"])
+  .index("by_org", ["orgId"])
+
+conversationSimulations:
+  .index("by_org", ["orgId"])
+  .index("by_agent", ["agentId"])
+  .index("by_dataset", ["datasetId"])
+
+conversationSimRuns:
+  .index("by_simulation", ["simulationId"])
+  .index("by_scenario", ["scenarioId"])
+  .index("by_simulation_scenario", ["simulationId", "scenarioId"])
+
+evaluators:
+  .index("by_org", ["orgId"])
+
+evaluatorSets:
+  .index("by_org", ["orgId"])
+```
 
 ## Data Model
 
@@ -202,6 +234,7 @@ ConversationSimulation {
   concurrency: number                // WorkPool parallelism, default 3
   maxTurns: number                   // per conversation, default 30
   timeoutMs: number                  // per run timeout, default 300000 (5 minutes)
+  userSimModel: string               // LLM model for user-simulator, default "claude-sonnet-4-20250514"
   seed: number | null                // variation inducer for user-simulator
                                      // (appended to user-sim system prompt to encourage
                                      // different conversation paths; NOT deterministic
@@ -267,73 +300,138 @@ ConversationSimRun {
 
 ## Simulation Orchestrator
 
-Uses per-turn action chaining to stay within Convex's action timeout limits.
+Each ConversationSimRun executes as a single Convex action containing the full conversation loop + evaluation.
 
-### Flow (per-turn chaining)
+### Flow (single action per run)
 
 ```
-1. START (mutation)
-   Create ConversationSimRun (status: "running")
-   Create Conversation record (source: "simulation")
-   Schedule first turn action: userTurnAction
+runConversationSimAction (action: "use node")
+  Input: simulationId, scenarioId, runId, kIndex, seed
 
-2. USER TURN (action: "use node")
-   Load conversation history from DB
-   Turn 1: if referenceMessages[0] exists → use verbatim
-            else → user-simulator LLM generates from instruction
-   Turn 2+: user-simulator LLM generates next message
-   Check for ###STOP### signal
-   Call mutation: saveMessage({ role: "user", content })
-   Mutation checks termination (stop signal, maxTurns, timeout, errors):
-     if done → schedule evaluateRunAction
-     if not → schedule agentTurnAction
+  1. SETUP
+     Load: scenario, agent config, evaluator set, simulation config
+     Create Conversation record via mutation (source: "simulation")
+     Update run: conversationId, status: "running"
+     Build user-simulator system prompt:
+       [global simulation guidelines]
+       + [scenario.instruction]
+       + [if referenceMessages[1:]: "Reference style examples: ..."]
+       + [if seed: "Variation seed: {seed} — vary your approach slightly"]
+     Build agent: extract shared agentLoop config (model, tools, system prompt)
+     startTime = Date.now()
 
-3. AGENT TURN (action: "use node")
-   Load conversation history from DB
-   Run core agent loop (shared function extracted from existing runAgent):
-     - Build system prompt, resolve model, construct tools
-     - Execute agentic loop (generateText + tool calls, no streaming needed)
-     - Collect: response, tool calls, tokens, latency
-   Call mutation: saveMessage({ role: "assistant", content, toolCalls })
-   Mutation checks termination:
-     if done → schedule evaluateRunAction
-     if not → schedule userTurnAction
+  2. CONVERSATION LOOP
+     turn = 0
+     consecutiveErrors = 0
 
-4. EVALUATE (action: "use node")
-   Load full conversation from DB
-   For each evaluator in the evaluator set:
-     if type == "code":
-       Run check function against { messages, toolCalls }
-       Return { passed: bool, justification: string }
-     if type == "llm_judge":
-       Build judge prompt: rubric + few-shot examples + requested context
-       Call judge LLM → binary pass/fail + justification
-   Call mutation: saveEvaluationResults
-     score = passedCount / totalCount
-     passed = all required pass AND score >= threshold
-     Update ConversationSimulation.completedRuns++
-     If all runs done → compute aggregate (overallPassRate, avgScore)
+     while true:
+       // Timeout check
+       if Date.now() - startTime > timeoutMs:
+         terminationReason = "timeout"; break
+
+       // Turn limit check
+       if turn >= maxTurns * 2:  // maxTurns = turn pairs
+         terminationReason = "max_turns"; break
+
+       // === USER TURN ===
+       if turn == 0 && referenceMessages[0]:
+         userMessage = referenceMessages[0].content  // verbatim
+       else:
+         userMessage = await generateText({
+           model: resolveModel(userSimModel),
+           system: userSimSystemPrompt,
+           messages: conversationHistory  // role-flipped for user-sim
+         })
+
+       if userMessage contains "###STOP###":
+         terminationReason = "user_stop"; break
+
+       Save user message via mutation (order, role: "user", content)
+       turn++
+
+       // === AGENT TURN ===
+       agentResult = await runAgentLoop(agentConfig, conversationHistory)
+       // Returns: { text, toolCalls[], usage, error? }
+
+       if agentResult.error:
+         consecutiveErrors++
+         if consecutiveErrors >= 3:
+           terminationReason = "error"; break
+       else:
+         consecutiveErrors = 0
+
+       Save agent message + tool_call/tool_result messages via mutation
+       Accumulate: totalTokens, toolCallCount
+       turn++
+
+       // Agent done check (e.g., empty response or explicit signal)
+       if agentResult.done:
+         terminationReason = "agent_stop"; break
+
+  3. EVALUATE
+     Load full conversation from DB
+     evaluatorResults = []
+     for each evaluator in evaluatorSet.evaluatorIds:
+       load evaluator config
+       if type == "code":
+         result = runCodeEvaluator(evaluator.codeConfig, { messages, toolCalls })
+       if type == "llm_judge":
+         result = await runLLMJudge(evaluator.judgeConfig, {
+           transcript, toolCalls, kbDocuments (if requested)
+         })
+       evaluatorResults.push({ evaluatorId, name, passed, justification, required })
+
+     score = evaluatorResults.filter(r => r.passed).length / evaluatorResults.length
+     passed = requiredAll pass AND score >= passThreshold
+
+  4. SAVE
+     Update ConversationSimRun via mutation:
+       evaluatorResults, score, passed, terminationReason, turnCount,
+       toolCallCount, totalTokens, latencyMs
+     Mutation also:
+       Increments simulation.completedRuns
+       If completedRuns == totalRuns → compute aggregates, set status "completed"
 ```
 
 ### WorkPool Integration
 
-- ConversationSimulation.start mutation → enqueues (scenarios × k) work items via WorkPool
+- `ConversationSimulation.start` mutation → enqueues (scenarios × k) work items via WorkPool
 - A dedicated `conversationSimPool` registered in `convex.config.ts`
-  (separate from `agentExperimentPool` due to different concurrency/timeout characteristics)
-- WorkPool concurrency: configurable (default 3, user can increase in UI)
-- Each work item kicks off the per-turn chain for one ConversationSimRun
-- Completion callback → check if simulation done
-- Supports cancellation via stored workIds (cancelling stops scheduling next turn)
+- WorkPool config: `maxParallelism` = simulation's `concurrency` setting (default 3)
+- Each work item = one `runConversationSimAction` (single action, full conversation)
+- `onComplete` callback: handles "failed"/"canceled" statuses, updates simulation counters
+- Cancellation: stores `workIds[]` on simulation, uses WorkPool cancel API
 
 ### Shared Agent Loop
 
-The core agent logic (model resolution, tool construction, agentic loop) is extracted into a shared Node.js function in a common module:
+Extracted from `agents/actions.ts` lines 88-316 into a reusable function:
 
-```
-convex/lib/agentLoop.ts        — shared function: runAgentLoop(config, messages) → result
-                                  Used by both agents/actions.ts (existing) and
-                                  conversationSim/actions.ts (new)
-                                  NOT a Convex action — a plain async function
+```typescript
+// convex/lib/agentLoop.ts
+
+interface AgentLoopConfig {
+  agent: AgentDoc                     // from agents table
+  retrieverInfos: RetrieverInfo[]     // pre-loaded retriever configs
+  systemPrompt: string                // pre-composed
+}
+
+interface AgentLoopResult {
+  text: string
+  toolCalls: { toolName: string, args: any, result: any, retrieverId?: string }[]
+  usage: { promptTokens: number, completionTokens: number }
+  done: boolean                       // agent signaled completion
+  error?: string
+}
+
+export async function runAgentLoop(
+  ctx: ActionCtx,                     // for vectorSearch in tool execution
+  config: AgentLoopConfig,
+  messages: AIMessage[],              // conversation history in AI SDK format
+): Promise<AgentLoopResult>
+
+// Uses generateText (not streamText) — no streaming needed for simulation
+// maxSteps: 5 (same as existing runAgent)
+// Returns collected tool calls + final text + usage
 ```
 
 ### Convex File Organization
@@ -343,12 +441,44 @@ convex/conversationSim/
   scenarios.ts            — scenario CRUD (mutations/queries)
   evaluators.ts           — evaluator CRUD (mutations/queries)
   evaluatorSets.ts        — evaluator set CRUD (mutations/queries)
-  orchestration.ts        — simulation CRUD, start/cancel/status, turn state machine
-  actions.ts              — "use node" — userTurnAction, agentTurnAction, evaluateRunAction
+  orchestration.ts        — simulation CRUD, start/cancel/status
+  actions.ts              — "use node" — runConversationSimAction, generation actions
   runs.ts                 — run CRUD (mutations/queries)
+  evaluation.ts           — code evaluator runners (pure functions, no Convex deps)
 
 convex/lib/
-  agentLoop.ts            — shared agent execution function (plain Node.js, not a Convex action)
+  agentLoop.ts            — shared agent execution function (plain async, NOT a Convex action)
+```
+
+### User Simulator System Prompt
+
+Global guidelines template (configured once, shared across all simulations):
+
+```
+You are simulating an end-user in a customer support conversation.
+You are playing the role described in the scenario below.
+
+RULES:
+- Stay in character. Do not break the fourth wall.
+- Only use information from your "known info." Do not invent details.
+- Ask about things in your "unknown info" — you need to learn these.
+- When your issue is resolved to your satisfaction, say "###STOP###" on its own line.
+- If you feel the conversation is going nowhere after several attempts, say "###STOP###".
+- Keep messages concise and natural — 1-3 sentences typical.
+- Do not be overly cooperative. A real user might be confused, impatient, or unclear.
+
+<scenario>
+{scenario.instruction}
+</scenario>
+```
+
+Reference messages (if available) are appended as:
+```
+<reference_style>
+These are examples of how this type of user typically writes:
+{referenceMessages[1:].map(m => `- "${m.content}"`).join('\n')}
+Match this communication style and level of detail.
+</reference_style>
 ```
 
 ## Scenario Generation Pipeline
