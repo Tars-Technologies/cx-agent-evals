@@ -28,6 +28,9 @@ function GeneratePageContent() {
   // KB selection
   const [selectedKbId, setSelectedKbId] = useKbFromUrl();
 
+  // Dataset type toggle
+  const [datasetType, setDatasetType] = useState<"questions" | "conversation_sim">("questions");
+
   // Generation tracking
   const [datasetId, setDatasetId] = useState<Id<"datasets"> | null>(null);
   const [jobId, setJobId] = useState<Id<"generationJobs"> | null>(null);
@@ -54,6 +57,13 @@ function GeneratePageContent() {
     api.crud.datasets.byKb,
     selectedKbId ? { kbId: selectedKbId } : "skip",
   );
+
+  // Filter datasets by type
+  const filteredDatasets = (kbDatasets ?? []).filter(ds => {
+    if (datasetType === "questions") return !ds.type || ds.type === "questions";
+    return ds.type === "conversation_sim";
+  });
+  const firstFilteredId = filteredDatasets[0]?._id ?? null;
 
   // Active job detection (org-wide, no kbId filter — we want to know about any active job)
   const activeJob = useQuery(api.generation.orchestration.getActiveJob, {});
@@ -89,12 +99,19 @@ function GeneratePageContent() {
     hasRestoredJob.current = false;
   }, [selectedKbId]);
 
-  // Auto-select first dataset when KB changes and datasets load
+  // Reset selections when dataset type changes
   useEffect(() => {
-    if (kbDatasets && kbDatasets.length > 0 && !browseDatasetId) {
-      setBrowseDatasetId(kbDatasets[0]._id);
+    setBrowseDatasetId(null);
+    setSelectedQuestion(null);
+    setSelectedDocId(null);
+  }, [datasetType]);
+
+  // Auto-select first filtered dataset when type/KB changes
+  useEffect(() => {
+    if (firstFilteredId && !browseDatasetId) {
+      setBrowseDatasetId(firstFilteredId);
     }
-  }, [kbDatasets, browseDatasetId]);
+  }, [firstFilteredId, browseDatasetId]);
 
   // Close wizard modal on Escape
   useEffect(() => {
@@ -283,6 +300,30 @@ function GeneratePageContent() {
       {/* ── Controls Bar ── */}
       <div className="border-b border-border bg-bg-elevated px-6 py-3">
         <div className="flex items-center gap-4">
+          {/* Dataset Type Toggle */}
+          <div className="flex items-center gap-1 bg-bg border border-border rounded-md p-0.5">
+            <button
+              onClick={() => setDatasetType("questions")}
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                datasetType === "questions"
+                  ? "bg-accent text-bg-elevated"
+                  : "text-text-dim hover:text-text"
+              }`}
+            >
+              Questions & GT
+            </button>
+            <button
+              onClick={() => setDatasetType("conversation_sim")}
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                datasetType === "conversation_sim"
+                  ? "bg-accent text-bg-elevated"
+                  : "text-text-dim hover:text-text"
+              }`}
+            >
+              Conversation Sim
+            </button>
+          </div>
+
           {/* KB dropdown */}
           <div className="flex items-center gap-2">
             <label className="text-xs text-text-muted uppercase tracking-wide whitespace-nowrap">
@@ -311,16 +352,19 @@ function GeneratePageContent() {
                 className="max-w-xs bg-bg border border-border rounded px-3 py-1.5 text-sm text-text focus:border-accent outline-none"
               >
                 <option value="">Select a dataset...</option>
-                {kbDatasets.map((ds) => (
+                {filteredDatasets.map((ds) => (
                   <option key={ds._id} value={ds._id}>
-                    {ds.name} ({ds.questionCount} Qs{activeJob?.datasetId === ds._id ? " — generating" : ""})
+                    {ds.name} ({datasetType === "conversation_sim"
+                      ? `${ds.scenarioCount ?? 0} scenarios`
+                      : `${ds.questionCount} Qs`}
+                    {activeJob?.datasetId === ds._id ? " — generating" : ""})
                   </option>
                 ))}
               </select>
               {browseDatasetId && (
                 <button
                   onClick={() => {
-                    const ds = kbDatasets?.find((d) => d._id === browseDatasetId);
+                    const ds = filteredDatasets?.find((d) => d._id === browseDatasetId);
                     if (ds) {
                       setDeleteTarget({
                         id: ds._id,
@@ -359,14 +403,22 @@ function GeneratePageContent() {
               }
               className="px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              + New Generation
+              {datasetType === "conversation_sim" ? "+ Generate Scenarios" : "+ New Generation"}
             </button>
           )}
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden max-w-full">
-        {displayQuestions.length === 0 && !displayGenerating ? (
+        {datasetType === "conversation_sim" ? (
+          <div className="flex-1 flex items-center justify-center text-text-dim text-xs">
+            {selectedKbId
+              ? browseDatasetId
+                ? "Scenario list coming in Task 10"
+                : "Select a scenario dataset to view scenarios"
+              : "Select a knowledge base to get started"}
+          </div>
+        ) : displayQuestions.length === 0 && !displayGenerating ? (
           <div className="flex-1 flex items-center justify-center text-text-dim text-xs">
             {selectedKbId
               ? browseDatasetId
