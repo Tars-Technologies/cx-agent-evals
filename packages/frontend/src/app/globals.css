@@ -75,6 +75,17 @@ mark[data-highlight] {
   padding: 1px 0;
 }
 
+@keyframes span-glow-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  25% { box-shadow: 0 0 8px 3px rgba(110, 231, 183, 0.5); }
+  75% { box-shadow: 0 0 8px 3px rgba(110, 231, 183, 0.5); }
+}
+
+.span-glow {
+  animation: span-glow-pulse 2s ease-in-out;
+  border-radius: 2px;
+}
+
 /* Agent chat markdown prose */
 .prose-agent p { margin-bottom: 0.5em; line-height: 1.6; }
 .prose-agent p:last-child { margin-bottom: 0; }

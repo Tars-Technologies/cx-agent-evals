@@ -42,6 +42,7 @@ export default defineSchema({
     metadata: v.any(),
     sourceUrl: v.optional(v.string()),
     sourceType: v.optional(v.string()),
+    priority: v.optional(v.number()),  // 1-5, default 3
     createdAt: v.number(),
   })
     .index("by_kb", ["kbId"])
@@ -63,6 +64,7 @@ export default defineSchema({
     langsmithUrl: v.optional(v.string()),
     langsmithSyncStatus: v.optional(v.string()),
     metadata: v.any(),
+    realWorldQuestionCount: v.optional(v.number()),
     createdBy: v.id("users"),
     createdAt: v.number(),
   })
@@ -79,6 +81,7 @@ export default defineSchema({
     relevantSpans: v.array(spanValidator),
     langsmithExampleId: v.optional(v.string()),
     metadata: v.any(),
+    source: v.optional(v.string()),
   })
     .index("by_dataset", ["datasetId"])
     .index("by_source_doc", ["datasetId", "sourceDocId"]),
@@ -148,10 +151,114 @@ export default defineSchema({
     createdBy: v.id("users"),
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
+    totalDocs: v.optional(v.number()),
+    docsProcessed: v.optional(v.number()),
+    currentDocName: v.optional(v.string()),
+    // Shared generation plan data — stored once, read by per-doc actions
+    generationPlan: v.optional(v.any()),
+    questionsGenerated: v.optional(v.number()),
+    missedQuestions: v.optional(v.number()),
+    pass2Enriched: v.optional(v.number()),
+    pass2Unchanged: v.optional(v.number()),
   })
     .index("by_dataset", ["datasetId"])
     .index("by_org", ["orgId"])
     .index("by_status", ["orgId", "status"]),
+
+  // ── Livechat uploads ──
+  livechatUploads: defineTable({
+    orgId: v.string(),
+    createdBy: v.id("users"),
+    filename: v.string(),
+    csvStorageId: v.id("_storage"),
+
+    status: v.union(
+      v.literal("pending"),
+      v.literal("parsing"),
+      v.literal("ready"),
+      v.literal("failed"),
+      v.literal("deleting"),
+    ),
+    error: v.optional(v.string()),
+
+    conversationCount: v.optional(v.number()),
+    parsedConversations: v.optional(v.number()),
+    basicStats: v.optional(v.any()),
+
+    createdAt: v.number(),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    workIds: v.optional(v.array(v.string())),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_org_created", ["orgId", "createdAt"]),
+
+  // ── Livechat conversations (one row per conversation per upload) ──
+  livechatConversations: defineTable({
+    uploadId: v.id("livechatUploads"),
+    orgId: v.string(),
+
+    conversationId: v.string(),
+    visitorId: v.string(),
+    visitorName: v.string(),
+    visitorPhone: v.string(),
+    visitorEmail: v.string(),
+    agentId: v.string(),
+    agentName: v.string(),
+    agentEmail: v.string(),
+    inbox: v.string(),
+    labels: v.array(v.string()),
+    status: v.string(),
+
+    messages: v.array(
+      v.object({
+        id: v.number(),
+        role: v.union(
+          v.literal("user"),
+          v.literal("human_agent"),
+          v.literal("workflow_input"),
+        ),
+        text: v.string(),
+      }),
+    ),
+
+    metadata: v.any(),
+
+    botFlowInput: v.optional(
+      v.object({
+        intent: v.string(),
+        language: v.string(),
+      }),
+    ),
+
+    messageTypes: v.optional(v.any()),
+    classificationStatus: v.union(
+      v.literal("none"),
+      v.literal("running"),
+      v.literal("done"),
+      v.literal("failed"),
+    ),
+    classificationError: v.optional(v.string()),
+
+    translatedMessages: v.optional(
+      v.array(
+        v.object({
+          id: v.number(),
+          text: v.string(),
+        }),
+      ),
+    ),
+    translationStatus: v.union(
+      v.literal("none"),
+      v.literal("running"),
+      v.literal("done"),
+      v.literal("failed"),
+    ),
+    translationError: v.optional(v.string()),
+  })
+    .index("by_upload", ["uploadId"])
+    .index("by_upload_classification", ["uploadId", "classificationStatus"])
+    .index("by_org", ["orgId"]),
 
   // ─── Experiments (evaluation runs against a dataset) ───
   experiments: defineTable({
@@ -161,6 +268,7 @@ export default defineSchema({
     name: v.string(),
     retrieverId: v.optional(v.id("retrievers")),
     retrieverConfig: v.optional(v.any()),
+    experimentRunId: v.optional(v.id("experimentRuns")),
     experimentType: v.optional(
       v.union(v.literal("retriever"), v.literal("agent")),
     ),
@@ -206,7 +314,44 @@ export default defineSchema({
     .index("by_dataset", ["datasetId"])
     .index("by_retriever", ["retrieverId"])
     .index("by_kb", ["kbId"])
-    .index("by_agent", ["agentId"]),
+    .index("by_agent", ["agentId"])
+    .index("by_run", ["experimentRunId"]),
+
+  // ─── Experiment Runs (groups of retriever experiments) ───
+  experimentRuns: defineTable({
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    datasetId: v.id("datasets"),
+    name: v.string(),
+    retrieverIds: v.array(v.id("retrievers")),
+    metricNames: v.array(v.string()),
+    scoringWeights: v.object({
+      recall: v.number(),
+      precision: v.number(),
+    }),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("completed_with_errors"),
+      v.literal("failed"),
+      v.literal("canceling"),
+      v.literal("canceled"),
+    ),
+    totalRetrievers: v.number(),
+    completedRetrievers: v.number(),
+    failedRetrievers: v.number(),
+    winnerId: v.optional(v.id("retrievers")),
+    winnerName: v.optional(v.string()),
+    winnerScore: v.optional(v.number()),
+    error: v.optional(v.string()),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_kb", ["kbId"])
+    .index("by_dataset", ["datasetId"]),
 
   // ─── Experiment Results (per-question evaluation results) ───
   experimentResults: defineTable({
