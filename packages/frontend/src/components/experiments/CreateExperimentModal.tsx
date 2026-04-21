@@ -27,7 +27,8 @@ export function CreateExperimentModal({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const datasets = useQuery(api.crud.datasets.byKb, { kbId });
+  const allDatasets = useQuery(api.crud.datasets.byKb, { kbId });
+  const datasets = (allDatasets ?? []).filter(d => !d.type || d.type === "questions");
   const retrievers = useQuery(api.crud.retrievers.byKb, { kbId });
   const readyRetrievers = (retrievers ?? []).filter((r) => r.status === "ready");
   const createRun = useMutation(api.experimentRuns.orchestration.create);
@@ -114,7 +115,7 @@ export function CreateExperimentModal({
               className="w-full bg-bg border border-border rounded-md px-3 py-2 text-sm text-text focus:border-accent outline-none appearance-none"
             >
               <option value="">Select a dataset...</option>
-              {(datasets ?? []).map((ds) => (
+              {datasets.map((ds) => (
                 <option key={ds._id} value={ds._id}>
                   {ds.name} ({ds.questionCount} questions)
                 </option>
