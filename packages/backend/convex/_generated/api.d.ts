@@ -16,6 +16,8 @@ import type * as conversationSim_actions from "../conversationSim/actions.js";
 import type * as conversationSim_evaluation from "../conversationSim/evaluation.js";
 import type * as conversationSim_evaluatorSets from "../conversationSim/evaluatorSets.js";
 import type * as conversationSim_evaluators from "../conversationSim/evaluators.js";
+import type * as conversationSim_generation from "../conversationSim/generation.js";
+import type * as conversationSim_generationActions from "../conversationSim/generationActions.js";
 import type * as conversationSim_judge from "../conversationSim/judge.js";
 import type * as conversationSim_orchestration from "../conversationSim/orchestration.js";
 import type * as conversationSim_runs from "../conversationSim/runs.js";
@@ -70,6 +72,8 @@ declare const fullApi: ApiFromModules<{
   "conversationSim/evaluation": typeof conversationSim_evaluation;
   "conversationSim/evaluatorSets": typeof conversationSim_evaluatorSets;
   "conversationSim/evaluators": typeof conversationSim_evaluators;
+  "conversationSim/generation": typeof conversationSim_generation;
+  "conversationSim/generationActions": typeof conversationSim_generationActions;
   "conversationSim/judge": typeof conversationSim_judge;
   "conversationSim/orchestration": typeof conversationSim_orchestration;
   "conversationSim/runs": typeof conversationSim_runs;
