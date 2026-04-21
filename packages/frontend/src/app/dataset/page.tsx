@@ -15,6 +15,10 @@ import { EditQuestionModal } from "@/components/EditQuestionModal";
 import { GenerationBanner } from "@/components/GenerationBanner";
 import { ResizablePanel } from "@/components/ResizablePanel";
 import { DocumentInfo, GeneratedQuestion } from "@/lib/types";
+import { ScenarioList } from "@/components/ScenarioList";
+import { ScenarioDetail } from "@/components/ScenarioDetail";
+import { EditScenarioModal } from "@/components/EditScenarioModal";
+import { ScenarioGenerationWizard } from "@/components/ScenarioGenerationWizard";
 
 export default function GeneratePage() {
   return (
@@ -86,6 +90,15 @@ function GeneratePageContent() {
     api.crud.questions.byDataset,
     browseDatasetId ? { datasetId: browseDatasetId } : "skip",
   );
+
+  // Scenarios for browsed dataset (conversation_sim mode)
+  const scenarios = useQuery(
+    api.conversationSim.scenarios.byDataset,
+    browseDatasetId && datasetType === "conversation_sim" ? { datasetId: browseDatasetId } : "skip",
+  );
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
+  const [editingScenario, setEditingScenario] = useState<any | null>(null);
+  const selectedScenario = scenarios?.find(s => s._id === selectedScenarioId) ?? null;
 
   // Wizard modal state
   const [showWizardModal, setShowWizardModal] = useState(false);
@@ -411,13 +424,43 @@ function GeneratePageContent() {
 
       <div className="flex flex-1 overflow-hidden max-w-full">
         {datasetType === "conversation_sim" ? (
-          <div className="flex-1 flex items-center justify-center text-text-dim text-xs">
-            {selectedKbId
-              ? browseDatasetId
-                ? "Scenario list coming in Task 10"
-                : "Select a scenario dataset to view scenarios"
-              : "Select a knowledge base to get started"}
-          </div>
+          !selectedKbId || !browseDatasetId || !scenarios || scenarios.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-text-dim text-xs">
+              {selectedKbId
+                ? browseDatasetId
+                  ? "No scenarios in this dataset"
+                  : "Select a scenario dataset to view scenarios"
+                : "Select a knowledge base to get started"}
+            </div>
+          ) : (
+            <>
+              <ResizablePanel storageKey="scenario-list" defaultWidth={320} minWidth={200} maxWidth={600}>
+                <div className="h-full border-r border-border bg-bg">
+                  <ScenarioList
+                    scenarios={scenarios}
+                    selectedId={selectedScenarioId}
+                    onSelect={setSelectedScenarioId}
+                    onEdit={(id) => {
+                      const s = scenarios.find(sc => sc._id === id);
+                      if (s) setEditingScenario(s);
+                    }}
+                  />
+                </div>
+              </ResizablePanel>
+              <div className="flex-1 min-w-0 bg-bg overflow-hidden">
+                {selectedScenario ? (
+                  <ScenarioDetail
+                    scenario={selectedScenario}
+                    onEdit={() => setEditingScenario(selectedScenario)}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-text-dim text-xs">
+                    Select a scenario to view details
+                  </div>
+                )}
+              </div>
+            </>
+          )
         ) : displayQuestions.length === 0 && !displayGenerating ? (
           <div className="flex-1 flex items-center justify-center text-text-dim text-xs">
             {selectedKbId
@@ -466,31 +509,54 @@ function GeneratePageContent() {
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowWizardModal(false)} />
           <div className="relative bg-bg-elevated border border-border rounded-lg shadow-xl w-full max-w-4xl max-h-[85vh] overflow-y-auto animate-fade-in">
-            <GenerationWizard
-              kbId={selectedKbId}
-              documents={(documentsData ?? []).map((d) => ({
-                _id: d._id as string,
-                docId: d.docId,
-                title: d.title,
-                priority: d.priority ?? 3,
-              }))}
-              generating={generating}
-              disabledReason={activeJob ? "Only one generation at a time" : undefined}
-              onGenerated={(dsId, jId) => {
-                setDatasetId(dsId);
-                setJobId(jId);
-                setBrowseDatasetId(dsId);
-                setMode("browse");
-                setShowWizardModal(false);
-              }}
-              onError={(err) => {
-                setGenError(err);
-                setShowWizardModal(false);
-              }}
-              onCancel={() => setShowWizardModal(false)}
-            />
+            {datasetType === "conversation_sim" ? (
+              <ScenarioGenerationWizard
+                kbId={selectedKbId}
+                onGenerated={(dsId) => {
+                  setBrowseDatasetId(dsId);
+                  setShowWizardModal(false);
+                }}
+                onError={(err) => {
+                  setGenError(err);
+                  setShowWizardModal(false);
+                }}
+                onCancel={() => setShowWizardModal(false)}
+              />
+            ) : (
+              <GenerationWizard
+                kbId={selectedKbId}
+                documents={(documentsData ?? []).map((d) => ({
+                  _id: d._id as string,
+                  docId: d.docId,
+                  title: d.title,
+                  priority: d.priority ?? 3,
+                }))}
+                generating={generating}
+                disabledReason={activeJob ? "Only one generation at a time" : undefined}
+                onGenerated={(dsId, jId) => {
+                  setDatasetId(dsId);
+                  setJobId(jId);
+                  setBrowseDatasetId(dsId);
+                  setMode("browse");
+                  setShowWizardModal(false);
+                }}
+                onError={(err) => {
+                  setGenError(err);
+                  setShowWizardModal(false);
+                }}
+                onCancel={() => setShowWizardModal(false)}
+              />
+            )}
           </div>
         </div>
+      )}
+
+      {/* Edit Scenario Modal */}
+      {editingScenario && (
+        <EditScenarioModal
+          scenario={editingScenario}
+          onClose={() => setEditingScenario(null)}
+        />
       )}
 
       {/* Delete Dataset Modal */}
