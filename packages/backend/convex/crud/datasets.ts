@@ -1,6 +1,6 @@
 import { query, mutation, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
-import { getAuthContext } from "../lib/auth";
+import { getAuthContext, lookupUser } from "../lib/auth";
 
 export const list = query({
   args: {},
@@ -106,6 +106,42 @@ export const clearLangsmithSync = internalMutation({
         await ctx.db.patch(q._id, { langsmithExampleId: undefined });
       }
     }
+  },
+});
+
+export const createSimDataset = mutation({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    name: v.string(),
+  },
+  handler: async (ctx, { kbId, name }) => {
+    const { orgId, userId } = await getAuthContext(ctx);
+    const kb = await ctx.db.get(kbId);
+    if (!kb || kb.orgId !== orgId) throw new Error("KB not found");
+    const user = await lookupUser(ctx, userId);
+    return ctx.db.insert("datasets", {
+      orgId,
+      kbId,
+      name,
+      type: "conversation_sim",
+      strategy: "conversation_sim",
+      strategyConfig: {},
+      questionCount: 0,
+      scenarioCount: 0,
+      metadata: {},
+      createdBy: user._id,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const updateScenarioCount = internalMutation({
+  args: {
+    datasetId: v.id("datasets"),
+    scenarioCount: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.datasetId, { scenarioCount: args.scenarioCount });
   },
 });
 
