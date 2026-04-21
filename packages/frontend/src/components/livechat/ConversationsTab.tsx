@@ -47,6 +47,7 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // Optimistic UI: track pending operations so buttons react immediately
+  const [templateId, setTemplateId] = useState("cx-transcript-analysis");
   const [pendingClassify, setPendingClassify] = useState<Set<string>>(new Set());
   const [pendingTranslate, setPendingTranslate] = useState<Set<string>>(new Set());
   // Batch progress tracking: remembers which IDs were submitted and what operation
@@ -162,6 +163,64 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
     return map;
   }, [allConversations]);
 
+  // Build new-format feed items from blocks + classifiedMessages
+  const newFeedItems = useMemo(() => {
+    const map = new Map<string, any[]>();
+    for (const conv of allConversations) {
+      if (conv.classificationStatus !== "done") continue;
+      const blocks = (conv as any).blocks;
+      const classifiedMessages = (conv as any).classifiedMessages;
+      if (!blocks || !classifiedMessages) continue;
+
+      for (const block of blocks as any[]) {
+        // Only include user-initiated blocks with meaningful labels
+        if (!block.label || block.label === "procedural" || block.label === "response" || block.label === "proactive") continue;
+
+        const firstUserMsgId = block.messageIds.find((id: number) => {
+          const msg = conv.messages.find((m: any) => m.id === id);
+          return msg?.role === "user";
+        });
+        if (!firstUserMsgId) continue;
+
+        const firstUserMsg = conv.messages.find((m: any) => m.id === firstUserMsgId);
+        if (!firstUserMsg) continue;
+
+        const classified = classifiedMessages.find((cm: any) => cm.messageId === firstUserMsgId);
+
+        // Find agent response in this block
+        const agentMsgId = block.messageIds.find((id: number) => {
+          const msg = conv.messages.find((m: any) => m.id === id);
+          return msg?.role === "human_agent";
+        });
+        const agentMsg = agentMsgId ? conv.messages.find((m: any) => m.id === agentMsgId) : undefined;
+
+        // Get preceding messages (up to 3 messages before the first message in this block)
+        const firstBlockMsgIdx = conv.messages.findIndex((m: any) => m.id === block.messageIds[0]);
+        const precedingMessages = conv.messages.slice(Math.max(0, firstBlockMsgIdx - 3), firstBlockMsgIdx);
+
+        const items = map.get(block.label) || [];
+        items.push({
+          conversationId: conv.conversationId,
+          convDocId: conv._id,
+          visitorName: conv.visitorName,
+          agentName: conv.agentName,
+          label: block.label,
+          intentOpenCode: block.intentOpenCode,
+          confidence: block.confidence,
+          isFollowUp: block.isFollowUp,
+          followUpType: block.followUpType,
+          standaloneVersion: classified?.standaloneVersion ?? block.standaloneVersion,
+          messageId: firstUserMsgId,
+          originalText: firstUserMsg.text,
+          agentResponse: agentMsg?.text,
+          precedingMessages,
+        });
+        map.set(block.label, items);
+      }
+    }
+    return map;
+  }, [allConversations]);
+
   // Total classified count from the messagesByType map
   const classifiedCount = counts?.classified ?? 0;
 
@@ -199,7 +258,7 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
     setBatchOp({ type: "classify", ids: new Set(selectedIds) });
     setSelectionMode(false);
     setSelectedIds(new Set());
-    classifyBatch({ uploadId, conversationIds: ids });
+    classifyBatch({ uploadId, conversationIds: ids, templateId });
   }
 
   function handleBatchTranslate() {
@@ -265,6 +324,14 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
                 </div>
               </div>
             )}
+            <select
+              value={templateId}
+              onChange={(e) => setTemplateId(e.target.value)}
+              className="bg-bg-surface border border-border rounded px-2 py-0.5 text-[10px] text-text"
+            >
+              <option value="cx-transcript-analysis">CX Transcript Analysis</option>
+              <option value="eval-dataset-extraction">Eval Dataset Extraction</option>
+            </select>
             <button
               onClick={handleToggleSelectionMode}
               className="text-[10px] text-text-muted hover:text-accent border border-border rounded px-2 py-0.5 transition-colors"
@@ -378,7 +445,7 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
                         <button
                           onClick={() => {
                             setPendingClassify((prev) => new Set(prev).add(selectedConvId!));
-                            classifySingle({ conversationId: selectedConvId! });
+                            classifySingle({ conversationId: selectedConvId!, templateId });
                           }}
                           className="bg-accent text-bg font-medium px-3 py-1 rounded text-[10px] hover:opacity-90"
                         >
@@ -458,18 +525,33 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
 
                   {showMessageTypes &&
                   selectedConv.classificationStatus === "done" &&
-                  selectedConv.messageTypes ? (
+                  (selectedConv.messageTypes || (selectedConv as any).blocks) ? (
                     /* Accordion cards view */
-                    (selectedConv.messageTypes as any[]).map(
-                      (mt: any, i: number) => (
+                    (selectedConv as any).blocks ? (
+                      ((selectedConv as any).blocks as any[]).map((block: any, i: number) => (
                         <MessageTypeCard
                           key={i}
-                          messageType={mt}
+                          block={block}
+                          classifiedMessages={(selectedConv as any).classifiedMessages}
+                          messages={selectedConv.messages}
+                          conversationId={selectedConvId!}
                           agentName={selectedConv.agentName}
                           forceExpanded={allExpanded}
                           translatedMessages={(selectedConv as any).translatedMessages}
                         />
-                      ),
+                      ))
+                    ) : (
+                      (selectedConv.messageTypes as any[]).map(
+                        (mt: any, i: number) => (
+                          <MessageTypeCard
+                            key={i}
+                            messageType={mt}
+                            agentName={selectedConv.agentName}
+                            forceExpanded={allExpanded}
+                            translatedMessages={(selectedConv as any).translatedMessages}
+                          />
+                        ),
+                      )
                     )
                   ) : (
                     /* Flat chat bubble view */
@@ -563,7 +645,10 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
                 filename={`${selectedType}-export.json`}
               />
             </div>
-            <MessageTypeFeed items={messagesByType.get(selectedType) ?? []} />
+            <MessageTypeFeed
+              items={messagesByType.get(selectedType) ?? []}
+              newItems={newFeedItems.get(selectedType)}
+            />
           </div>
         </div>
       )}

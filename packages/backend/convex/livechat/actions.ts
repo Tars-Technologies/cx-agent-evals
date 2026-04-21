@@ -134,12 +134,14 @@ export const runAnalysisPipeline = internalAction({
 export const classifyConversations = internalAction({
   args: {
     conversationIds: v.array(v.id("livechatConversations")),
+    templateId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (args.conversationIds.length > 100) {
       throw new Error("Cannot classify more than 100 conversations");
     }
 
+    const templateId = args.templateId ?? "cx-transcript-analysis";
     const client = createClaudeClient();
     const CONCURRENCY = 10;
 
@@ -175,14 +177,17 @@ export const classifyConversations = internalAction({
           metadata: conv.metadata,
         };
 
-        const result = await classifyMessageTypes(rawConv, { claudeClient: client });
+        const result = await classifyMessageTypes(rawConv, { claudeClient: client, templateId });
 
         await ctx.runMutation(
           internal.livechat.orchestration.patchClassificationStatus,
           {
             conversationId: convId,
             status: "done",
-            messageTypes: result.messageTypes,
+            messageTypes: result.blocks,
+            classifiedMessages: result.classifiedMessages,
+            blocks: result.blocks,
+            templateId,
           },
         );
       } catch (err: unknown) {
