@@ -118,19 +118,21 @@ export function MessageTypeCard({
 
   return (
     <div className={`bg-bg-surface rounded-md border ${expanded ? colors.border : "border-border"} mb-1`}>
-      <button onClick={() => setLocalExpanded(!expanded)} className="w-full text-left px-2.5 py-1.5 flex justify-between items-center">
+      <div role="button" tabIndex={0} onClick={() => setLocalExpanded(!expanded)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setLocalExpanded(!expanded); }} className="w-full text-left px-2.5 py-1.5 flex justify-between items-center cursor-pointer">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xs text-text-dim">{expanded ? "▾" : "▸"}</span>
           {/* Label badge with edit dropdown */}
           {conversationId ? (
-            <LabelEditDropdown
-              currentLabel={block.label}
-              categories={USER_CATEGORIES}
-              onSelect={(newLabel) => {
-                if (!firstUserMsg) return;
-                patchLabel({ conversationId, messageId: firstUserMsg.id, newLabel });
-              }}
-            />
+            <span onClick={(e) => e.stopPropagation()}>
+              <LabelEditDropdown
+                currentLabel={block.label}
+                categories={USER_CATEGORIES}
+                onSelect={(newLabel) => {
+                  if (!firstUserMsg) return;
+                  patchLabel({ conversationId, messageId: firstUserMsg.id, newLabel });
+                }}
+              />
+            </span>
           ) : (
             <span className={`text-[9px] px-1.5 py-0 rounded ${colors.badge}`}>{block.label}</span>
           )}
@@ -149,7 +151,7 @@ export function MessageTypeCard({
           {!expanded && <span className="text-text-muted text-xs truncate">{previewText}</span>}
         </div>
         <span className="text-text-dim text-[10px] ml-2 whitespace-nowrap">{blockMessages.length} msgs</span>
-      </button>
+      </div>
 
       {expanded && (
         <div className="border-t border-border px-2.5 pb-2 pt-1.5">
