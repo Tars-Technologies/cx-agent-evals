@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import { Id } from "@convex/_generated/dataModel";
@@ -66,9 +66,9 @@ export function ScenarioGenerationWizard({
   const [step, setStep] = useState(0);
 
   // ── Step 1: Transcripts ──
-  const [selectedUploadIds, setSelectedUploadIds] = useState<
-    Id<"livechatUploads">[]
-  >([]);
+  const [selectedUploadId, setSelectedUploadId] = useState<
+    Id<"livechatUploads"> | null
+  >(null);
   const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(
     new Set(),
   );
@@ -92,23 +92,21 @@ export function ScenarioGenerationWizard({
   const uploads = useQuery(api.livechat.orchestration.list);
   const conversations = useQuery(
     api.livechat.orchestration.listConversationsSummary,
-    selectedUploadIds.length > 0
-      ? { uploadIds: selectedUploadIds }
+    selectedUploadId
+      ? { uploadIds: [selectedUploadId] }
       : "skip",
   );
 
   // ── Derived values ──
-  const hasTranscripts = selectedUploadIds.length > 0;
+  const hasTranscripts = selectedUploadId !== null;
   const groundedCount = Math.round((count * distribution) / 100);
   const syntheticCount = count - groundedCount;
 
   // ── Helpers ──
 
-  function toggleUpload(id: Id<"livechatUploads">) {
-    setSelectedUploadIds((prev) =>
-      prev.includes(id) ? prev.filter((u) => u !== id) : [...prev, id],
-    );
-    // Clear conversation selection when uploads change
+  function selectUpload(id: Id<"livechatUploads"> | null) {
+    setSelectedUploadId(id);
+    // Clear conversation selection when upload changes
     setSelectedConvIds(new Set());
   }
 
@@ -121,13 +119,15 @@ export function ScenarioGenerationWizard({
     });
   }
 
-  function selectAllConversations() {
+  function toggleAllConversations() {
     if (!conversations) return;
-    setSelectedConvIds(new Set(conversations.map((c) => c._id)));
-  }
-
-  function deselectAllConversations() {
-    setSelectedConvIds(new Set());
+    const allIds = conversations.map((c) => c._id);
+    const allSelected = allIds.every((id) => selectedConvIds.has(id));
+    if (allSelected) {
+      setSelectedConvIds(new Set());
+    } else {
+      setSelectedConvIds(new Set(allIds));
+    }
   }
 
   function adjustDistribution(
@@ -174,7 +174,7 @@ export function ScenarioGenerationWizard({
         },
         model,
         transcriptUploadIds:
-          selectedUploadIds.length > 0 ? selectedUploadIds : undefined,
+          selectedUploadId ? [selectedUploadId] : undefined,
         transcriptConversationIds:
           selectedConvIds.size > 0
             ? ([...selectedConvIds] as Id<"livechatConversations">[])
@@ -242,12 +242,11 @@ export function ScenarioGenerationWizard({
           <StepTranscripts
             uploads={uploads}
             conversations={conversations}
-            selectedUploadIds={selectedUploadIds}
+            selectedUploadId={selectedUploadId}
             selectedConvIds={selectedConvIds}
-            onToggleUpload={toggleUpload}
+            onSelectUpload={selectUpload}
             onToggleConversation={toggleConversation}
-            onSelectAll={selectAllConversations}
-            onDeselectAll={deselectAllConversations}
+            onToggleAll={toggleAllConversations}
           />
         )}
         {step === 1 && (
@@ -319,7 +318,7 @@ export function ScenarioGenerationWizard({
           {step === 0 && (
             <button
               onClick={() => {
-                setSelectedUploadIds([]);
+                setSelectedUploadId(null);
                 setSelectedConvIds(new Set());
                 setStep(1);
               }}
@@ -356,12 +355,11 @@ export function ScenarioGenerationWizard({
 function StepTranscripts({
   uploads,
   conversations,
-  selectedUploadIds,
+  selectedUploadId,
   selectedConvIds,
-  onToggleUpload,
+  onSelectUpload,
   onToggleConversation,
-  onSelectAll,
-  onDeselectAll,
+  onToggleAll,
 }: {
   uploads:
     | Array<{
@@ -380,13 +378,28 @@ function StepTranscripts({
         messageCount: number;
       }>
     | undefined;
-  selectedUploadIds: Id<"livechatUploads">[];
+  selectedUploadId: Id<"livechatUploads"> | null;
   selectedConvIds: Set<string>;
-  onToggleUpload: (id: Id<"livechatUploads">) => void;
+  onSelectUpload: (id: Id<"livechatUploads"> | null) => void;
   onToggleConversation: (id: string) => void;
-  onSelectAll: () => void;
-  onDeselectAll: () => void;
+  onToggleAll: () => void;
 }) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+    if (dropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [dropdownOpen]);
+
   if (!uploads || uploads.length === 0) {
     return (
       <div className="text-xs text-text-dim py-8 text-center">
@@ -396,62 +409,118 @@ function StepTranscripts({
     );
   }
 
+  const readyUploads = uploads.filter((u) => u.status === "ready");
+  const selectedUpload = readyUploads.find((u) => u._id === selectedUploadId);
+
+  // Conversation checkbox states
+  const totalConvs = conversations?.length ?? 0;
+  const selectedCount = conversations
+    ? conversations.filter((c) => selectedConvIds.has(c._id)).length
+    : 0;
+  const allSelected = totalConvs > 0 && selectedCount === totalConvs;
+  const someSelected = selectedCount > 0 && selectedCount < totalConvs;
+
   return (
     <div className="space-y-4">
-      {/* Upload cards */}
+      {/* Transcript dropdown */}
       <div>
         <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-2">
-          Transcript Sets
+          Transcript Set
         </label>
-        <div className="grid grid-cols-2 gap-2">
-          {uploads
-            .filter((u) => u.status === "ready")
-            .map((upload) => {
-              const selected = selectedUploadIds.includes(upload._id);
-              return (
+        <div ref={dropdownRef} className="relative">
+          {/* Trigger */}
+          <button
+            onClick={() => setDropdownOpen(!dropdownOpen)}
+            className={`w-full text-left px-3 py-2 rounded border transition-colors flex items-center justify-between ${
+              selectedUploadId
+                ? "border-accent bg-accent/5"
+                : "border-border bg-bg-surface hover:border-border-bright"
+            }`}
+          >
+            {selectedUpload ? (
+              <div>
+                <div className="text-xs text-text truncate">
+                  {selectedUpload.filename}
+                </div>
+                <div className="text-[10px] text-text-dim mt-0.5">
+                  {selectedUpload.conversationCount ?? "?"} conversations
+                </div>
+              </div>
+            ) : (
+              <span className="text-xs text-text-dim">
+                Select a transcript set...
+              </span>
+            )}
+            <svg
+              className={`w-3.5 h-3.5 text-text-dim shrink-0 ml-2 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+            </svg>
+          </button>
+
+          {/* Dropdown menu */}
+          {dropdownOpen && (
+            <div className="absolute z-20 w-full mt-1 border border-border rounded bg-bg-elevated shadow-lg max-h-[220px] overflow-y-auto">
+              {/* Clear selection option */}
+              {selectedUploadId && (
                 <button
-                  key={upload._id}
-                  onClick={() => onToggleUpload(upload._id)}
-                  className={`text-left p-2 rounded border transition-colors ${
-                    selected
-                      ? "border-accent bg-accent/10"
-                      : "border-border bg-bg-surface hover:border-border-bright"
-                  }`}
+                  onClick={() => {
+                    onSelectUpload(null);
+                    setDropdownOpen(false);
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs text-text-dim hover:bg-bg-surface border-b border-border transition-colors"
                 >
-                  <div className="text-xs text-text truncate">
-                    {upload.filename}
-                  </div>
-                  <div className="text-[10px] text-text-dim mt-0.5">
-                    {upload.conversationCount ?? "?"} conversations
-                  </div>
+                  Clear selection
                 </button>
-              );
-            })}
+              )}
+              {readyUploads.map((upload) => {
+                const isSelected = upload._id === selectedUploadId;
+                return (
+                  <button
+                    key={upload._id}
+                    onClick={() => {
+                      onSelectUpload(upload._id);
+                      setDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2.5 transition-colors border-b border-border last:border-0 ${
+                      isSelected
+                        ? "bg-accent/10"
+                        : "hover:bg-bg-surface"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs text-text truncate">
+                        {upload.filename}
+                      </div>
+                      {isSelected && (
+                        <svg className="w-3.5 h-3.5 text-accent shrink-0 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-text-dim mt-0.5">
+                      {upload.conversationCount ?? "?"} conversations
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Conversation table */}
-      {selectedUploadIds.length > 0 && (
+      {selectedUploadId && (
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-[11px] text-text-dim uppercase tracking-wider">
-              Conversations
-            </label>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={onSelectAll}
-                className="text-[9px] text-accent hover:underline"
-              >
-                Select All
-              </button>
-              <button
-                onClick={onDeselectAll}
-                className="text-[9px] text-text-dim hover:underline"
-              >
-                Deselect All
-              </button>
-            </div>
-          </div>
+          <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-2">
+            Conversations
+            {totalConvs > 0 && (
+              <span className="text-text-muted ml-1">
+                ({selectedCount}/{totalConvs} selected)
+              </span>
+            )}
+          </label>
 
           {!conversations ? (
             <div className="text-[10px] text-text-dim py-4 text-center">
@@ -459,14 +528,20 @@ function StepTranscripts({
             </div>
           ) : conversations.length === 0 ? (
             <div className="text-[10px] text-text-dim py-4 text-center">
-              No conversations found in selected transcripts.
+              No conversations found in selected transcript.
             </div>
           ) : (
             <div className="max-h-[200px] overflow-y-auto border border-border rounded">
               <table className="w-full text-[10px]">
                 <thead>
-                  <tr className="border-b border-border bg-bg-surface">
-                    <th className="p-1.5 text-left text-text-dim font-normal w-6" />
+                  <tr className="border-b border-border bg-bg-surface sticky top-0">
+                    <th className="p-1.5 text-left w-6">
+                      <TriStateCheckbox
+                        checked={allSelected}
+                        indeterminate={someSelected}
+                        onChange={onToggleAll}
+                      />
+                    </th>
                     <th className="p-1.5 text-left text-text-dim font-normal">
                       Conversation
                     </th>
@@ -485,9 +560,10 @@ function StepTranscripts({
                   {conversations.map((conv) => (
                     <tr
                       key={conv._id}
-                      className="border-b border-border last:border-0 hover:bg-bg-surface/50"
+                      className="border-b border-border last:border-0 hover:bg-bg-surface/50 cursor-pointer"
+                      onClick={() => onToggleConversation(conv._id)}
                     >
-                      <td className="p-1.5">
+                      <td className="p-1.5" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={selectedConvIds.has(conv._id)}
@@ -530,6 +606,34 @@ function StepTranscripts({
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Tri-State Checkbox ──────────────────────────────────────────────
+
+function TriStateCheckbox({
+  checked,
+  indeterminate,
+  onChange,
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  onChange: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.indeterminate = indeterminate;
+    }
+  }, [indeterminate]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      onChange={onChange}
+      className="accent-accent"
+    />
   );
 }
 
