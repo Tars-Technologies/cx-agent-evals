@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="preview.css">
+<style>
+  /* Card-local overrides: swap meta text to Inter for readability,
+     keep hex in JetBrains Mono so tabular digits stay aligned. */
+  .swatch .meta {
+    padding: 10px 12px;
+    gap: 3px;
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+  }
+  .swatch .name {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    color: #e8e8ed;
+  }
+  .swatch .hex {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    color: #8888a0;
+  }
+  .swatch .use {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 10px;
+    color: #55556a;
+    margin-top: 1px;
+  }
+  .swatch .fill { height: 56px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="wrap">
+    <div class="swatch">
+      <div class="fill" style="background:#0c0c0f"></div>
+      <div class="meta">
+        <span class="name">bg</span>
+        <span class="hex">#0C0C0F</span>
+        <span class="use">canvas</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="fill" style="background:#141419"></div>
+      <div class="meta">
+        <span class="name">bg-elevated</span>
+        <span class="hex">#141419</span>
+        <span class="use">cards</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="fill" style="background:#1a1a22"></div>
+      <div class="meta">
+        <span class="name">bg-surface</span>
+        <span class="hex">#1A1A22</span>
+        <span class="use">inputs</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="fill" style="background:#22222d"></div>
+      <div class="meta">
+        <span class="name">bg-hover</span>
+        <span class="hex">#22222D</span>
+        <span class="use">hover</span>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

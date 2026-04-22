@@ -1,0 +1,187 @@
+/* ──────────────────────────────────────────────────────────────────
+   Case Design System (CDS) — Foundations
+   Tars · CX Agent Evals
+   
+   This file is the single source of truth for color + type tokens.
+   It mirrors what lives in packages/frontend/src/app/globals.css in
+   the cx-agent-evals repo, plus a layer of semantic selectors.
+   ────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Surfaces (dark-mode native) ─────────────────────────────── */
+  --cds-bg:            #0c0c0f;  /* app canvas */
+  --cds-bg-elevated:   #141419;  /* headers, sidebars, cards */
+  --cds-bg-surface:    #1a1a22;  /* inputs, inner panels, code */
+  --cds-bg-hover:      #22222d;  /* row hover, pressed states */
+
+  /* ── Hairlines ───────────────────────────────────────────────── */
+  --cds-border:        #2a2a36;  /* default 1px divider */
+  --cds-border-bright: #3a3a4a;  /* focused / elevated divider */
+
+  /* ── Text ladder ─────────────────────────────────────────────── */
+  --cds-text:          #e8e8ed;  /* primary body + headlines */
+  --cds-text-muted:    #8888a0;  /* secondary labels, descriptions */
+  --cds-text-dim:      #55556a;  /* tertiary meta, timestamps */
+
+  /* ── Brand accent: Terminal Mint ─────────────────────────────── */
+  --cds-accent:        #6ee7b7;  /* primary action, live dot, chips */
+  --cds-accent-dim:    #2d6b54;  /* backgrounds for accent text */
+  --cds-accent-bright: #a7f3d0;  /* inline code, selection fg */
+
+  /* ── Semantic status ─────────────────────────────────────────── */
+  --cds-warn:          #fbbf24;  /* amber — "indexing", "pending" */
+  --cds-error:         #f87171;  /* red   — "error", destructive */
+
+  /* ── Chunk rainbow (5-way span-highlighting in the RAG UI) ───── */
+  --cds-chunk-1:       #6ee7b780;  /* mint    50% */
+  --cds-chunk-2:       #818cf880;  /* indigo  50% */
+  --cds-chunk-3:       #fbbf2480;  /* amber   50% */
+  --cds-chunk-4:       #f472b680;  /* pink    50% */
+  --cds-chunk-5:       #38bdf880;  /* sky     50% */
+
+  /* ── Type stack ──────────────────────────────────────────────── */
+  --cds-font-mono:    "JetBrains Mono", "Fira Code", "SF Mono",
+                       "Cascadia Code", ui-monospace, monospace;
+  --cds-font-display: "JetBrains Mono", ui-monospace, monospace;
+  /* NOTE: There is no sans-serif body font. Everything is mono.
+     This is a deliberate "developer tool" aesthetic — keep it. */
+
+  /* ── Type scale (px @ 13px base) ─────────────────────────────── */
+  --cds-fs-9:  9px;   /* micro-tags, status pills */
+  --cds-fs-10: 10px;  /* tab labels, chip text */
+  --cds-fs-11: 11px;  /* meta, sidebar items */
+  --cds-fs-12: 12px;  /* secondary body */
+  --cds-fs-13: 13px;  /* BASE body */
+  --cds-fs-14: 14px;  /* emphasized body */
+  --cds-fs-16: 16px;  /* H3 / section titles */
+  --cds-fs-18: 18px;  /* H2 / panel titles */
+  --cds-fs-24: 24px;  /* H1 / page titles */
+  --cds-fs-32: 32px;  /* display (rare) */
+
+  --cds-lh-tight:  1.3;
+  --cds-lh-normal: 1.6;
+
+  /* ── Weight scale ────────────────────────────────────────────── */
+  --cds-fw-light:    300;
+  --cds-fw-regular:  400;
+  --cds-fw-medium:   500;
+  --cds-fw-semibold: 600;
+  --cds-fw-bold:     700;
+
+  /* ── Radius ──────────────────────────────────────────────────── */
+  --cds-radius-xs:  2px;   /* mark / inline highlight */
+  --cds-radius-sm:  4px;   /* chips, tiny pills */
+  --cds-radius-md:  6px;   /* buttons, inputs */
+  --cds-radius-lg:  8px;   /* cards, panels */
+  --cds-radius-xl:  12px;  /* message bubbles */
+  --cds-radius-full: 9999px;
+
+  /* ── Spacing (4px base) ──────────────────────────────────────── */
+  --cds-space-0: 0;
+  --cds-space-1: 4px;
+  --cds-space-2: 8px;
+  --cds-space-3: 12px;
+  --cds-space-4: 16px;
+  --cds-space-5: 20px;
+  --cds-space-6: 24px;
+  --cds-space-8: 32px;
+  --cds-space-10: 40px;
+  --cds-space-12: 48px;
+
+  /* ── Elevation (used sparingly — flat aesthetic) ─────────────── */
+  --cds-shadow-none: none;
+  --cds-shadow-focus: 0 0 0 1px var(--cds-accent);
+  --cds-shadow-glow:  0 0 8px 3px rgba(110, 231, 183, 0.5);
+  --cds-shadow-modal: 0 24px 48px -12px rgba(0, 0, 0, 0.6);
+
+  /* ── Motion ──────────────────────────────────────────────────── */
+  --cds-ease:        ease-out;
+  --cds-dur-fast:    150ms;   /* hover / color */
+  --cds-dur-base:    250ms;   /* slide, panel */
+  --cds-dur-slow:    400ms;   /* fade-in, first paint */
+  --cds-dur-pulse:   1400ms;  /* live-dot heartbeat */
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   Semantic element styles — drop-in defaults for standalone pages.
+   Scope them under `.cds` so they do not bleed into other surfaces.
+   ────────────────────────────────────────────────────────────────── */
+
+.cds {
+  background: var(--cds-bg);
+  color: var(--cds-text);
+  font-family: var(--cds-font-mono);
+  font-size: var(--cds-fs-13);
+  line-height: var(--cds-lh-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+.cds ::selection {
+  background: var(--cds-accent-dim);
+  color: var(--cds-accent-bright);
+}
+
+.cds h1 {
+  font-size: var(--cds-fs-24);
+  font-weight: var(--cds-fw-semibold);
+  letter-spacing: 0.02em;
+  line-height: var(--cds-lh-tight);
+}
+.cds h2 {
+  font-size: var(--cds-fs-18);
+  font-weight: var(--cds-fw-semibold);
+  line-height: var(--cds-lh-tight);
+}
+.cds h3 {
+  font-size: var(--cds-fs-16);
+  font-weight: var(--cds-fw-medium);
+  line-height: var(--cds-lh-tight);
+}
+.cds h4 {
+  font-size: var(--cds-fs-14);
+  font-weight: var(--cds-fw-medium);
+}
+.cds p {
+  font-size: var(--cds-fs-13);
+  color: var(--cds-text);
+}
+.cds .cds-muted { color: var(--cds-text-muted); }
+.cds .cds-dim   { color: var(--cds-text-dim); }
+
+.cds .cds-eyebrow {
+  font-size: var(--cds-fs-10);
+  color: var(--cds-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.cds code, .cds .cds-code {
+  font-family: var(--cds-font-mono);
+  font-size: 0.85em;
+  background: var(--cds-bg-surface);
+  color: var(--cds-accent-bright);
+  padding: 0.15em 0.35em;
+  border-radius: var(--cds-radius-sm);
+}
+
+/* ── Signature animations ──────────────────────────────────────── */
+@keyframes cds-pulse-dot {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+@keyframes cds-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes cds-slide-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes cds-span-glow {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  25%, 75% { box-shadow: var(--cds-shadow-glow); }
+}
+
+.cds-pulse-dot { animation: cds-pulse-dot var(--cds-dur-pulse) ease-in-out infinite; }
+.cds-fade-in   { animation: cds-fade-in 300ms var(--cds-ease) both; }
+.cds-slide-in  { animation: cds-slide-in var(--cds-dur-base) var(--cds-ease) both; }
