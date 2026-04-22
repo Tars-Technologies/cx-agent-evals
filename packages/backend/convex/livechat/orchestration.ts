@@ -493,8 +493,11 @@ export const listConversationsSummary = query({
           visitorName: c.visitorName,
           labels: c.labels,
           classificationStatus: c.classificationStatus,
-          messageTypes:
-            c.messageTypes?.map((mt: { type: string }) => mt.type) ?? [],
+          messageTypes: Array.isArray(c.messageTypes)
+            ? (c.messageTypes as Array<{ type?: string }>)
+                .map((mt) => (typeof mt === "string" ? mt : mt?.type ?? null))
+                .filter((t): t is string => typeof t === "string")
+            : [],
           messageCount: c.messages.filter((m) => m.role !== "workflow_input")
             .length,
           hasUserMessages: c.messages.some((m) => m.role === "user"),
