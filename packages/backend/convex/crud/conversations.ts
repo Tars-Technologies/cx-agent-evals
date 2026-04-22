@@ -65,6 +65,25 @@ export const getStreamDeltas = query({
   },
 });
 
+// Internal mutation for creating conversations from actions (no auth needed)
+export const createInternal = internalMutation({
+  args: {
+    orgId: v.string(),
+    agentIds: v.array(v.id("agents")),
+    title: v.optional(v.string()),
+    source: v.optional(v.union(
+      v.literal("playground"), v.literal("simulation"), v.literal("experiment"),
+    )),
+  },
+  handler: async (ctx, args) => {
+    return ctx.db.insert("conversations", {
+      ...args,
+      status: "active",
+      createdAt: Date.now(),
+    });
+  },
+});
+
 // Internal mutations used by the agent action
 export const insertMessage = internalMutation({
   args: {
@@ -100,6 +119,12 @@ export const insertMessage = internalMutation({
       v.literal("streaming"),
       v.literal("complete"),
       v.literal("error"),
+    ),
+    usage: v.optional(
+      v.object({
+        promptTokens: v.number(),
+        completionTokens: v.number(),
+      }),
     ),
   },
   handler: async (ctx, args) => {

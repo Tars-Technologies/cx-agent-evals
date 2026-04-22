@@ -9,6 +9,8 @@ import { Header } from "@/components/Header";
 import AgentConfigPanel from "@/components/AgentConfigPanel";
 import AgentPlayground from "@/components/AgentPlayground";
 import { ExperimentModeLayout } from "@/components/agent-experiments/ExperimentModeLayout";
+import { SimulationModeLayout } from "@/components/conversation-sim/SimulationModeLayout";
+import { CreateSimulationModal } from "@/components/conversation-sim/CreateSimulationModal";
 
 // ---------------------------------------------------------------------------
 // URL param helpers
@@ -99,6 +101,8 @@ function AgentsPageContent() {
 
   // --- Experiment modal ---
   const [showExperimentModal, setShowExperimentModal] = useState(false);
+  // --- Simulation modal ---
+  const [showSimModal, setShowSimModal] = useState(false);
 
   return (
     <div className="h-screen flex flex-col bg-bg overflow-hidden">
@@ -160,10 +164,11 @@ function AgentsPageContent() {
           </button>
         ) : (
           <button
-            onClick={() => setShowExperimentModal(true)}
-            className="px-4 py-2 rounded-md text-xs font-semibold bg-accent text-bg-elevated hover:bg-accent/90 transition-colors cursor-pointer"
+            onClick={() => setShowSimModal(true)}
+            disabled={!agentId}
+            className="px-4 py-2 rounded-md text-xs font-semibold bg-accent text-bg-elevated hover:bg-accent/90 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            + New Experiment
+            + New Simulation
           </button>
         )}
       </div>
@@ -194,17 +199,25 @@ function AgentsPageContent() {
             </div>
           )}
         </div>
+      ) : agentId ? (
+        <>
+          <SimulationModeLayout
+            agentId={agentId}
+            showCreateModal={showSimModal}
+            onCloseCreateModal={() => setShowSimModal(false)}
+          />
+          {showSimModal && (
+            <CreateSimulationModal
+              agentId={agentId}
+              onClose={() => setShowSimModal(false)}
+              onCreated={() => setShowSimModal(false)}
+            />
+          )}
+        </>
       ) : (
-        <ExperimentModeLayout
-          selectedRunId={experimentId}
-          onSelectRun={(id) => setExperimentId(id)}
-          showCreateModal={showExperimentModal}
-          onCloseCreateModal={() => setShowExperimentModal(false)}
-          onCreated={(id) => {
-            setExperimentId(id);
-            setShowExperimentModal(false);
-          }}
-        />
+        <div className="flex-1 flex items-center justify-center text-text-dim text-xs">
+          Select an agent to view simulations
+        </div>
       )}
     </div>
   );
