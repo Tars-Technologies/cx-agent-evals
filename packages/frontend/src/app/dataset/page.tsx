@@ -78,6 +78,13 @@ function GeneratePageContent() {
     activeJob ? { id: activeJob.kbId } : "skip",
   );
 
+  // Active scenario generation job detection (org-wide)
+  const activeScenarioJob = useQuery(api.conversationSim.generation.getActiveJob, {});
+  const activeScenarioJobKb = useQuery(
+    api.crud.knowledgeBases.get,
+    activeScenarioJob ? { id: activeScenarioJob.kbId } : "skip",
+  );
+
   // Mode: "browse" (viewing existing datasets) or "generate" (creating new)
   type PageMode = "browse" | "generate";
   const [mode, setMode] = useState<PageMode>("browse");
@@ -289,7 +296,7 @@ function GeneratePageContent() {
     <div className="flex flex-col h-screen">
       <Header mode="dataset" kbId={selectedKbId} />
 
-        {/* Generation Banner — shown when any job is active */}
+        {/* Question Generation Banner — shown when any question gen job is active */}
         {activeJob && (
           <GenerationBanner
             strategy={activeJob.strategy}
@@ -306,6 +313,26 @@ function GeneratePageContent() {
               setBrowseDatasetId(activeJob.datasetId);
               setDatasetId(activeJob.datasetId);
               setJobId(activeJob._id);
+              setDatasetType("questions");
+            }}
+          />
+        )}
+
+        {/* Scenario Generation Banner — shown when scenario gen is active */}
+        {activeScenarioJob && (
+          <GenerationBanner
+            strategy="Scenario Generation"
+            kbName={activeScenarioJobKb?.name ?? "..."}
+            phase="generating"
+            processedItems={activeScenarioJob.generatedCount}
+            totalItems={activeScenarioJob.targetCount}
+            questionsGenerated={activeScenarioJob.generatedCount}
+            onView={() => {
+              if (activeScenarioJob.kbId !== selectedKbId) {
+                setSelectedKbId(activeScenarioJob.kbId);
+              }
+              setBrowseDatasetId(activeScenarioJob.datasetId);
+              setDatasetType("conversation_sim");
             }}
           />
         )}
@@ -406,12 +433,16 @@ function GeneratePageContent() {
           {selectedKbId && (
             <button
               onClick={() => setShowWizardModal(true)}
-              disabled={!hasDocuments || !!activeJob}
+              disabled={
+                !hasDocuments ||
+                (datasetType === "questions" && !!activeJob) ||
+                (datasetType === "conversation_sim" && !!activeScenarioJob)
+              }
               title={
                 !hasDocuments
                   ? "Upload documents before generating"
-                  : activeJob
-                    ? "Only one generation at a time"
+                  : (datasetType === "questions" && activeJob) || (datasetType === "conversation_sim" && activeScenarioJob)
+                    ? "A generation is already in progress"
                     : undefined
               }
               className="px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
@@ -424,11 +455,21 @@ function GeneratePageContent() {
 
       <div className="flex flex-1 overflow-hidden max-w-full">
         {datasetType === "conversation_sim" ? (
-          !selectedKbId || !browseDatasetId || !scenarios || scenarios.length === 0 ? (
+          !selectedKbId || !browseDatasetId || (!scenarios || scenarios.length === 0) ? (
             <div className="flex-1 flex items-center justify-center text-text-dim text-xs">
               {selectedKbId
                 ? browseDatasetId
-                  ? "No scenarios in this dataset"
+                  ? activeScenarioJob && activeScenarioJob.datasetId === browseDatasetId
+                    ? (
+                      <div className="text-center space-y-2">
+                        <div className="flex items-center gap-2 justify-center">
+                          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                          <span className="text-accent">Generating scenarios...</span>
+                        </div>
+                        <span>{activeScenarioJob.generatedCount} of {activeScenarioJob.targetCount} generated</span>
+                      </div>
+                    )
+                    : "No scenarios in this dataset"
                   : "Select a scenario dataset to view scenarios"
                 : "Select a knowledge base to get started"}
             </div>

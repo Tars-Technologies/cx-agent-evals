@@ -785,4 +785,24 @@ export default defineSchema({
     .index("by_simulation", ["simulationId"])
     .index("by_scenario", ["scenarioId"])
     .index("by_simulation_scenario", ["simulationId", "scenarioId"]),
+
+  scenarioGenJobs: defineTable({
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    datasetId: v.id("datasets"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    targetCount: v.number(),
+    generatedCount: v.number(),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_org_status", ["orgId", "status"])
+    .index("by_dataset", ["datasetId"]),
 });

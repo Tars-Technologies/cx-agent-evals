@@ -1,4 +1,4 @@
-import { mutation, internalMutation } from "../_generated/server";
+import { mutation, query, internalMutation } from "../_generated/server";
 import { components, internal } from "../_generated/api";
 import { v } from "convex/values";
 import {
@@ -7,6 +7,7 @@ import {
   type RunResult,
 } from "@convex-dev/workpool";
 import { getAuthContext } from "../lib/auth";
+import type { Id } from "../_generated/dataModel";
 
 // Reuse conversationSimPool — generation and simulation are low-traffic
 const pool = new Workpool(components.conversationSimPool, {
@@ -37,7 +38,31 @@ export const startGeneration = mutation({
     if (dataset.type !== "conversation_sim")
       throw new Error("Dataset must be conversation_sim type");
 
+    // Guard: only one active generation per org at a time
+    const running = await ctx.db
+      .query("scenarioGenJobs")
+      .withIndex("by_org_status", (q) => q.eq("orgId", orgId).eq("status", "running"))
+      .first();
+    const pending = await ctx.db
+      .query("scenarioGenJobs")
+      .withIndex("by_org_status", (q) => q.eq("orgId", orgId).eq("status", "pending"))
+      .first();
+    if (running || pending) {
+      throw new Error("A scenario generation is already in progress");
+    }
+
     const count = args.count ?? 10;
+
+    // Create job record
+    const jobId = await ctx.db.insert("scenarioGenJobs", {
+      orgId,
+      kbId: dataset.kbId,
+      datasetId: args.datasetId,
+      status: "running",
+      targetCount: count,
+      generatedCount: 0,
+      createdAt: Date.now(),
+    });
 
     await pool.enqueueAction(
       ctx,
@@ -46,6 +71,7 @@ export const startGeneration = mutation({
         datasetId: args.datasetId,
         kbId: dataset.kbId,
         orgId,
+        jobId,
         config: {
           count,
           model: args.model,
@@ -53,38 +79,97 @@ export const startGeneration = mutation({
         },
       },
       {
-        context: { datasetId: args.datasetId as string },
+        context: { jobId: jobId as string },
         onComplete:
           internal.conversationSim.generation.onGenerationComplete,
       },
     );
 
-    return { started: true };
+    return { started: true, jobId };
+  },
+});
+
+// ─── Progress Update (called by action after each batch) ───
+
+export const updateProgress = internalMutation({
+  args: {
+    jobId: v.id("scenarioGenJobs"),
+    generatedCount: v.number(),
+  },
+  handler: async (ctx, { jobId, generatedCount }) => {
+    const job = await ctx.db.get(jobId);
+    if (!job) return;
+    await ctx.db.patch(jobId, { generatedCount });
   },
 });
 
 // ─── WorkPool Callback ───
 
 export const onGenerationComplete = internalMutation({
-  args: vOnCompleteArgs(v.object({ datasetId: v.string() })),
+  args: vOnCompleteArgs(v.object({ jobId: v.string() })),
   handler: async (
-    _ctx,
+    ctx,
     {
       context,
       result,
     }: {
       workId: string;
-      context: { datasetId: string };
+      context: { jobId: string };
       result: RunResult;
     },
   ) => {
-    // The action already saved scenarios and updated the count.
-    // This callback exists for WorkPool integration.
-    if (result.kind === "failed") {
-      console.error(
-        `Scenario generation failed for dataset ${context.datasetId}:`,
-        result.error,
-      );
+    const jobId = context.jobId as Id<"scenarioGenJobs">;
+    const job = await ctx.db.get(jobId);
+    if (!job) return;
+
+    if (result.kind === "success") {
+      await ctx.db.patch(jobId, {
+        status: "completed",
+        completedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.patch(jobId, {
+        status: "failed",
+        error: result.kind === "failed" ? result.error : "Generation cancelled",
+        completedAt: Date.now(),
+      });
     }
+  },
+});
+
+// ─── Queries ───
+
+export const getActiveJob = query({
+  args: {},
+  handler: async (ctx) => {
+    const { orgId } = await getAuthContext(ctx);
+
+    const running = await ctx.db
+      .query("scenarioGenJobs")
+      .withIndex("by_org_status", (q) => q.eq("orgId", orgId).eq("status", "running"))
+      .first();
+    const pending = await ctx.db
+      .query("scenarioGenJobs")
+      .withIndex("by_org_status", (q) => q.eq("orgId", orgId).eq("status", "pending"))
+      .first();
+
+    const active = running ?? pending;
+    if (!active) return null;
+
+    // Filter out stale jobs (>30 min for scenario generation)
+    const THIRTY_MIN = 30 * 60 * 1000;
+    if (Date.now() - active.createdAt > THIRTY_MIN) return null;
+
+    return active;
+  },
+});
+
+export const getJob = query({
+  args: { jobId: v.id("scenarioGenJobs") },
+  handler: async (ctx, { jobId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const job = await ctx.db.get(jobId);
+    if (!job || job.orgId !== orgId) return null;
+    return job;
   },
 });

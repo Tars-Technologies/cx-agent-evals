@@ -11,6 +11,7 @@ export const generateScenarios = internalAction({
     datasetId: v.id("datasets"),
     kbId: v.id("knowledgeBases"),
     orgId: v.string(),
+    jobId: v.id("scenarioGenJobs"),
     config: v.object({
       count: v.number(),
       model: v.optional(v.string()),
@@ -23,7 +24,7 @@ export const generateScenarios = internalAction({
       ),
     }),
   },
-  handler: async (ctx, { datasetId, kbId, orgId, config }) => {
+  handler: async (ctx, { datasetId, kbId, orgId, jobId, config }) => {
     const model = config.model ?? "claude-sonnet-4-20250514";
     const targetCount = config.count;
 
@@ -182,6 +183,12 @@ Respond ONLY with the JSON array.`,
           console.error("Failed to save scenario:", e);
         }
       }
+
+      // Report progress after each batch
+      await ctx.runMutation(
+        internal.conversationSim.generation.updateProgress,
+        { jobId, generatedCount },
+      );
     }
 
     // Update dataset scenario count
