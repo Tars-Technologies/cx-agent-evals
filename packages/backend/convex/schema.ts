@@ -677,6 +677,9 @@ export default defineSchema({
       content: v.string(),
       turnIndex: v.number(),
     }))),
+    sourceType: v.optional(v.union(v.literal("transcript_grounded"), v.literal("synthetic"))),
+    sourceTranscriptId: v.optional(v.id("livechatConversations")),
+    languages: v.optional(v.array(v.string())),
   })
     .index("by_dataset", ["datasetId"])
     .index("by_org", ["orgId"]),
@@ -801,6 +804,10 @@ export default defineSchema({
     error: v.optional(v.string()),
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
+    transcriptUploadIds: v.optional(v.array(v.id("livechatUploads"))),
+    transcriptConversationIds: v.optional(v.array(v.id("livechatConversations"))),
+    distribution: v.optional(v.number()),  // 0-100, % transcript-grounded
+    fidelity: v.optional(v.number()),      // 0-100, high = faithful
   })
     .index("by_org", ["orgId"])
     .index("by_org_status", ["orgId", "status"])

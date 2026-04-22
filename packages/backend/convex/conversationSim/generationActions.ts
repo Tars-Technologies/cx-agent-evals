@@ -5,201 +5,19 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { generateText } from "ai";
 import { resolveModel } from "../lib/agentLoop";
+import type { Id } from "../_generated/dataModel";
 
-export const generateScenarios = internalAction({
-  args: {
-    datasetId: v.id("datasets"),
-    kbId: v.id("knowledgeBases"),
-    orgId: v.string(),
-    jobId: v.id("scenarioGenJobs"),
-    config: v.object({
-      count: v.number(),
-      model: v.optional(v.string()),
-      complexityDistribution: v.optional(
-        v.object({
-          low: v.number(),
-          medium: v.number(),
-          high: v.number(),
-        }),
-      ),
-    }),
-  },
-  handler: async (ctx, { datasetId, kbId, orgId, jobId, config }) => {
-    const model = config.model ?? "claude-sonnet-4-20250514";
-    const targetCount = config.count;
+// ─── Types ───
 
-    // 1. Load KB documents (take up to 20 docs, truncate content for context window)
-    const docs = await ctx.runQuery(
-      internal.crud.documents.listByKbInternal,
-      { kbId },
-    );
-    if (docs.length === 0) throw new Error("No documents in knowledge base");
-
-    const docSummaries = docs.slice(0, 20).map((d) => ({
-      title: d.title,
-      content: d.content.slice(0, 2000),
-    }));
-
-    const kbContext = docSummaries
-      .map((d) => `### ${d.title}\n${d.content}`)
-      .join("\n\n---\n\n");
-
-    // 2. Dimension discovery
-    const dimensionResult = await generateText({
-      model: resolveModel(model),
-      system:
-        "You analyze knowledge base content to discover dimensions for customer support conversation scenarios.",
-      prompt: `Analyze the following knowledge base content and identify dimensions for generating realistic customer support scenarios.
-
-${kbContext}
-
-Return a JSON object with these arrays:
-{
-  "personaTypes": ["description of persona type", ...],  // 5-8 diverse persona types
-  "topics": ["topic name", ...],                          // 5-10 topics covered in the KB
-  "intents": ["intent description", ...],                 // 5-8 user intents (what they want to achieve)
-  "communicationStyles": ["style", ...],                  // 3-5 styles (formal, casual, etc.)
-  "emotionalStates": ["state", ...]                       // 3-5 emotional states (frustrated, curious, etc.)
+interface TranscriptProfile {
+  personaClusters: string[];
+  commonIntents: string[];
+  topicDistribution: string[];
+  conversationPatterns: string[];
+  languagesUsed: string[];
 }
 
-Respond ONLY with the JSON object.`,
-      temperature: 0.3,
-    });
-
-    let dimensions;
-    try {
-      dimensions = JSON.parse(dimensionResult.text.trim());
-    } catch {
-      // Try to extract JSON from response
-      const match = dimensionResult.text.match(/\{[\s\S]*\}/);
-      if (match) dimensions = JSON.parse(match[0]);
-      else throw new Error("Failed to parse dimension discovery response");
-    }
-
-    // 3. Generate combinations and scenarios in batches
-    const complexityDist = config.complexityDistribution ?? {
-      low: 0.3,
-      medium: 0.5,
-      high: 0.2,
-    };
-    const complexities = distributeComplexity(targetCount, complexityDist);
-
-    const batchSize = 5;
-    let generatedCount = 0;
-
-    for (let i = 0; i < targetCount; i += batchSize) {
-      const batchCount = Math.min(batchSize, targetCount - i);
-      const batchComplexities = complexities.slice(i, i + batchCount);
-
-      const scenarioResult = await generateText({
-        model: resolveModel(model),
-        system:
-          "You generate realistic customer support conversation scenarios based on knowledge base content. Each scenario describes a simulated end-user who will contact support.",
-        prompt: `Based on these dimensions discovered from the knowledge base:
-${JSON.stringify(dimensions, null, 2)}
-
-And this knowledge base content:
-${kbContext.slice(0, 3000)}
-
-Generate exactly ${batchCount} conversation scenarios. For each scenario, use a different combination of dimensions.
-
-Complexity levels for this batch: ${JSON.stringify(batchComplexities)}
-
-Return a JSON array of scenarios:
-[
-  {
-    "persona": {
-      "type": "string - the persona type",
-      "traits": ["trait1", "trait2"],
-      "communicationStyle": "formal/casual/etc",
-      "patienceLevel": "low/medium/high"
-    },
-    "topic": "string - the topic",
-    "intent": "string - what the user wants to achieve",
-    "complexity": "low/medium/high",
-    "reasonForContact": "string - why they're reaching out",
-    "knownInfo": "string - what the user already knows",
-    "unknownInfo": "string - what the user doesn't know and wants to find out",
-    "instruction": "string - detailed instruction for the LLM user-simulator (2-3 paragraphs describing exactly how to play this role, what to ask, how to respond)"
-  }
-]
-
-Make each scenario unique and realistic. The instruction field should be detailed enough for an LLM to roleplay the user convincingly.
-
-Respond ONLY with the JSON array.`,
-        temperature: 0.7,
-      });
-
-      let scenarios;
-      try {
-        scenarios = JSON.parse(scenarioResult.text.trim());
-      } catch {
-        const match = scenarioResult.text.match(/\[[\s\S]*\]/);
-        if (match) scenarios = JSON.parse(match[0]);
-        else continue; // Skip this batch on parse failure
-      }
-
-      if (!Array.isArray(scenarios)) continue;
-
-      // Save each scenario
-      for (const s of scenarios) {
-        try {
-          const persona = {
-            type: String(s.persona?.type ?? "General User"),
-            traits: Array.isArray(s.persona?.traits)
-              ? s.persona.traits.map(String)
-              : [],
-            communicationStyle: String(
-              s.persona?.communicationStyle ?? "neutral",
-            ),
-            patienceLevel: validateLevel(s.persona?.patienceLevel),
-          };
-
-          await ctx.runMutation(
-            internal.conversationSim.scenarios.createInternal,
-            {
-              datasetId,
-              orgId,
-              persona,
-              topic: String(s.topic ?? "General"),
-              intent: String(s.intent ?? "Get help"),
-              complexity: validateLevel(s.complexity),
-              reasonForContact: String(
-                s.reasonForContact ?? "Needs assistance",
-              ),
-              knownInfo: String(
-                s.knownInfo ?? "Basic information about the service",
-              ),
-              unknownInfo: String(
-                s.unknownInfo ?? "Specific details about their issue",
-              ),
-              instruction: String(
-                s.instruction ?? "Contact support about your issue",
-              ),
-            },
-          );
-          generatedCount++;
-        } catch (e) {
-          console.error("Failed to save scenario:", e);
-        }
-      }
-
-      // Report progress after each batch
-      await ctx.runMutation(
-        internal.conversationSim.generation.updateProgress,
-        { jobId, generatedCount },
-      );
-    }
-
-    // Update dataset scenario count
-    await ctx.runMutation(internal.crud.datasets.updateScenarioCount, {
-      datasetId,
-      scenarioCount: generatedCount,
-    });
-
-    return { generated: generatedCount };
-  },
-});
+// ─── Helpers ───
 
 function validateLevel(val: unknown): "low" | "medium" | "high" {
   if (val === "low" || val === "medium" || val === "high") return val;
@@ -227,3 +45,484 @@ function distributeComplexity(
 
   return result;
 }
+
+function extractPersona(s: Record<string, unknown>) {
+  const p = (s.persona && typeof s.persona === "object" ? s.persona : {}) as Record<string, unknown>;
+  return {
+    type: String(p.type ?? "General User"),
+    traits: Array.isArray(p.traits) ? (p.traits as unknown[]).map(String) : [],
+    communicationStyle: String(p.communicationStyle ?? "neutral"),
+    patienceLevel: validateLevel(p.patienceLevel),
+  };
+}
+
+function extractJson(text: string): unknown {
+  // Strip markdown code fences if present
+  const stripped = text.replace(/^```(?:json)?\s*\n?/gm, "").replace(/\n?```\s*$/gm, "").trim();
+  try {
+    return JSON.parse(stripped);
+  } catch {
+    // Try to find JSON array first (most LLM responses are arrays), then object
+    // Use lazy matching to avoid capturing trailing content
+    const arrayMatch = stripped.match(/\[[\s\S]*?\](?=\s*$)/);
+    if (arrayMatch) {
+      try { return JSON.parse(arrayMatch[0]); } catch { /* fall through */ }
+    }
+    const objMatch = stripped.match(/\{[\s\S]*?\}(?=\s*$)/);
+    if (objMatch) {
+      try { return JSON.parse(objMatch[0]); } catch { /* fall through */ }
+    }
+    // Last resort: greedy match
+    const greedyArray = stripped.match(/\[[\s\S]*\]/);
+    if (greedyArray) {
+      try { return JSON.parse(greedyArray[0]); } catch { /* fall through */ }
+    }
+    const greedyObj = stripped.match(/\{[\s\S]*\}/);
+    if (greedyObj) {
+      try { return JSON.parse(greedyObj[0]); } catch { /* fall through */ }
+    }
+    throw new Error(`Failed to parse LLM response as JSON: ${stripped.slice(0, 200)}`);
+  }
+}
+
+function sampleTranscripts<T>(transcripts: T[], count: number): T[] {
+  if (count <= 0) return [];
+  if (transcripts.length === 0) return [];
+
+  // Shuffle a copy
+  const shuffled = [...transcripts];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  if (count <= shuffled.length) {
+    return shuffled.slice(0, count);
+  }
+
+  // Repeat cyclically
+  const result: T[] = [];
+  for (let i = 0; i < count; i++) {
+    result.push(shuffled[i % shuffled.length]);
+  }
+  return result;
+}
+
+async function analyzeTranscriptCorpus(
+  transcripts: Array<{ _id: string; messages: Array<{ role: string; text: string }>; botFlowInput?: { intent: string; language: string } | null; labels?: string[] }>,
+  model: string,
+): Promise<TranscriptProfile> {
+  const summaries = transcripts.slice(0, 30).map((t, i) => {
+    const userMsgs = t.messages.filter((m) => m.role === "user").map((m) => m.text).slice(0, 5);
+    const intent = t.botFlowInput?.intent ?? "unknown";
+    const language = t.botFlowInput?.language ?? "unknown";
+    const labels = t.labels?.join(", ") ?? "";
+    return `[${i + 1}] intent=${intent}, lang=${language}, labels=${labels}\nUser messages: ${userMsgs.join(" | ")}`;
+  });
+
+  const result = await generateText({
+    model: resolveModel(model),
+    system:
+      "You analyze customer support transcript corpora to identify patterns and clusters. Always respond with valid JSON only.",
+    prompt: `Analyze these ${summaries.length} customer support transcript summaries and identify patterns:
+
+${summaries.join("\n\n")}
+
+Return a JSON object:
+{
+  "personaClusters": ["description of persona cluster", ...],   // 4-8 clusters
+  "commonIntents": ["intent description", ...],                  // 5-10 common intents
+  "topicDistribution": ["topic area", ...],                      // 5-10 topic areas
+  "conversationPatterns": ["pattern description", ...],          // 3-6 patterns
+  "languagesUsed": ["language", ...]                             // all languages observed
+}
+
+Respond ONLY with the JSON object.`,
+    temperature: 0.3,
+  });
+
+  return extractJson(result.text) as TranscriptProfile;
+}
+
+async function generateGroundedScenarios(
+  transcriptBatch: Array<{ _id: Id<"livechatConversations">; messages: Array<{ id: number; role: string; text: string }>; botFlowInput?: { intent: string; language: string } | null; labels?: string[]; visitorName?: string }>,
+  complexities: Array<"low" | "medium" | "high">,
+  fidelity: number,
+  model: string,
+): Promise<Array<Record<string, unknown>>> {
+  let fidelityInstruction: string;
+  if (fidelity >= 80) {
+    fidelityInstruction =
+      "Stay very close to the original transcript. Preserve the language, intent, and style. Reference messages should be near-verbatim from the original user messages.";
+  } else if (fidelity >= 50) {
+    fidelityInstruction =
+      "Capture the essence of the original transcript but allow moderate variation in wording and detail.";
+  } else {
+    fidelityInstruction =
+      "Use the transcript as loose inspiration only. Keep the general topic and intent but create a distinct variation with different wording and angle.";
+  }
+
+  const transcriptContexts = transcriptBatch.map((t, i) => {
+    const userMsgs = t.messages.filter((m) => m.role === "user");
+    const agentMsgs = t.messages.filter((m) => m.role === "human_agent");
+    const intent = t.botFlowInput?.intent ?? "unknown";
+    const language = t.botFlowInput?.language ?? "unknown";
+    return `--- Transcript ${i + 1} (ID: ${t._id}) ---
+Intent: ${intent}, Language: ${language}, Labels: ${(t.labels ?? []).join(", ")}
+Visitor: ${t.visitorName ?? "unknown"}
+Complexity target: ${complexities[i] ?? "medium"}
+User messages:
+${userMsgs.map((m) => `  [user] ${m.text}`).join("\n")}
+Agent messages:
+${agentMsgs.slice(0, 5).map((m) => `  [agent] ${m.text}`).join("\n")}`;
+  });
+
+  const result = await generateText({
+    model: resolveModel(model),
+    system:
+      "You generate conversation scenarios grounded in real customer support transcripts. Always respond with valid JSON only.",
+    prompt: `Convert each transcript below into a conversation scenario configuration.
+
+${fidelityInstruction}
+
+${transcriptContexts.join("\n\n")}
+
+For each transcript, generate a scenario object. Return a JSON array:
+[
+  {
+    "persona": {
+      "type": "string - persona type derived from the visitor",
+      "traits": ["trait1", "trait2"],
+      "communicationStyle": "formal/casual/etc based on transcript",
+      "patienceLevel": "low/medium/high"
+    },
+    "topic": "string - the topic from the transcript",
+    "intent": "string - what the user wants to achieve",
+    "complexity": "low/medium/high - must match the complexity target",
+    "reasonForContact": "string - why they're reaching out",
+    "knownInfo": "string - what the user already knows",
+    "unknownInfo": "string - what the user doesn't know and wants to find out",
+    "instruction": "string - detailed 2-3 paragraph instruction for an LLM user-simulator to roleplay this user",
+    "referenceMessages": [{"role": "user", "content": "string", "turnIndex": 0}],
+    "_sourceTranscriptId": "string - the transcript ID",
+    "_languages": ["string - detected languages"]
+  }
+]
+
+Extract 1-3 key user messages as referenceMessages (role is always "user"). Use turnIndex to indicate the order.
+
+Respond ONLY with the JSON array.`,
+    temperature: 0.6,
+  });
+
+  return extractJson(result.text) as Array<Record<string, unknown>>;
+}
+
+async function generateSyntheticScenarios(
+  transcriptProfile: TranscriptProfile | null,
+  kbContent: Array<{ title: string; content: string }>,
+  complexities: Array<"low" | "medium" | "high">,
+  model: string,
+): Promise<Array<Record<string, unknown>>> {
+  const kbContext = kbContent
+    .map((d) => `### ${d.title}\n${d.content}`)
+    .join("\n\n---\n\n");
+
+  let profileContext = "";
+  if (transcriptProfile) {
+    profileContext = `
+You also have insight from real customer transcripts. Generate scenarios that COMPLEMENT (not duplicate) these patterns:
+- Persona clusters seen: ${transcriptProfile.personaClusters.join(", ")}
+- Common intents seen: ${transcriptProfile.commonIntents.join(", ")}
+- Topics seen: ${transcriptProfile.topicDistribution.join(", ")}
+- Patterns seen: ${transcriptProfile.conversationPatterns.join(", ")}
+- Languages used: ${transcriptProfile.languagesUsed.join(", ")}
+
+Try to cover gaps — generate personas, intents, and topics NOT already well-represented in the transcript data.
+`;
+  }
+
+  const result = await generateText({
+    model: resolveModel(model),
+    system:
+      "You generate realistic customer support conversation scenarios based on knowledge base content. Each scenario describes a simulated end-user who will contact support. Always respond with valid JSON only.",
+    prompt: `Based on this knowledge base content:
+${kbContext.slice(0, 12000)}
+${profileContext}
+
+Generate exactly ${complexities.length} conversation scenarios.
+
+Complexity levels for this batch: ${JSON.stringify(complexities)}
+
+Return a JSON array of scenarios:
+[
+  {
+    "persona": {
+      "type": "string - the persona type",
+      "traits": ["trait1", "trait2"],
+      "communicationStyle": "formal/casual/etc",
+      "patienceLevel": "low/medium/high"
+    },
+    "topic": "string - the topic",
+    "intent": "string - what the user wants to achieve",
+    "complexity": "low/medium/high",
+    "reasonForContact": "string - why they're reaching out",
+    "knownInfo": "string - what the user already knows",
+    "unknownInfo": "string - what the user doesn't know and wants to find out",
+    "instruction": "string - detailed instruction for the LLM user-simulator (2-3 paragraphs describing exactly how to play this role, what to ask, how to respond)"
+  }
+]
+
+Make each scenario unique and realistic. The instruction field should be detailed enough for an LLM to roleplay the user convincingly.
+
+Respond ONLY with the JSON array.`,
+    temperature: 0.7,
+  });
+
+  return extractJson(result.text) as Array<Record<string, unknown>>;
+}
+
+// ─── Main action ───
+
+const TIMEOUT_SAFETY_MS = 8 * 60 * 1000;
+
+export const generateScenarios = internalAction({
+  args: {
+    datasetId: v.id("datasets"),
+    kbId: v.id("knowledgeBases"),
+    orgId: v.string(),
+    jobId: v.id("scenarioGenJobs"),
+    config: v.object({
+      count: v.number(),
+      model: v.optional(v.string()),
+      complexityDistribution: v.optional(
+        v.object({
+          low: v.number(),
+          medium: v.number(),
+          high: v.number(),
+        }),
+      ),
+      transcriptConversationIds: v.optional(v.array(v.id("livechatConversations"))),
+      distribution: v.number(),
+      fidelity: v.number(),
+    }),
+  },
+  handler: async (ctx, { datasetId, kbId, orgId, jobId, config }) => {
+    const startTime = Date.now();
+    const model = config.model ?? "claude-sonnet-4-20250514";
+    const targetCount = config.count;
+
+    const complexityDist = config.complexityDistribution ?? {
+      low: 0.3,
+      medium: 0.5,
+      high: 0.2,
+    };
+
+    // ── Calculate split ──
+    const hasTranscripts = (config.transcriptConversationIds?.length ?? 0) > 0;
+    const groundedPct = hasTranscripts ? config.distribution : 0;
+    const groundedCount = Math.round((targetCount * groundedPct) / 100);
+    const syntheticCount = targetCount - groundedCount;
+
+    // ── Load transcripts (if any) ──
+    let transcripts: Array<{
+      _id: Id<"livechatConversations">;
+      messages: Array<{ id: number; role: string; text: string }>;
+      botFlowInput?: { intent: string; language: string } | null;
+      labels?: string[];
+      visitorName?: string;
+    }> = [];
+
+    if (hasTranscripts) {
+      const loaded = await Promise.all(
+        config.transcriptConversationIds!.map((id) =>
+          ctx.runQuery(internal.livechat.orchestration.getConversationInternal, { id }),
+        ),
+      );
+      transcripts = loaded.filter(Boolean) as typeof transcripts;
+    }
+
+    // ── Phase 1: Transcript Analysis ──
+    let transcriptProfile: TranscriptProfile | null = null;
+    if (transcripts.length > 0) {
+      try {
+        transcriptProfile = await analyzeTranscriptCorpus(
+          transcripts as Parameters<typeof analyzeTranscriptCorpus>[0],
+          model,
+        );
+      } catch (e) {
+        console.error("Transcript analysis failed, continuing without profile:", e);
+      }
+    }
+
+    // ── Load KB docs (for synthetic track and dimension context) ──
+    const docs = await ctx.runQuery(
+      internal.crud.documents.listByKbInternal,
+      { kbId },
+    );
+    if (docs.length === 0 && syntheticCount > 0) {
+      throw new Error("No documents in knowledge base for synthetic generation");
+    }
+    const kbContent = docs.slice(0, 20).map((d) => ({
+      title: d.title,
+      content: (d.content ?? "").slice(0, 2000),
+    }));
+
+    const batchSize = 5;
+    let generatedCount = 0;
+
+    // ── Phase 2a: Grounded Track ──
+    if (groundedCount > 0 && transcripts.length > 0) {
+      const groundedComplexities = distributeComplexity(groundedCount, complexityDist);
+      const sampled = sampleTranscripts(transcripts, groundedCount);
+
+      for (let i = 0; i < groundedCount; i += batchSize) {
+        if (Date.now() - startTime > TIMEOUT_SAFETY_MS) {
+          console.warn("Timeout safety triggered during grounded track");
+          break;
+        }
+
+        const batchEnd = Math.min(i + batchSize, groundedCount);
+        const batchTranscripts = sampled.slice(i, batchEnd);
+        const batchComplexities = groundedComplexities.slice(i, batchEnd);
+
+        try {
+          const scenarios = await generateGroundedScenarios(
+            batchTranscripts,
+            batchComplexities,
+            config.fidelity,
+            model,
+          );
+
+          if (!Array.isArray(scenarios)) continue;
+
+          for (let j = 0; j < scenarios.length && generatedCount < targetCount; j++) {
+            const s = scenarios[j];
+            try {
+              const persona = extractPersona(s);
+
+              // Extract reference messages
+              const rawRefMsgs = Array.isArray(s.referenceMessages) ? s.referenceMessages : [];
+              const referenceMessages = rawRefMsgs.slice(0, 3).map((m: unknown, idx: number) => {
+                const msg = m as Record<string, unknown>;
+                return {
+                  role: "user" as const,
+                  content: String(msg.content ?? ""),
+                  turnIndex: typeof msg.turnIndex === "number" ? msg.turnIndex : idx,
+                };
+              });
+
+              // Always use the actual transcript ID, not LLM output
+              const sourceTranscriptId = batchTranscripts[j]?._id;
+
+              const languages = Array.isArray(s._languages)
+                ? (s._languages as string[]).map(String)
+                : [];
+
+              await ctx.runMutation(
+                internal.conversationSim.scenarios.createInternal,
+                {
+                  datasetId,
+                  orgId,
+                  persona,
+                  topic: String(s.topic ?? "General"),
+                  intent: String(s.intent ?? "Get help"),
+                  complexity: validateLevel(s.complexity),
+                  reasonForContact: String(s.reasonForContact ?? "Needs assistance"),
+                  knownInfo: String(s.knownInfo ?? "Basic information about the service"),
+                  unknownInfo: String(s.unknownInfo ?? "Specific details about their issue"),
+                  instruction: String(s.instruction ?? "Contact support about your issue"),
+                  referenceMessages: referenceMessages.length > 0 ? referenceMessages : undefined,
+                  sourceType: "transcript_grounded",
+                  sourceTranscriptId,
+                  languages,
+                },
+              );
+              generatedCount++;
+            } catch (e) {
+              console.error("Failed to save grounded scenario:", e);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to generate grounded batch:", e);
+        }
+
+        // Report progress
+        await ctx.runMutation(
+          internal.conversationSim.generation.updateProgress,
+          { jobId, generatedCount },
+        );
+      }
+    }
+
+    // ── Phase 2b: Synthetic Track ──
+    if (syntheticCount > 0) {
+      const syntheticComplexities = distributeComplexity(syntheticCount, complexityDist);
+
+      for (let i = 0; i < syntheticCount; i += batchSize) {
+        if (Date.now() - startTime > TIMEOUT_SAFETY_MS) {
+          console.warn("Timeout safety triggered during synthetic track");
+          break;
+        }
+
+        const batchEnd = Math.min(i + batchSize, syntheticCount);
+        const batchComplexities = syntheticComplexities.slice(i, batchEnd);
+
+        try {
+          const scenarios = await generateSyntheticScenarios(
+            transcriptProfile,
+            kbContent,
+            batchComplexities,
+            model,
+          );
+
+          if (!Array.isArray(scenarios)) continue;
+
+          for (const s of scenarios) {
+            if (generatedCount >= targetCount) break;
+            try {
+              const persona = extractPersona(s);
+
+              await ctx.runMutation(
+                internal.conversationSim.scenarios.createInternal,
+                {
+                  datasetId,
+                  orgId,
+                  persona,
+                  topic: String(s.topic ?? "General"),
+                  intent: String(s.intent ?? "Get help"),
+                  complexity: validateLevel(s.complexity),
+                  reasonForContact: String(s.reasonForContact ?? "Needs assistance"),
+                  knownInfo: String(s.knownInfo ?? "Basic information about the service"),
+                  unknownInfo: String(s.unknownInfo ?? "Specific details about their issue"),
+                  instruction: String(s.instruction ?? "Contact support about your issue"),
+                  sourceType: "synthetic",
+                  languages: [],
+                },
+              );
+              generatedCount++;
+            } catch (e) {
+              console.error("Failed to save synthetic scenario:", e);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to generate synthetic batch:", e);
+        }
+
+        // Report progress
+        await ctx.runMutation(
+          internal.conversationSim.generation.updateProgress,
+          { jobId, generatedCount },
+        );
+      }
+    }
+
+    // ── Update dataset scenario count ──
+    await ctx.runMutation(internal.crud.datasets.updateScenarioCount, {
+      datasetId,
+      scenarioCount: generatedCount,
+    });
+
+    return { generated: generatedCount };
+  },
+});

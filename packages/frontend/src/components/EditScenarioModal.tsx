@@ -25,6 +25,10 @@ interface ScenarioData {
     content: string;
     turnIndex: number;
   }>;
+  // Provenance metadata (read-only, set during generation)
+  sourceType?: "transcript_grounded" | "synthetic";
+  sourceTranscriptId?: string;
+  languages?: string[];
 }
 
 export function EditScenarioModal({
@@ -113,6 +117,22 @@ export function EditScenarioModal({
               {scenario._id.slice(-4)}
             </span>
           </div>
+          {scenario.sourceType && (
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                scenario.sourceType === "transcript_grounded"
+                  ? "bg-green-500/15 text-green-400"
+                  : "bg-purple-500/15 text-purple-400"
+              }`}>
+                {scenario.sourceType === "transcript_grounded" ? "grounded" : "synthetic"}
+              </span>
+              {scenario.languages?.map((lang, i) => (
+                <span key={i} className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400">
+                  {lang}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="flex items-center gap-3">
             {hasChanges && (
               <span className="text-[10px] text-text-dim flex items-center gap-1.5">

@@ -137,6 +137,9 @@ export const createInternal = internalMutation({
   args: {
     ...scenarioFields,
     orgId: v.string(),
+    sourceType: v.optional(v.union(v.literal("transcript_grounded"), v.literal("synthetic"))),
+    sourceTranscriptId: v.optional(v.id("livechatConversations")),
+    languages: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("conversationScenarios", args);
