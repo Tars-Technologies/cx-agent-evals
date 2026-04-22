@@ -90,7 +90,7 @@ export const getOrCreatePlayground = mutation({
       .collect();
 
     const playground = existing.find(
-      (c) => c.agentIds.length === 1 && c.agentIds[0] === agentId,
+      (c) => c.agentIds.length === 1 && c.agentIds[0] === agentId && (!c.source || c.source === "playground"),
     );
 
     if (playground) return playground._id;

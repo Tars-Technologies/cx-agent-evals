@@ -60,9 +60,9 @@ export function ModeSelector() {
             </div>
           </Link>
 
-          {/* Generate Questions Card */}
+          {/* Dataset Card */}
           <Link
-            href="/generate"
+            href="/dataset"
             className="group block border border-border rounded-lg bg-bg-elevated p-8 hover:border-accent/50 hover:bg-bg-elevated/80 transition-all duration-200"
           >
             <div className="flex items-center gap-3 mb-4">
@@ -82,19 +82,18 @@ export function ModeSelector() {
                 </svg>
               </div>
               <h2 className="text-lg font-medium text-text group-hover:text-accent transition-colors">
-                Generate Questions
+                Dataset
               </h2>
             </div>
             <p className="text-text-muted text-sm leading-relaxed">
-              Create synthetic evaluation datasets with ground truth spans for
-              RAG retrieval testing
+              Create and curate evaluation datasets with ground truth spans for RAG retrieval testing
             </p>
             <div className="mt-6 text-xs text-text-dim flex items-center gap-2 flex-wrap">
-              <span>Load corpus</span>
+              <span>Generate questions</span>
               <span className="text-border">→</span>
-              <span>Configure strategy</span>
+              <span>Edit &amp; curate</span>
               <span className="text-border">→</span>
-              <span>Generate & upload</span>
+              <span>Ground truth spans</span>
             </div>
           </Link>
 

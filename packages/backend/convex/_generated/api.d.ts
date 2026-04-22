@@ -13,6 +13,16 @@ import type * as agents_orchestration from "../agents/orchestration.js";
 import type * as agents_promptTemplate from "../agents/promptTemplate.js";
 import type * as annotations_crud from "../annotations/crud.js";
 import type * as annotations_migrations from "../annotations/migrations.js";
+import type * as conversationSim_actions from "../conversationSim/actions.js";
+import type * as conversationSim_evaluation from "../conversationSim/evaluation.js";
+import type * as conversationSim_evaluatorSets from "../conversationSim/evaluatorSets.js";
+import type * as conversationSim_evaluators from "../conversationSim/evaluators.js";
+import type * as conversationSim_generation from "../conversationSim/generation.js";
+import type * as conversationSim_generationActions from "../conversationSim/generationActions.js";
+import type * as conversationSim_judge from "../conversationSim/judge.js";
+import type * as conversationSim_orchestration from "../conversationSim/orchestration.js";
+import type * as conversationSim_runs from "../conversationSim/runs.js";
+import type * as conversationSim_scenarios from "../conversationSim/scenarios.js";
 import type * as crons from "../crons.js";
 import type * as crud_agents from "../crud/agents.js";
 import type * as crud_conversations from "../crud/conversations.js";
@@ -26,6 +36,7 @@ import type * as evaluator_actions from "../evaluator/actions.js";
 import type * as evaluator_crud from "../evaluator/crud.js";
 import type * as evaluator_metrics from "../evaluator/metrics.js";
 import type * as evaluator_splits from "../evaluator/splits.js";
+import type * as experimentRuns_orchestration from "../experimentRuns/orchestration.js";
 import type * as experiments_actions from "../experiments/actions.js";
 import type * as experiments_agentActions from "../experiments/agentActions.js";
 import type * as experiments_agentResults from "../experiments/agentResults.js";
@@ -38,11 +49,14 @@ import type * as generation_orchestration from "../generation/orchestration.js";
 import type * as langsmith_retry from "../langsmith/retry.js";
 import type * as langsmith_sync from "../langsmith/sync.js";
 import type * as langsmith_syncRetry from "../langsmith/syncRetry.js";
+import type * as lib_agentLoop from "../lib/agentLoop.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_labels from "../lib/labels.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as lib_vectorSearch from "../lib/vectorSearch.js";
 import type * as lib_workpool from "../lib/workpool.js";
+import type * as livechat_actions from "../livechat/actions.js";
+import type * as livechat_orchestration from "../livechat/orchestration.js";
 import type * as retrieval_chunks from "../retrieval/chunks.js";
 import type * as retrieval_indexing from "../retrieval/indexing.js";
 import type * as retrieval_indexingActions from "../retrieval/indexingActions.js";
@@ -63,6 +77,16 @@ declare const fullApi: ApiFromModules<{
   "agents/promptTemplate": typeof agents_promptTemplate;
   "annotations/crud": typeof annotations_crud;
   "annotations/migrations": typeof annotations_migrations;
+  "conversationSim/actions": typeof conversationSim_actions;
+  "conversationSim/evaluation": typeof conversationSim_evaluation;
+  "conversationSim/evaluatorSets": typeof conversationSim_evaluatorSets;
+  "conversationSim/evaluators": typeof conversationSim_evaluators;
+  "conversationSim/generation": typeof conversationSim_generation;
+  "conversationSim/generationActions": typeof conversationSim_generationActions;
+  "conversationSim/judge": typeof conversationSim_judge;
+  "conversationSim/orchestration": typeof conversationSim_orchestration;
+  "conversationSim/runs": typeof conversationSim_runs;
+  "conversationSim/scenarios": typeof conversationSim_scenarios;
   crons: typeof crons;
   "crud/agents": typeof crud_agents;
   "crud/conversations": typeof crud_conversations;
@@ -76,6 +100,7 @@ declare const fullApi: ApiFromModules<{
   "evaluator/crud": typeof evaluator_crud;
   "evaluator/metrics": typeof evaluator_metrics;
   "evaluator/splits": typeof evaluator_splits;
+  "experimentRuns/orchestration": typeof experimentRuns_orchestration;
   "experiments/actions": typeof experiments_actions;
   "experiments/agentActions": typeof experiments_agentActions;
   "experiments/agentResults": typeof experiments_agentResults;
@@ -88,11 +113,14 @@ declare const fullApi: ApiFromModules<{
   "langsmith/retry": typeof langsmith_retry;
   "langsmith/sync": typeof langsmith_sync;
   "langsmith/syncRetry": typeof langsmith_syncRetry;
+  "lib/agentLoop": typeof lib_agentLoop;
   "lib/auth": typeof lib_auth;
   "lib/labels": typeof lib_labels;
   "lib/validators": typeof lib_validators;
   "lib/vectorSearch": typeof lib_vectorSearch;
   "lib/workpool": typeof lib_workpool;
+  "livechat/actions": typeof livechat_actions;
+  "livechat/orchestration": typeof livechat_orchestration;
   "retrieval/chunks": typeof retrieval_chunks;
   "retrieval/indexing": typeof retrieval_indexing;
   "retrieval/indexingActions": typeof retrieval_indexingActions;
@@ -522,6 +550,202 @@ export declare const components: {
     };
   };
   agentExperimentPool: {
+    config: {
+      update: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+          maxParallelism?: number;
+        },
+        any
+      >;
+    };
+    lib: {
+      cancel: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          id: string;
+          logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+        },
+        any
+      >;
+      cancelAll: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          before?: number;
+          limit?: number;
+          logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+        },
+        any
+      >;
+      enqueue: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config: {
+            logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+            maxParallelism?: number;
+          };
+          fnArgs: any;
+          fnHandle: string;
+          fnName: string;
+          fnType: "action" | "mutation" | "query";
+          onComplete?: { context?: any; fnHandle: string };
+          retryBehavior?: {
+            base: number;
+            initialBackoffMs: number;
+            maxAttempts: number;
+          };
+          runAt: number;
+        },
+        string
+      >;
+      enqueueBatch: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config: {
+            logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+            maxParallelism?: number;
+          };
+          items: Array<{
+            fnArgs: any;
+            fnHandle: string;
+            fnName: string;
+            fnType: "action" | "mutation" | "query";
+            onComplete?: { context?: any; fnHandle: string };
+            retryBehavior?: {
+              base: number;
+              initialBackoffMs: number;
+              maxAttempts: number;
+            };
+            runAt: number;
+          }>;
+        },
+        Array<string>
+      >;
+      status: FunctionReference<
+        "query",
+        "internal",
+        { id: string },
+        | { previousAttempts: number; state: "pending" }
+        | { previousAttempts: number; state: "running" }
+        | { state: "finished" }
+      >;
+      statusBatch: FunctionReference<
+        "query",
+        "internal",
+        { ids: Array<string> },
+        Array<
+          | { previousAttempts: number; state: "pending" }
+          | { previousAttempts: number; state: "running" }
+          | { state: "finished" }
+        >
+      >;
+    };
+  };
+  livechatAnalysisPool: {
+    config: {
+      update: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+          maxParallelism?: number;
+        },
+        any
+      >;
+    };
+    lib: {
+      cancel: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          id: string;
+          logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+        },
+        any
+      >;
+      cancelAll: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          before?: number;
+          limit?: number;
+          logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+        },
+        any
+      >;
+      enqueue: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config: {
+            logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+            maxParallelism?: number;
+          };
+          fnArgs: any;
+          fnHandle: string;
+          fnName: string;
+          fnType: "action" | "mutation" | "query";
+          onComplete?: { context?: any; fnHandle: string };
+          retryBehavior?: {
+            base: number;
+            initialBackoffMs: number;
+            maxAttempts: number;
+          };
+          runAt: number;
+        },
+        string
+      >;
+      enqueueBatch: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config: {
+            logLevel?: "DEBUG" | "TRACE" | "INFO" | "REPORT" | "WARN" | "ERROR";
+            maxParallelism?: number;
+          };
+          items: Array<{
+            fnArgs: any;
+            fnHandle: string;
+            fnName: string;
+            fnType: "action" | "mutation" | "query";
+            onComplete?: { context?: any; fnHandle: string };
+            retryBehavior?: {
+              base: number;
+              initialBackoffMs: number;
+              maxAttempts: number;
+            };
+            runAt: number;
+          }>;
+        },
+        Array<string>
+      >;
+      status: FunctionReference<
+        "query",
+        "internal",
+        { id: string },
+        | { previousAttempts: number; state: "pending" }
+        | { previousAttempts: number; state: "running" }
+        | { state: "finished" }
+      >;
+      statusBatch: FunctionReference<
+        "query",
+        "internal",
+        { ids: Array<string> },
+        Array<
+          | { previousAttempts: number; state: "pending" }
+          | { previousAttempts: number; state: "running" }
+          | { state: "finished" }
+        >
+      >;
+    };
+  };
+  conversationSimPool: {
     config: {
       update: FunctionReference<
         "mutation",

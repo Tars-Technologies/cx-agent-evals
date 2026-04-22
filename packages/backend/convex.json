@@ -5,7 +5,8 @@
       "langsmith", "@langchain/core", "openai", "minisearch",
       "linkedom", "turndown", "unpdf",
       "ai", "@ai-sdk/anthropic", "@ai-sdk/openai", "zod",
-      "cohere-ai"
+      "cohere-ai",
+      "@anthropic-ai/sdk", "csv-parse"
     ]
   }
 }

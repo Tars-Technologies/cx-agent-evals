@@ -4,28 +4,11 @@ import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { anthropic } from "@ai-sdk/anthropic";
-import { openai } from "@ai-sdk/openai";
-import { streamText, tool, type LanguageModel } from "ai";
+import { streamText, tool } from "ai";
 import { z } from "zod";
 import { composeSystemPrompt } from "./promptTemplate";
 import { vectorSearchWithFilter } from "../lib/vectorSearch";
-
-// Helper: resolve AI SDK model from model ID string
-function resolveModel(modelId: string): LanguageModel {
-  if (modelId.startsWith("gpt-") || modelId.startsWith("o1") || modelId.startsWith("o3") || modelId.startsWith("o4")) {
-    return openai(modelId);
-  }
-  return anthropic(modelId);
-}
-
-// Helper: slugify a retriever name for use as a tool name
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_|_$/g, "")
-    .slice(0, 64);
-}
+import { resolveModel, slugify } from "../lib/agentLoop";
 
 // Helper: convert stored messages to AI SDK format
 function toAIMessages(

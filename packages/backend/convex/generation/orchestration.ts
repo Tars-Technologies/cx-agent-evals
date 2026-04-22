@@ -93,7 +93,8 @@ export const startGeneration = mutation({
       throw new Error("No documents in knowledge base to generate questions from");
     }
 
-    // All strategies are now corpus-wide (single action)
+    // Unified strategy uses two-phase WorkPool; others are single-action
+    const isUnified = args.strategy === "unified";
     const totalItems = 1;
 
     // Create generation job record
@@ -103,7 +104,7 @@ export const startGeneration = mutation({
       datasetId,
       strategy: args.strategy,
       status: "running",
-      phase: "generating",
+      phase: isUnified ? "preparing" : "generating",
       totalItems,
       processedItems: 0,
       failedItems: 0,
@@ -157,6 +158,23 @@ export const startGeneration = mutation({
         {
           context: { jobId, itemKey: "corpus" },
           onComplete: internal.generation.orchestration.onQuestionGenerated,
+        },
+      );
+      workIds.push(wId);
+    } else if (args.strategy === "unified") {
+      // Phase 1: preparation (single action that calls savePlanAndEnqueueDocs internally)
+      const wId = await pool.enqueueAction(
+        ctx,
+        internal.generation.actions.prepareGeneration,
+        {
+          jobId,
+          datasetId,
+          kbId: args.kbId,
+          strategyConfig: args.strategyConfig,
+        },
+        {
+          context: { jobId, itemKey: "prepare" },
+          onComplete: internal.generation.orchestration.onPrepareComplete,
         },
       );
       workIds.push(wId);
@@ -333,6 +351,265 @@ export const onGroundTruthAssigned = internalMutation({
     } else {
       await ctx.db.patch(context.jobId, counterPatch(counters));
     }
+  },
+});
+
+// ─── Unified Pipeline: Phase 1 onComplete ───
+
+export const onPrepareComplete = internalMutation({
+  args: vOnCompleteArgs(
+    v.object({
+      jobId: v.id("generationJobs"),
+      itemKey: v.string(),
+    }),
+  ),
+  handler: async (ctx, { context, result }: {
+    workId: string;
+    context: { jobId: Id<"generationJobs">; itemKey: string };
+    result: RunResult;
+  }) => {
+    const job = await ctx.db.get(context.jobId);
+    if (!job) return;
+    if (job.status === "canceled") return;
+
+    // Only handle failure here — success is handled by savePlanAndEnqueueDocs
+    if (result.kind !== "success") {
+      const counters = applyResult(job, result, context.itemKey);
+      await ctx.db.patch(context.jobId, {
+        ...counterPatch(counters),
+        status: (result.kind === "canceled" ? "canceled" : "failed") as JobStatus,
+        completedAt: Date.now(),
+        error: result.kind === "failed" ? result.error : "Preparation canceled",
+      });
+    }
+    // If success: savePlanAndEnqueueDocs already enqueued Phase 2 work
+  },
+});
+
+// ─── Unified Pipeline: storeGenerationPlan ───
+// Stores shared plan data (combos, style examples, preferences) on the job
+// record so per-doc actions can read it instead of receiving large duplicated args.
+
+export const storeGenerationPlan = internalMutation({
+  args: {
+    jobId: v.id("generationJobs"),
+    sharedPlan: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) return;
+    await ctx.db.patch(args.jobId, { generationPlan: args.sharedPlan });
+  },
+});
+
+// ─── Unified Pipeline: savePlanAndEnqueueDocs ───
+
+export const savePlanAndEnqueueDocs = internalMutation({
+  args: {
+    jobId: v.id("generationJobs"),
+    datasetId: v.id("datasets"),
+    kbId: v.id("knowledgeBases"),
+    strategyConfig: v.any(),
+    plan: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) return;
+    if (job.status === "canceled" || job.status === "canceling") return;
+
+    const plan = args.plan as {
+      quotas: Record<string, number>;
+      unmatchedQuestions: string[];
+      docPlans: Array<{
+        docConvexId: string;
+        docId: string;
+        title: string;
+        quota: number;
+        matchedQuestions: any[];
+      }>;
+      model: string;
+    };
+
+    // Filter to docs with quota > 0
+    const activeDocs = plan.docPlans.filter(d => d.quota > 0);
+
+    // Update job with Phase 2 tracking
+    await ctx.db.patch(args.jobId, {
+      phase: "generating",
+      totalItems: activeDocs.length,
+      processedItems: 0,
+      failedItems: 0,
+      skippedItems: 0,
+      totalDocs: activeDocs.length,
+      docsProcessed: 0,
+    });
+
+    // Store unmatched questions on dataset metadata (knowledge gaps)
+    if (plan.unmatchedQuestions.length > 0) {
+      const dataset = await ctx.db.get(args.datasetId);
+      if (dataset) {
+        const existing = (dataset.metadata ?? {}) as Record<string, any>;
+        await ctx.db.patch(args.datasetId, {
+          metadata: { ...existing, knowledgeGaps: plan.unmatchedQuestions },
+        });
+      }
+    }
+
+    // Enqueue one generateForDoc action per document.
+    // Shared data (validCombos, globalStyleExamples, preferences) is on the job
+    // record — per-doc actions read it from there via getJobInternal.
+    const workIds: WorkId[] = [];
+    for (const doc of activeDocs) {
+      const wId = await pool.enqueueAction(
+        ctx,
+        internal.generation.actions.generateForDoc,
+        {
+          jobId: args.jobId,
+          datasetId: args.datasetId,
+          docConvexId: doc.docConvexId as Id<"documents">,
+          docId: doc.docId,
+          quota: doc.quota,
+          matchedQuestions: doc.matchedQuestions,
+          model: plan.model,
+        },
+        {
+          context: { jobId: args.jobId, itemKey: doc.docId },
+          onComplete: internal.generation.orchestration.onDocGenerated,
+        },
+      );
+      workIds.push(wId);
+    }
+
+    // Update workIds for selective cancellation
+    await ctx.db.patch(args.jobId, { workIds: workIds as string[] });
+  },
+});
+
+// ─── Unified Pipeline: Phase 2 onComplete (per-doc) ───
+
+export const onDocGenerated = internalMutation({
+  args: vOnCompleteArgs(
+    v.object({
+      jobId: v.id("generationJobs"),
+      itemKey: v.string(),
+    }),
+  ),
+  handler: async (ctx, { context, result }: {
+    workId: string;
+    context: { jobId: Id<"generationJobs">; itemKey: string };
+    result: RunResult;
+  }) => {
+    const job = await ctx.db.get(context.jobId);
+    if (!job) return;
+    if (job.status === "canceled") return;
+
+    const counters = applyResult(job, result, context.itemKey);
+    const totalHandled = counters.processedItems + counters.failedItems + counters.skippedItems;
+    const isComplete = totalHandled >= job.totalItems;
+
+    // Update docsProcessed
+    const docsProcessed = (job.docsProcessed ?? 0) + 1;
+
+    // Accumulate return values from generateForDoc
+    let newQuestionsGenerated = job.questionsGenerated ?? 0;
+    let newMissedQuestions = job.missedQuestions ?? 0;
+    let newPass2Enriched = job.pass2Enriched ?? 0;
+    let newPass2Unchanged = job.pass2Unchanged ?? 0;
+    if (result.kind === "success" && result.returnValue) {
+      const rv = result.returnValue as {
+        questionsGenerated?: number;
+        missedQuestions?: number;
+        pass2Enriched?: number;
+        pass2Unchanged?: number;
+      };
+      newQuestionsGenerated += rv.questionsGenerated ?? 0;
+      newMissedQuestions += rv.missedQuestions ?? 0;
+      newPass2Enriched += rv.pass2Enriched ?? 0;
+      newPass2Unchanged += rv.pass2Unchanged ?? 0;
+    }
+
+    if (isComplete) {
+      if (job.status === "canceling") {
+        await ctx.db.patch(context.jobId, {
+          ...counterPatch(counters),
+          status: "canceled" as JobStatus,
+          completedAt: Date.now(),
+          docsProcessed,
+          questionsGenerated: newQuestionsGenerated,
+          missedQuestions: newMissedQuestions,
+          pass2Enriched: newPass2Enriched,
+          pass2Unchanged: newPass2Unchanged,
+        });
+        return;
+      }
+
+      // Finalize: count total questions
+      const questions = await ctx.db
+        .query("questions")
+        .withIndex("by_dataset", (q) => q.eq("datasetId", job.datasetId))
+        .collect();
+
+      const realWorldQuestionCount = questions.filter(
+        (q) => q.source === "real-world"
+      ).length;
+
+      await ctx.db.patch(job.datasetId, {
+        questionCount: questions.length,
+        realWorldQuestionCount,
+      });
+
+      let status: JobStatus;
+      if (counters.failedItems === 0) {
+        status = "completed";
+      } else if (counters.failedItems === job.totalItems) {
+        status = "failed";
+      } else {
+        status = "completed_with_errors";
+      }
+
+      await ctx.db.patch(context.jobId, {
+        ...counterPatch(counters),
+        status,
+        completedAt: Date.now(),
+        docsProcessed,
+        questionsGenerated: newQuestionsGenerated,
+        missedQuestions: newMissedQuestions,
+        pass2Enriched: newPass2Enriched,
+        pass2Unchanged: newPass2Unchanged,
+      });
+
+      // Fire-and-forget LangSmith sync
+      await ctx.scheduler.runAfter(
+        0,
+        internal.langsmith.sync.syncDataset,
+        { datasetId: job.datasetId },
+      );
+    } else {
+      await ctx.db.patch(context.jobId, {
+        ...counterPatch(counters),
+        docsProcessed,
+        questionsGenerated: newQuestionsGenerated,
+        missedQuestions: newMissedQuestions,
+        pass2Enriched: newPass2Enriched,
+        pass2Unchanged: newPass2Unchanged,
+      });
+    }
+  },
+});
+
+// ─── Unified Pipeline: Progress Update ───
+
+export const updateDocProgress = internalMutation({
+  args: {
+    jobId: v.id("generationJobs"),
+    docName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) return;
+    await ctx.db.patch(args.jobId, {
+      currentDocName: args.docName,
+    });
   },
 });
 
