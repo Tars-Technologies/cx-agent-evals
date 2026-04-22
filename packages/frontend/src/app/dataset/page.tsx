@@ -15,6 +15,10 @@ import { EditQuestionModal } from "@/components/EditQuestionModal";
 import { GenerationBanner } from "@/components/GenerationBanner";
 import { ResizablePanel } from "@/components/ResizablePanel";
 import { DocumentInfo, GeneratedQuestion } from "@/lib/types";
+import { ScenarioList } from "@/components/ScenarioList";
+import { ScenarioDetail } from "@/components/ScenarioDetail";
+import { EditScenarioModal } from "@/components/EditScenarioModal";
+import { ScenarioGenerationWizard } from "@/components/ScenarioGenerationWizard";
 
 export default function GeneratePage() {
   return (
@@ -27,6 +31,9 @@ export default function GeneratePage() {
 function GeneratePageContent() {
   // KB selection
   const [selectedKbId, setSelectedKbId] = useKbFromUrl();
+
+  // Dataset type toggle
+  const [datasetType, setDatasetType] = useState<"questions" | "conversation_sim">("questions");
 
   // Generation tracking
   const [datasetId, setDatasetId] = useState<Id<"datasets"> | null>(null);
@@ -55,6 +62,13 @@ function GeneratePageContent() {
     selectedKbId ? { kbId: selectedKbId } : "skip",
   );
 
+  // Filter datasets by type
+  const filteredDatasets = (kbDatasets ?? []).filter(ds => {
+    if (datasetType === "questions") return !ds.type || ds.type === "questions";
+    return ds.type === "conversation_sim";
+  });
+  const firstFilteredId = filteredDatasets[0]?._id ?? null;
+
   // Active job detection (org-wide, no kbId filter — we want to know about any active job)
   const activeJob = useQuery(api.generation.orchestration.getActiveJob, {});
 
@@ -62,6 +76,13 @@ function GeneratePageContent() {
   const activeJobKb = useQuery(
     api.crud.knowledgeBases.get,
     activeJob ? { id: activeJob.kbId } : "skip",
+  );
+
+  // Active scenario generation job detection (org-wide)
+  const activeScenarioJob = useQuery(api.conversationSim.generation.getActiveJob, {});
+  const activeScenarioJobKb = useQuery(
+    api.crud.knowledgeBases.get,
+    activeScenarioJob ? { id: activeScenarioJob.kbId } : "skip",
   );
 
   // Mode: "browse" (viewing existing datasets) or "generate" (creating new)
@@ -77,6 +98,15 @@ function GeneratePageContent() {
     browseDatasetId ? { datasetId: browseDatasetId } : "skip",
   );
 
+  // Scenarios for browsed dataset (conversation_sim mode)
+  const scenarios = useQuery(
+    api.conversationSim.scenarios.byDataset,
+    browseDatasetId && datasetType === "conversation_sim" ? { datasetId: browseDatasetId } : "skip",
+  );
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
+  const [editingScenario, setEditingScenario] = useState<any | null>(null);
+  const selectedScenario = scenarios?.find(s => s._id === selectedScenarioId) ?? null;
+
   // Wizard modal state
   const [showWizardModal, setShowWizardModal] = useState(false);
 
@@ -89,12 +119,19 @@ function GeneratePageContent() {
     hasRestoredJob.current = false;
   }, [selectedKbId]);
 
-  // Auto-select first dataset when KB changes and datasets load
+  // Reset selections when dataset type changes
   useEffect(() => {
-    if (kbDatasets && kbDatasets.length > 0 && !browseDatasetId) {
-      setBrowseDatasetId(kbDatasets[0]._id);
+    setBrowseDatasetId(null);
+    setSelectedQuestion(null);
+    setSelectedDocId(null);
+  }, [datasetType]);
+
+  // Auto-select first filtered dataset when type/KB changes
+  useEffect(() => {
+    if (firstFilteredId && !browseDatasetId) {
+      setBrowseDatasetId(firstFilteredId);
     }
-  }, [kbDatasets, browseDatasetId]);
+  }, [firstFilteredId, browseDatasetId]);
 
   // Close wizard modal on Escape
   useEffect(() => {
@@ -259,7 +296,7 @@ function GeneratePageContent() {
     <div className="flex flex-col h-screen">
       <Header mode="dataset" kbId={selectedKbId} />
 
-        {/* Generation Banner — shown when any job is active */}
+        {/* Question Generation Banner — shown when any question gen job is active */}
         {activeJob && (
           <GenerationBanner
             strategy={activeJob.strategy}
@@ -276,6 +313,26 @@ function GeneratePageContent() {
               setBrowseDatasetId(activeJob.datasetId);
               setDatasetId(activeJob.datasetId);
               setJobId(activeJob._id);
+              setDatasetType("questions");
+            }}
+          />
+        )}
+
+        {/* Scenario Generation Banner — shown when scenario gen is active */}
+        {activeScenarioJob && (
+          <GenerationBanner
+            strategy="Scenario Generation"
+            kbName={activeScenarioJobKb?.name ?? "..."}
+            phase="generating"
+            processedItems={activeScenarioJob.generatedCount}
+            totalItems={activeScenarioJob.targetCount}
+            questionsGenerated={activeScenarioJob.generatedCount}
+            onView={() => {
+              if (activeScenarioJob.kbId !== selectedKbId) {
+                setSelectedKbId(activeScenarioJob.kbId);
+              }
+              setBrowseDatasetId(activeScenarioJob.datasetId);
+              setDatasetType("conversation_sim");
             }}
           />
         )}
@@ -283,6 +340,30 @@ function GeneratePageContent() {
       {/* ── Controls Bar ── */}
       <div className="border-b border-border bg-bg-elevated px-6 py-3">
         <div className="flex items-center gap-4">
+          {/* Dataset Type Toggle */}
+          <div className="flex items-center gap-1 bg-bg border border-border rounded-md p-0.5">
+            <button
+              onClick={() => setDatasetType("questions")}
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                datasetType === "questions"
+                  ? "bg-accent text-bg-elevated"
+                  : "text-text-dim hover:text-text"
+              }`}
+            >
+              Questions & GT
+            </button>
+            <button
+              onClick={() => setDatasetType("conversation_sim")}
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                datasetType === "conversation_sim"
+                  ? "bg-accent text-bg-elevated"
+                  : "text-text-dim hover:text-text"
+              }`}
+            >
+              Conversation Sim
+            </button>
+          </div>
+
           {/* KB dropdown */}
           <div className="flex items-center gap-2">
             <label className="text-xs text-text-muted uppercase tracking-wide whitespace-nowrap">
@@ -311,16 +392,19 @@ function GeneratePageContent() {
                 className="max-w-xs bg-bg border border-border rounded px-3 py-1.5 text-sm text-text focus:border-accent outline-none"
               >
                 <option value="">Select a dataset...</option>
-                {kbDatasets.map((ds) => (
+                {filteredDatasets.map((ds) => (
                   <option key={ds._id} value={ds._id}>
-                    {ds.name} ({ds.questionCount} Qs{activeJob?.datasetId === ds._id ? " — generating" : ""})
+                    {ds.name} ({datasetType === "conversation_sim"
+                      ? `${ds.scenarioCount ?? 0} scenarios`
+                      : `${ds.questionCount} Qs`}
+                    {activeJob?.datasetId === ds._id ? " — generating" : ""})
                   </option>
                 ))}
               </select>
               {browseDatasetId && (
                 <button
                   onClick={() => {
-                    const ds = kbDatasets?.find((d) => d._id === browseDatasetId);
+                    const ds = filteredDatasets?.find((d) => d._id === browseDatasetId);
                     if (ds) {
                       setDeleteTarget({
                         id: ds._id,
@@ -349,24 +433,76 @@ function GeneratePageContent() {
           {selectedKbId && (
             <button
               onClick={() => setShowWizardModal(true)}
-              disabled={!hasDocuments || !!activeJob}
+              disabled={
+                !hasDocuments ||
+                (datasetType === "questions" && !!activeJob) ||
+                (datasetType === "conversation_sim" && !!activeScenarioJob)
+              }
               title={
                 !hasDocuments
                   ? "Upload documents before generating"
-                  : activeJob
-                    ? "Only one generation at a time"
+                  : (datasetType === "questions" && activeJob) || (datasetType === "conversation_sim" && activeScenarioJob)
+                    ? "A generation is already in progress"
                     : undefined
               }
               className="px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              + New Generation
+              {datasetType === "conversation_sim" ? "+ Generate Scenarios" : "+ New Generation"}
             </button>
           )}
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden max-w-full">
-        {displayQuestions.length === 0 && !displayGenerating ? (
+        {datasetType === "conversation_sim" ? (
+          !selectedKbId || !browseDatasetId || (!scenarios || scenarios.length === 0) ? (
+            <div className="flex-1 flex items-center justify-center text-text-dim text-xs">
+              {selectedKbId
+                ? browseDatasetId
+                  ? activeScenarioJob && activeScenarioJob.datasetId === browseDatasetId
+                    ? (
+                      <div className="text-center space-y-2">
+                        <div className="flex items-center gap-2 justify-center">
+                          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                          <span className="text-accent">Generating scenarios...</span>
+                        </div>
+                        <span>{activeScenarioJob.generatedCount} of {activeScenarioJob.targetCount} generated</span>
+                      </div>
+                    )
+                    : "No scenarios in this dataset"
+                  : "Select a scenario dataset to view scenarios"
+                : "Select a knowledge base to get started"}
+            </div>
+          ) : (
+            <>
+              <ResizablePanel storageKey="scenario-list" defaultWidth={320} minWidth={200} maxWidth={600}>
+                <div className="h-full border-r border-border bg-bg">
+                  <ScenarioList
+                    scenarios={scenarios}
+                    selectedId={selectedScenarioId}
+                    onSelect={setSelectedScenarioId}
+                    onEdit={(id) => {
+                      const s = scenarios.find(sc => sc._id === id);
+                      if (s) setEditingScenario(s);
+                    }}
+                  />
+                </div>
+              </ResizablePanel>
+              <div className="flex-1 min-w-0 bg-bg overflow-hidden">
+                {selectedScenario ? (
+                  <ScenarioDetail
+                    scenario={selectedScenario}
+                    onEdit={() => setEditingScenario(selectedScenario)}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-text-dim text-xs">
+                    Select a scenario to view details
+                  </div>
+                )}
+              </div>
+            </>
+          )
+        ) : displayQuestions.length === 0 && !displayGenerating ? (
           <div className="flex-1 flex items-center justify-center text-text-dim text-xs">
             {selectedKbId
               ? browseDatasetId
@@ -414,31 +550,54 @@ function GeneratePageContent() {
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowWizardModal(false)} />
           <div className="relative bg-bg-elevated border border-border rounded-lg shadow-xl w-full max-w-4xl max-h-[85vh] overflow-y-auto animate-fade-in">
-            <GenerationWizard
-              kbId={selectedKbId}
-              documents={(documentsData ?? []).map((d) => ({
-                _id: d._id as string,
-                docId: d.docId,
-                title: d.title,
-                priority: d.priority ?? 3,
-              }))}
-              generating={generating}
-              disabledReason={activeJob ? "Only one generation at a time" : undefined}
-              onGenerated={(dsId, jId) => {
-                setDatasetId(dsId);
-                setJobId(jId);
-                setBrowseDatasetId(dsId);
-                setMode("browse");
-                setShowWizardModal(false);
-              }}
-              onError={(err) => {
-                setGenError(err);
-                setShowWizardModal(false);
-              }}
-              onCancel={() => setShowWizardModal(false)}
-            />
+            {datasetType === "conversation_sim" ? (
+              <ScenarioGenerationWizard
+                kbId={selectedKbId}
+                onGenerated={(dsId) => {
+                  setBrowseDatasetId(dsId);
+                  setShowWizardModal(false);
+                }}
+                onError={(err) => {
+                  setGenError(err);
+                  setShowWizardModal(false);
+                }}
+                onCancel={() => setShowWizardModal(false)}
+              />
+            ) : (
+              <GenerationWizard
+                kbId={selectedKbId}
+                documents={(documentsData ?? []).map((d) => ({
+                  _id: d._id as string,
+                  docId: d.docId,
+                  title: d.title,
+                  priority: d.priority ?? 3,
+                }))}
+                generating={generating}
+                disabledReason={activeJob ? "Only one generation at a time" : undefined}
+                onGenerated={(dsId, jId) => {
+                  setDatasetId(dsId);
+                  setJobId(jId);
+                  setBrowseDatasetId(dsId);
+                  setMode("browse");
+                  setShowWizardModal(false);
+                }}
+                onError={(err) => {
+                  setGenError(err);
+                  setShowWizardModal(false);
+                }}
+                onCancel={() => setShowWizardModal(false)}
+              />
+            )}
           </div>
         </div>
+      )}
+
+      {/* Edit Scenario Modal */}
+      {editingScenario && (
+        <EditScenarioModal
+          scenario={editingScenario}
+          onClose={() => setEditingScenario(null)}
+        />
       )}
 
       {/* Delete Dataset Modal */}

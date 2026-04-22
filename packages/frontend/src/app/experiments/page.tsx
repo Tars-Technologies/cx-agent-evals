@@ -26,6 +26,7 @@ function ExperimentsPageContent() {
     api.crud.datasets.byKb,
     selectedKbId ? { kbId: selectedKbId } : "skip",
   );
+  const questionDatasets = (kbDatasets ?? []).filter(d => !d.type || d.type === "questions");
   const [selectedDatasetId, setSelectedDatasetId] = useState<Id<"datasets"> | null>(null);
   const selectedDataset = useQuery(
     api.crud.datasets.get,
@@ -199,7 +200,7 @@ function ExperimentsPageContent() {
                       <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
                       Loading datasets...
                     </div>
-                  ) : kbDatasets.length === 0 ? (
+                  ) : questionDatasets.length === 0 ? (
                     <div className="text-sm text-text-dim">
                       No datasets for this KB.{" "}
                       <Link
@@ -221,7 +222,7 @@ function ExperimentsPageContent() {
                         className="w-full bg-bg-elevated border border-border rounded px-3 py-2 text-sm text-text focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none"
                       >
                         <option value="">Select a dataset...</option>
-                        {kbDatasets.map((ds) => (
+                        {questionDatasets.map((ds) => (
                           <option key={ds._id} value={ds._id}>
                             {ds.name} ({ds.questionCount} questions)
                           </option>
