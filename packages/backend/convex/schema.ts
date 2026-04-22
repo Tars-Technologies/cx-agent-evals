@@ -232,6 +232,34 @@ export default defineSchema({
     ),
 
     messageTypes: v.optional(v.any()),
+    templateId: v.optional(v.string()),
+    classifiedMessages: v.optional(
+      v.array(
+        v.object({
+          messageId: v.number(),
+          label: v.string(),
+          intentOpenCode: v.optional(v.string()),
+          confidence: v.string(),
+          isFollowUp: v.boolean(),
+          followUpType: v.optional(v.string()),
+          standaloneVersion: v.optional(v.string()),
+          source: v.string(),
+        }),
+      ),
+    ),
+    blocks: v.optional(
+      v.array(
+        v.object({
+          label: v.string(),
+          intentOpenCode: v.optional(v.string()),
+          confidence: v.string(),
+          isFollowUp: v.boolean(),
+          followUpType: v.optional(v.string()),
+          standaloneVersion: v.optional(v.string()),
+          messageIds: v.array(v.number()),
+        }),
+      ),
+    ),
     classificationStatus: v.union(
       v.literal("none"),
       v.literal("running"),
