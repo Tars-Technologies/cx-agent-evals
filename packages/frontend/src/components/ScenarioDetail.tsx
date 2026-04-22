@@ -20,6 +20,10 @@ interface Scenario {
     content: string;
     turnIndex: number;
   }>;
+  // Provenance metadata (read-only, set during generation)
+  sourceType?: "transcript_grounded" | "synthetic";
+  sourceTranscriptId?: string;
+  languages?: string[];
 }
 
 export function ScenarioDetail({
@@ -62,6 +66,28 @@ export function ScenarioDetail({
             ))}
           </div>
         </section>
+
+        {/* Source section */}
+        {(scenario.sourceType || (scenario.languages && scenario.languages.length > 0)) && (
+          <section>
+            <h3 className="text-[11px] text-text-dim uppercase tracking-wider mb-2">Source</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {scenario.sourceType && (
+                <Chip color={scenario.sourceType === "transcript_grounded" ? "green" : "purple"}>
+                  {scenario.sourceType === "transcript_grounded" ? "Transcript-grounded" : "Synthetic"}
+                </Chip>
+              )}
+              {scenario.languages?.map((lang, i) => (
+                <Chip key={i} color="blue">{lang}</Chip>
+              ))}
+            </div>
+            {scenario.sourceTranscriptId && (
+              <p className="text-xs text-text-dim mt-2">
+                Source transcript: <span className="text-text-muted font-mono">{scenario.sourceTranscriptId}</span>
+              </p>
+            )}
+          </section>
+        )}
 
         {/* Scenario Section */}
         <section>

@@ -15,6 +15,8 @@ interface Scenario {
   complexity: "low" | "medium" | "high";
   reasonForContact: string;
   instruction: string;
+  // Provenance metadata (read-only, set during generation)
+  sourceType?: "transcript_grounded" | "synthetic";
 }
 
 export function ScenarioList({
@@ -122,6 +124,15 @@ export function ScenarioList({
               <span className="px-1.5 py-0.5 text-[9px] rounded bg-purple-500/15 text-purple-400 border border-purple-500/20">
                 {scenario.persona.communicationStyle}
               </span>
+              {scenario.sourceType && (
+                <span className={`px-1.5 py-0.5 text-[9px] rounded border ${
+                  scenario.sourceType === "transcript_grounded"
+                    ? "bg-green-500/15 text-green-400 border-green-500/20"
+                    : "bg-purple-500/15 text-purple-400 border-purple-500/20"
+                }`}>
+                  {scenario.sourceType === "transcript_grounded" ? "grounded" : "synthetic"}
+                </span>
+              )}
             </div>
 
             {/* Edit button (on hover) */}
