@@ -57,12 +57,31 @@ function extractPersona(s: Record<string, unknown>) {
 }
 
 function extractJson(text: string): unknown {
+  // Strip markdown code fences if present
+  const stripped = text.replace(/^```(?:json)?\s*\n?/gm, "").replace(/\n?```\s*$/gm, "").trim();
   try {
-    return JSON.parse(text.trim());
+    return JSON.parse(stripped);
   } catch {
-    const match = text.match(/\[[\s\S]*\]/) ?? text.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]);
-    throw new Error("Failed to parse LLM response");
+    // Try to find JSON array first (most LLM responses are arrays), then object
+    // Use lazy matching to avoid capturing trailing content
+    const arrayMatch = stripped.match(/\[[\s\S]*?\](?=\s*$)/);
+    if (arrayMatch) {
+      try { return JSON.parse(arrayMatch[0]); } catch { /* fall through */ }
+    }
+    const objMatch = stripped.match(/\{[\s\S]*?\}(?=\s*$)/);
+    if (objMatch) {
+      try { return JSON.parse(objMatch[0]); } catch { /* fall through */ }
+    }
+    // Last resort: greedy match
+    const greedyArray = stripped.match(/\[[\s\S]*\]/);
+    if (greedyArray) {
+      try { return JSON.parse(greedyArray[0]); } catch { /* fall through */ }
+    }
+    const greedyObj = stripped.match(/\{[\s\S]*\}/);
+    if (greedyObj) {
+      try { return JSON.parse(greedyObj[0]); } catch { /* fall through */ }
+    }
+    throw new Error(`Failed to parse LLM response as JSON: ${stripped.slice(0, 200)}`);
   }
 }
 
@@ -228,7 +247,7 @@ Try to cover gaps — generate personas, intents, and topics NOT already well-re
     system:
       "You generate realistic customer support conversation scenarios based on knowledge base content. Each scenario describes a simulated end-user who will contact support. Always respond with valid JSON only.",
     prompt: `Based on this knowledge base content:
-${kbContext.slice(0, 4000)}
+${kbContext.slice(0, 12000)}
 ${profileContext}
 
 Generate exactly ${complexities.length} conversation scenarios.
@@ -377,7 +396,7 @@ export const generateScenarios = internalAction({
 
           if (!Array.isArray(scenarios)) continue;
 
-          for (let j = 0; j < scenarios.length; j++) {
+          for (let j = 0; j < scenarios.length && generatedCount < targetCount; j++) {
             const s = scenarios[j];
             try {
               const persona = extractPersona(s);
@@ -393,9 +412,8 @@ export const generateScenarios = internalAction({
                 };
               });
 
-              const sourceTranscriptId = (typeof s._sourceTranscriptId === "string"
-                ? s._sourceTranscriptId
-                : batchTranscripts[j]?._id) as Id<"livechatConversations"> | undefined;
+              // Always use the actual transcript ID, not LLM output
+              const sourceTranscriptId = batchTranscripts[j]?._id;
 
               const languages = Array.isArray(s._languages)
                 ? (s._languages as string[]).map(String)
@@ -461,6 +479,7 @@ export const generateScenarios = internalAction({
           if (!Array.isArray(scenarios)) continue;
 
           for (const s of scenarios) {
+            if (generatedCount >= targetCount) break;
             try {
               const persona = extractPersona(s);
 

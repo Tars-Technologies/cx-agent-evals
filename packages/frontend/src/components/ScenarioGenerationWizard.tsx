@@ -98,7 +98,7 @@ export function ScenarioGenerationWizard({
   );
 
   // ── Derived values ──
-  const hasTranscripts = selectedUploadId !== null;
+  const hasTranscripts = selectedUploadId !== null && selectedConvIds.size > 0;
   const groundedCount = Math.round((count * distribution) / 100);
   const syntheticCount = count - groundedCount;
 

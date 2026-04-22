@@ -57,7 +57,7 @@ export const startGeneration = mutation({
       throw new Error("A scenario generation is already in progress");
     }
 
-    const count = args.count ?? 10;
+    const count = Math.max(1, Math.min(100, args.count ?? 10));
 
     // Create job record
     const jobId = await ctx.db.insert("scenarioGenJobs", {

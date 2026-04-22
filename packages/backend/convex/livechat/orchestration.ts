@@ -478,12 +478,14 @@ export const listConversationsSummary = query({
   },
   handler: async (ctx, { uploadIds }) => {
     const { orgId } = await getAuthContext(ctx);
+    const MAX_CONVERSATIONS = 500;
     const results = [];
     for (const uploadId of uploadIds) {
+      if (results.length >= MAX_CONVERSATIONS) break;
       const convos = await ctx.db
         .query("livechatConversations")
         .withIndex("by_upload", (q) => q.eq("uploadId", uploadId))
-        .collect();
+        .take(MAX_CONVERSATIONS - results.length);
       for (const c of convos) {
         if (c.orgId !== orgId) continue;
         results.push({
