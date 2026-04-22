@@ -28,6 +28,12 @@ export const startGeneration = mutation({
         high: v.number(),
       }),
     ),
+    // Transcript & distribution config
+    transcriptUploadIds: v.optional(v.array(v.id("livechatUploads"))),
+    transcriptConversationIds: v.optional(v.array(v.id("livechatConversations"))),
+    distribution: v.optional(v.number()),
+    fidelity: v.optional(v.number()),
+    kbId: v.optional(v.id("knowledgeBases")),
   },
   handler: async (ctx, args) => {
     const { orgId } = await getAuthContext(ctx);
@@ -56,12 +62,16 @@ export const startGeneration = mutation({
     // Create job record
     const jobId = await ctx.db.insert("scenarioGenJobs", {
       orgId,
-      kbId: dataset.kbId,
+      kbId: args.kbId ?? dataset.kbId,
       datasetId: args.datasetId,
       status: "running",
       targetCount: count,
       generatedCount: 0,
       createdAt: Date.now(),
+      transcriptUploadIds: args.transcriptUploadIds,
+      transcriptConversationIds: args.transcriptConversationIds,
+      distribution: args.distribution,
+      fidelity: args.fidelity,
     });
 
     await pool.enqueueAction(
@@ -69,13 +79,16 @@ export const startGeneration = mutation({
       internal.conversationSim.generationActions.generateScenarios,
       {
         datasetId: args.datasetId,
-        kbId: dataset.kbId,
+        kbId: args.kbId ?? dataset.kbId,
         orgId,
         jobId,
         config: {
           count,
           model: args.model,
           complexityDistribution: args.complexityDistribution,
+          transcriptConversationIds: args.transcriptConversationIds,
+          distribution: args.distribution ?? 0,
+          fidelity: args.fidelity ?? 100,
         },
       },
       {
