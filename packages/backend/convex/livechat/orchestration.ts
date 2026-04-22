@@ -472,6 +472,40 @@ export const listByMessageType = query({
   },
 });
 
+export const listConversationsSummary = query({
+  args: {
+    uploadIds: v.array(v.id("livechatUploads")),
+  },
+  handler: async (ctx, { uploadIds }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const results = [];
+    for (const uploadId of uploadIds) {
+      const convos = await ctx.db
+        .query("livechatConversations")
+        .withIndex("by_upload", (q) => q.eq("uploadId", uploadId))
+        .collect();
+      for (const c of convos) {
+        if (c.orgId !== orgId) continue;
+        results.push({
+          _id: c._id,
+          uploadId: c.uploadId,
+          conversationId: c.conversationId,
+          visitorName: c.visitorName,
+          labels: c.labels,
+          classificationStatus: c.classificationStatus,
+          messageTypes:
+            c.messageTypes?.map((mt: { type: string }) => mt.type) ?? [],
+          messageCount: c.messages.filter((m) => m.role !== "workflow_input")
+            .length,
+          hasUserMessages: c.messages.some((m) => m.role === "user"),
+          hasAgentMessages: c.messages.some((m) => m.role === "human_agent"),
+        });
+      }
+    }
+    return results;
+  },
+});
+
 // ─── WorkPool onComplete callbacks ───
 
 export const onParseComplete = internalMutation({
