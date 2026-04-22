@@ -234,6 +234,9 @@ export default defineSchema({
     ),
 
     messageTypes: v.optional(v.any()),
+    classifiedMessages: v.optional(v.any()),
+    blocks: v.optional(v.any()),
+    templateId: v.optional(v.string()),
     classificationStatus: v.union(
       v.literal("none"),
       v.literal("running"),
@@ -415,6 +418,8 @@ export default defineSchema({
       v.literal("great"),
       v.literal("good_enough"),
       v.literal("bad"),
+      v.literal("pass"),
+      v.literal("fail"),
     ),
     comment: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
