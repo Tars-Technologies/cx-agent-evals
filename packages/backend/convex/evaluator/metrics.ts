@@ -88,12 +88,13 @@ export function bootstrapCI(
   testPreds: number[], // 0 = fail, 1 = pass
   pObs: number,
   B: number = 20000,
+  seed: number = 42,
 ): { lower: number; upper: number } {
   const N = testLabels.length;
   if (N === 0) return { lower: 0, upper: 1 };
 
   // Simple seeded RNG for reproducible bootstrap
-  let rngState = 42;
+  let rngState = seed | 0;
   const rng = () => {
     rngState = (rngState + 0x6d2b79f5) | 0;
     let t = Math.imul(rngState ^ (rngState >>> 15), 1 | rngState);
