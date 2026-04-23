@@ -35,6 +35,7 @@ import type * as crud_users from "../crud/users.js";
 import type * as evaluator_actions from "../evaluator/actions.js";
 import type * as evaluator_crud from "../evaluator/crud.js";
 import type * as evaluator_metrics from "../evaluator/metrics.js";
+import type * as evaluator_parseJudge from "../evaluator/parseJudge.js";
 import type * as evaluator_splits from "../evaluator/splits.js";
 import type * as experimentRuns_orchestration from "../experimentRuns/orchestration.js";
 import type * as experiments_actions from "../experiments/actions.js";
@@ -99,6 +100,7 @@ declare const fullApi: ApiFromModules<{
   "evaluator/actions": typeof evaluator_actions;
   "evaluator/crud": typeof evaluator_crud;
   "evaluator/metrics": typeof evaluator_metrics;
+  "evaluator/parseJudge": typeof evaluator_parseJudge;
   "evaluator/splits": typeof evaluator_splits;
   "experimentRuns/orchestration": typeof experimentRuns_orchestration;
   "experiments/actions": typeof experiments_actions;
