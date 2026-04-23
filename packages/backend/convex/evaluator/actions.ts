@@ -14,6 +14,7 @@ import {
   bootstrapCI,
   type JudgmentPair,
 } from "./metrics";
+import { parseJudgeResponse } from "./parseJudge";
 
 // ─── Model Resolution ───
 
@@ -218,6 +219,10 @@ export const runValidation = internalAction({
           judgments.push({ humanLabel, judgeVerdict: judgeResult.verdict });
           processed++;
         } catch (e) {
+          console.error(
+            `[evaluator] Judge evaluation failed for question ${qId}:`,
+            e,
+          );
           failed++;
           processed++;
         }
@@ -441,6 +446,10 @@ export const runOnExperiment = internalAction({
 
           processed++;
         } catch (e) {
+          console.error(
+            `[evaluator] Judge execution failed for result ${result._id}:`,
+            e,
+          );
           failed++;
           processed++;
         }
@@ -460,23 +469,7 @@ export const runOnExperiment = internalAction({
       const tnr = config.testMetrics.tnr;
       const theta = correctedPassRate(pObs, tpr, tnr);
 
-      // Bootstrap CI using test set results
-      const eligible = await getEligibleQuestionIds(ctx, config);
-      const split = computeSplit(
-        eligible.ids,
-        config.splitConfig,
-        config.splitSeed,
-        eligible.labels,
-      );
-      const testAnnotations = await ctx.runQuery(
-        internal.annotations.crud.byExperimentInternal,
-        { experimentId: config.experimentId },
-      );
-      const testAnnotationMap = new Map(
-        testAnnotations.map((a: any) => [a.questionId as string, a]),
-      );
-
-      // Get test set results from the most recent test run
+      // Bootstrap CI using the most recent completed test run's per-result labels
       const testRuns = await ctx.runQuery(
         internal.evaluator.crud.runsByConfigInternal,
         { evaluatorConfigId: args.configId },
@@ -499,7 +492,7 @@ export const runOnExperiment = internalAction({
           .map((r: any) => (r.judgeVerdict === "pass" ? 1 : 0));
 
         if (testLabels.length > 0) {
-          ci = bootstrapCI(testLabels, testPreds, pObs);
+          ci = bootstrapCI(testLabels, testPreds, pObs, 20000, config.splitSeed);
         }
       }
 
@@ -670,22 +663,3 @@ function assembleJudgePrompt(
   return parts.join("\n");
 }
 
-function parseJudgeResponse(content: string): {
-  verdict: "pass" | "fail";
-  reasoning: string;
-} {
-  try {
-    const parsed = JSON.parse(content);
-    const answer = (parsed.answer ?? parsed.verdict ?? "").toLowerCase().trim();
-    const verdict: "pass" | "fail" =
-      answer === "pass" || answer === "yes" ? "pass" : "fail";
-    const reasoning =
-      parsed.reasoning ?? parsed.explanation ?? parsed.reason ?? "";
-    return { verdict, reasoning };
-  } catch {
-    // If JSON parsing fails, try to extract from text
-    const lower = content.toLowerCase();
-    const verdict: "pass" | "fail" = lower.includes("pass") ? "pass" : "fail";
-    return { verdict, reasoning: content.slice(0, 200) };
-  }
-}
