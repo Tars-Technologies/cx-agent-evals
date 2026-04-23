@@ -16,6 +16,8 @@ interface QuestionListPaneProps {
     great: number;
     good_enough: number;
     bad: number;
+    pass: number;
+    fail: number;
   } | null;
   totalQuestions: number;
   totalResults: number;
@@ -97,11 +99,12 @@ export function QuestionListPane({
           <option value="unrated">
             Unrated ({(stats?.total ?? 0) - (stats?.annotated ?? 0)})
           </option>
-          <option value="great">Great ({stats?.great ?? 0})</option>
-          <option value="good_enough">
-            Good Enough ({stats?.good_enough ?? 0})
+          <option value="pass">
+            Pass ({(stats?.pass ?? 0) + (stats?.great ?? 0) + (stats?.good_enough ?? 0)})
           </option>
-          <option value="bad">Bad ({stats?.bad ?? 0})</option>
+          <option value="fail">
+            Fail ({(stats?.fail ?? 0) + (stats?.bad ?? 0)})
+          </option>
         </select>
 
         {/* Tag filter */}
@@ -193,8 +196,11 @@ function StatusDot({ rating }: { rating?: string }) {
     );
   }
   const colors: Record<string, string> = {
+    pass: "bg-accent",
+    fail: "bg-red-400",
+    // Legacy ratings
     great: "bg-accent",
-    good_enough: "bg-yellow-400",
+    good_enough: "bg-accent",
     bad: "bg-red-400",
   };
   return (

@@ -317,11 +317,24 @@ function KBPageContent() {
         <div className="flex-1 overflow-hidden flex flex-col bg-bg">
           {selectedDoc ? (
             <>
-              <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-elevated/50">
-                <span className="text-xs text-accent font-medium">
-                  {selectedDoc.title}
-                </span>
-                <div className="flex items-center gap-3 text-[10px] text-text-dim">
+              <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-border bg-bg-elevated/50">
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className="text-xs text-accent font-medium truncate">
+                    {selectedDoc.title}
+                  </span>
+                  {selectedDoc.sourceUrl && (
+                    <a
+                      href={selectedDoc.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-text-dim hover:text-accent truncate"
+                      title={selectedDoc.sourceUrl}
+                    >
+                      {selectedDoc.sourceUrl}
+                    </a>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 text-[10px] text-text-dim shrink-0">
                   <span>
                     {(selectedDoc.contentLength / 1024).toFixed(1)}k
                   </span>

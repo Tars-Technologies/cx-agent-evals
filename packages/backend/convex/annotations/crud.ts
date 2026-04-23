@@ -1,4 +1,4 @@
-import { query, mutation } from "../_generated/server";
+import { query, mutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { getAuthContext, lookupUser } from "../lib/auth";
 
@@ -9,6 +9,8 @@ export const upsert = mutation({
       v.literal("great"),
       v.literal("good_enough"),
       v.literal("bad"),
+      v.literal("pass"),
+      v.literal("fail"),
     ),
     comment: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
@@ -105,10 +107,14 @@ export const stats = query({
     let great = 0;
     let good_enough = 0;
     let bad = 0;
+    let pass = 0;
+    let fail = 0;
     for (const a of annotations) {
       if (a.rating === "great") great++;
       else if (a.rating === "good_enough") good_enough++;
       else if (a.rating === "bad") bad++;
+      else if (a.rating === "pass") pass++;
+      else if (a.rating === "fail") fail++;
     }
 
     return {
@@ -117,6 +123,8 @@ export const stats = query({
       great,
       good_enough,
       bad,
+      pass,
+      fail,
     };
   },
 });
@@ -180,5 +188,48 @@ export const allTags = query({
       }
     }
     return [...tagSet].sort();
+  },
+});
+
+// ─── Internal queries (no auth, for use by actions) ───
+
+export const byExperimentInternal = internalQuery({
+  args: { experimentId: v.id("experiments") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("annotations")
+      .withIndex("by_experiment", (q) =>
+        q.eq("experimentId", args.experimentId),
+      )
+      .collect();
+  },
+});
+
+export const statsInternal = internalQuery({
+  args: { experimentId: v.id("experiments") },
+  handler: async (ctx, args) => {
+    const annotations = await ctx.db
+      .query("annotations")
+      .withIndex("by_experiment", (q) =>
+        q.eq("experimentId", args.experimentId),
+      )
+      .collect();
+
+    const results = await ctx.db
+      .query("agentExperimentResults")
+      .withIndex("by_experiment", (q) =>
+        q.eq("experimentId", args.experimentId),
+      )
+      .collect();
+
+    const total = results.length;
+    let pass = 0;
+    let fail = 0;
+    for (const a of annotations) {
+      if (a.rating === "pass" || a.rating === "great" || a.rating === "good_enough") pass++;
+      else if (a.rating === "fail" || a.rating === "bad") fail++;
+    }
+
+    return { total, annotated: annotations.length, pass, fail };
   },
 });

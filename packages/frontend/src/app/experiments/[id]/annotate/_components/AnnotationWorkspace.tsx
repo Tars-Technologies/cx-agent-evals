@@ -11,6 +11,7 @@ interface AnnotationWorkspaceProps {
   annotation: any | null;
   comment: string;
   onCommentChange: (c: string) => void;
+  onCommentBlur: () => void;
   onRate: (rating: Rating) => void;
   isPending: boolean;
   emptyMessage: string;
@@ -22,6 +23,7 @@ export function AnnotationWorkspace({
   annotation,
   comment,
   onCommentChange,
+  onCommentBlur,
   onRate,
   isPending,
   emptyMessage,
@@ -75,13 +77,10 @@ export function AnnotationWorkspace({
           </div>
           <div className="flex gap-3">
             <div className="flex-1 py-2.5 px-4 rounded-lg border border-border text-sm text-center text-text-dim">
-              Great [1]
+              Pass [1]
             </div>
             <div className="flex-1 py-2.5 px-4 rounded-lg border border-border text-sm text-center text-text-dim">
-              Good Enough [2]
-            </div>
-            <div className="flex-1 py-2.5 px-4 rounded-lg border border-border text-sm text-center text-text-dim">
-              Bad [3]
+              Fail [2]
             </div>
           </div>
         </div>
@@ -129,35 +128,29 @@ export function AnnotationWorkspace({
         <div className="text-xs text-text-dim uppercase tracking-wider mb-3">
           Rating{" "}
           <span className="normal-case text-text-dim/60">
-            (keyboard: 1=Great, 2=Good Enough, 3=Bad)
+            (keyboard: 1=Pass, 2=Fail)
           </span>
         </div>
         <div className="flex gap-3 mb-4">
           <RatingButton
-            label="Great"
+            label="Pass"
             shortcut="1"
-            active={annotation?.rating === "great"}
+            active={annotation?.rating === "pass" || annotation?.rating === "great" || annotation?.rating === "good_enough"}
             color="accent"
-            onClick={() => onRate("great")}
+            onClick={() => onRate("pass")}
           />
           <RatingButton
-            label="Good Enough"
+            label="Fail"
             shortcut="2"
-            active={annotation?.rating === "good_enough"}
-            color="yellow"
-            onClick={() => onRate("good_enough")}
-          />
-          <RatingButton
-            label="Bad"
-            shortcut="3"
-            active={annotation?.rating === "bad"}
+            active={annotation?.rating === "fail" || annotation?.rating === "bad"}
             color="red"
-            onClick={() => onRate("bad")}
+            onClick={() => onRate("fail")}
           />
         </div>
         <textarea
           value={comment}
           onChange={(e) => onCommentChange(e.target.value)}
+          onBlur={onCommentBlur}
           placeholder="Optional comment..."
           rows={2}
           className="w-full bg-bg border border-border rounded px-3 py-2 text-sm text-text placeholder:text-text-dim/50 focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none resize-none"

@@ -11,13 +11,14 @@ import Link from "next/link";
 import { QuestionListPane } from "./_components/QuestionListPane";
 import { AnnotationWorkspace } from "./_components/AnnotationWorkspace";
 import { MetadataPane } from "./_components/MetadataPane";
+import { ExperimentNavSidebar } from "../_components/ExperimentNavSidebar";
 import type { FilterType, Rating } from "./_components/types";
 
 export default function AnnotatePage() {
   return (
     <Suspense
       fallback={
-        <div className="flex flex-col h-screen">
+        <div className="flex flex-col h-full">
           <Header mode="experiments" />
         </div>
       }
@@ -106,6 +107,12 @@ function AnnotateContent() {
       // Rating filter
       if (filter === "unrated") {
         if (annotation) return false; // rated items excluded
+      } else if (filter === "pass") {
+        const r = annotation?.rating;
+        if (r !== "pass" && r !== "great" && r !== "good_enough") return false;
+      } else if (filter === "fail") {
+        const r = annotation?.rating;
+        if (r !== "fail" && r !== "bad") return false;
       } else if (filter !== "all") {
         if (annotation?.rating !== filter) return false;
       }
@@ -151,6 +158,17 @@ function AnnotateContent() {
     [currentResult, comment, upsertAnnotation],
   );
 
+  // --- Save comment on blur (if annotation already exists) ---
+  const handleCommentBlur = useCallback(async () => {
+    if (!currentResult || !currentAnnotation) return;
+    if (comment === (currentAnnotation.comment ?? "")) return; // no change
+    await upsertAnnotation({
+      resultId: currentResult._id,
+      rating: currentAnnotation.rating,
+      comment: comment || undefined,
+    });
+  }, [currentResult, currentAnnotation, comment, upsertAnnotation]);
+
   // --- Keyboard shortcuts ---
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -159,9 +177,8 @@ function AnnotateContent() {
         e.target instanceof HTMLInputElement
       )
         return;
-      if (e.key === "1") handleRate("great");
-      else if (e.key === "2") handleRate("good_enough");
-      else if (e.key === "3") handleRate("bad");
+      if (e.key === "1") handleRate("pass");
+      else if (e.key === "2") handleRate("fail");
       else if (e.key === "ArrowLeft" && currentIndex > 0)
         setCurrentIndex(currentIndex - 1);
       else if (
@@ -177,7 +194,7 @@ function AnnotateContent() {
   // --- Loading states ---
   if (!experiment || !results || !questions) {
     return (
-      <div className="flex flex-col h-screen">
+      <div className="flex flex-col h-full">
         <Header mode="experiments" />
         <div className="flex-1 flex items-center justify-center text-text-dim">
           Loading...
@@ -187,7 +204,7 @@ function AnnotateContent() {
   }
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <Header mode="experiments" kbId={experiment.kbId ?? undefined} />
 
       {/* Top bar */}
@@ -205,7 +222,7 @@ function AnnotateContent() {
               {stats.annotated}/{stats.total} annotated
               {stats.annotated > 0 && (
                 <span className="ml-2">
-                  ({stats.great} great, {stats.good_enough} ok, {stats.bad} bad)
+                  ({stats.pass + stats.great + stats.good_enough} pass, {stats.fail + stats.bad} fail)
                 </span>
               )}
             </div>
@@ -214,7 +231,6 @@ function AnnotateContent() {
         <div className="flex items-center gap-2 text-[10px] text-text-dim/60">
           <kbd className="px-1.5 py-0.5 rounded border border-border">1</kbd>
           <kbd className="px-1.5 py-0.5 rounded border border-border">2</kbd>
-          <kbd className="px-1.5 py-0.5 rounded border border-border">3</kbd>
           rate &middot;
           <kbd className="px-1.5 py-0.5 rounded border border-border">&larr;</kbd>
           <kbd className="px-1.5 py-0.5 rounded border border-border">&rarr;</kbd>
@@ -258,8 +274,9 @@ function AnnotateContent() {
         </div>
       )}
 
-      {/* Three-pane layout */}
+      {/* Sidebar + Three-pane layout */}
       <div className="flex-1 overflow-hidden flex">
+        <ExperimentNavSidebar />
         <QuestionListPane
           items={filteredItems}
           annotationMap={annotationMap}
@@ -284,6 +301,7 @@ function AnnotateContent() {
           annotation={currentAnnotation}
           comment={comment}
           onCommentChange={setComment}
+          onCommentBlur={handleCommentBlur}
           onRate={handleRate}
           isPending={currentItem !== null && currentResult === null}
           emptyMessage={

@@ -21,7 +21,7 @@ export function ModeSelector() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
           {/* Knowledge Base Card */}
           <Link
             href="/kb"
@@ -197,6 +197,44 @@ export function ModeSelector() {
               <span>Select dataset</span>
               <span className="text-border">→</span>
               <span>Run & analyze</span>
+            </div>
+          </Link>
+
+          {/* LLM Evaluators Card */}
+          <Link
+            href="/evaluators"
+            className="group block border border-border rounded-lg bg-bg-elevated p-8 hover:border-accent/50 hover:bg-bg-elevated/80 transition-all duration-200"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
+                <svg
+                  className="w-5 h-5 text-accent"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l3 9a5.002 5.002 0 01-6.001 0M18 7l-3 9m-4.529-12.243l.472-.14a5 5 0 013.114 0l.472.14"
+                  />
+                </svg>
+              </div>
+              <h2 className="text-lg font-medium text-text group-hover:text-accent transition-colors">
+                LLM Evaluators
+              </h2>
+            </div>
+            <p className="text-text-muted text-sm leading-relaxed">
+              Build LLM-as-Judge evaluators from human annotations. Validate on
+              dev/test sets and run on full experiments.
+            </p>
+            <div className="mt-6 text-xs text-text-dim flex items-center gap-2 flex-wrap">
+              <span>Configure judge</span>
+              <span className="text-border">→</span>
+              <span>Validate</span>
+              <span className="text-border">→</span>
+              <span>Run at scale</span>
             </div>
           </Link>
         </div>
