@@ -125,6 +125,12 @@ export const assignQuestion = mutation({
     const exp = await ctx.db.get(args.experimentId);
     if (!exp || exp.orgId !== orgId) throw new Error("Experiment not found");
 
+    const mode = await ctx.db.get(args.failureModeId);
+    if (!mode || mode.orgId !== orgId)
+      throw new Error("Failure mode not found");
+    if (mode.experimentId !== args.experimentId)
+      throw new Error("Failure mode does not belong to this experiment");
+
     // Check for duplicate mapping
     const existing = await ctx.db
       .query("failureModeQuestionMappings")
@@ -173,6 +179,21 @@ export const startGeneration = mutation({
     const { orgId } = await getAuthContext(ctx);
     const exp = await ctx.db.get(args.experimentId);
     if (!exp || exp.orgId !== orgId) throw new Error("Experiment not found");
+
+    // Reject if failure modes already exist — prevents duplicate generation
+    // when the user clicks Generate twice. If they want to regenerate, they
+    // must first delete the existing modes.
+    const existingModes = await ctx.db
+      .query("failureModes")
+      .withIndex("by_experiment", (q) =>
+        q.eq("experimentId", args.experimentId),
+      )
+      .first();
+    if (existingModes) {
+      throw new Error(
+        "Failure modes already exist for this experiment. Delete them before regenerating.",
+      );
+    }
 
     // Verify >= 50% annotated
     const stats = await ctx.db
