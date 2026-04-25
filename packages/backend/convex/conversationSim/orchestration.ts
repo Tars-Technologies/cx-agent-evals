@@ -20,7 +20,7 @@ export const start = mutation({
   args: {
     agentId: v.id("agents"),
     datasetId: v.id("datasets"),
-    evaluatorSetId: v.id("evaluatorSets"),
+    evaluatorSetId: v.optional(v.id("evaluatorSets")),
     k: v.optional(v.number()),
     passThreshold: v.optional(v.number()),
     concurrency: v.optional(v.number()),
@@ -44,11 +44,6 @@ export const start = mutation({
     if (dataset.type !== "conversation_sim")
       throw new Error("Dataset must be conversation_sim type");
 
-    // Validate evaluator set
-    const evalSet = await ctx.db.get(args.evaluatorSetId);
-    if (!evalSet || evalSet.orgId !== orgId)
-      throw new Error("Evaluator set not found");
-
     // Lookup user for userId field
     const user = await lookupUser(ctx, userId);
 
@@ -56,7 +51,6 @@ export const start = mutation({
     const maxTurns = args.maxTurns ?? 5;
     const timeoutMs = args.timeoutMs ?? 120000;
     const concurrency = args.concurrency ?? 2;
-    const passThreshold = args.passThreshold ?? 0.8;
     const userSimModel = args.userSimModel ?? "claude-sonnet-4-20250514";
 
     // Load all scenarios for dataset
@@ -77,8 +71,8 @@ export const start = mutation({
       agentId: args.agentId,
       evaluatorSetId: args.evaluatorSetId,
       k,
-      passThreshold,
       concurrency,
+      evaluationStatus: "not_started" as const,
       maxTurns,
       timeoutMs,
       userSimModel,
@@ -160,41 +154,9 @@ export const onRunComplete = internalMutation({
     const totalHandled = completedRuns + failedRuns;
 
     if (totalHandled >= sim.totalRuns) {
-      // All runs done — compute aggregate stats
-      const allRuns = await ctx.db
-        .query("conversationSimRuns")
-        .withIndex("by_simulation", (q) => q.eq("simulationId", simId))
-        .collect();
-
-      // Pass rate: % of scenarios where ALL k runs passed
-      const scenarioMap = new Map<string, boolean[]>();
-      for (const run of allRuns) {
-        const key = run.scenarioId as string;
-        if (!scenarioMap.has(key)) scenarioMap.set(key, []);
-        scenarioMap.get(key)!.push(run.passed ?? false);
-      }
-
-      let scenariosPassed = 0;
-      for (const [, passes] of scenarioMap) {
-        if (passes.every((p) => p)) scenariosPassed++;
-      }
-      const overallPassRate =
-        scenarioMap.size > 0 ? scenariosPassed / scenarioMap.size : 0;
-
-      // Avg score: mean of all run scores
-      const scores = allRuns
-        .map((r) => r.score)
-        .filter((s): s is number => s !== undefined);
-      const avgScore =
-        scores.length > 0
-          ? scores.reduce((a, b) => a + b, 0) / scores.length
-          : undefined;
-
       await ctx.db.patch(simId, {
         completedRuns,
         failedRuns,
-        overallPassRate,
-        avgScore,
         status: failedRuns === sim.totalRuns ? "failed" : "completed",
         completedAt: Date.now(),
       });
