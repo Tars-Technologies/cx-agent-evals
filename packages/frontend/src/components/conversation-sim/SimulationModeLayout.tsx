@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "convex/react";
 import type { Id } from "@convex/_generated/dataModel";
+import { api } from "@/lib/convex";
 import { SimulationsSidebar } from "./SimulationsSidebar";
 import { SimScenarioList } from "./SimScenarioList";
 import { SimRunDetail } from "./SimRunDetail";
@@ -18,6 +20,12 @@ export function SimulationModeLayout({
 }) {
   const [selectedSimId, setSelectedSimId] = useState<Id<"conversationSimulations"> | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<Id<"conversationSimRuns"> | null>(null);
+  const [phase, setPhase] = useState<"conversations" | "evaluation">("conversations");
+
+  const simulation = useQuery(
+    api.conversationSim.orchestration.get,
+    selectedSimId ? { id: selectedSimId } : "skip",
+  );
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -30,6 +38,7 @@ export function SimulationModeLayout({
             onSelect={(id) => {
               setSelectedSimId(id);
               setSelectedRunId(null);
+              setPhase("conversations");
             }}
           />
         </div>
@@ -41,8 +50,11 @@ export function SimulationModeLayout({
           <div className="h-full border-r border-border bg-bg">
             <SimScenarioList
               simulationId={selectedSimId}
+              simulation={simulation}
               selectedRunId={selectedRunId}
               onSelectRun={setSelectedRunId}
+              phase={phase}
+              onPhaseChange={setPhase}
             />
           </div>
         </ResizablePanel>

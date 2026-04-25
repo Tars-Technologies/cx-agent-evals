@@ -6,12 +6,18 @@ import type { Id } from "@convex/_generated/dataModel";
 
 export function SimScenarioList({
   simulationId,
+  simulation,
   selectedRunId,
   onSelectRun,
+  phase,
+  onPhaseChange,
 }: {
   simulationId: Id<"conversationSimulations">;
+  simulation: any | null | undefined;
   selectedRunId: Id<"conversationSimRuns"> | null;
   onSelectRun: (id: Id<"conversationSimRuns">) => void;
+  phase: "conversations" | "evaluation";
+  onPhaseChange: (phase: "conversations" | "evaluation") => void;
 }) {
   const runs = useQuery(
     api.conversationSim.runs.bySimulation,
@@ -36,14 +42,40 @@ export function SimScenarioList({
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-3 py-2 border-b border-border bg-bg-elevated/50">
-        <span className="text-[11px] text-text-dim uppercase tracking-wider">
-          Scenarios ({grouped.size})
-        </span>
+      <div className="border-b border-border bg-bg-elevated/50">
+        <div className="px-3 pt-2">
+          <span className="text-[11px] text-text-dim uppercase tracking-wider">
+            Scenarios ({grouped.size})
+          </span>
+        </div>
+        <div className="px-3 py-2">
+          <div className="flex rounded-md border border-border overflow-hidden">
+            <button
+              onClick={() => onPhaseChange("conversations")}
+              className={`flex-1 px-2 py-1 text-[10px] font-medium transition-colors ${
+                phase === "conversations" ? "bg-accent/10 text-accent" : "text-text-dim hover:text-text"
+              }`}
+            >
+              Conversations
+            </button>
+            <button
+              onClick={() => onPhaseChange("evaluation")}
+              disabled={simulation?.status !== "completed"}
+              className={`flex-1 px-2 py-1 text-[10px] font-medium transition-colors ${
+                phase === "evaluation" ? "bg-accent/10 text-accent" : "text-text-dim hover:text-text"
+              } disabled:opacity-30 disabled:cursor-not-allowed`}
+            >
+              Evaluation
+            </button>
+          </div>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto">
         {[...grouped.entries()].map(([scenarioId, scenarioRuns], scenarioIndex) => {
+          const allConversationsComplete = scenarioRuns.every(r => r.status === "completed" || r.status === "failed");
+          const isRunning = scenarioRuns.some(r => r.status === "running");
           const allPassed = scenarioRuns.every(r => r.passed);
+          const evaluationDone = simulation?.evaluationStatus === "completed";
           const isSelected = scenarioRuns.some(r => r._id === selectedRunId);
           const scenarioLabel = `SCE-${String(scenarioIndex + 1).padStart(3, "0")}`;
           const topic = scenarioRuns[0]?.scenarioTopic;
@@ -69,13 +101,25 @@ export function SimScenarioList({
                       </div>
                     )}
                   </div>
-                  <span className={`flex-shrink-0 ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                    allPassed
-                      ? "bg-green-500/15 text-green-400"
-                      : "bg-red-500/15 text-red-400"
-                  }`}>
-                    {allPassed ? "PASS" : "FAIL"}
-                  </span>
+                  {phase === "conversations" ? (
+                    <span className={`flex-shrink-0 ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                      allConversationsComplete
+                        ? "bg-green-500/15 text-green-400"
+                        : isRunning
+                          ? "bg-accent/15 text-accent"
+                          : "bg-yellow-500/15 text-yellow-400"
+                    }`}>
+                      {allConversationsComplete ? "DONE" : isRunning ? "RUNNING" : "PENDING"}
+                    </span>
+                  ) : evaluationDone ? (
+                    <span className={`flex-shrink-0 ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                      allPassed
+                        ? "bg-green-500/15 text-green-400"
+                        : "bg-red-500/15 text-red-400"
+                    }`}>
+                      {allPassed ? "PASS" : "FAIL"}
+                    </span>
+                  ) : null}
                 </div>
                 {/* Run dots */}
                 <div className="flex gap-1.5 mt-1.5">
