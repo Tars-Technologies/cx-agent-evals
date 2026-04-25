@@ -42,9 +42,11 @@ export function SimScenarioList({
         </span>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {[...grouped.entries()].map(([scenarioId, scenarioRuns]) => {
+        {[...grouped.entries()].map(([scenarioId, scenarioRuns], scenarioIndex) => {
           const allPassed = scenarioRuns.every(r => r.passed);
           const isSelected = scenarioRuns.some(r => r._id === selectedRunId);
+          const scenarioLabel = `SCE-${String(scenarioIndex + 1).padStart(3, "0")}`;
+          const topic = scenarioRuns[0]?.scenarioTopic;
 
           return (
             <div
@@ -57,10 +59,17 @@ export function SimScenarioList({
               {/* Scenario header */}
               <div className="px-3 py-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-text font-medium truncate">
-                    Scenario
-                  </span>
-                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                  <div className="min-w-0 flex-1">
+                    <span className="text-xs text-text font-medium truncate block">
+                      {scenarioLabel}
+                    </span>
+                    {topic && (
+                      <div className="text-[10px] text-text-dim truncate mt-0.5">
+                        {topic}
+                      </div>
+                    )}
+                  </div>
+                  <span className={`flex-shrink-0 ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded ${
                     allPassed
                       ? "bg-green-500/15 text-green-400"
                       : "bg-red-500/15 text-red-400"
