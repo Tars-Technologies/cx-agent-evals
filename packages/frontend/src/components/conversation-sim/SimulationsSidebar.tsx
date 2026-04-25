@@ -56,9 +56,7 @@ export function SimulationsSidebar({
                     {sim.completedRuns}/{sim.totalRuns}
                   </span>
                 ) : (
-                  <span className={`text-[10px] font-medium ${
-                    (sim.overallPassRate ?? 0) >= sim.passThreshold ? "text-green-400" : "text-red-400"
-                  }`}>
+                  <span className="text-[10px] font-medium text-accent">
                     {passRate}
                   </span>
                 )}
