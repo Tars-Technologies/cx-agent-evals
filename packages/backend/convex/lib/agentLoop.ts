@@ -115,6 +115,7 @@ export async function runAgentLoop(
   }
 
   try {
+    console.log(`[AGENT LOOP DEBUG] messages.length=${messages.length} roles=${messages.map(m => m.role).join(",")}`);
     const result = await generateText({
       model: resolveModel(config.modelId),
       system: config.systemPrompt,

@@ -11,7 +11,7 @@ import { getAuthContext, lookupUser } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
 
 const pool = new Workpool(components.conversationSimPool, {
-  maxParallelism: 3,
+  maxParallelism: 2,
 });
 
 // ─── Start Simulation ───
@@ -53,9 +53,9 @@ export const start = mutation({
     const user = await lookupUser(ctx, userId);
 
     const k = args.k ?? 1;
-    const maxTurns = args.maxTurns ?? 20;
-    const timeoutMs = args.timeoutMs ?? 300000;
-    const concurrency = args.concurrency ?? 3;
+    const maxTurns = args.maxTurns ?? 5;
+    const timeoutMs = args.timeoutMs ?? 120000;
+    const concurrency = args.concurrency ?? 2;
     const passThreshold = args.passThreshold ?? 0.8;
     const userSimModel = args.userSimModel ?? "claude-sonnet-4-20250514";
 

@@ -115,16 +115,23 @@ export const runConversationSim = internalAction({
       // === USER TURN ===
       let userMessage: string;
 
+      console.log(`[SIM DEBUG] runId=${runId} turnPair=${turnPair} messages.length=${messages.length} hasRefMessages=${!!scenario.referenceMessages?.[0]}`);
+
       if (turnPair === 0 && scenario.referenceMessages?.[0]) {
         // First turn: use verbatim reference message
         userMessage = scenario.referenceMessages[0].content;
+        console.log(`[SIM DEBUG] runId=${runId} Using reference message: "${userMessage.slice(0, 80)}..."`);
       } else {
         // Generate user message via LLM
         // Role-flip messages for user-sim (agent becomes "user", user becomes "assistant")
-        const flippedMessages = messages.map(m => ({
-          role: (m.role === "user" ? "assistant" : "user") as "user" | "assistant",
-          content: m.content,
-        }));
+        const flippedMessages = messages.length > 0
+          ? messages.map(m => ({
+              role: (m.role === "user" ? "assistant" : "user") as "user" | "assistant",
+              content: m.content,
+            }))
+          : [{ role: "user" as const, content: "Begin the conversation." }];
+
+        console.log(`[SIM DEBUG] runId=${runId} flippedMessages.length=${flippedMessages.length} roles=${flippedMessages.map(m => m.role).join(",")}`);
 
         const userSimResult = await generateText({
           model: resolveModel(simulation.userSimModel),
@@ -152,6 +159,7 @@ export const runConversationSim = internalAction({
       messages.push({ role: "user", content: userMessage });
 
       // === AGENT TURN ===
+      console.log(`[SIM DEBUG] runId=${runId} calling runAgentLoop with messages.length=${messages.length}`);
       const agentResult = await runAgentLoop(ctx, agentConfig, messages);
 
       if (agentResult.error) {

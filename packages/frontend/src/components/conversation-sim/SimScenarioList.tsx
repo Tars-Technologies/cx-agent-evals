@@ -47,7 +47,13 @@ export function SimScenarioList({
           const isSelected = scenarioRuns.some(r => r._id === selectedRunId);
 
           return (
-            <div key={scenarioId} className={`border-b border-border ${isSelected ? "bg-accent/5" : ""}`}>
+            <div
+              key={scenarioId}
+              onClick={() => onSelectRun(scenarioRuns[0]._id)}
+              className={`border-b border-border cursor-pointer transition-colors ${
+                isSelected ? "bg-accent/5" : "hover:bg-bg-elevated/50"
+              }`}
+            >
               {/* Scenario header */}
               <div className="px-3 py-2">
                 <div className="flex items-center justify-between">
@@ -67,7 +73,10 @@ export function SimScenarioList({
                   {scenarioRuns.map((run, i) => (
                     <button
                       key={run._id}
-                      onClick={() => onSelectRun(run._id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectRun(run._id);
+                      }}
                       className={`group flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors ${
                         run._id === selectedRunId
                           ? "bg-accent/20 text-accent"
@@ -79,9 +88,7 @@ export function SimScenarioList({
                           ? "bg-accent animate-pulse"
                           : run.passed
                             ? "bg-green-400"
-                            : run.status === "failed"
-                              ? "bg-red-400"
-                              : "bg-yellow-400"
+                            : "bg-red-400"
                       }`} />
                       Run {i + 1}
                       {run.score != null && (

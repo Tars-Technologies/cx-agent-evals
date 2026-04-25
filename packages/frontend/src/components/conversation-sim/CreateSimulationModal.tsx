@@ -31,9 +31,9 @@ export function CreateSimulationModal({
   const [evaluatorSetId, setEvaluatorSetId] = useState<Id<"evaluatorSets"> | "">("");
   const [k, setK] = useState(1);
   const [passThreshold, setPassThreshold] = useState(0.8);
-  const [concurrency, setConcurrency] = useState(3);
-  const [maxTurns, setMaxTurns] = useState(20);
-  const [timeoutMs, setTimeoutMs] = useState(300000);
+  const [concurrency, setConcurrency] = useState(2);
+  const [maxTurns, setMaxTurns] = useState(5);
+  const [timeoutMs, setTimeoutMs] = useState(120000);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [seeded, setSeeded] = useState(false);
