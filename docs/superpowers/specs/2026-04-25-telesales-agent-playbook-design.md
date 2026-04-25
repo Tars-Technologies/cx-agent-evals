@@ -92,8 +92,8 @@ action is taken:
   - Detour to build the capability via the standard
     brainstorming → plan → implement flow.
   - Resume the playbook from where we paused.
-- **Workaround-with-cost** — doable without the feature, but the workaround
-  meaningfully hurts quality or repeatability.
+- **Workaround** (with cost) — doable without the feature, but the
+  workaround meaningfully hurts quality or repeatability.
   - Document the workaround in the playbook section.
   - Add a "platform improvement X would remove this workaround" note.
   - Keep moving.
