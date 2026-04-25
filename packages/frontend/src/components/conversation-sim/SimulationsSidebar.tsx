@@ -33,9 +33,6 @@ export function SimulationsSidebar({
       </div>
       <div className="flex-1 overflow-y-auto">
         {simulations.map(sim => {
-          const isRunning = sim.status === "running" || sim.status === "pending";
-          const passRate = sim.overallPassRate != null ? `${(sim.overallPassRate * 100).toFixed(0)}%` : "\u2014";
-
           return (
             <div
               key={sim._id}
@@ -46,22 +43,43 @@ export function SimulationsSidebar({
                   : "hover:bg-bg-elevated/50 border-l-2 border-l-transparent"
               }`}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between">
                 <span className="text-xs text-text font-medium truncate">
                   k={sim.k}
                 </span>
-                {isRunning ? (
-                  <span className="flex items-center gap-1 text-[10px] text-accent">
-                    <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-                    {sim.completedRuns}/{sim.totalRuns}
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-medium text-accent">
-                    {passRate}
-                  </span>
-                )}
+                <div className="text-[10px] text-right space-y-0.5">
+                  <div className={
+                    sim.status === "completed" ? "text-green-400 font-medium" :
+                    sim.status === "running" || sim.status === "pending" ? "text-accent" :
+                    sim.status === "cancelled" ? "text-yellow-400" :
+                    "text-text-dim"
+                  }>
+                    {sim.status === "completed"
+                      ? `✓ ${sim.totalRuns} convos`
+                      : sim.status === "running" || sim.status === "pending"
+                        ? `${sim.completedRuns + (sim.failedRuns ?? 0)}/${sim.totalRuns} convos`
+                        : sim.status === "cancelled"
+                          ? `Cancelled · ${sim.completedRuns} convos`
+                          : sim.status === "failed"
+                            ? `Failed · ${sim.failedRuns ?? 0}/${sim.totalRuns}`
+                            : `${sim.totalRuns} runs`
+                    }
+                  </div>
+                  <div className="text-text-dim">
+                    {sim.evaluationStatus === "completed"
+                      ? sim.overallPassRate != null
+                        ? `${(sim.overallPassRate * 100).toFixed(0)}% passed`
+                        : "Evaluated"
+                      : sim.evaluationStatus === "running"
+                        ? `Evaluating ${sim.evaluationCompletedRuns ?? 0}/${sim.totalRuns}`
+                        : sim.evaluationStatus === "failed"
+                          ? "Eval failed"
+                          : "Not evaluated"
+                    }
+                  </div>
+                </div>
               </div>
-              <div className="text-[10px] text-text-dim mt-0.5">
+              <div className="text-[10px] text-text-dim mt-1">
                 {new Date(sim.startedAt ?? sim._creationTime).toLocaleDateString()} · {sim.totalRuns} runs
               </div>
             </div>
