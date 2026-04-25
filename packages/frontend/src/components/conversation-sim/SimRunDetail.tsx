@@ -28,12 +28,24 @@ export function SimRunDetail({
         <div className="flex items-center gap-3">
           <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
             run.status === "completed"
-              ? run.passed ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"
+              ? run.passed == null
+                ? "bg-green-500/15 text-green-400"
+                : run.passed
+                  ? "bg-green-500/15 text-green-400"
+                  : "bg-red-500/15 text-red-400"
               : run.status === "running"
                 ? "bg-accent/15 text-accent"
-                : "bg-yellow-500/15 text-yellow-400"
+                : run.status === "failed"
+                  ? "bg-red-500/15 text-red-400"
+                  : "bg-yellow-500/15 text-yellow-400"
           }`}>
-            {run.status === "completed" ? (run.passed ? "PASS" : "FAIL") : run.status.toUpperCase()}
+            {run.status === "completed"
+              ? run.passed == null
+                ? "DONE"
+                : run.passed
+                  ? "PASS"
+                  : "FAIL"
+              : run.status.toUpperCase()}
           </span>
           {run.score != null && (
             <span className="text-xs text-text-dim">Score: {(run.score * 100).toFixed(0)}%</span>

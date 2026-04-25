@@ -159,9 +159,15 @@ export function SimScenarioList({
                       <span className={`w-2 h-2 rounded-full ${
                         run.status === "running" || run.status === "pending"
                           ? "bg-accent animate-pulse"
-                          : run.passed
-                            ? "bg-green-400"
-                            : "bg-red-400"
+                          : phase === "conversations"
+                            ? run.status === "completed"
+                              ? "bg-green-400"
+                              : "bg-red-400"
+                            : run.passed == null
+                              ? "bg-text-dim/40"
+                              : run.passed
+                                ? "bg-green-400"
+                                : "bg-red-400"
                       }`} />
                       Run {i + 1}
                       {run.score != null && (
