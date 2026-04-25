@@ -190,6 +190,135 @@ export const cancel = mutation({
   },
 });
 
+// ─── Start Evaluation ───
+
+export const startEvaluation = mutation({
+  args: {
+    simulationId: v.id("conversationSimulations"),
+    evaluatorSetId: v.id("evaluatorSets"),
+  },
+  handler: async (ctx, { simulationId, evaluatorSetId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const sim = await ctx.db.get(simulationId);
+    if (!sim || sim.orgId !== orgId) throw new Error("Simulation not found");
+    if (sim.status !== "completed") {
+      throw new Error("Cannot evaluate: conversations not yet completed");
+    }
+
+    const evalSet = await ctx.db.get(evaluatorSetId);
+    if (!evalSet || evalSet.orgId !== orgId) throw new Error("Evaluator set not found");
+
+    const runs = await ctx.db
+      .query("conversationSimRuns")
+      .withIndex("by_simulation", (q) => q.eq("simulationId", simulationId))
+      .collect();
+
+    const completedRuns = runs.filter(r => r.status === "completed");
+    for (const run of completedRuns) {
+      await ctx.db.patch(run._id, {
+        evaluatorResults: undefined,
+        score: undefined,
+        passed: undefined,
+      });
+    }
+
+    await ctx.db.patch(simulationId, {
+      evaluationStatus: "running",
+      evaluationEvaluatorSetId: evaluatorSetId,
+      evaluationCompletedRuns: 0,
+      evaluationFailedRuns: 0,
+      overallPassRate: undefined,
+      avgScore: undefined,
+    });
+
+    const workIds: WorkId[] = [];
+    for (const run of completedRuns) {
+      const wId = await pool.enqueueAction(
+        ctx,
+        internal.conversationSim.evaluationActions.runEvaluation,
+        { runId: run._id, evaluatorSetId },
+        {
+          onComplete:
+            internal.conversationSim.orchestration.onEvaluationRunComplete,
+          context: { simulationId: simulationId.toString(), runId: run._id.toString() },
+        },
+      );
+      workIds.push(wId);
+    }
+
+    await ctx.db.patch(simulationId, {
+      evaluationWorkIds: workIds.map(String),
+    });
+  },
+});
+
+// ─── On Evaluation Run Complete ───
+
+export const onEvaluationRunComplete = internalMutation({
+  args: vOnCompleteArgs(
+    v.object({
+      simulationId: v.string(),
+      runId: v.string(),
+    }),
+  ),
+  handler: async (
+    ctx,
+    { context, result }: {
+      workId: string;
+      context: { simulationId: string; runId: string };
+      result: RunResult;
+    },
+  ) => {
+    const simId = context.simulationId as Id<"conversationSimulations">;
+    const sim = await ctx.db.get(simId);
+    if (!sim) return;
+
+    const evalCompleted = (sim.evaluationCompletedRuns ?? 0) + (result.kind === "success" ? 1 : 0);
+    const evalFailed = (sim.evaluationFailedRuns ?? 0) + (result.kind === "failed" ? 1 : 0);
+    const totalHandled = evalCompleted + evalFailed;
+
+    const totalEvalRuns = (sim.evaluationWorkIds ?? []).length;
+
+    if (totalHandled >= totalEvalRuns) {
+      const allRuns = await ctx.db
+        .query("conversationSimRuns")
+        .withIndex("by_simulation", (q) => q.eq("simulationId", simId))
+        .collect();
+
+      const scenarioMap = new Map<string, boolean[]>();
+      for (const run of allRuns) {
+        const key = run.scenarioId as string;
+        if (!scenarioMap.has(key)) scenarioMap.set(key, []);
+        scenarioMap.get(key)!.push(run.passed ?? false);
+      }
+
+      let scenariosPassed = 0;
+      for (const [, passes] of scenarioMap) {
+        if (passes.every((p) => p)) scenariosPassed++;
+      }
+      const overallPassRate = scenarioMap.size > 0 ? scenariosPassed / scenarioMap.size : 0;
+
+      const scores = allRuns.map(r => r.score).filter((s): s is number => s !== undefined);
+      const avgScore = scores.length > 0
+        ? scores.reduce((a, b) => a + b, 0) / scores.length
+        : undefined;
+
+      await ctx.db.patch(simId, {
+        evaluationCompletedRuns: evalCompleted,
+        evaluationFailedRuns: evalFailed,
+        evaluationStatus: "completed",
+        overallPassRate,
+        avgScore,
+      });
+    } else {
+      await ctx.db.patch(simId, {
+        evaluationCompletedRuns: evalCompleted,
+        evaluationFailedRuns: evalFailed,
+      });
+    }
+  },
+});
+
 // ─── Queries ───
 
 // Get simulation
