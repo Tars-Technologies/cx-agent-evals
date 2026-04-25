@@ -6,8 +6,8 @@ import type { Id } from "../_generated/dataModel";
  * Execute vector search with post-filtering by indexConfigHash.
  * Shared by retrieverActions.retrieve and experimentActions.runEvaluation.
  *
- * Over-fetches by 4x (max 256) to compensate for post-filtering,
- * since Convex vector search only supports filtering by kbId directly.
+ * Over-fetches by 2x (max 64) to compensate for post-filtering,
+ * since Convex vector search filters by both kbId and indexConfigHash at index level.
  */
 export async function vectorSearchWithFilter(
   ctx: ActionCtx,
@@ -19,12 +19,16 @@ export async function vectorSearchWithFilter(
     indexStrategy?: string; // "plain" | "parent-child"
   },
 ) {
-  const overFetch = Math.min(opts.topK * 4, 256);
+  const overFetch = Math.min(opts.topK * 2, 64);
 
   const results = await ctx.vectorSearch("documentChunks", "by_embedding", {
     vector: opts.queryEmbedding,
     limit: overFetch,
-    filter: (q: any) => q.eq("kbId", opts.kbId),
+    filter: (q: any) =>
+      q.and(
+        q.eq("kbId", opts.kbId),
+        q.eq("indexConfigHash", opts.indexConfigHash),
+      ),
   });
 
   const chunks: any[] = await ctx.runQuery(
