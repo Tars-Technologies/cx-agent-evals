@@ -11,6 +11,7 @@ import AgentPlayground from "@/components/AgentPlayground";
 import { ExperimentModeLayout } from "@/components/agent-experiments/ExperimentModeLayout";
 import { SimulationModeLayout } from "@/components/conversation-sim/SimulationModeLayout";
 import { CreateSimulationModal } from "@/components/conversation-sim/CreateSimulationModal";
+import { GenerationBanner } from "@/components/GenerationBanner";
 
 // ---------------------------------------------------------------------------
 // URL param helpers
@@ -80,6 +81,16 @@ function AgentsPageContent() {
   // --- Agent data ---
   const agents = useQuery(api.crud.agents.byOrg) ?? [];
   const createAgent = useMutation(api.crud.agents.create);
+
+  // --- Running simulation for selected agent ---
+  const simulations = useQuery(
+    api.conversationSim.orchestration.byAgent,
+    agentId ? { agentId } : "skip",
+  ) ?? [];
+  const runningSim = simulations.find(
+    (s) => s.status === "running" || s.status === "pending",
+  );
+  const cancelSimulation = useMutation(api.conversationSim.orchestration.cancel);
 
   // --- New agent handler ---
   const handleNewAgent = useCallback(async () => {
@@ -172,6 +183,23 @@ function AgentsPageContent() {
           </button>
         )}
       </div>
+
+      {/* ── Running simulation banner ── */}
+      {runningSim && mode === "experiment" && (
+        <GenerationBanner
+          strategy="Simulation"
+          kbName={agents.find((a) => a._id === agentId)?.name ?? "Agent"}
+          phase="generating"
+          processedItems={runningSim.completedRuns + (runningSim.failedRuns ?? 0)}
+          totalItems={runningSim.totalRuns}
+          questionsGenerated={runningSim.completedRuns}
+          itemLabel="Conversations"
+          onView={() => {
+            // No-op — user is already on the simulation view
+          }}
+          onCancel={() => cancelSimulation({ simulationId: runningSim._id })}
+        />
+      )}
 
       {/* ── Main content ── */}
       {mode === "create" ? (
