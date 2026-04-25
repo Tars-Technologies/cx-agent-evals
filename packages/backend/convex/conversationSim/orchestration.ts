@@ -204,6 +204,9 @@ export const startEvaluation = mutation({
     if (sim.status !== "completed") {
       throw new Error("Cannot evaluate: conversations not yet completed");
     }
+    if (sim.evaluationStatus === "running") {
+      throw new Error("Evaluation already in progress");
+    }
 
     const evalSet = await ctx.db.get(evaluatorSetId);
     if (!evalSet || evalSet.orgId !== orgId) throw new Error("Evaluator set not found");
@@ -285,8 +288,10 @@ export const onEvaluationRunComplete = internalMutation({
         .withIndex("by_simulation", (q) => q.eq("simulationId", simId))
         .collect();
 
+      const evaluatedRuns = allRuns.filter(r => r.status === "completed");
+
       const scenarioMap = new Map<string, boolean[]>();
-      for (const run of allRuns) {
+      for (const run of evaluatedRuns) {
         const key = run.scenarioId as string;
         if (!scenarioMap.has(key)) scenarioMap.set(key, []);
         scenarioMap.get(key)!.push(run.passed ?? false);
@@ -298,7 +303,7 @@ export const onEvaluationRunComplete = internalMutation({
       }
       const overallPassRate = scenarioMap.size > 0 ? scenariosPassed / scenarioMap.size : 0;
 
-      const scores = allRuns.map(r => r.score).filter((s): s is number => s !== undefined);
+      const scores = evaluatedRuns.map(r => r.score).filter((s): s is number => s !== undefined);
       const avgScore = scores.length > 0
         ? scores.reduce((a, b) => a + b, 0) / scores.length
         : undefined;
