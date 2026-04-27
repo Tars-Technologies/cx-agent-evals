@@ -366,37 +366,37 @@ export const isIndexed = internalQuery({
   },
 });
 
-/** Fetch a single chunk by ID. Used for parent-child retrieval swap. */
-export const getChunkById = internalQuery({
-  args: { chunkId: v.id("documentChunks") },
-  handler: async (ctx, args) => {
-    const chunk = await ctx.db.get(args.chunkId);
-    if (!chunk) return null;
-    const doc = await ctx.db.get(chunk.documentId);
-    return { ...chunk, docId: doc?.docId ?? "" };
-  },
-});
-
 /**
- * Fetch full chunk records by IDs, including parent document's docId.
- * Used after vector search to hydrate results.
+ * Fetch chunk records by IDs WITHOUT touching the documents table.
+ * Use this before post-filtering, then call fetchDocIdMap for survivors only —
+ * documents.content can be megabytes and would blow Convex's 16 MB read budget
+ * if hydrated for every over-fetched chunk.
  */
-export const fetchChunksWithDocs = internalQuery({
-  args: {
-    ids: v.array(v.id("documentChunks")),
-  },
+export const fetchChunksByIds = internalQuery({
+  args: { ids: v.array(v.id("documentChunks")) },
   handler: async (ctx, args) => {
     const chunks = [];
     for (const id of args.ids) {
       const chunk = await ctx.db.get(id);
-      if (!chunk) continue;
-
-      const doc = await ctx.db.get(chunk.documentId);
-      chunks.push({
-        ...chunk,
-        docId: doc?.docId ?? "",
-      });
+      if (chunk) chunks.push(chunk);
     }
     return chunks;
+  },
+});
+
+/**
+ * Map documentId → external docId. Caller must deduplicate ids before calling.
+ * Reads full document records (Convex has no field projection), so the caller
+ * is responsible for keeping the input list small.
+ */
+export const fetchDocIdMap = internalQuery({
+  args: { documentIds: v.array(v.id("documents")) },
+  handler: async (ctx, args) => {
+    const map: Record<string, string> = {};
+    for (const id of args.documentIds) {
+      const doc = await ctx.db.get(id);
+      if (doc) map[id.toString()] = doc.docId;
+    }
+    return map;
   },
 });
