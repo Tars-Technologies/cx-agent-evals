@@ -941,8 +941,9 @@ async function runRefinementStage(
     }
 
     case "rerank": {
-      config = { type: "rerank", model: "rerank-english-v3.0", topK: k };
-      outputChunks = await applyRerank(query, chunks, k);
+      const rerankTopN = step.topN ?? k;
+      config = { type: "rerank", model: "rerank-english-v3.0", topK: rerankTopN };
+      outputChunks = await applyRerank(query, chunks, rerankTopN);
       break;
     }
 

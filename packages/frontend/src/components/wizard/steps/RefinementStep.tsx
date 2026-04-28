@@ -160,21 +160,19 @@ export function RefinementStep({
                   </div>
                 )}
 
-                {/* Threshold / other step-specific options */}
-                {step.type !== "rerank" &&
-                  entry &&
-                  entry.options.length > 0 && (
-                    <div className="mt-3 pl-3 border-l border-border">
-                      <OptionGroup
-                        options={entry.options}
-                        values={step as Record<string, unknown>}
-                        onChange={(key, value) =>
-                          handleStepOptionChange(index, key, value)
-                        }
-                        disabled={entry.status === "coming-soon"}
-                      />
-                    </div>
-                  )}
+                {/* Step-specific options (e.g. threshold.minScore, rerank.topN) */}
+                {entry && entry.options.length > 0 && (
+                  <div className="mt-3 pl-3 border-l border-border">
+                    <OptionGroup
+                      options={entry.options}
+                      values={step as Record<string, unknown>}
+                      onChange={(key, value) =>
+                        handleStepOptionChange(index, key, value)
+                      }
+                      disabled={entry.status === "coming-soon"}
+                    />
+                  </div>
+                )}
               </li>
             );
           })}

@@ -414,7 +414,11 @@ export class PipelineRetriever implements Retriever {
       switch (step.type) {
         case "rerank": {
           const chunks = current.map(({ chunk }) => chunk);
-          const reranked = await this._reranker!.rerank(query, chunks, k);
+          const reranked = await this._reranker!.rerank(
+            query,
+            chunks,
+            step.topN ?? k,
+          );
           current = assignRankScores(reranked);
           break;
         }
