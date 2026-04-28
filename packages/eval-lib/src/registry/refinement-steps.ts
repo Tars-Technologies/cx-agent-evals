@@ -13,13 +13,13 @@ export const REFINEMENT_STEP_REGISTRY: readonly RegistryEntry[] = [
         key: "topN",
         label: "Top N (after rerank)",
         description:
-          "Number of chunks to keep after reranking. Leave empty to use the pipeline's overall topK. Set lower than the input size (e.g. 6 from 25) to widen-then-narrow.",
+          "Number of chunks to keep after reranking. Lower than the input size (e.g. 5 from 25) to widen-then-narrow.",
         type: "number",
-        default: undefined,
+        default: 5,
         constraints: { min: 1, max: 100, step: 1 },
       },
     ],
-    defaults: { topN: undefined },
+    defaults: { topN: 5 },
   },
   {
     id: "threshold",
