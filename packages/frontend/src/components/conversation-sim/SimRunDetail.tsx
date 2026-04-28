@@ -3,6 +3,8 @@
 import { useQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
+import { groupMessagesWithToolCalls } from "@/lib/messageDisplay";
+import { ToolCallGroup } from "@/components/conversation-sim/ToolCallGroup";
 
 export function SimRunDetail({
   runId,
@@ -69,37 +71,29 @@ export function SimRunDetail({
         {/* Conversation transcript */}
         <div className="px-4 py-3 space-y-3">
           <h3 className="text-[11px] text-text-dim uppercase tracking-wider">Transcript</h3>
-          {messages.filter(m => m.role === "user" || m.role === "assistant").map((msg) => (
-            <div
-              key={msg._id}
-              className={`rounded-md p-3 text-xs leading-relaxed ${
-                msg.role === "user"
-                  ? "bg-blue-500/10 border border-blue-500/20 text-text"
-                  : "bg-bg-elevated border border-border text-text-dim"
-              }`}
-            >
-              <div className={`text-[10px] font-medium mb-1 uppercase ${
-                msg.role === "user" ? "text-blue-400" : "text-accent"
-              }`}>
-                {msg.role === "user" ? "User" : "Agent"}
-              </div>
-              <div className="whitespace-pre-wrap">{msg.content}</div>
-            </div>
-          ))}
-
-          {/* Tool calls section */}
-          {messages.filter(m => m.role === "tool_call").length > 0 && (
-            <div className="mt-4">
-              <h4 className="text-[10px] text-text-dim uppercase tracking-wider mb-2">
-                Tool Calls ({messages.filter(m => m.role === "tool_call").length})
-              </h4>
-              {messages.filter(m => m.role === "tool_call").map(msg => (
-                <div key={msg._id} className="bg-bg border border-border rounded-md p-2 mb-1 text-[10px] font-mono text-text-dim">
-                  {msg.toolCall?.toolName}({msg.toolCall?.toolArgs?.slice(0, 100)})
+          {groupMessagesWithToolCalls(messages).map((item) => {
+            if (item.type === "tool_group") {
+              return <ToolCallGroup key={item.key} calls={item.calls} isLive={false} />;
+            }
+            const msg = item.msg;
+            return (
+              <div
+                key={msg._id}
+                className={`rounded-md p-3 text-xs leading-relaxed ${
+                  msg.role === "user"
+                    ? "bg-blue-500/10 border border-blue-500/20 text-text"
+                    : "bg-bg-elevated border border-border text-text-dim"
+                }`}
+              >
+                <div className={`text-[10px] font-medium mb-1 uppercase ${
+                  msg.role === "user" ? "text-blue-400" : "text-accent"
+                }`}>
+                  {msg.role === "user" ? "User" : "Agent"}
                 </div>
-              ))}
-            </div>
-          )}
+                <div className="whitespace-pre-wrap">{msg.content}</div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Evaluation Results */}
