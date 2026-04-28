@@ -80,7 +80,15 @@ export async function runAgentLoop(
       description: `Search ${info.kbName} using ${info.name}`,
       parameters: z.object({
         query: z.string().describe("The search query"),
-        k: z.number().optional().describe("Number of results to return"),
+        k: z
+          .number()
+          .int()
+          .min(1)
+          .max(25)
+          .optional()
+          .describe(
+            "Number of chunks to return. Prefer 5–10; higher values dilute relevance with noise.",
+          ),
       }),
       execute: async ({ query, k }) => {
         const { createEmbedder } = await import("rag-evaluation-system/llm");
@@ -115,22 +123,55 @@ export async function runAgentLoop(
   }
 
   try {
+    const hasTools = Object.keys(tools).length > 0;
     const result = await generateText({
       model: resolveModel(config.modelId),
       system: config.systemPrompt,
       messages,
-      tools: Object.keys(tools).length > 0 ? tools : undefined,
-      maxSteps: 5,
+      tools: hasTools ? tools : undefined,
+      maxSteps: 12,
     });
 
+    let finalText = result.text;
+    let promptTokens = result.usage?.promptTokens ?? 0;
+    let completionTokens = result.usage?.completionTokens ?? 0;
+
+    // Recovery: if the step budget was exhausted on tool calls without producing
+    // a final text response, force one more text-only call so the user-sim has
+    // something to react to. Without this, the conversation silently truncates.
+    const noText = !finalText || finalText.trim().length === 0;
+    if (noText && hasTools && collectedToolCalls.length > 0) {
+      const followupMessages = result.response?.messages
+        ? [
+            ...messages,
+            ...(result.response.messages as Array<{
+              role: "user" | "assistant";
+              content: any;
+            }>),
+          ]
+        : messages;
+
+      const recovery = await generateText({
+        model: resolveModel(config.modelId),
+        system:
+          config.systemPrompt +
+          "\n\nYou have already gathered information using tools. Provide your best response to the user based on what you found. Do not call any more tools.",
+        messages: followupMessages as any,
+      });
+
+      finalText = recovery.text;
+      promptTokens += recovery.usage?.promptTokens ?? 0;
+      completionTokens += recovery.usage?.completionTokens ?? 0;
+    }
+
     return {
-      text: result.text,
+      text: finalText,
       toolCalls: collectedToolCalls,
-      usage: {
-        promptTokens: result.usage?.promptTokens ?? 0,
-        completionTokens: result.usage?.completionTokens ?? 0,
-      },
-      done: !result.text || result.text.trim().length === 0,
+      usage: { promptTokens, completionTokens },
+      // Only flag done when we genuinely have nothing to say (recovery also
+      // failed). A normal "agent finished its turn with text" must NOT mark
+      // the conversation as done — the user-sim drives termination.
+      done: !finalText || finalText.trim().length === 0,
     };
   } catch (err: any) {
     return {
