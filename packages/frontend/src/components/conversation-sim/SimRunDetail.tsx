@@ -5,6 +5,7 @@ import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
 import { groupMessagesWithToolCalls } from "@/lib/messageDisplay";
 import { ToolCallGroup } from "@/components/conversation-sim/ToolCallGroup";
+import { ScenarioSummaryBand } from "@/components/conversation-sim/ScenarioSummaryBand";
 
 export function SimRunDetail({
   runId,
@@ -18,6 +19,11 @@ export function SimRunDetail({
     api.crud.conversations.listMessages,
     run?.conversationId ? { conversationId: run.conversationId } : "skip",
   ) ?? [];
+
+  const scenario = useQuery(
+    api.conversationSim.scenarios.getMaybe,
+    run?.scenarioId ? { id: run.scenarioId } : "skip",
+  );
 
   if (!run) {
     return <div className="flex items-center justify-center h-full text-text-dim text-xs">Loading...</div>;
@@ -65,6 +71,8 @@ export function SimRunDetail({
           </span>
         )}
       </div>
+
+      <ScenarioSummaryBand scenario={scenario} />
 
       {/* Content: transcript + evaluation */}
       <div className="flex-1 overflow-y-auto">
