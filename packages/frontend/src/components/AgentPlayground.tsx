@@ -4,57 +4,10 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/lib/convex";
 import { Id } from "@convex/_generated/dataModel";
-import ToolCallChip from "@/components/ToolCallChip";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-
-// Grouped tool calls pill — shows "N tools called" with expandable list
-function ToolCallGroup({ calls, isLive }: {
-  calls: Array<{ toolName: string; toolArgs?: string; toolResult?: string }>;
-  isLive: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const allDone = calls.every((c) => c.toolResult !== undefined);
-  const lastCall = calls[calls.length - 1];
-  const displayName = (name: string) => name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-
-  return (
-    <div className="flex justify-start">
-      <div className="max-w-[80%]">
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-bg-elevated border border-border rounded-lg text-[10px] hover:border-accent/30 transition-colors"
-        >
-          <span className="text-accent">&#9889;</span>
-          {isLive && !allDone ? (
-            <span className="text-text-muted">
-              Calling <strong className="text-text font-medium">{displayName(lastCall.toolName)}</strong>
-              <span className="inline-block w-1 h-1 bg-accent rounded-full ml-1 animate-pulse align-middle" />
-            </span>
-          ) : (
-            <span className="text-text-muted">
-              <strong className="text-text font-medium">{calls.length}</strong> tool{calls.length !== 1 ? "s" : ""} called
-            </span>
-          )}
-          <span className="text-text-dim ml-0.5">{expanded ? "▾" : "▸"}</span>
-        </button>
-
-        {expanded && (
-          <div className="mt-1 ml-2 space-y-1">
-            {calls.map((call, i) => (
-              <ToolCallChip
-                key={i}
-                toolName={call.toolName}
-                toolArgs={call.toolArgs}
-                toolResult={call.toolResult}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+import { groupMessagesWithToolCalls } from "@/lib/messageDisplay";
+import { ToolCallGroup } from "@/components/conversation-sim/ToolCallGroup";
 
 interface AgentPlaygroundProps {
   agentId: Id<"agents">;
@@ -149,62 +102,7 @@ export default function AgentPlayground({ agentId }: AgentPlaygroundProps) {
     }
   };
 
-  // Build display items: group consecutive tool_call/tool_result into a single group
-  // placed above the following assistant message
-  type ToolCallEntry = {
-    toolName: string;
-    toolArgs?: string;
-    toolResult?: string;
-  };
-  type DisplayItem =
-    | { type: "user"; msg: typeof messages[number] }
-    | { type: "tool_group"; calls: ToolCallEntry[]; key: string }
-    | { type: "assistant"; msg: typeof messages[number] };
-
-  const displayItems: DisplayItem[] = [];
-  const toolResultMap = new Map<string, typeof messages[number]>();
-  for (const m of messages) {
-    if (m.role === "tool_result" && m.toolResult?.toolCallId) {
-      toolResultMap.set(m.toolResult.toolCallId, m);
-    }
-  }
-
-  // Collect tool calls that follow each assistant message (they belong to that turn).
-  // Order in DB: user(N), assistant(N+1), tool_call(N+2), tool_result(N+3), ...
-  // Display order: user → tool_group → assistant
-  const toolCallsByAssistant = new Map<string, ToolCallEntry[]>();
-  let currentAssistantId: string | null = null;
-  for (const m of messages) {
-    if (m.role === "assistant") {
-      currentAssistantId = m._id;
-    } else if (m.role === "tool_call" && currentAssistantId) {
-      if (!toolCallsByAssistant.has(currentAssistantId)) {
-        toolCallsByAssistant.set(currentAssistantId, []);
-      }
-      const result = m.toolCall?.toolCallId ? toolResultMap.get(m.toolCall.toolCallId) : undefined;
-      toolCallsByAssistant.get(currentAssistantId)!.push({
-        toolName: m.toolCall?.toolName ?? "tool",
-        toolArgs: m.toolCall?.toolArgs,
-        toolResult: result?.toolResult?.result,
-      });
-    } else if (m.role === "user") {
-      currentAssistantId = null;
-    }
-  }
-
-  for (const m of messages) {
-    if (m.role === "user") {
-      displayItems.push({ type: "user", msg: m });
-    } else if (m.role === "assistant") {
-      // Show tool group ABOVE the assistant message if any tools were called
-      const calls = toolCallsByAssistant.get(m._id);
-      if (calls && calls.length > 0) {
-        displayItems.push({ type: "tool_group", calls, key: `tg-${m._id}` });
-      }
-      displayItems.push({ type: "assistant", msg: m });
-    }
-    // tool_call and tool_result are rendered via the grouped pill, skip individually
-  }
+  const displayItems = groupMessagesWithToolCalls(messages);
 
   return (
     <div className="flex flex-col h-full min-h-0">
