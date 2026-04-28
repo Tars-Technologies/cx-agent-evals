@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { ScenarioFields, type Scenario } from "@/components/ScenarioFields";
 import { SourceTranscriptPanel } from "@/components/livechat/SourceTranscriptPanel";
 import type { Id } from "@convex/_generated/dataModel";
@@ -15,9 +15,12 @@ export function ScenarioDetail({
   const [showSource, setShowSource] = useState(false);
 
   // Reset toggle when the displayed scenario changes
-  useEffect(() => {
+  // React-canonical pattern: react.dev/learn/you-might-not-need-an-effect#resetting-state-when-a-prop-changes
+  const [lastScenarioId, setLastScenarioId] = useState(scenario._id);
+  if (scenario._id !== lastScenarioId) {
+    setLastScenarioId(scenario._id);
     setShowSource(false);
-  }, [scenario._id]);
+  }
 
   const hasSource = !!scenario.sourceTranscriptId;
 
