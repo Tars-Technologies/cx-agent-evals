@@ -102,28 +102,28 @@ export function SimRunDetail({
       <div className="flex-1 min-h-0 flex overflow-hidden">
         <div className="flex-1 min-w-0 overflow-y-auto">
           {/* Conversation transcript */}
-          <div className="px-4 py-3 space-y-3">
-            <h3 className="text-[11px] text-text-dim uppercase tracking-wider">Transcript</h3>
+          <div className="px-4 py-3">
+            <h3 className="text-[11px] text-text-dim uppercase tracking-wider mb-2">Transcript</h3>
             {groupMessagesWithToolCalls(messages).map((item) => {
               if (item.type === "tool_group") {
                 return <ToolCallGroup key={item.key} calls={item.calls} isLive={false} />;
               }
               const msg = item.msg;
+              const isUser = msg.role === "user";
               return (
-                <div
-                  key={msg._id}
-                  className={`rounded-md p-3 text-xs leading-relaxed ${
-                    msg.role === "user"
-                      ? "bg-blue-500/10 border border-blue-500/20 text-text"
-                      : "bg-bg-elevated border border-border text-text-dim"
-                  }`}
-                >
-                  <div className={`text-[10px] font-medium mb-1 uppercase ${
-                    msg.role === "user" ? "text-blue-400" : "text-accent"
-                  }`}>
-                    {msg.role === "user" ? "User" : "Agent"}
+                <div key={msg._id} className={`flex ${isUser ? "justify-end" : "justify-start"} mb-1.5`}>
+                  <div
+                    className={`max-w-[70%] px-2.5 py-1.5 text-xs whitespace-pre-wrap text-white ${
+                      isUser
+                        ? "bg-accent-dim rounded-lg rounded-br-sm"
+                        : "bg-bg-surface border border-border rounded-lg rounded-bl-sm"
+                    }`}
+                  >
+                    <div className={`text-[9px] mb-0.5 ${isUser ? "text-white/50" : "text-text-dim"}`}>
+                      {isUser ? "User" : "Agent"}
+                    </div>
+                    {msg.content}
                   </div>
-                  <div className="whitespace-pre-wrap">{msg.content}</div>
                 </div>
               );
             })}
