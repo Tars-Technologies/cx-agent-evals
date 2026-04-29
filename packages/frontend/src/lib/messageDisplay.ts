@@ -12,11 +12,14 @@ export type DisplayItem =
   | { type: "tool_group"; calls: ToolCallEntry[]; key: string };
 
 /**
- * Groups consecutive tool_call/tool_result messages between user→assistant turns
- * into a single tool_group display item rendered above the owning assistant message.
+ * Groups tool_call/tool_result messages within a turn into a single tool_group
+ * display item rendered above the owning assistant message.
  *
- * DB row order:      user(N), assistant(N+1), tool_call(N+2), tool_result(N+3), ...
- * Display order:     user → tool_group → assistant
+ * Supports both DB orderings within a turn (segment between user messages):
+ *   - Playground streaming order: user → assistant → tool_call → tool_result
+ *   - Sim run insertion order:    user → tool_call → tool_result → assistant
+ *
+ * Display order is the same in both cases: user → tool_group → assistant.
  */
 export function groupMessagesWithToolCalls(messages: Doc<"messages">[]): DisplayItem[] {
   const toolResultMap = new Map<string, Doc<"messages">>();
@@ -26,24 +29,33 @@ export function groupMessagesWithToolCalls(messages: Doc<"messages">[]): Display
     }
   }
 
+  // Group tool calls by their owning assistant message. Tool calls and the
+  // assistant they belong to live in the same "turn" (segment between user
+  // messages). The assistant may come either before the calls (playground
+  // streaming order) or after them (sim run insertion order).
   const toolCallsByAssistant = new Map<string, ToolCallEntry[]>();
-  let currentAssistantId: string | null = null;
-  for (const m of messages) {
-    if (m.role === "assistant") {
-      currentAssistantId = m._id;
-    } else if (m.role === "tool_call" && currentAssistantId) {
-      if (!toolCallsByAssistant.has(currentAssistantId)) {
-        toolCallsByAssistant.set(currentAssistantId, []);
+  let turnStart = 0;
+  for (let i = 0; i <= messages.length; i++) {
+    const atBoundary = i === messages.length || messages[i].role === "user";
+    if (!atBoundary) continue;
+    const turn = messages.slice(turnStart, i);
+    const assistant = turn.find((m) => m.role === "assistant");
+    if (assistant) {
+      const calls: ToolCallEntry[] = [];
+      for (const m of turn) {
+        if (m.role !== "tool_call") continue;
+        const result = m.toolCall?.toolCallId
+          ? toolResultMap.get(m.toolCall.toolCallId)
+          : undefined;
+        calls.push({
+          toolName: m.toolCall?.toolName ?? "tool",
+          toolArgs: m.toolCall?.toolArgs,
+          toolResult: result?.toolResult?.result,
+        });
       }
-      const result = m.toolCall?.toolCallId ? toolResultMap.get(m.toolCall.toolCallId) : undefined;
-      toolCallsByAssistant.get(currentAssistantId)!.push({
-        toolName: m.toolCall?.toolName ?? "tool",
-        toolArgs: m.toolCall?.toolArgs,
-        toolResult: result?.toolResult?.result,
-      });
-    } else if (m.role === "user") {
-      currentAssistantId = null;
+      if (calls.length > 0) toolCallsByAssistant.set(assistant._id, calls);
     }
+    turnStart = i + 1;
   }
 
   const displayItems: DisplayItem[] = [];
