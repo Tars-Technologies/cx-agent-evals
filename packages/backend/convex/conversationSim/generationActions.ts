@@ -6,6 +6,8 @@ import { v } from "convex/values";
 import { generateText } from "ai";
 import { resolveModel } from "../lib/agentLoop";
 import type { Id } from "../_generated/dataModel";
+import { wordCount, median, p90 } from "./lengthStats";
+import { BEHAVIOR_ANCHORS_INSTRUCTION } from "./anchorPrompt";
 
 // ─── Types ───
 
@@ -153,7 +155,7 @@ async function generateGroundedScenarios(
   let fidelityInstruction: string;
   if (fidelity >= 80) {
     fidelityInstruction =
-      "Stay very close to the original transcript. Preserve the language, intent, and style. Reference messages should be near-verbatim from the original user messages.";
+      "Stay very close to the original transcript. Preserve the language, intent, and style.";
   } else if (fidelity >= 50) {
     fidelityInstruction =
       "Capture the essence of the original transcript but allow moderate variation in wording and detail.";
@@ -202,14 +204,13 @@ For each transcript, generate a scenario object. Return a JSON array:
     "reasonForContact": "string - why they're reaching out",
     "knownInfo": "string - what the user already knows",
     "unknownInfo": "string - what the user doesn't know and wants to find out",
-    "instruction": "string - detailed 2-3 paragraph instruction for an LLM user-simulator to roleplay this user",
-    "referenceMessages": [{"role": "user", "content": "string", "turnIndex": 0}],
+    "behaviorAnchors": ["bullet phrase", ...],
     "_sourceTranscriptId": "string - the transcript ID",
     "_languages": ["string - detected languages"]
   }
 ]
 
-Extract 1-3 key user messages as referenceMessages (role is always "user"). Use turnIndex to indicate the order.
+For behaviorAnchors: ${BEHAVIOR_ANCHORS_INSTRUCTION}
 
 Respond ONLY with the JSON array.`,
     temperature: 0.6,
@@ -401,16 +402,25 @@ export const generateScenarios = internalAction({
             try {
               const persona = extractPersona(s);
 
-              // Extract reference messages
-              const rawRefMsgs = Array.isArray(s.referenceMessages) ? s.referenceMessages : [];
-              const referenceMessages = rawRefMsgs.slice(0, 3).map((m: unknown, idx: number) => {
-                const msg = m as Record<string, unknown>;
-                return {
-                  role: "user" as const,
-                  content: String(msg.content ?? ""),
-                  turnIndex: typeof msg.turnIndex === "number" ? msg.turnIndex : idx,
-                };
-              });
+              // Snapshot full transcript (no filtering) and length stats
+              const sourceTranscript = batchTranscripts[j];
+              const referenceTranscript = sourceTranscript?.messages.map((m) => ({
+                id: m.id,
+                role: m.role as "user" | "human_agent" | "workflow_input",
+                text: m.text,
+              })) ?? [];
+
+              const userWordCounts = referenceTranscript
+                .filter((m) => m.role === "user")
+                .map((m) => wordCount(m.text));
+
+              const userMessageLengthStats = userWordCounts.length > 0
+                ? { median: median(userWordCounts), p90: p90(userWordCounts) }
+                : undefined;
+
+              const behaviorAnchors = Array.isArray(s.behaviorAnchors)
+                ? (s.behaviorAnchors as unknown[]).map(String).slice(0, 6)
+                : [];
 
               // Always use the actual transcript ID, not LLM output
               const sourceTranscriptId = batchTranscripts[j]?._id;
@@ -431,8 +441,10 @@ export const generateScenarios = internalAction({
                   reasonForContact: String(s.reasonForContact ?? "Needs assistance"),
                   knownInfo: String(s.knownInfo ?? "Basic information about the service"),
                   unknownInfo: String(s.unknownInfo ?? "Specific details about their issue"),
-                  instruction: String(s.instruction ?? "Contact support about your issue"),
-                  referenceMessages: referenceMessages.length > 0 ? referenceMessages : undefined,
+                  instruction: "",   // legacy field; new generation no longer authors prose
+                  referenceTranscript,
+                  userMessageLengthStats,
+                  behaviorAnchors,
                   sourceType: "transcript_grounded",
                   sourceTranscriptId,
                   languages,
