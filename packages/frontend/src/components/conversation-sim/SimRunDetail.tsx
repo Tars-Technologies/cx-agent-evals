@@ -8,6 +8,7 @@ import { groupMessagesWithToolCalls } from "@/lib/messageDisplay";
 import { ToolCallGroup } from "@/components/conversation-sim/ToolCallGroup";
 import { ScenarioSummaryBand } from "@/components/conversation-sim/ScenarioSummaryBand";
 import { SourceTranscriptPanel } from "@/components/livechat/SourceTranscriptPanel";
+import { ChatBubble } from "@/components/livechat/ChatBubble";
 
 export function SimRunDetail({
   runId,
@@ -37,7 +38,10 @@ export function SimRunDetail({
     setShowSource(false);
   }
 
-  const hasSource = !!scenario?.sourceTranscriptId;
+  const hasSnapshot = !!scenario?.referenceTranscript && scenario.referenceTranscript.length > 0;
+  const hasFetchableSource = !!scenario?.sourceTranscriptId;
+  const hasExemplars = !!scenario?.referenceExemplars && scenario.referenceExemplars.length > 0;
+  const hasSource = hasSnapshot || hasFetchableSource || hasExemplars;
 
   if (!run) {
     return <div className="flex items-center justify-center h-full text-text-dim text-xs">Loading...</div>;
@@ -162,11 +166,53 @@ export function SimRunDetail({
           )}
         </div>
 
-        {showSource && hasSource && scenario?.sourceTranscriptId && (
+        {showSource && hasSource && (
           <div className="w-1/2 min-w-0 border-l border-border overflow-hidden">
-            <SourceTranscriptPanel
-              sourceTranscriptId={scenario.sourceTranscriptId as Id<"livechatConversations">}
-            />
+            {hasSnapshot ? (
+              <div className="flex flex-col h-full">
+                <div className="px-4 py-2.5 border-b border-border bg-bg-elevated/50 flex-shrink-0">
+                  <div className="text-xs text-text font-medium truncate">
+                    Source transcript (snapshot)
+                  </div>
+                  <div className="text-[10px] text-text-dim mt-0.5">
+                    {scenario!.referenceTranscript!.length} message
+                    {scenario!.referenceTranscript!.length !== 1 ? "s" : ""}
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto px-3 py-3">
+                  {scenario!.referenceTranscript!.map((m) => (
+                    <ChatBubble key={m.id} id={m.id} role={m.role} text={m.text} />
+                  ))}
+                </div>
+              </div>
+            ) : hasFetchableSource && scenario?.sourceTranscriptId ? (
+              <SourceTranscriptPanel
+                sourceTranscriptId={scenario.sourceTranscriptId as Id<"livechatConversations">}
+              />
+            ) : hasExemplars ? (
+              <div className="flex flex-col h-full">
+                <div className="px-4 py-2.5 border-b border-border bg-bg-elevated/50 flex-shrink-0">
+                  <div className="text-xs text-text font-medium">Style exemplars</div>
+                  <div className="text-[10px] text-text-dim mt-0.5">
+                    Synthetic scenario — no source conversation
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+                  {scenario!.referenceExemplars!.map((ex, i) => (
+                    <details key={i} className="text-xs" open>
+                      <summary className="cursor-pointer text-text-dim mb-1.5 select-none">
+                        Exemplar {i + 1}
+                      </summary>
+                      <div>
+                        {ex.messages.map((m) => (
+                          <ChatBubble key={m.id} id={m.id} role={m.role} text={m.text} />
+                        ))}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
       </div>
