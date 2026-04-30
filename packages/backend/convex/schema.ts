@@ -804,6 +804,25 @@ export default defineSchema({
     sourceType: v.optional(v.union(v.literal("transcript_grounded"), v.literal("synthetic"))),
     sourceTranscriptId: v.optional(v.id("livechatConversations")),
     languages: v.optional(v.array(v.string())),
+    // ── New: user-simulator fidelity (additive) ──
+    referenceTranscript: v.optional(v.array(v.object({
+      id: v.number(),
+      role: v.union(v.literal("user"), v.literal("human_agent"), v.literal("workflow_input")),
+      text: v.string(),
+    }))),
+    referenceExemplars: v.optional(v.array(v.object({
+      sourceTranscriptId: v.id("livechatConversations"),
+      messages: v.array(v.object({
+        id: v.number(),
+        role: v.union(v.literal("user"), v.literal("human_agent"), v.literal("workflow_input")),
+        text: v.string(),
+      })),
+    }))),
+    userMessageLengthStats: v.optional(v.object({
+      median: v.number(),
+      p90: v.number(),
+    })),
+    behaviorAnchors: v.optional(v.array(v.string())),
   })
     .index("by_dataset", ["datasetId"])
     .index("by_org", ["orgId"]),
