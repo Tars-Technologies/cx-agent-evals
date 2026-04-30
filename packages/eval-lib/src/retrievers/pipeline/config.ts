@@ -169,6 +169,13 @@ export const DEFAULT_SEARCH_CONFIG: SearchConfig = {
 
 export interface RerankRefinementStep {
   readonly type: "rerank";
+  /**
+   * Cap the rerank output to the top N chunks. When omitted, the rerank step
+   * narrows to the pipeline's overall topK — same behavior as before this
+   * field was added. Use this to widen-then-narrow (e.g. fetch 25 candidates,
+   * keep the top 6 after reranking).
+   */
+  readonly topN?: number;
 }
 
 export interface ThresholdRefinementStep {

@@ -11,10 +11,23 @@ export const bySimulation = query({
     const { orgId } = await getAuthContext(ctx);
     const sim = await ctx.db.get(simulationId);
     if (!sim || sim.orgId !== orgId) throw new Error("Simulation not found");
-    return ctx.db
+    const runs = await ctx.db
       .query("conversationSimRuns")
       .withIndex("by_simulation", (q) => q.eq("simulationId", simulationId))
       .collect();
+
+    // Batch-load scenario topics
+    const scenarioIds = [...new Set(runs.map(r => r.scenarioId))];
+    const scenarioMap = new Map<string, string>();
+    for (const sid of scenarioIds) {
+      const scenario = await ctx.db.get(sid);
+      if (scenario) scenarioMap.set(sid.toString(), scenario.topic);
+    }
+
+    return runs.map(r => ({
+      ...r,
+      scenarioTopic: scenarioMap.get(r.scenarioId.toString()) ?? "",
+    }));
   },
 });
 

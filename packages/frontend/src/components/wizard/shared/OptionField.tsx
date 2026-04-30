@@ -62,18 +62,30 @@ function renderInput(
         </select>
       );
 
-    case "number":
+    case "number": {
+      const numericValue =
+        value != null
+          ? Number(value)
+          : option.default != null
+            ? Number(option.default)
+            : "";
       return (
         <input
           type="number"
-          value={value != null ? Number(value) : Number(option.default ?? 0)}
+          value={numericValue}
           min={option.constraints?.min}
           max={option.constraints?.max}
           step={option.constraints?.step}
-          onChange={(e) => onChange(option.key, Number(e.target.value))}
+          onChange={(e) =>
+            onChange(
+              option.key,
+              e.target.value === "" ? undefined : Number(e.target.value),
+            )
+          }
           className={baseInputClass}
         />
       );
+    }
 
     case "boolean":
       return (

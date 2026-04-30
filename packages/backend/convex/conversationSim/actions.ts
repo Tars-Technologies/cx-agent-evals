@@ -7,10 +7,6 @@ import { generateText } from "ai";
 import { resolveModel, runAgentLoop } from "../lib/agentLoop";
 import type { RetrieverInfo, AgentLoopConfig } from "../lib/agentLoop";
 import { composeSystemPrompt } from "../agents/promptTemplate";
-import { runCodeEvaluator } from "./evaluation";
-import type { EvalInput } from "./evaluation";
-import { runLLMJudge } from "./judge";
-import type { JudgeConfig, JudgeContext } from "./judge";
 
 export const runConversationSim = internalAction({
   args: { runId: v.id("conversationSimRuns") },
@@ -35,12 +31,6 @@ export const runConversationSim = internalAction({
 
     const agent = await ctx.runQuery(internal.crud.agents.getInternal, { id: run.agentId });
     if (!agent) throw new Error("Agent not found");
-
-    const evalSet = await ctx.runQuery(
-      internal.conversationSim.evaluatorSets.getInternal,
-      { id: simulation.evaluatorSetId },
-    );
-    if (!evalSet) throw new Error("Evaluator set not found");
 
     // Load retrievers for agent
     const retrieverInfos: RetrieverInfo[] = [];
@@ -100,7 +90,6 @@ export const runConversationSim = internalAction({
     let totalTokens = 0;
     let toolCallCount = 0;
     let consecutiveErrors = 0;
-    const allToolCalls: Array<{ toolName: string; args: Record<string, any>; result: string }> = [];
 
     const maxTurnPairs = simulation.maxTurns;
     const timeoutMs = simulation.timeoutMs;
@@ -121,10 +110,12 @@ export const runConversationSim = internalAction({
       } else {
         // Generate user message via LLM
         // Role-flip messages for user-sim (agent becomes "user", user becomes "assistant")
-        const flippedMessages = messages.map(m => ({
-          role: (m.role === "user" ? "assistant" : "user") as "user" | "assistant",
-          content: m.content,
-        }));
+        const flippedMessages = messages.length > 0
+          ? messages.map(m => ({
+              role: (m.role === "user" ? "assistant" : "user") as "user" | "assistant",
+              content: m.content,
+            }))
+          : [{ role: "user" as const, content: "Begin the conversation." }];
 
         const userSimResult = await generateText({
           model: resolveModel(simulation.userSimModel),
@@ -221,7 +212,6 @@ export const runConversationSim = internalAction({
       // Accumulate stats
       totalTokens += agentResult.usage.promptTokens + agentResult.usage.completionTokens;
       toolCallCount += agentResult.toolCalls.length;
-      allToolCalls.push(...agentResult.toolCalls);
 
       // Check agent done
       if (agentResult.done) {
@@ -235,95 +225,15 @@ export const runConversationSim = internalAction({
       terminationReason = "max_turns";
     }
 
-    // 3. EVALUATE
-    const evalInput: EvalInput = {
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
-      toolCalls: allToolCalls,
-    };
-
-    // Build transcript string for LLM judges
-    const transcript = messages.map(m => `${m.role}: ${m.content}`).join("\n\n");
-    const toolCallsStr = allToolCalls.length > 0
-      ? allToolCalls.map(tc => `${tc.toolName}(${JSON.stringify(tc.args)}) → ${tc.result.slice(0, 500)}`).join("\n")
-      : undefined;
-
-    // Collect KB documents from tool call results for judge context
-    const kbDocs = allToolCalls.map(tc => {
-      try { return JSON.parse(tc.result).map((r: any) => r.content).join("\n---\n"); }
-      catch { return tc.result; }
-    }).join("\n===\n");
-
-    const evaluatorResults: Array<{
-      evaluatorId: any;
-      evaluatorName: string;
-      passed: boolean;
-      justification: string;
-      required: boolean;
-    }> = [];
-
-    for (const evalId of evalSet.evaluatorIds) {
-      const evaluator = await ctx.runQuery(
-        internal.conversationSim.evaluators.getInternal,
-        { id: evalId },
-      );
-      if (!evaluator) continue;
-
-      const isRequired = evalSet.requiredEvaluatorIds.some(
-        (rid: any) => rid.toString() === evalId.toString(),
-      );
-
-      let result;
-      if (evaluator.type === "code" && evaluator.codeConfig) {
-        result = runCodeEvaluator(evaluator.codeConfig.checkType, evaluator.codeConfig.params, evalInput);
-      } else if (evaluator.type === "llm_judge" && evaluator.judgeConfig) {
-        const judgeConfig: JudgeConfig = {
-          rubric: evaluator.judgeConfig.rubric,
-          passExamples: evaluator.judgeConfig.passExamples,
-          failExamples: evaluator.judgeConfig.failExamples,
-          model: evaluator.judgeConfig.model,
-          inputContext: evaluator.judgeConfig.inputContext,
-        };
-        const judgeContext: JudgeContext = {
-          transcript,
-          toolCalls: toolCallsStr,
-          kbDocuments: kbDocs || undefined,
-        };
-        result = await runLLMJudge(judgeConfig, judgeContext);
-      } else {
-        result = { passed: false, justification: "Invalid evaluator configuration" };
-      }
-
-      evaluatorResults.push({
-        evaluatorId: evalId,
-        evaluatorName: evaluator.name,
-        passed: result.passed,
-        justification: result.justification,
-        required: isRequired,
-      });
-    }
-
-    // Compute score and pass/fail
-    const score = evaluatorResults.length > 0
-      ? evaluatorResults.filter(r => r.passed).length / evaluatorResults.length
-      : 1;
-
-    const allRequiredPassed = evaluatorResults
-      .filter(r => r.required)
-      .every(r => r.passed);
-    const passed = allRequiredPassed && score >= simulation.passThreshold;
-
-    // 4. SAVE
+    // 3. SAVE
     const latencyMs = Date.now() - startTime;
-    const turnCount = Math.ceil(messages.length / 2); // turn pairs
+    const turnCount = Math.ceil(messages.length / 2);
 
     await ctx.runMutation(internal.conversationSim.runs.updateRun, {
       runId,
       status: "completed",
       terminationReason,
       turnCount,
-      evaluatorResults,
-      score,
-      passed,
       toolCallCount,
       totalTokens,
       latencyMs,

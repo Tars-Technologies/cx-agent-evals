@@ -76,6 +76,19 @@ export const get = query({
   },
 });
 
+// Like `get`, but returns null instead of throwing when the scenario is missing
+// or belongs to a different org. Used by views that link to scenarios which may
+// be deleted independently.
+export const getMaybe = query({
+  args: { id: v.id("conversationScenarios") },
+  handler: async (ctx, { id }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const scenario = await ctx.db.get(id);
+    if (!scenario || scenario.orgId !== orgId) return null;
+    return scenario;
+  },
+});
+
 // ─── Mutations ───
 
 export const create = mutation({

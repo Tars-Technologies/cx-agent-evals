@@ -16,50 +16,33 @@ export function CreateSimulationModal({
 }) {
   const startSimulation = useMutation(api.conversationSim.orchestration.start);
 
-  // Seed template evaluators if needed
-  const seedTemplates = useMutation(api.conversationSim.evaluators.seedTemplates);
-
   // Load conversation_sim datasets (org-wide)
   const datasets = useQuery(api.crud.datasets.list) ?? [];
   const simDatasets = datasets.filter(d => d.type === "conversation_sim");
 
-  // Load evaluator sets
-  const evaluatorSets = useQuery(api.conversationSim.evaluatorSets.byOrg) ?? [];
-
   // Form state
   const [datasetId, setDatasetId] = useState<Id<"datasets"> | "">("");
-  const [evaluatorSetId, setEvaluatorSetId] = useState<Id<"evaluatorSets"> | "">("");
   const [k, setK] = useState(1);
-  const [passThreshold, setPassThreshold] = useState(0.8);
-  const [concurrency, setConcurrency] = useState(3);
-  const [maxTurns, setMaxTurns] = useState(20);
-  const [timeoutMs, setTimeoutMs] = useState(300000);
+  const [concurrency, setConcurrency] = useState(2);
+  const [maxTurns, setMaxTurns] = useState(5);
+  const [timeoutMs, setTimeoutMs] = useState(120000);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [seeded, setSeeded] = useState(false);
 
   // Compute total runs
   const selectedDataset = simDatasets.find(d => d._id === datasetId);
   const scenarioCount = selectedDataset?.scenarioCount ?? 0;
   const totalRuns = scenarioCount * k;
 
-  // Auto-seed templates on first visit if no evaluator sets exist
-  if (evaluatorSets.length === 0 && !seeded) {
-    setSeeded(true);
-    seedTemplates().catch(() => {});
-  }
-
   async function handleStart() {
-    if (!datasetId || !evaluatorSetId) return;
+    if (!datasetId) return;
     setStarting(true);
     setError(null);
     try {
       const simId = await startSimulation({
         agentId,
         datasetId: datasetId as Id<"datasets">,
-        evaluatorSetId: evaluatorSetId as Id<"evaluatorSets">,
         k,
-        passThreshold,
         concurrency,
         maxTurns,
         timeoutMs,
@@ -97,36 +80,11 @@ export function CreateSimulationModal({
             </select>
           </Field>
 
-          {/* Evaluator Set */}
-          <Field label="Evaluator Set">
-            <select
-              value={evaluatorSetId}
-              onChange={e => setEvaluatorSetId(e.target.value as Id<"evaluatorSets">)}
-              className="w-full bg-bg border border-border rounded px-3 py-1.5 text-xs text-text focus:border-accent outline-none"
-            >
-              <option value="">Select evaluator set...</option>
-              {evaluatorSets.map(es => (
-                <option key={es._id} value={es._id}>
-                  {es.name} ({es.evaluatorIds.length} evaluators)
-                </option>
-              ))}
-            </select>
-          </Field>
-
           {/* k (passes per scenario) */}
           <Field label={`Passes per Scenario (k=${k})`}>
             <input
               type="range" min={1} max={5} value={k}
               onChange={e => setK(Number(e.target.value))}
-              className="w-full accent-[#6ee7b7]"
-            />
-          </Field>
-
-          {/* Pass Threshold */}
-          <Field label={`Pass Threshold (${(passThreshold * 100).toFixed(0)}%)`}>
-            <input
-              type="range" min={0} max={100} value={passThreshold * 100}
-              onChange={e => setPassThreshold(Number(e.target.value) / 100)}
               className="w-full accent-[#6ee7b7]"
             />
           </Field>
@@ -181,7 +139,7 @@ export function CreateSimulationModal({
           </button>
           <button
             onClick={handleStart}
-            disabled={!datasetId || !evaluatorSetId || starting}
+            disabled={!datasetId || starting}
             className="px-4 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {starting ? "Starting..." : `Start Simulation (${totalRuns} runs)`}

@@ -76,6 +76,7 @@ export const DEFAULT_SEARCH_CONFIG: SearchConfig = {
 // Stage 4 — Refinement
 export interface RerankRefinementStep {
   readonly type: "rerank";
+  readonly topN?: number;
 }
 
 export interface ThresholdRefinementStep {

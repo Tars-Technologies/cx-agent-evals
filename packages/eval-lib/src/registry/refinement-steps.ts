@@ -8,8 +8,18 @@ export const REFINEMENT_STEP_REGISTRY: readonly RegistryEntry[] = [
       "Reorders retrieved chunks using a cross-encoder reranker model for more accurate relevance scoring. The reranker provider and model are configured separately.",
     status: "available",
     tags: ["quality"],
-    options: [],
-    defaults: {},
+    options: [
+      {
+        key: "topN",
+        label: "Top N (after rerank)",
+        description:
+          "Number of chunks to keep after reranking. Lower than the input size (e.g. 5 from 25) to widen-then-narrow.",
+        type: "number",
+        default: 5,
+        constraints: { min: 1, max: 100, step: 1 },
+      },
+    ],
+    defaults: { topN: 5 },
   },
   {
     id: "threshold",
