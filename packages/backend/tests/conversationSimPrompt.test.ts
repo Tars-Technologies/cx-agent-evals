@@ -168,3 +168,84 @@ describe("extractExamples", () => {
     expect(out).toEqual([{ agent: "Q2", user: "u2" }]);
   });
 });
+
+import { sampleCorpusExemplars } from "../convex/conversationSim/sampleCorpusExemplars";
+
+describe("sampleCorpusExemplars", () => {
+  type LCMessage = { id: number; role: "user" | "human_agent" | "workflow_input"; text: string };
+  type LCTranscript = { _id: Id<"livechatConversations">; messages: LCMessage[] };
+
+  const tid = (n: number) => `j${n.toString().padStart(16, "0")}` as Id<"livechatConversations">;
+
+  function transcriptWith(id: number, msgs: LCMessage[]): LCTranscript {
+    return { _id: tid(id), messages: msgs };
+  }
+
+  it("returns up to count exemplars when corpus is large enough", () => {
+    const corpus: LCTranscript[] = Array.from({ length: 10 }, (_, i) =>
+      transcriptWith(i, [
+        { id: 1, role: "human_agent", text: "Hello?" },
+        { id: 2, role: "user", text: `short ${i}` },
+        { id: 3, role: "human_agent", text: "Another?" },
+        { id: 4, role: "user", text: "yep" },
+      ]),
+    );
+    const out = sampleCorpusExemplars(corpus, 8);
+    expect(out).toHaveLength(8);
+    for (const ex of out) {
+      expect(ex.sourceTranscriptId).toMatch(/^j/);
+      expect(ex.messages.length).toBeGreaterThanOrEqual(1);
+      // Every exemplar ends with a user message
+      expect(ex.messages[ex.messages.length - 1].role).toBe("user");
+    }
+  });
+
+  it("returns fewer than count when corpus is too small", () => {
+    const corpus: LCTranscript[] = [
+      transcriptWith(1, [
+        { id: 1, role: "human_agent", text: "Hi" },
+        { id: 2, role: "user", text: "ok" },
+      ]),
+    ];
+    const out = sampleCorpusExemplars(corpus, 8);
+    expect(out.length).toBeLessThanOrEqual(1);
+  });
+
+  it("returns empty array when corpus has no user messages", () => {
+    const corpus: LCTranscript[] = [
+      transcriptWith(1, [
+        { id: 1, role: "human_agent", text: "Hi" },
+        { id: 2, role: "human_agent", text: "anyone?" },
+      ]),
+    ];
+    expect(sampleCorpusExemplars(corpus, 8)).toEqual([]);
+  });
+
+  it("includes intervening workflow_input rows in the exemplar window", () => {
+    const corpus: LCTranscript[] = [
+      transcriptWith(1, [
+        { id: 1, role: "human_agent", text: "What's your name?" },
+        { id: 2, role: "workflow_input", text: "[event: user typing]" },
+        { id: 3, role: "user", text: "Ahmed" },
+      ]),
+    ];
+    const out = sampleCorpusExemplars(corpus, 8);
+    expect(out).toHaveLength(1);
+    expect(out[0].messages.map((m) => m.role)).toEqual(["human_agent", "workflow_input", "user"]);
+  });
+
+  it("relaxes the 30-word filter if too few short messages", () => {
+    // All user messages are >30 words
+    const longText = Array(40).fill("word").join(" ");
+    const corpus: LCTranscript[] = Array.from({ length: 5 }, (_, i) =>
+      transcriptWith(i, [
+        { id: 1, role: "human_agent", text: "Hi?" },
+        { id: 2, role: "user", text: longText },
+      ]),
+    );
+    const out = sampleCorpusExemplars(corpus, 3);
+    // Must still return up to 3 exemplars even though all are >30 words
+    expect(out.length).toBeGreaterThan(0);
+    expect(out.length).toBeLessThanOrEqual(3);
+  });
+});
