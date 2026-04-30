@@ -25,6 +25,14 @@ export interface Scenario {
   sourceType?: "transcript_grounded" | "synthetic";
   sourceTranscriptId?: string;
   languages?: string[];
+  // ── New: user-simulator fidelity ──
+  behaviorAnchors?: string[];
+  userMessageLengthStats?: { median: number; p90: number };
+  referenceTranscript?: Array<{ id: number; role: "user" | "human_agent" | "workflow_input"; text: string }>;
+  referenceExemplars?: Array<{
+    sourceTranscriptId: string;
+    messages: Array<{ id: number; role: "user" | "human_agent" | "workflow_input"; text: string }>;
+  }>;
 }
 
 export function ScenarioFields({ scenario }: { scenario: Scenario }) {
@@ -90,18 +98,86 @@ export function ScenarioFields({ scenario }: { scenario: Scenario }) {
         </div>
       </section>
 
-      {/* Instruction */}
-      <section>
-        <h3 className="text-[11px] text-text-dim uppercase tracking-wider mb-2">Instruction</h3>
-        <div className="bg-bg border border-border rounded-md p-3">
-          <pre className="text-xs text-text leading-relaxed whitespace-pre-wrap font-mono">
-            {scenario.instruction}
-          </pre>
-        </div>
-      </section>
+      {/* How this user speaks (new) OR legacy Instruction */}
+      {scenario.behaviorAnchors && scenario.behaviorAnchors.length > 0 ? (
+        <section>
+          <h3 className="text-[11px] text-text-dim uppercase tracking-wider mb-2">How this user speaks</h3>
+          <ul className="space-y-1">
+            {scenario.behaviorAnchors.map((a, i) => (
+              <li key={i} className="text-xs text-text-dim leading-relaxed flex">
+                <span className="text-text-dim mr-2">•</span>
+                <span>{a}</span>
+              </li>
+            ))}
+          </ul>
+          {scenario.userMessageLengthStats && (
+            <div className="mt-2">
+              <Chip color="gray">
+                Typical length: median {scenario.userMessageLengthStats.median}w / p90 {scenario.userMessageLengthStats.p90}w
+              </Chip>
+            </div>
+          )}
+        </section>
+      ) : scenario.instruction ? (
+        <section>
+          <h3 className="text-[11px] text-text-dim uppercase tracking-wider mb-2">Instruction</h3>
+          <div className="bg-bg border border-border rounded-md p-3">
+            <pre className="text-xs text-text leading-relaxed whitespace-pre-wrap font-mono">
+              {scenario.instruction}
+            </pre>
+          </div>
+          {scenario.userMessageLengthStats && (
+            <div className="mt-2">
+              <Chip color="gray">
+                Typical length: median {scenario.userMessageLengthStats.median}w / p90 {scenario.userMessageLengthStats.p90}w
+              </Chip>
+            </div>
+          )}
+        </section>
+      ) : null}
 
-      {/* Reference Messages */}
-      {scenario.referenceMessages && scenario.referenceMessages.length > 0 && (
+      {/* Source pane (new fields prefer; legacy fallback) */}
+      {scenario.referenceTranscript && scenario.referenceTranscript.length > 0 ? (
+        <section>
+          <h3 className="text-[11px] text-text-dim uppercase tracking-wider mb-2">
+            Source transcript ({scenario.referenceTranscript.length} messages)
+          </h3>
+          <div className="text-xs text-text-dim leading-relaxed">
+            Open this scenario in a simulation run to compare against the snapshot.
+          </div>
+        </section>
+      ) : scenario.referenceExemplars && scenario.referenceExemplars.length > 0 ? (
+        <section>
+          <h3 className="text-[11px] text-text-dim uppercase tracking-wider mb-2">
+            Style exemplars ({scenario.referenceExemplars.length})
+          </h3>
+          <details>
+            <summary className="text-xs text-text-dim cursor-pointer select-none">
+              Expand to view sampled exchanges
+            </summary>
+            <div className="mt-2 space-y-2">
+              {scenario.referenceExemplars.slice(0, 3).map((ex, i) => (
+                <div
+                  key={i}
+                  className="bg-bg-elevated/50 border border-border rounded-md p-3 pl-4 border-l-2 border-l-purple-500/40"
+                >
+                  <div className="text-[10px] text-purple-400 uppercase mb-1">Exemplar {i + 1}</div>
+                  {ex.messages.map((m, j) => (
+                    <div key={j} className="text-xs text-text-dim leading-relaxed mb-0.5">
+                      <strong className="text-text">{m.role}:</strong> {m.text}
+                    </div>
+                  ))}
+                </div>
+              ))}
+              {scenario.referenceExemplars.length > 3 && (
+                <div className="text-[10px] text-text-dim">
+                  + {scenario.referenceExemplars.length - 3} more exemplars
+                </div>
+              )}
+            </div>
+          </details>
+        </section>
+      ) : scenario.referenceMessages && scenario.referenceMessages.length > 0 ? (
         <section>
           <h3 className="text-[11px] text-text-dim uppercase tracking-wider mb-2">
             Reference Messages ({scenario.referenceMessages.length})
@@ -121,7 +197,7 @@ export function ScenarioFields({ scenario }: { scenario: Scenario }) {
             ))}
           </div>
         </section>
-      )}
+      ) : null}
     </div>
   );
 }
