@@ -169,6 +169,82 @@ describe("extractExamples", () => {
   });
 });
 
+import { buildUserSimPrompt } from "../convex/conversationSim/prompt";
+
+describe("buildUserSimPrompt", () => {
+  const baseScenario = {
+    persona: {
+      type: "Busy professional",
+      traits: ["terse", "direct"],
+      communicationStyle: "casual",
+      patienceLevel: "low" as const,
+    },
+    topic: "Mobile postpaid plans",
+    intent: "Switch number to Vodafone",
+    complexity: "medium" as const,
+    reasonForContact: "Considering a switch from a competitor",
+    knownInfo: "On a competitor's prepaid plan",
+    unknownInfo: "Vodafone postpaid pricing and porting process",
+    instruction: "(legacy prose, ignored when new fields are present)",
+    behaviorAnchors: [
+      "Sends fragments, not full sentences",
+      "Answers direct questions with one or two words",
+    ],
+    userMessageLengthStats: { median: 4, p90: 8 },
+    referenceTranscript: [
+      { id: 1, role: "human_agent" as const, text: "Could I get your name?" },
+      { id: 2, role: "user" as const, text: "Hi I want to switch to Vodafone" },
+      { id: 3, role: "human_agent" as const, text: "What's your name?" },
+      { id: 4, role: "user" as const, text: "Syed" },
+      { id: 5, role: "human_agent" as const, text: "Which plan?" },
+      { id: 6, role: "user" as const, text: "postpaid" },
+    ],
+  };
+
+  it("renders all sections when all data is present", () => {
+    const prompt = buildUserSimPrompt(baseScenario, 4271);
+    expect(prompt).toMatchSnapshot();
+  });
+
+  it("omits # How this user speaks when behaviorAnchors empty", () => {
+    const prompt = buildUserSimPrompt({ ...baseScenario, behaviorAnchors: [] }, 4271);
+    expect(prompt).not.toContain("# How this user speaks");
+  });
+
+  it("omits # Message length when userMessageLengthStats missing", () => {
+    const prompt = buildUserSimPrompt({ ...baseScenario, userMessageLengthStats: undefined }, 4271);
+    expect(prompt).not.toContain("# Message length");
+  });
+
+  it("omits # Style examples when extractExamples returns empty", () => {
+    const prompt = buildUserSimPrompt(
+      { ...baseScenario, referenceTranscript: [] },
+      4271,
+    );
+    expect(prompt).not.toContain("# Style examples");
+  });
+
+  it("falls back to # Instructions when only legacy instruction is present", () => {
+    const prompt = buildUserSimPrompt(
+      {
+        ...baseScenario,
+        behaviorAnchors: undefined,
+        userMessageLengthStats: undefined,
+        referenceTranscript: undefined,
+        instruction: "Legacy prose narrative.",
+      },
+      4271,
+    );
+    expect(prompt).toContain("# Instructions");
+    expect(prompt).toContain("Legacy prose narrative.");
+  });
+
+  it("seed appears in the prompt", () => {
+    const prompt = buildUserSimPrompt(baseScenario, 9999);
+    expect(prompt).toContain("9999");
+  });
+});
+
 import { sampleCorpusExemplars } from "../convex/conversationSim/sampleCorpusExemplars";
 
 describe("sampleCorpusExemplars", () => {
