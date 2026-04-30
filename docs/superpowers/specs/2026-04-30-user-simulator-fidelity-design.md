@@ -137,13 +137,19 @@ Two cheap deterministic passes per transcript before the LLM call:
    const wc = transcript.messages
      .filter(m => m.role === "user")
      .map(m => m.text.split(/\s+/).filter(Boolean).length);
-   const userMessageLengthStats = { median: median(wc), p90: p90(wc) };
+   const userMessageLengthStats = wc.length > 0
+     ? { median: median(wc), p90: p90(wc) }
+     : undefined;  // skip the field; simulator falls back to omitting the length section
    ```
 
-The LLM call's response shape changes:
+   Edge case: a transcript with zero `user` messages (rare — possibly a bot-only or mis-tagged transcript) yields no stats. The field is left unset rather than defaulted; the simulator omits the length section in that case.
 
-- **Drop**: `instruction` (2-3 paragraph prose), `referenceMessages` (≤3 user messages).
-- **Add**: `behaviorAnchors: string[]` — *"3-6 short bullet phrases capturing how this specific user spoke. Each ≤12 words. Examples: 'Answers questions with a single word', 'Switches to Arabic when frustrated', 'Splits questions across multiple short messages'. Extract observable patterns from the transcript, not generic persona traits."*
+The LLM call's JSON response shape changes:
+
+- **Drop** from response: `instruction`, `referenceMessages`.
+- **Add** to response: `behaviorAnchors: string[]` — *"3-6 short bullet phrases capturing how this specific user spoke. Each ≤12 words. Examples: 'Answers questions with a single word', 'Switches to Arabic when frustrated', 'Splits questions across multiple short messages'. Extract observable patterns from the transcript, not generic persona traits."*
+
+The full transcript continues to be included in the LLM call's prompt context (as today). The generator now also produces behavior anchors instead of prose `instruction`.
 
 `referenceTranscript` and `userMessageLengthStats` are computed deterministically — no LLM cost.
 
@@ -152,11 +158,14 @@ The LLM call's response shape changes:
 Two new pre-LLM passes (one-time per generation job, reused across the synthetic batch):
 
 1. **Sample corpus exemplars** — `sampleCorpusExemplars(transcripts, count = 8)`:
-   - Pick `count` user messages from across the loaded transcript pool, preferring shorter ones (≤30 words; filters out monologues).
-   - For each, snapshot a short window around it (preceding `human_agent` message + the user message; include intervening `workflow_input` events for completeness).
-   - Tag each exemplar with `sourceTranscriptId` for provenance.
+   - Filter pool: all `role === "user"` messages with `text.split(/\s+/).length ≤ 30` (filters out monologues).
+   - If filtered pool has < `count` candidates, relax to all `user` messages.
+   - If still < `count`, take all available (returns fewer than `count` exemplars; this is acceptable).
+   - Random-sample `count` (or all available) from the filtered pool.
+   - For each picked user message, snapshot a short window: preceding `human_agent` message (skipping `workflow_input` events backward) + the user message itself + any `workflow_input` rows between them. If no preceding `human_agent` exists, the exemplar's `messages` starts with the `user` row alone.
+   - Tag each exemplar with the `sourceTranscriptId` it came from.
 
-2. **Compute corpus-level length stats** — pool all user messages in the corpus, compute median/p90.
+2. **Compute corpus-level length stats** — pool all `role === "user"` messages across the corpus, compute median/p90. If pool is empty (no transcripts have user messages), skip the field.
 
 The LLM call's response shape changes the same way as grounded: drop `instruction`, add `behaviorAnchors`. The generator gets KB context + corpus profile + the sampled exemplars as input so it can write anchors that match corpus style.
 
@@ -213,7 +222,7 @@ specific question. Do NOT volunteer unrelated info or context.
   agent: {precedingHumanAgentText}
   user:  {userReplyText}
 </example>
-… (5–8 examples)
+… (up to 8 examples)
 
 # Rules
 - Stay in character throughout.
@@ -230,33 +239,59 @@ Subtly vary phrasing across re-runs. Don't break character or change goals.
 | Section | Before | After |
 |---|---|---|
 | `# Instructions` (prose, 2-3 paragraphs) | LLM-authored narrative | **removed** |
-| `# Reference Style Examples` (only if ≥2 ref msgs) | usually empty | **always populated, 5–8 examples** |
+| `# Reference Style Examples` (only if ≥2 ref msgs) | usually empty | **always populated, up to 8 examples** |
 | `# Message length` | absent (one bullet at the end) | **structured numeric soft hint** |
 | `# How this user speaks` | absent | **3-6 behavior-anchor bullets** |
 | Section ordering | rules buried at end | examples sit just before rules → highest attention |
 
 ### `extractExamples(scenario): {agent: string|null, user: string}[]`
 
-New helper that branches on schema shape and returns a uniform list:
+New helper that branches on schema shape and returns a uniform list.
+
+```ts
+type Message = { id: number; role: "user" | "human_agent" | "workflow_input"; text: string };
+
+type ScenarioForExtraction = {
+  referenceTranscript?: Message[];
+  referenceExemplars?: Array<{
+    sourceTranscriptId: Id<"livechatConversations">;
+    messages: Message[];
+  }>;
+};
+
+function extractExamples(scenario: ScenarioForExtraction): { agent: string | null; user: string }[]
+```
 
 - **Grounded** (`referenceTranscript` present):
   - Walk the transcript looking for `role === "user"` messages.
   - For each, scan backward for the immediately-preceding `role === "human_agent"` message — **skip over `workflow_input` rows**.
   - Emit `{agent: precedingHumanAgentText, user: userText}`. If no preceding `human_agent` exists (user spoke first), `agent: null`.
   - Skip the very first user message (used verbatim as turn-0 opener — see below).
-  - Sort by user-message word count ascending; take the top 5–8 to bias examples toward brevity.
+  - Sort by user-message word count ascending; take the top 8 to bias examples toward brevity. If fewer than 8 exist, take all.
 
 - **Synthetic** (`referenceExemplars` present):
   - Each exemplar is a short `messages[]` snippet. Walk it; for each `user` message, find the preceding `human_agent` (skip `workflow_input`).
   - Emit pairs in the same shape. Take all (sample size already capped at generation time).
 
+- **Neither field present** (un-backfilled scenario): return `[]`. The `# Style examples` section is then omitted from the prompt.
+
 The prompt-builder renders both branches identically.
 
 ### Turn-0 verbatim opener
 
-- **Grounded**: turn 0 = first `role === "user"` message in `referenceTranscript`. The real user's actual opener.
-- **Synthetic**: no transcript → turn 0 is LLM-generated like any other turn. Persona + behavior anchors + length hint + exemplar examples should produce a realistic opener.
-- **Backward compat fallback**: if neither new field exists (un-backfilled scenario), fall back to `referenceMessages[0]?.content` if present. Removed in a future cleanup deploy.
+Resolution order (first match wins):
+
+1. **Grounded with `referenceTranscript`**: first `role === "user"` message in the transcript. The real user's actual opener.
+2. **Un-backfilled scenario with legacy `referenceMessages[0]`**: use `referenceMessages[0].content` (backward-compat fallback). Removed in cleanup deploy.
+3. **Synthetic, or grounded transcript with no user messages, or none of the above**: turn 0 is LLM-generated like any other turn. Persona + behavior anchors + length hint + exemplar examples should produce a realistic opener.
+
+### Behavior of new prompt sections when data is missing
+
+- `# How this user speaks`: if `behaviorAnchors` is missing or empty, **omit the entire section** (no header, no bullets). The simulator falls back to imitating examples + persona.
+- `# Message length`: if `userMessageLengthStats` is missing, **omit the entire section**. No defaulted numbers.
+- `# Style examples`: if `extractExamples()` returns `[]`, **omit the entire section**. Adding the header without examples would be confusing.
+
+For un-backfilled legacy scenarios where `instruction` (prose) is the only signal: the simulator includes `instruction` under a fallback header `# Instructions` only when **none** of the new fields exist. This preserves old-shape behavior end-to-end during the rollout window.
 
 ### Why few-shot in system prompt rather than message-history prefix
 
@@ -295,7 +330,9 @@ export const backfillGrounded = internalMutation({
 
       await ctx.db.patch(s._id, {
         referenceTranscript: t.messages,
-        userMessageLengthStats: { median: median(wc), p90: p90(wc) },
+        ...(wc.length > 0
+          ? { userMessageLengthStats: { median: median(wc), p90: p90(wc) } }
+          : {}),
       });
       migrated++;
     }
@@ -304,13 +341,28 @@ export const backfillGrounded = internalMutation({
 });
 ```
 
-**`backfillBehaviorAnchors`** — `internalAction` (`"use node"`), grounded only, batches LLM calls. For each grounded scenario that has `referenceTranscript` but no `behaviorAnchors`: one `generateText` call asking for 3-6 short bullet phrases, patch. Batch size 10–20 keeps under the 10-min action timeout.
+**`backfillBehaviorAnchors`** — `internalAction` (`"use node"`), grounded only, batches LLM calls. For each grounded scenario that has `referenceTranscript` but no `behaviorAnchors`:
 
-**`backfillSynthetic`** — `internalAction` (`"use node"`). For each synthetic scenario without `referenceExemplars`: load the dataset's transcript pool (cached per batch), sample 5–8 exemplars, compute corpus-level length stats (cached per batch), one LLM call for behavior anchors, patch. Batch size 10–20.
+- Build LLM prompt: persona summary + scenario `intent`/`topic` + the full `referenceTranscript` rendered as `agent: ... / user: ...` lines.
+- Ask for 3-6 short bullet phrases ≤12 words each, with the same instruction text used by the new generation flow (kept in a shared constant, see Generation Pipeline).
+- One `generateText` call. Parse JSON array. Patch.
+- Skip synthetic scenarios (`!s.sourceTranscriptId`) — they're handled by `backfillSynthetic`.
+
+Batch size 10–20 keeps under the 10-min action timeout.
+
+**`backfillSynthetic`** — `internalAction` (`"use node"`). For each synthetic scenario without `referenceExemplars`:
+
+- Load the dataset's transcript pool **once per batch** (cached) — same query the original generation used (`config.transcriptConversationIds`, falling back to org-level recent live-chat transcripts if those IDs are stale or missing).
+- Sample exemplars via `sampleCorpusExemplars(transcripts, count = 8)` (returns up to 8).
+- Compute corpus-level `userMessageLengthStats` once per batch.
+- One `generateText` call for `behaviorAnchors` (same shared constant as above), passing persona + intent + the sampled exemplars as context.
+- Patch all four new fields if missing.
+
+Batch size 10–20. If the dataset's transcript pool can't be loaded (e.g., no transcripts attached), skip the scenario and log — `behaviorAnchors` and `userMessageLengthStats` remain unset; the simulator falls back to omitting those sections.
 
 ### Run order (per environment, dev → prod)
 
-1. `pnpm deploy:backend` — pushes migration code with widened schema.
+1. `pnpm deploy:backend` — pushes migration code with widened schema. The schema widening is **additive only** (all new fields are `v.optional`), so existing scenarios remain valid throughout the deploy. Convex deploys schema and functions atomically.
 2. Convex dashboard → Functions → run `internal.conversationSim.migrations.backfillGrounded` with `{}`. Loop on returned cursor until `isDone: true`.
 3. Run `backfillBehaviorAnchors` with `{}`. Loop on cursor.
 4. Run `backfillSynthetic` with `{}`. Loop on cursor.
@@ -340,11 +392,16 @@ Three frontend components touched. No new components.
 
 ### `packages/frontend/src/components/ScenarioFields.tsx` (display)
 
-- Replace "**Instructions**" prose block with "**How this user speaks**" — render `behaviorAnchors[]` as a bullet list. Fallback: show `instruction` if `behaviorAnchors` is empty (un-backfilled scenario).
-- Add inline badge near scenario summary: "**Typical length:** median {N}w / p90 {M}w" (read-only).
-- Replace "**Reference Messages**" panel with context-aware section:
-  - **Grounded**: small "View source transcript →" link (the side-by-side view in `SimRunDetail` already covers full transcript display).
-  - **Synthetic**: collapsible "**Style exemplars** ({count})" with agent → user pairs and a small provenance link to source transcript per exemplar.
+Section order in the displayed scenario (top → bottom):
+
+1. Persona, Topic, Intent, Complexity (existing — unchanged).
+2. Reason for contact, Known info, Unknown info (existing — unchanged).
+3. **"How this user speaks"** — `behaviorAnchors[]` as a bullet list. If empty, fall back to displaying `instruction` (un-backfilled). If both empty, omit section.
+4. **"Typical length"** badge — `median {N}w / p90 {M}w`. Omit if `userMessageLengthStats` missing.
+5. Source / exemplars (context-aware):
+   - **Grounded**: "View source transcript →" link. The side-by-side view in `SimRunDetail` covers the full transcript display.
+   - **Synthetic**: collapsible "Style exemplars ({count})" panel — agent → user pairs with a per-exemplar provenance link to the source transcript.
+   - If neither field is present (legacy scenario), fall back to existing "Reference Messages" panel.
 
 ### `packages/frontend/src/components/EditScenarioModal.tsx` (edit)
 
@@ -373,7 +430,9 @@ No required v1 change — generation populates new fields automatically. Optiona
 - `referenceTranscript` snapshotting: assert backfill copies the full transcript including `workflow_input` rows, preserves `id` and `human_agent` role, and patches the scenario.
 - `userMessageLengthStats`: assert median/p90 calculated only from `role === "user"` rows.
 - Idempotency: run `backfillGrounded` twice, assert second pass changes nothing.
+- Idempotency for `backfillBehaviorAnchors`: scenarios already having `behaviorAnchors` are skipped; synthetic scenarios are skipped.
 - Synthetic exemplar sampling: assert `backfillSynthetic` produces up to 8 exemplars (capped by available short user messages in the corpus), each with valid `sourceTranscriptId` provenance.
+- Empty-transcript edge case: scenario whose `sourceTranscriptId` resolves to a transcript with zero `user` messages → `referenceTranscript` populated, `userMessageLengthStats` left unset.
 - Fallthrough: a scenario with neither new nor old fields doesn't crash backfill — just skips.
 
 **New file `packages/backend/tests/conversationSimPrompt.test.ts`:**
