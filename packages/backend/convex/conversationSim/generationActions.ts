@@ -8,6 +8,7 @@ import { resolveModel } from "../lib/agentLoop";
 import type { Id } from "../_generated/dataModel";
 import { wordCount, median, p90 } from "./lengthStats";
 import { BEHAVIOR_ANCHORS_INSTRUCTION } from "./anchorPrompt";
+import { sampleCorpusExemplars } from "./sampleCorpusExemplars";
 
 // ─── Types ───
 
@@ -222,6 +223,7 @@ Respond ONLY with the JSON array.`,
 async function generateSyntheticScenarios(
   transcriptProfile: TranscriptProfile | null,
   kbContent: Array<{ title: string; content: string }>,
+  exemplars: Array<{ messages: Array<{ role: string; text: string }> }>,
   complexities: Array<"low" | "medium" | "high">,
   model: string,
 ): Promise<Array<Record<string, unknown>>> {
@@ -243,6 +245,16 @@ Try to cover gaps — generate personas, intents, and topics NOT already well-re
 `;
   }
 
+  let exemplarContext = "";
+  if (exemplars.length > 0) {
+    exemplarContext = `
+Real exchanges sampled from the corpus (use these to ground your behavior anchors in observable patterns):
+${exemplars.slice(0, 8).map((ex, i) =>
+  `Exemplar ${i + 1}:\n${ex.messages.map((m) => `  [${m.role}] ${m.text}`).join("\n")}`,
+).join("\n\n")}
+`;
+  }
+
   const result = await generateText({
     model: resolveModel(model),
     system:
@@ -250,6 +262,7 @@ Try to cover gaps — generate personas, intents, and topics NOT already well-re
     prompt: `Based on this knowledge base content:
 ${kbContext.slice(0, 12000)}
 ${profileContext}
+${exemplarContext}
 
 Generate exactly ${complexities.length} conversation scenarios.
 
@@ -270,11 +283,13 @@ Return a JSON array of scenarios:
     "reasonForContact": "string - why they're reaching out",
     "knownInfo": "string - what the user already knows",
     "unknownInfo": "string - what the user doesn't know and wants to find out",
-    "instruction": "string - detailed instruction for the LLM user-simulator (2-3 paragraphs describing exactly how to play this role, what to ask, how to respond)"
+    "behaviorAnchors": ["bullet phrase", ...]
   }
 ]
 
-Make each scenario unique and realistic. The instruction field should be detailed enough for an LLM to roleplay the user convincingly.
+For behaviorAnchors: ${BEHAVIOR_ANCHORS_INSTRUCTION}
+
+Make each scenario unique and realistic.
 
 Respond ONLY with the JSON array.`,
     temperature: 0.7,
@@ -353,6 +368,24 @@ export const generateScenarios = internalAction({
         );
       } catch (e) {
         console.error("Transcript analysis failed, continuing without profile:", e);
+      }
+    }
+
+    // ── Phase 1.5: Pre-sample exemplars & corpus length stats (synthetic only) ──
+    let synthExemplars: Array<{ sourceTranscriptId: Id<"livechatConversations">; messages: Array<{ id: number; role: "user" | "human_agent" | "workflow_input"; text: string }> }> = [];
+    let synthLengthStats: { median: number; p90: number } | undefined;
+
+    if (syntheticCount > 0 && transcripts.length > 0) {
+      synthExemplars = sampleCorpusExemplars(
+        transcripts as Parameters<typeof sampleCorpusExemplars>[0],
+        8,
+      );
+
+      const allUserWords = transcripts.flatMap((t) =>
+        t.messages.filter((m) => m.role === "user").map((m) => wordCount(m.text)),
+      );
+      if (allUserWords.length > 0) {
+        synthLengthStats = { median: median(allUserWords), p90: p90(allUserWords) };
       }
     }
 
@@ -484,6 +517,9 @@ export const generateScenarios = internalAction({
           const scenarios = await generateSyntheticScenarios(
             transcriptProfile,
             kbContent,
+            synthExemplars.map((ex) => ({
+              messages: ex.messages.map((m) => ({ role: m.role, text: m.text })),
+            })),
             batchComplexities,
             model,
           );
@@ -494,6 +530,9 @@ export const generateScenarios = internalAction({
             if (generatedCount >= targetCount) break;
             try {
               const persona = extractPersona(s);
+              const behaviorAnchors = Array.isArray(s.behaviorAnchors)
+                ? (s.behaviorAnchors as unknown[]).map(String).slice(0, 6)
+                : [];
 
               await ctx.runMutation(
                 internal.conversationSim.scenarios.createInternal,
@@ -507,7 +546,10 @@ export const generateScenarios = internalAction({
                   reasonForContact: String(s.reasonForContact ?? "Needs assistance"),
                   knownInfo: String(s.knownInfo ?? "Basic information about the service"),
                   unknownInfo: String(s.unknownInfo ?? "Specific details about their issue"),
-                  instruction: String(s.instruction ?? "Contact support about your issue"),
+                  instruction: "",   // legacy field; no longer authored
+                  referenceExemplars: synthExemplars,
+                  userMessageLengthStats: synthLengthStats,
+                  behaviorAnchors,
                   sourceType: "synthetic",
                   languages: [],
                 },
