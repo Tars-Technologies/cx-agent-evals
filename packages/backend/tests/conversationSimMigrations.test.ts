@@ -167,3 +167,53 @@ describe("backfillGrounded", () => {
     expect(after?.userMessageLengthStats).toBeUndefined();
   });
 });
+
+describe("backfillBehaviorAnchors", () => {
+  it("skips scenarios that already have behaviorAnchors", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const kbId = await seedKB(t, userId);
+    const datasetId = await seedDataset(t, userId, kbId);
+    const transcriptId = await seedTranscript(t, userId, [
+      { id: 1, role: "human_agent", text: "Hi" },
+      { id: 2, role: "user", text: "ok" },
+    ]);
+    await t.run(async (ctx: any) =>
+      ctx.db.insert("conversationScenarios", {
+        datasetId, orgId: TEST_ORG_ID,
+        persona: { type: "x", traits: [], communicationStyle: "casual", patienceLevel: "medium" },
+        topic: "t", intent: "i", complexity: "low",
+        reasonForContact: "x", knownInfo: "y", unknownInfo: "z",
+        instruction: "", sourceType: "transcript_grounded",
+        sourceTranscriptId: transcriptId,
+        referenceTranscript: [
+          { id: 1, role: "human_agent", text: "Hi" },
+          { id: 2, role: "user", text: "ok" },
+        ],
+        behaviorAnchors: ["already populated"],
+      }),
+    );
+
+    const result = await t.action(internal.conversationSim.migrationsActions.backfillBehaviorAnchors, {});
+    expect(result.migrated).toBe(0);
+  });
+
+  it("skips synthetic scenarios", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const kbId = await seedKB(t, userId);
+    const datasetId = await seedDataset(t, userId, kbId);
+    await t.run(async (ctx: any) =>
+      ctx.db.insert("conversationScenarios", {
+        datasetId, orgId: TEST_ORG_ID,
+        persona: { type: "x", traits: [], communicationStyle: "casual", patienceLevel: "medium" },
+        topic: "t", intent: "i", complexity: "low",
+        reasonForContact: "x", knownInfo: "y", unknownInfo: "z",
+        instruction: "", sourceType: "synthetic",
+        // no sourceTranscriptId, no referenceTranscript
+      }),
+    );
+    const result = await t.action(internal.conversationSim.migrationsActions.backfillBehaviorAnchors, {});
+    expect(result.migrated).toBe(0);
+  });
+});

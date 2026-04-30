@@ -1,4 +1,4 @@
-import { internalMutation } from "../_generated/server";
+import { internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { wordCount, median, p90 } from "./lengthStats";
 
@@ -39,5 +39,22 @@ export const backfillGrounded = internalMutation({
       isDone: result.isDone,
       continueCursor: result.isDone ? null : result.continueCursor,
     };
+  },
+});
+
+export const pageScenariosForAnchors = internalQuery({
+  args: { cursor: v.union(v.string(), v.null()), batchSize: v.number() },
+  handler: async (ctx, { cursor, batchSize }) => {
+    const result = await ctx.db
+      .query("conversationScenarios")
+      .paginate({ numItems: batchSize, cursor });
+    return result;
+  },
+});
+
+export const patchBehaviorAnchors = internalMutation({
+  args: { id: v.id("conversationScenarios"), behaviorAnchors: v.array(v.string()) },
+  handler: async (ctx, { id, behaviorAnchors }) => {
+    await ctx.db.patch(id, { behaviorAnchors });
   },
 });
