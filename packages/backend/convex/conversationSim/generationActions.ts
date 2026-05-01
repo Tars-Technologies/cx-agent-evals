@@ -6,6 +6,10 @@ import { v } from "convex/values";
 import { generateText } from "ai";
 import { resolveModel } from "../lib/agentLoop";
 import type { Id } from "../_generated/dataModel";
+import { wordCount, median, p90 } from "./lengthStats";
+import { BEHAVIOR_ANCHORS_INSTRUCTION } from "./anchorPrompt";
+import { sampleCorpusExemplars } from "./sampleCorpusExemplars";
+import { extractJson } from "./extractJson";
 
 // ─── Types ───
 
@@ -56,34 +60,6 @@ function extractPersona(s: Record<string, unknown>) {
   };
 }
 
-function extractJson(text: string): unknown {
-  // Strip markdown code fences if present
-  const stripped = text.replace(/^```(?:json)?\s*\n?/gm, "").replace(/\n?```\s*$/gm, "").trim();
-  try {
-    return JSON.parse(stripped);
-  } catch {
-    // Try to find JSON array first (most LLM responses are arrays), then object
-    // Use lazy matching to avoid capturing trailing content
-    const arrayMatch = stripped.match(/\[[\s\S]*?\](?=\s*$)/);
-    if (arrayMatch) {
-      try { return JSON.parse(arrayMatch[0]); } catch { /* fall through */ }
-    }
-    const objMatch = stripped.match(/\{[\s\S]*?\}(?=\s*$)/);
-    if (objMatch) {
-      try { return JSON.parse(objMatch[0]); } catch { /* fall through */ }
-    }
-    // Last resort: greedy match
-    const greedyArray = stripped.match(/\[[\s\S]*\]/);
-    if (greedyArray) {
-      try { return JSON.parse(greedyArray[0]); } catch { /* fall through */ }
-    }
-    const greedyObj = stripped.match(/\{[\s\S]*\}/);
-    if (greedyObj) {
-      try { return JSON.parse(greedyObj[0]); } catch { /* fall through */ }
-    }
-    throw new Error(`Failed to parse LLM response as JSON: ${stripped.slice(0, 200)}`);
-  }
-}
 
 function sampleTranscripts<T>(transcripts: T[], count: number): T[] {
   if (count <= 0) return [];
@@ -153,7 +129,7 @@ async function generateGroundedScenarios(
   let fidelityInstruction: string;
   if (fidelity >= 80) {
     fidelityInstruction =
-      "Stay very close to the original transcript. Preserve the language, intent, and style. Reference messages should be near-verbatim from the original user messages.";
+      "Stay very close to the original transcript. Preserve the language, intent, and style.";
   } else if (fidelity >= 50) {
     fidelityInstruction =
       "Capture the essence of the original transcript but allow moderate variation in wording and detail.";
@@ -202,14 +178,13 @@ For each transcript, generate a scenario object. Return a JSON array:
     "reasonForContact": "string - why they're reaching out",
     "knownInfo": "string - what the user already knows",
     "unknownInfo": "string - what the user doesn't know and wants to find out",
-    "instruction": "string - detailed 2-3 paragraph instruction for an LLM user-simulator to roleplay this user",
-    "referenceMessages": [{"role": "user", "content": "string", "turnIndex": 0}],
+    "behaviorAnchors": ["bullet phrase", ...],
     "_sourceTranscriptId": "string - the transcript ID",
     "_languages": ["string - detected languages"]
   }
 ]
 
-Extract 1-3 key user messages as referenceMessages (role is always "user"). Use turnIndex to indicate the order.
+For behaviorAnchors: ${BEHAVIOR_ANCHORS_INSTRUCTION}
 
 Respond ONLY with the JSON array.`,
     temperature: 0.6,
@@ -221,6 +196,7 @@ Respond ONLY with the JSON array.`,
 async function generateSyntheticScenarios(
   transcriptProfile: TranscriptProfile | null,
   kbContent: Array<{ title: string; content: string }>,
+  exemplars: Array<{ messages: Array<{ role: string; text: string }> }>,
   complexities: Array<"low" | "medium" | "high">,
   model: string,
 ): Promise<Array<Record<string, unknown>>> {
@@ -242,6 +218,16 @@ Try to cover gaps — generate personas, intents, and topics NOT already well-re
 `;
   }
 
+  let exemplarContext = "";
+  if (exemplars.length > 0) {
+    exemplarContext = `
+Real exchanges sampled from the corpus (use these to ground your behavior anchors in observable patterns):
+${exemplars.slice(0, 8).map((ex, i) =>
+  `Exemplar ${i + 1}:\n${ex.messages.map((m) => `  [${m.role}] ${m.text}`).join("\n")}`,
+).join("\n\n")}
+`;
+  }
+
   const result = await generateText({
     model: resolveModel(model),
     system:
@@ -249,6 +235,7 @@ Try to cover gaps — generate personas, intents, and topics NOT already well-re
     prompt: `Based on this knowledge base content:
 ${kbContext.slice(0, 12000)}
 ${profileContext}
+${exemplarContext}
 
 Generate exactly ${complexities.length} conversation scenarios.
 
@@ -269,11 +256,13 @@ Return a JSON array of scenarios:
     "reasonForContact": "string - why they're reaching out",
     "knownInfo": "string - what the user already knows",
     "unknownInfo": "string - what the user doesn't know and wants to find out",
-    "instruction": "string - detailed instruction for the LLM user-simulator (2-3 paragraphs describing exactly how to play this role, what to ask, how to respond)"
+    "behaviorAnchors": ["bullet phrase", ...]
   }
 ]
 
-Make each scenario unique and realistic. The instruction field should be detailed enough for an LLM to roleplay the user convincingly.
+For behaviorAnchors: ${BEHAVIOR_ANCHORS_INSTRUCTION}
+
+Make each scenario unique and realistic.
 
 Respond ONLY with the JSON array.`,
     temperature: 0.7,
@@ -355,6 +344,24 @@ export const generateScenarios = internalAction({
       }
     }
 
+    // ── Phase 1.5: Pre-sample exemplars & corpus length stats (synthetic only) ──
+    let synthExemplars: Array<{ sourceTranscriptId: Id<"livechatConversations">; messages: Array<{ id: number; role: "user" | "human_agent" | "workflow_input"; text: string }> }> = [];
+    let synthLengthStats: { median: number; p90: number } | undefined;
+
+    if (syntheticCount > 0 && transcripts.length > 0) {
+      synthExemplars = sampleCorpusExemplars(
+        transcripts as Parameters<typeof sampleCorpusExemplars>[0],
+        8,
+      );
+
+      const allUserWords = transcripts.flatMap((t) =>
+        t.messages.filter((m) => m.role === "user").map((m) => wordCount(m.text)),
+      );
+      if (allUserWords.length > 0) {
+        synthLengthStats = { median: median(allUserWords), p90: p90(allUserWords) };
+      }
+    }
+
     // ── Load KB docs (for synthetic track and dimension context) ──
     const docs = await ctx.runQuery(
       internal.crud.documents.listByKbInternal,
@@ -401,16 +408,25 @@ export const generateScenarios = internalAction({
             try {
               const persona = extractPersona(s);
 
-              // Extract reference messages
-              const rawRefMsgs = Array.isArray(s.referenceMessages) ? s.referenceMessages : [];
-              const referenceMessages = rawRefMsgs.slice(0, 3).map((m: unknown, idx: number) => {
-                const msg = m as Record<string, unknown>;
-                return {
-                  role: "user" as const,
-                  content: String(msg.content ?? ""),
-                  turnIndex: typeof msg.turnIndex === "number" ? msg.turnIndex : idx,
-                };
-              });
+              // Snapshot full transcript (no filtering) and length stats
+              const sourceTranscript = batchTranscripts[j];
+              const referenceTranscript = sourceTranscript?.messages.map((m) => ({
+                id: m.id,
+                role: m.role as "user" | "human_agent" | "workflow_input",
+                text: m.text,
+              })) ?? [];
+
+              const userWordCounts = referenceTranscript
+                .filter((m) => m.role === "user")
+                .map((m) => wordCount(m.text));
+
+              const userMessageLengthStats = userWordCounts.length > 0
+                ? { median: median(userWordCounts), p90: p90(userWordCounts) }
+                : undefined;
+
+              const behaviorAnchors = Array.isArray(s.behaviorAnchors)
+                ? (s.behaviorAnchors as unknown[]).map(String).slice(0, 6)
+                : [];
 
               // Always use the actual transcript ID, not LLM output
               const sourceTranscriptId = batchTranscripts[j]?._id;
@@ -431,8 +447,10 @@ export const generateScenarios = internalAction({
                   reasonForContact: String(s.reasonForContact ?? "Needs assistance"),
                   knownInfo: String(s.knownInfo ?? "Basic information about the service"),
                   unknownInfo: String(s.unknownInfo ?? "Specific details about their issue"),
-                  instruction: String(s.instruction ?? "Contact support about your issue"),
-                  referenceMessages: referenceMessages.length > 0 ? referenceMessages : undefined,
+                  instruction: "",   // legacy field; new generation no longer authors prose
+                  referenceTranscript,
+                  userMessageLengthStats,
+                  behaviorAnchors,
                   sourceType: "transcript_grounded",
                   sourceTranscriptId,
                   languages,
@@ -472,6 +490,9 @@ export const generateScenarios = internalAction({
           const scenarios = await generateSyntheticScenarios(
             transcriptProfile,
             kbContent,
+            synthExemplars.map((ex) => ({
+              messages: ex.messages.map((m) => ({ role: m.role, text: m.text })),
+            })),
             batchComplexities,
             model,
           );
@@ -482,6 +503,9 @@ export const generateScenarios = internalAction({
             if (generatedCount >= targetCount) break;
             try {
               const persona = extractPersona(s);
+              const behaviorAnchors = Array.isArray(s.behaviorAnchors)
+                ? (s.behaviorAnchors as unknown[]).map(String).slice(0, 6)
+                : [];
 
               await ctx.runMutation(
                 internal.conversationSim.scenarios.createInternal,
@@ -495,7 +519,10 @@ export const generateScenarios = internalAction({
                   reasonForContact: String(s.reasonForContact ?? "Needs assistance"),
                   knownInfo: String(s.knownInfo ?? "Basic information about the service"),
                   unknownInfo: String(s.unknownInfo ?? "Specific details about their issue"),
-                  instruction: String(s.instruction ?? "Contact support about your issue"),
+                  instruction: "",   // legacy field; no longer authored
+                  referenceExemplars: synthExemplars,
+                  userMessageLengthStats: synthLengthStats,
+                  behaviorAnchors,
                   sourceType: "synthetic",
                   languages: [],
                 },

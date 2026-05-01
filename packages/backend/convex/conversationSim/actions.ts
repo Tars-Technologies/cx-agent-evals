@@ -7,6 +7,7 @@ import { generateText } from "ai";
 import { resolveModel, runAgentLoop } from "../lib/agentLoop";
 import type { RetrieverInfo, AgentLoopConfig } from "../lib/agentLoop";
 import { composeSystemPrompt } from "../agents/promptTemplate";
+import { buildUserSimPrompt } from "./prompt";
 
 export const runConversationSim = internalAction({
   args: { runId: v.id("conversationSimRuns") },
@@ -102,11 +103,25 @@ export const runConversationSim = internalAction({
       }
 
       // === USER TURN ===
-      let userMessage: string;
+      const verbatimOpener = (() => {
+        if (turnPair !== 0) return undefined;
+        // Resolution order:
+        // 1. Grounded: first `user` message in referenceTranscript.
+        // 2. Legacy: referenceMessages[0].content (un-backfilled scenarios).
+        // 3. None: simulator generates turn 0.
+        if (scenario.referenceTranscript) {
+          const firstUser = scenario.referenceTranscript.find((m) => m.role === "user");
+          if (firstUser) return firstUser.text;
+        }
+        if (scenario.referenceMessages?.[0]) {
+          return scenario.referenceMessages[0].content;
+        }
+        return undefined;
+      })();
 
-      if (turnPair === 0 && scenario.referenceMessages?.[0]) {
-        // First turn: use verbatim reference message
-        userMessage = scenario.referenceMessages[0].content;
+      let userMessage: string;
+      if (verbatimOpener !== undefined) {
+        userMessage = verbatimOpener;
       } else {
         // Generate user message via LLM
         // Role-flip messages for user-sim (agent becomes "user", user becomes "assistant")
@@ -241,67 +256,3 @@ export const runConversationSim = internalAction({
   },
 });
 
-// ─── Helper: Build User Sim Prompt ───
-
-function buildUserSimPrompt(
-  scenario: {
-    persona: { type: string; traits: string[]; communicationStyle: string; patienceLevel: string };
-    topic: string;
-    intent: string;
-    complexity: string;
-    reasonForContact: string;
-    knownInfo: string;
-    unknownInfo: string;
-    instruction: string;
-    referenceMessages?: Array<{ role: string; content: string; turnIndex: number }>;
-  },
-  seed: number,
-): string {
-  const sections: string[] = [];
-
-  sections.push(`# Role
-You are simulating an end-user contacting customer support. Stay in character throughout.`);
-
-  sections.push(`# Your Persona
-- Type: ${scenario.persona.type}
-- Traits: ${scenario.persona.traits.join(", ")}
-- Communication style: ${scenario.persona.communicationStyle}
-- Patience level: ${scenario.persona.patienceLevel}`);
-
-  sections.push(`# Scenario
-- Topic: ${scenario.topic}
-- Intent: ${scenario.intent}
-- Complexity: ${scenario.complexity}
-- Reason for contact: ${scenario.reasonForContact}`);
-
-  sections.push(`# What You Know
-${scenario.knownInfo}`);
-
-  sections.push(`# What You Don't Know (what you're trying to find out)
-${scenario.unknownInfo}`);
-
-  sections.push(`# Instructions
-${scenario.instruction}`);
-
-  // Reference style examples (skip first one since it's used verbatim)
-  const styleExamples = scenario.referenceMessages?.slice(1);
-  if (styleExamples && styleExamples.length > 0) {
-    const examples = styleExamples.map((m, i) => `Example ${i + 1}: "${m.content}"`).join("\n");
-    sections.push(`# Reference Style Examples
-Match the tone and style of these messages:
-${examples}`);
-  }
-
-  sections.push(`# Variation Seed: ${seed}
-Vary your approach slightly based on this seed number. Different seeds should produce somewhat different conversation paths while staying true to the scenario.`);
-
-  sections.push(`# Rules
-- Stay in character as the described persona at all times
-- Do NOT reveal that you are an AI or a simulator
-- Do NOT mention evaluators, scores, or the simulation system
-- When your issue is resolved or you have no more questions, respond with exactly "###STOP###"
-- If the agent asks you to do something you can't simulate (like checking email, visiting a URL), improvise a reasonable response
-- Keep messages concise and realistic — real users don't write essays`);
-
-  return sections.join("\n\n");
-}

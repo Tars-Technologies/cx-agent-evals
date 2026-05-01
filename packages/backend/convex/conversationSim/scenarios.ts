@@ -35,6 +35,27 @@ const referenceMessagesArrayValidator = v.array(
 );
 const referenceMessagesValidator = v.optional(referenceMessagesArrayValidator);
 
+const messageValidator = v.object({
+  id: v.number(),
+  role: v.union(
+    v.literal("user"),
+    v.literal("human_agent"),
+    v.literal("workflow_input"),
+  ),
+  text: v.string(),
+});
+
+const referenceTranscriptValidator = v.optional(v.array(messageValidator));
+const referenceExemplarsValidator = v.optional(v.array(v.object({
+  sourceTranscriptId: v.id("livechatConversations"),
+  messages: v.array(messageValidator),
+})));
+const userMessageLengthStatsValidator = v.optional(v.object({
+  median: v.number(),
+  p90: v.number(),
+}));
+const behaviorAnchorsValidator = v.optional(v.array(v.string()));
+
 const scenarioFields = {
   datasetId: v.id("datasets"),
   persona: personaValidator,
@@ -111,6 +132,10 @@ export const update = mutation({
     unknownInfo: v.optional(v.string()),
     instruction: v.optional(v.string()),
     referenceMessages: v.optional(referenceMessagesArrayValidator),
+    referenceTranscript: referenceTranscriptValidator,
+    referenceExemplars: referenceExemplarsValidator,
+    userMessageLengthStats: userMessageLengthStatsValidator,
+    behaviorAnchors: behaviorAnchorsValidator,
   },
   handler: async (ctx, { id, ...updates }) => {
     const { orgId } = await getAuthContext(ctx);
@@ -153,6 +178,10 @@ export const createInternal = internalMutation({
     sourceType: v.optional(v.union(v.literal("transcript_grounded"), v.literal("synthetic"))),
     sourceTranscriptId: v.optional(v.id("livechatConversations")),
     languages: v.optional(v.array(v.string())),
+    referenceTranscript: referenceTranscriptValidator,
+    referenceExemplars: referenceExemplarsValidator,
+    userMessageLengthStats: userMessageLengthStatsValidator,
+    behaviorAnchors: behaviorAnchorsValidator,
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("conversationScenarios", args);

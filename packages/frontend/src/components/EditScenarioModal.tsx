@@ -25,6 +25,7 @@ interface ScenarioData {
     content: string;
     turnIndex: number;
   }>;
+  behaviorAnchors?: string[];
   // Provenance metadata (read-only, set during generation)
   sourceType?: "transcript_grounded" | "synthetic";
   sourceTranscriptId?: string;
@@ -51,6 +52,9 @@ export function EditScenarioModal({
   const [knownInfo, setKnownInfo] = useState(scenario.knownInfo);
   const [unknownInfo, setUnknownInfo] = useState(scenario.unknownInfo);
   const [instruction, setInstruction] = useState(scenario.instruction);
+  const [behaviorAnchors, setBehaviorAnchors] = useState<string[]>(
+    scenario.behaviorAnchors ?? [],
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,7 +67,8 @@ export function EditScenarioModal({
     knownInfo !== scenario.knownInfo ||
     unknownInfo !== scenario.unknownInfo ||
     instruction !== scenario.instruction ||
-    JSON.stringify(persona) !== JSON.stringify(scenario.persona);
+    JSON.stringify(persona) !== JSON.stringify(scenario.persona) ||
+    JSON.stringify(behaviorAnchors) !== JSON.stringify(scenario.behaviorAnchors ?? []);
 
   // Close on Escape
   useEffect(() => {
@@ -88,6 +93,7 @@ export function EditScenarioModal({
         knownInfo,
         unknownInfo,
         instruction,
+        behaviorAnchors,
       });
       onClose();
     } catch (err) {
@@ -287,13 +293,49 @@ export function EditScenarioModal({
                 />
               </Field>
 
-              <Field label="Instruction">
-                <textarea
-                  value={instruction}
-                  onChange={(e) => setInstruction(e.target.value)}
-                  rows={10}
-                  className="w-full bg-bg border border-border rounded px-3 py-1.5 text-xs text-text font-mono focus:border-accent outline-none resize-none"
-                />
+              <Field label="How this user speaks (behavior anchors)">
+                <div className="space-y-2">
+                  {behaviorAnchors.map((a, i) => (
+                    <div key={i} className="flex gap-2">
+                      <input
+                        type="text"
+                        maxLength={120}
+                        value={a}
+                        onChange={(e) => {
+                          const next = [...behaviorAnchors];
+                          next[i] = e.target.value;
+                          setBehaviorAnchors(next);
+                        }}
+                        placeholder="e.g. Answers questions with a single word"
+                        className="flex-1 bg-bg border border-border rounded px-3 py-1.5 text-xs text-text focus:border-accent outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBehaviorAnchors(behaviorAnchors.filter((_, j) => j !== i))
+                        }
+                        className="px-2 py-1 text-xs text-text-dim border border-border rounded hover:text-text hover:bg-bg-hover transition-colors cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  {behaviorAnchors.length < 6 && (
+                    <button
+                      type="button"
+                      onClick={() => setBehaviorAnchors([...behaviorAnchors, ""])}
+                      className="px-3 py-1.5 text-xs text-accent border border-accent/30 rounded hover:bg-accent/10 transition-colors cursor-pointer"
+                    >
+                      + Add anchor
+                    </button>
+                  )}
+                  {behaviorAnchors.length === 0 && scenario.instruction && (
+                    <div className="mt-2 p-2 bg-bg border border-border rounded text-[10px] text-text-dim leading-relaxed">
+                      <strong className="text-text-dim">Legacy instruction:</strong>{" "}
+                      <span className="font-mono">{scenario.instruction}</span>
+                    </div>
+                  )}
+                </div>
               </Field>
             </div>
           </div>
