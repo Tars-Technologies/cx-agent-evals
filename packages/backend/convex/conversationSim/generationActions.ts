@@ -9,6 +9,7 @@ import type { Id } from "../_generated/dataModel";
 import { wordCount, median, p90 } from "./lengthStats";
 import { BEHAVIOR_ANCHORS_INSTRUCTION } from "./anchorPrompt";
 import { sampleCorpusExemplars } from "./sampleCorpusExemplars";
+import { extractJson } from "./extractJson";
 
 // ─── Types ───
 
@@ -59,34 +60,6 @@ function extractPersona(s: Record<string, unknown>) {
   };
 }
 
-function extractJson(text: string): unknown {
-  // Strip markdown code fences if present
-  const stripped = text.replace(/^```(?:json)?\s*\n?/gm, "").replace(/\n?```\s*$/gm, "").trim();
-  try {
-    return JSON.parse(stripped);
-  } catch {
-    // Try to find JSON array first (most LLM responses are arrays), then object
-    // Use lazy matching to avoid capturing trailing content
-    const arrayMatch = stripped.match(/\[[\s\S]*?\](?=\s*$)/);
-    if (arrayMatch) {
-      try { return JSON.parse(arrayMatch[0]); } catch { /* fall through */ }
-    }
-    const objMatch = stripped.match(/\{[\s\S]*?\}(?=\s*$)/);
-    if (objMatch) {
-      try { return JSON.parse(objMatch[0]); } catch { /* fall through */ }
-    }
-    // Last resort: greedy match
-    const greedyArray = stripped.match(/\[[\s\S]*\]/);
-    if (greedyArray) {
-      try { return JSON.parse(greedyArray[0]); } catch { /* fall through */ }
-    }
-    const greedyObj = stripped.match(/\{[\s\S]*\}/);
-    if (greedyObj) {
-      try { return JSON.parse(greedyObj[0]); } catch { /* fall through */ }
-    }
-    throw new Error(`Failed to parse LLM response as JSON: ${stripped.slice(0, 200)}`);
-  }
-}
 
 function sampleTranscripts<T>(transcripts: T[], count: number): T[] {
   if (count <= 0) return [];

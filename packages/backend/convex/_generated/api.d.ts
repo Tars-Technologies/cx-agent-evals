@@ -19,6 +19,7 @@ import type * as conversationSim_evaluation from "../conversationSim/evaluation.
 import type * as conversationSim_evaluationActions from "../conversationSim/evaluationActions.js";
 import type * as conversationSim_evaluatorSets from "../conversationSim/evaluatorSets.js";
 import type * as conversationSim_evaluators from "../conversationSim/evaluators.js";
+import type * as conversationSim_extractJson from "../conversationSim/extractJson.js";
 import type * as conversationSim_generation from "../conversationSim/generation.js";
 import type * as conversationSim_generationActions from "../conversationSim/generationActions.js";
 import type * as conversationSim_judge from "../conversationSim/judge.js";
@@ -91,6 +92,7 @@ declare const fullApi: ApiFromModules<{
   "conversationSim/evaluationActions": typeof conversationSim_evaluationActions;
   "conversationSim/evaluatorSets": typeof conversationSim_evaluatorSets;
   "conversationSim/evaluators": typeof conversationSim_evaluators;
+  "conversationSim/extractJson": typeof conversationSim_extractJson;
   "conversationSim/generation": typeof conversationSim_generation;
   "conversationSim/generationActions": typeof conversationSim_generationActions;
   "conversationSim/judge": typeof conversationSim_judge;

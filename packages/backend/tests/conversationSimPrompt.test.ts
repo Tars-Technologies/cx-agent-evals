@@ -324,4 +324,26 @@ describe("sampleCorpusExemplars", () => {
     expect(out.length).toBeGreaterThan(0);
     expect(out.length).toBeLessThanOrEqual(3);
   });
+
+  it("falls back to all candidates when short pool has fewer than count", () => {
+    // 2 short messages + 3 long messages, requesting 4. Buggy logic stuck
+    // with the 2 short and returned 2; correct logic relaxes to all 5.
+    const longText = Array(40).fill("w").join(" ");
+    const corpus: LCTranscript[] = [
+      transcriptWith(0, [
+        { id: 1, role: "human_agent", text: "Hi" },
+        { id: 2, role: "user", text: "ok" },
+        { id: 3, role: "human_agent", text: "Hi" },
+        { id: 4, role: "user", text: "yes" },
+      ]),
+      ...Array.from({ length: 3 }, (_, i) =>
+        transcriptWith(i + 1, [
+          { id: 1, role: "human_agent", text: "Hi" },
+          { id: 2, role: "user", text: longText },
+        ]),
+      ),
+    ];
+    const out = sampleCorpusExemplars(corpus, 4);
+    expect(out.length).toBe(4);
+  });
 });

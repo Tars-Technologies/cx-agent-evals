@@ -42,7 +42,12 @@ export const backfillGrounded = internalMutation({
   },
 });
 
-export const pageScenariosForAnchors = internalQuery({
+/**
+ * Shared paginated scan over `conversationScenarios`. Used by both
+ * `backfillBehaviorAnchors` and `backfillSynthetic` — each action then applies
+ * its own type filter (grounded vs synthetic) per row.
+ */
+export const pageScenarios = internalQuery({
   args: { cursor: v.union(v.string(), v.null()), batchSize: v.number() },
   handler: async (ctx, { cursor, batchSize }) => {
     const result = await ctx.db
@@ -56,16 +61,6 @@ export const patchBehaviorAnchors = internalMutation({
   args: { id: v.id("conversationScenarios"), behaviorAnchors: v.array(v.string()) },
   handler: async (ctx, { id, behaviorAnchors }) => {
     await ctx.db.patch(id, { behaviorAnchors });
-  },
-});
-
-export const pageSyntheticScenarios = internalQuery({
-  args: { cursor: v.union(v.string(), v.null()), batchSize: v.number() },
-  handler: async (ctx, { cursor, batchSize }) => {
-    const result = await ctx.db
-      .query("conversationScenarios")
-      .paginate({ numItems: batchSize, cursor });
-    return result;
   },
 });
 

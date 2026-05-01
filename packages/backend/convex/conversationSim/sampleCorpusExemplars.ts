@@ -59,7 +59,9 @@ export function sampleCorpusExemplars(
   if (all.length === 0) return [];
 
   const short = all.filter((c) => wordCount(c.userText) <= SHORT_WORD_LIMIT);
-  const pool = short.length >= count ? short : (short.length > 0 ? short : all);
+  // Relax to the full pool when the short pool can't fill the request, so we
+  // don't silently under-size the few-shot bank for mixed-length corpora.
+  const pool = short.length >= count ? short : all;
   const picked = shuffle(pool).slice(0, count);
 
   return picked.map((c) => ({

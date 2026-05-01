@@ -8,17 +8,15 @@ import { resolveModel } from "../lib/agentLoop";
 import { BEHAVIOR_ANCHORS_INSTRUCTION } from "./anchorPrompt";
 import { sampleCorpusExemplars } from "./sampleCorpusExemplars";
 import { wordCount, median, p90 } from "./lengthStats";
+import { extractJson } from "./extractJson";
 
-function extractJson(text: string): unknown {
-  const stripped = text.replace(/^```(?:json)?\s*\n?/gm, "").replace(/\n?```\s*$/gm, "").trim();
-  try { return JSON.parse(stripped); } catch { /* fall through */ }
-  const arrayMatch = stripped.match(/\[[\s\S]*\]/);
-  if (arrayMatch) {
-    try { return JSON.parse(arrayMatch[0]); } catch { /* fall through */ }
-  }
-  throw new Error(`Failed to parse JSON: ${stripped.slice(0, 200)}`);
-}
-
+/**
+ * Backfill `behaviorAnchors` for grounded scenarios using Claude.
+ *
+ * **Run order:** must run AFTER `backfillGrounded` — this action filters by
+ * presence of `referenceTranscript`, which `backfillGrounded` populates.
+ * Running this first will silently skip every grounded scenario.
+ */
 export const backfillBehaviorAnchors = internalAction({
   args: { cursor: v.optional(v.string()), batchSize: v.optional(v.number()) },
   handler: async (ctx, { cursor, batchSize }): Promise<{
@@ -26,7 +24,7 @@ export const backfillBehaviorAnchors = internalAction({
     isDone: boolean;
     continueCursor: string | null;
   }> => {
-    const page = await ctx.runQuery(internal.conversationSim.migrations.pageScenariosForAnchors, {
+    const page = await ctx.runQuery(internal.conversationSim.migrations.pageScenarios, {
       cursor: cursor ?? null,
       batchSize: batchSize ?? 15,
     });
@@ -80,13 +78,18 @@ ${BEHAVIOR_ANCHORS_INSTRUCTION}`;
   },
 });
 
+/**
+ * Backfill exemplars, length stats, and behavior anchors for synthetic
+ * scenarios. Independent of `backfillGrounded` / `backfillBehaviorAnchors`
+ * (operates only on `sourceType === "synthetic"` rows).
+ */
 export const backfillSynthetic = internalAction({
   args: { cursor: v.optional(v.string()), batchSize: v.optional(v.number()) },
   handler: async (
     ctx,
     { cursor, batchSize },
   ): Promise<{ migrated: number; isDone: boolean; continueCursor: string | null }> => {
-    const page = await ctx.runQuery(internal.conversationSim.migrations.pageSyntheticScenarios, {
+    const page = await ctx.runQuery(internal.conversationSim.migrations.pageScenarios, {
       cursor: cursor ?? null,
       batchSize: batchSize ?? 15,
     });
