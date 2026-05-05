@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CX Agent Evals — UI Kit</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap">
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <style>
+    html, body { margin: 0; padding: 0; background: #0c0c0f; }
+    body { font-family: "JetBrains Mono", ui-monospace, monospace; }
+    * { scrollbar-width: thin; scrollbar-color: #2a2a36 transparent; }
+    *::-webkit-scrollbar { width: 8px; height: 8px; }
+    *::-webkit-scrollbar-thumb { background: #2a2a36; border-radius: 4px; }
+    button:focus, input:focus { outline: 0; }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="components/Bits.jsx"></script>
+  <script type="text/babel" src="components/Shell.jsx"></script>
+  <script type="text/babel" src="components/ModeSelector.jsx"></script>
+  <script type="text/babel" src="components/Sidebar.jsx"></script>
+  <script type="text/babel" src="components/ToolGroup.jsx"></script>
+  <script type="text/babel" src="components/Playground.jsx"></script>
+  <script type="text/babel" src="components/AgentsScreen.jsx"></script>
+  <script type="text/babel" src="components/KBScreen.jsx"></script>
+  <script type="text/babel" src="components/ExperimentsScreen.jsx"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function App() {
+      // Persist last-visited mode across reloads
+      const [mode, setMode] = useState(() => {
+        try { return localStorage.getItem('cds-kit-mode') || 'home'; } catch { return 'home'; }
+      });
+      useEffect(() => {
+        try { localStorage.setItem('cds-kit-mode', mode); } catch {}
+      }, [mode]);
+
+      return (
+        <Shell mode={mode} setMode={setMode}>
+          {mode === 'home'        && <ModeSelector onPick={setMode} />}
+          {mode === 'knowledge'   && <KBScreen />}
+          {mode === 'agents'      && <AgentsScreen />}
+          {mode === 'experiments' && <ExperimentsScreen />}
+          {(mode === 'dataset' || mode === 'retrievers') && (
+            <div style={{
+              minHeight: 'calc(100vh - 56px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#55556a', fontSize: 13, flexDirection: 'column', gap: 8,
+            }}>
+              <Dot size={10} />
+              <div>{mode === 'dataset' ? 'Dataset' : 'Retrievers'} — not mocked in this kit.</div>
+              <button onClick={() => setMode('home')} style={{
+                fontSize: 11, color: '#6ee7b7', background: 'transparent',
+                border: 0, cursor: 'pointer', fontFamily: 'inherit',
+                marginTop: 8,
+              }}>← back to home</button>
+            </div>
+          )}
+        </Shell>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

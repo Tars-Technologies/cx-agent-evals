@@ -1,0 +1,952 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>CX Agent Evals · Design System · Print</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="preview.css">
+<style>
+  html, body {
+    background: #0c0c0f;
+    margin: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    color-adjust: exact;
+  }
+  body {
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    color: #e8e8ed;
+  }
+
+  /* Cover page */
+  .cover {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 72px 72px;
+    box-sizing: border-box;
+    background: #0c0c0f;
+    break-after: page;
+  }
+  .cover .eyebrow {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #6ee7b7;
+    margin-bottom: 28px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .cover .eyebrow::before {
+    content: "";
+    display: inline-block;
+    width: 10px; height: 10px; border-radius: 9999px;
+    background: #6ee7b7;
+    box-shadow: 0 0 12px rgba(110,231,183,.5);
+  }
+  .cover h1 {
+    margin: 0;
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 68px;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.02;
+    color: #e8e8ed;
+  }
+  .cover h1 .muted { color: #8888a0; font-weight: 400; }
+  .cover .subtitle {
+    margin-top: 22px;
+    font-size: 15px;
+    color: #8888a0;
+    max-width: 620px;
+    line-height: 1.55;
+  }
+  .cover .meta {
+    margin-top: 40px;
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    column-gap: 24px;
+    row-gap: 8px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .cover .meta dt { color: #55556a; }
+  .cover .meta dd { margin: 0; color: #e8e8ed; }
+  .cover .legend {
+    margin-top: 42px;
+    padding-top: 18px;
+    border-top: 1px solid #22222d;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    max-width: 720px;
+  }
+  .cover .legend .l-title {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #6ee7b7;
+  }
+  .cover .legend .l-count {
+    margin-top: 6px;
+    font-size: 13px;
+    color: #8888a0;
+  }
+
+  /* Section pages */
+  .page {
+    padding: 56px 64px;
+    min-height: 100vh;
+    box-sizing: border-box;
+    break-after: page;
+    break-inside: avoid;
+    background: #0c0c0f;
+  }
+  .page:last-child { break-after: auto; }
+
+  .group-header {
+    display: flex; align-items: center; gap: 10px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #6ee7b7;
+    margin-bottom: 12px;
+  }
+  .group-dot {
+    width: 8px; height: 8px; border-radius: 9999px;
+    background: #6ee7b7;
+  }
+
+  .section-title {
+    font-family: "Inter", sans-serif;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    color: #e8e8ed;
+    margin: 0 0 24px;
+  }
+
+  .card-body {
+    background: #141419;
+    border: 1px solid #22222d;
+    border-radius: 12px;
+    padding: 32px;
+    break-inside: avoid;
+  }
+
+  /* Make inner card content fill the available space */
+  .card-body > div[class="col"],
+  .card-body > div[class="wrap"],
+  .card-body > div[class="row"] { width: 100%; box-sizing: border-box; }
+
+  @page {
+    size: landscape;
+    margin: 0.4cm;
+  }
+  @media print {
+    html, body { background: #0c0c0f !important; }
+    .page, .cover { background: #0c0c0f !important; }
+    .card-body { background: #141419 !important; border-color: #22222d !important; }
+  }
+
+  /* Scoped per-card styles pulled from source files */
+  /* colors-surfaces */
+#sec-colors-surfaces { }
+ #sec-colors-surfaces /* Card-local overrides: swap meta text to Inter for readability, #sec-colors-surfaces keep hex in JetBrains Mono so tabular digits stay aligned. */
+  .swatch .meta {
+    padding: 10px 12px;
+    gap: 3px;
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+  } #sec-colors-surfaces .swatch .name {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    color: #e8e8ed;
+  } #sec-colors-surfaces .swatch .hex {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    color: #8888a0;
+  } #sec-colors-surfaces .swatch .use {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 10px;
+    color: #55556a;
+    margin-top: 1px;
+  } #sec-colors-surfaces .swatch .fill { height: 56px; }
+
+
+/* colors-text */
+#sec-colors-text { }
+ #sec-colors-text .text-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border: 1px solid var(--cds-border);
+    border-radius: 8px;
+    background: var(--cds-bg-elevated);
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+  } #sec-colors-text .sample {
+    font-size: 15px;
+    line-height: 1.45;
+    letter-spacing: -0.005em;
+  } #sec-colors-text .sample .weight-note {
+    opacity: 0.7;
+    margin-left: 8px;
+    font-size: 12px;
+    font-weight: 400;
+  } #sec-colors-text .token {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    color: #8888a0;
+    white-space: nowrap;
+    padding-left: 16px;
+  }
+
+
+/* type-family */
+#sec-type-family { }
+ #sec-type-family .tf-wrap {
+    padding: 24px 4px;
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+  } #sec-type-family .tf-eyebrow {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #55556a;
+    margin-bottom: 14px;
+  } #sec-type-family .tf-eyebrow b { color: #6ee7b7; font-weight: 500; } #sec-type-family .tf-display {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 48px;
+    font-weight: 600;
+    color: #e8e8ed;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+  } #sec-type-family .tf-display .accent {
+    font-weight: 400;
+    color: #8888a0;
+    letter-spacing: -0.02em;
+  } #sec-type-family .tf-divider {
+    height: 1px; background: #22222d;
+    margin: 26px 0 20px;
+  } #sec-type-family .tf-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; } #sec-type-family .tf-card-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #55556a;
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px;
+  } #sec-type-family .tf-role {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgba(110,231,183,.1);
+    color: #6ee7b7;
+    border: 1px solid rgba(110,231,183,.25);
+    font-weight: 500;
+  } #sec-type-family .tf-specimen-inter {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 22px;
+    font-weight: 500;
+    color: #e8e8ed;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+  } #sec-type-family .tf-specimen-mono {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 17px;
+    font-weight: 500;
+    color: #e8e8ed;
+    letter-spacing: 0;
+    line-height: 1.4;
+  } #sec-type-family .tf-desc {
+    font-family: "Inter", sans-serif;
+    font-size: 12px;
+    color: #8888a0;
+    line-height: 1.5;
+    margin-top: 8px;
+  } #sec-type-family .tf-glyphs {
+    margin-top: 10px;
+    font-size: 11px;
+    color: #55556a;
+  } #sec-type-family .tf-glyphs.mono { font-family: "JetBrains Mono", monospace; }
+
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="eyebrow">CX Agent Evals · Design System</div>
+  <h1>Build and evaluate<br><span class="muted">CX AI agents.</span></h1>
+  <p class="subtitle">A complete reference for the visual, interaction, and content system behind CX Agent Evals. Every token, component, and rule — rendered once, in print.</p>
+
+  <dl class="meta">
+    <dt>Version</dt><dd>0.1 · April 2026</dd>
+    <dt>Owner</dt><dd>Tars · RAG Engineering</dd>
+    <dt>Source</dt><dd>github.com/Tars-Technologies/cx-agent-evals</dd>
+    <dt>Type system</dt><dd>Inter + JetBrains Mono</dd>
+    <dt>Theme</dt><dd>Dark-only · Terminal Mint accent</dd>
+  </dl>
+
+  <div class="legend">
+    <div><div class="l-title">Colors</div><div class="l-count">6 cards</div></div>
+    <div><div class="l-title">Type</div><div class="l-count">4 cards</div></div>
+    <div><div class="l-title">Spacing</div><div class="l-count">3 cards</div></div>
+    <div><div class="l-title">Components</div><div class="l-count">10 cards</div></div>
+    <div><div class="l-title">Brand</div><div class="l-count">4 cards</div></div>
+  </div>
+</div>
+
+
+<section class="page group-start" id="sec-colors-surfaces">
+  <div class="group-header"><span class="group-dot"></span><span class="group-label">Colors</span></div>
+  <div class="section-title">Surfaces</div>
+  <div class="card-body">
+  <div class="wrap">
+    <div class="swatch">
+      <div class="fill" style="background:#0c0c0f"></div>
+      <div class="meta">
+        <span class="name">bg</span>
+        <span class="hex">#0C0C0F</span>
+        <span class="use">canvas</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="fill" style="background:#141419"></div>
+      <div class="meta">
+        <span class="name">bg-elevated</span>
+        <span class="hex">#141419</span>
+        <span class="use">cards</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="fill" style="background:#1a1a22"></div>
+      <div class="meta">
+        <span class="name">bg-surface</span>
+        <span class="hex">#1A1A22</span>
+        <span class="use">inputs</span>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="fill" style="background:#22222d"></div>
+      <div class="meta">
+        <span class="name">bg-hover</span>
+        <span class="hex">#22222D</span>
+        <span class="use">hover</span>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+<section class="page " id="sec-colors-text">
+  
+  <div class="section-title">Text Ladder</div>
+  <div class="card-body">
+  <div class="col" style="gap:8px">
+    <div class="text-row">
+      <span class="sample" style="color:#e8e8ed;font-weight:500">
+        The primary text color on any surface.
+      </span>
+      <span class="token">text · #E8E8ED</span>
+    </div>
+    <div class="text-row">
+      <span class="sample" style="color:#8888a0">
+        Secondary — labels, descriptions, nav items.
+      </span>
+      <span class="token">text-muted · #8888A0</span>
+    </div>
+    <div class="text-row">
+      <span class="sample" style="color:#55556a">
+        Tertiary — meta, timestamps, hints.
+      </span>
+      <span class="token">text-dim · #55556A</span>
+    </div>
+  </div>
+</div>
+</section>
+<section class="page " id="sec-colors-accent">
+  
+  <div class="section-title">Accent — Terminal Mint</div>
+  <div class="card-body">
+<div class="wrap">
+  <div class="swatch"><div class="fill" style="background:#6ee7b7"></div><div class="meta"><span class="name" style="color:#0c0c0f">accent</span><span class="hex">#6EE7B7 · Terminal Mint</span></div></div>
+  <div class="swatch"><div class="fill" style="background:#a7f3d0"></div><div class="meta"><span class="name">accent-bright</span><span class="hex">#A7F3D0 · code</span></div></div>
+  <div class="swatch"><div class="fill" style="background:#2d6b54"></div><div class="meta"><span class="name">accent-dim</span><span class="hex">#2D6B54 · washes</span></div></div>
+</div>
+<div class="row" style="margin-top:14px;gap:10px;flex-wrap:wrap">
+  <span style="background:rgba(110,231,183,.1);border:1px solid rgba(110,231,183,.2);border-radius:9999px;padding:4px 10px;font-size:10px;color:#6ee7b7">accent/10 wash</span>
+  <span style="background:#6ee7b7;color:#0c0c0f;border-radius:6px;padding:4px 10px;font-size:10px;font-weight:500">accent fill</span>
+  <span style="color:#6ee7b7;font-size:10px">inline accent text</span>
+</div></div>
+</section>
+<section class="page " id="sec-colors-semantic">
+  
+  <div class="section-title">Semantic Status</div>
+  <div class="card-body">
+<div class="wrap">
+  <div class="swatch"><div class="fill" style="background:#fbbf24"></div><div class="meta"><span class="name" style="color:#0c0c0f">warn</span><span class="hex">#FBBF24 · pending</span></div></div>
+  <div class="swatch"><div class="fill" style="background:#f87171"></div><div class="meta"><span class="name" style="color:#0c0c0f">error</span><span class="hex">#F87171 · destructive</span></div></div>
+</div>
+<div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">
+  <span style="background:rgba(110,231,183,.1);color:#6ee7b7;border-radius:9999px;padding:2px 8px;font-size:9px">ready</span>
+  <span style="background:rgba(251,191,36,.1);color:#fbbf24;border-radius:9999px;padding:2px 8px;font-size:9px">indexing</span>
+  <span style="background:rgba(248,113,113,.1);color:#f87171;border-radius:9999px;padding:2px 8px;font-size:9px">error</span>
+  <span class="dim" style="font-size:10px">status chips use {color}/10 bg + {color} fg</span>
+</div></div>
+</section>
+<section class="page " id="sec-colors-chunks">
+  
+  <div class="section-title">Chunk Rainbow (data-viz)</div>
+  <div class="card-body">
+<div class="wrap">
+  <div class="swatch"><div class="fill" style="background:#6ee7b780"></div><div class="meta"><span class="name">chunk-1</span><span class="hex">mint/50</span></div></div>
+  <div class="swatch"><div class="fill" style="background:#818cf880"></div><div class="meta"><span class="name">chunk-2</span><span class="hex">indigo/50</span></div></div>
+  <div class="swatch"><div class="fill" style="background:#fbbf2480"></div><div class="meta"><span class="name">chunk-3</span><span class="hex">amber/50</span></div></div>
+  <div class="swatch"><div class="fill" style="background:#f472b680"></div><div class="meta"><span class="name">chunk-4</span><span class="hex">pink/50</span></div></div>
+  <div class="swatch"><div class="fill" style="background:#38bdf880"></div><div class="meta"><span class="name">chunk-5</span><span class="hex">sky/50</span></div></div>
+</div>
+<p class="dim" style="font-size:10px;margin:10px 0 0">Data-viz only. Used to highlight the five retrieved span classes in the RAG UI. Do not repurpose.</p></div>
+</section>
+<section class="page " id="sec-colors-borders">
+  
+  <div class="section-title">Borders</div>
+  <div class="card-body">
+<div class="row" style="gap:16px">
+  <div style="flex:1;padding:24px;background:var(--cds-bg-elevated);border:1px solid #2a2a36;border-radius:8px">
+    <div class="dim" style="font-size:10px">border</div>
+    <div style="font-size:12px;margin-top:4px">#2A2A36 · default 1px divider</div>
+  </div>
+  <div style="flex:1;padding:24px;background:var(--cds-bg-elevated);border:1px solid #3a3a4a;border-radius:8px">
+    <div class="dim" style="font-size:10px">border-bright</div>
+    <div style="font-size:12px;margin-top:4px">#3A3A4A · focus / hover</div>
+  </div>
+</div></div>
+</section>
+<section class="page group-start" id="sec-type-family">
+  <div class="group-header"><span class="group-dot"></span><span class="group-label">Type</span></div>
+  <div class="section-title">Type Family</div>
+  <div class="card-body">
+  <div class="tf-wrap">
+
+    <div class="tf-eyebrow">Type system · <b>Inter</b> + JetBrains Mono</div>
+
+    <div class="tf-display">
+      Build and evaluate<br>
+      <span class="accent">CX AI agents.</span>
+    </div>
+
+    <div class="tf-divider"></div>
+
+    <div class="tf-split">
+      <div>
+        <div class="tf-card-label">Inter <span class="tf-role">UI · body · headings</span></div>
+        <div class="tf-specimen-inter">
+          Aa Bb Cc Dd 0123456789
+        </div>
+        <div class="tf-desc">
+          Geometric sans with excellent hinting at small sizes. Used for labels, navigation, body copy, titles — anything the user reads rather than copies.
+        </div>
+        <div class="tf-glyphs">Weights 400 · 500 · 600 · 700 — tight tracking on headlines, neutral on body.</div>
+      </div>
+
+      <div>
+        <div class="tf-card-label">JetBrains Mono <span class="tf-role" style="background:rgba(136,136,160,.1);color:#a5a5bd;border-color:#2a2a36">data · code · tokens</span></div>
+        <div class="tf-specimen-mono">
+          Aa Bb Cc 0123 → ▸ ▾ · —
+        </div>
+        <div class="tf-desc">
+          Reserved for things that read <i>as</i> code: hex values, metrics, token names, file paths, tool-call JSON, terminal output.
+        </div>
+        <div class="tf-glyphs mono">chunk_id · #6EE7B7 · /agents/a1 · recall: 0.92</div>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+<section class="page " id="sec-type-scale">
+  
+  <div class="section-title">Type Scale</div>
+  <div class="card-body">
+<div class="specimen"><span class="label">24 / H1</span><span class="sample" style="font-size:24px;font-weight:600">CX Agent Evals</span><span class="spec">600 · 1.3</span></div>
+<div class="specimen"><span class="label">18 / H2</span><span class="sample" style="font-size:18px;font-weight:600">Knowledge Base</span><span class="spec">600 · 1.3</span></div>
+<div class="specimen"><span class="label">16 / H3</span><span class="sample" style="font-size:16px;font-weight:500">Playground</span><span class="spec">500 · 1.3</span></div>
+<div class="specimen"><span class="label">14 / body+</span><span class="sample" style="font-size:14px">Send a message to start testing your agent.</span><span class="spec">400 · 1.6</span></div>
+<div class="specimen"><span class="label">13 / base</span><span class="sample" style="font-size:13px">The base size of every surface in the app.</span><span class="spec">400 · 1.6</span></div>
+<div class="specimen"><span class="label">12 / meta</span><span class="sample" style="font-size:12px;color:#8888a0">Create and manage knowledge bases</span><span class="spec">400</span></div>
+<div class="specimen"><span class="label">11 / row</span><span class="sample" style="font-size:11px">agent-02 · claude-sonnet</span><span class="spec">400</span></div>
+<div class="specimen"><span class="label">10 / chip</span><span class="sample" style="font-size:10px;color:#8888a0">waiting for response to complete…</span><span class="spec">400</span></div>
+<div class="specimen"><span class="label">9 / tag</span><span class="sample" style="font-size:9px;color:#6ee7b7">ready</span><span class="spec">400</span></div></div>
+</section>
+<section class="page " id="sec-type-weights">
+  
+  <div class="section-title">Weights</div>
+  <div class="card-body">
+<div class="specimen"><span class="label">300 Light</span><span class="sample" style="font-weight:300;font-size:16px">Retrieval configured</span><span class="spec">rare</span></div>
+<div class="specimen"><span class="label">400 Regular</span><span class="sample" style="font-weight:400;font-size:16px">Retrieval configured</span><span class="spec">body</span></div>
+<div class="specimen"><span class="label">500 Medium</span><span class="sample" style="font-weight:500;font-size:16px">Retrieval configured</span><span class="spec">buttons, active</span></div>
+<div class="specimen"><span class="label">600 Semibold</span><span class="sample" style="font-weight:600;font-size:16px">Retrieval configured</span><span class="spec">headings</span></div>
+<div class="specimen"><span class="label">700 Bold</span><span class="sample" style="font-weight:700;font-size:16px">Retrieval configured</span><span class="spec">rare</span></div></div>
+</section>
+<section class="page " id="sec-type-roles">
+  
+  <div class="section-title">Semantic Roles</div>
+  <div class="card-body">
+<div class="col" style="gap:14px">
+  <div>
+    <div class="eyebrow">Eyebrow · 10px uppercase 0.12em</div>
+    <h1 style="margin:0;font-size:24px;font-weight:600">Dataset</h1>
+    <p class="muted" style="margin:4px 0 0;font-size:13px">Create and curate evaluation datasets with ground truth spans for RAG retrieval testing.</p>
+  </div>
+  <div style="border-top:1px solid var(--cds-border);padding-top:14px">
+    <div style="font-size:11px;color:#8888a0;margin-bottom:4px">Meta row · 11px muted</div>
+    <div style="display:flex;gap:10px;font-size:11px;color:#55556a">
+      <span>48 questions</span>
+      <span>·</span>
+      <span>3 retrievers</span>
+      <span>·</span>
+      <span>updated 2h ago</span>
+    </div>
+  </div>
+  <div style="border-top:1px solid var(--cds-border);padding-top:14px">
+    <div style="font-size:11px;color:#8888a0;margin-bottom:4px">Inline code · 0.85em accent-bright on bg-surface</div>
+    <span style="font-family:var(--cds-font-mono);font-size:12px;background:#1a1a22;color:#a7f3d0;padding:2px 6px;border-radius:4px">NEXT_PUBLIC_CONVEX_URL</span>
+  </div>
+</div></div>
+</section>
+<section class="page group-start" id="sec-spacing-scale">
+  <div class="group-header"><span class="group-dot"></span><span class="group-label">Spacing & Elevation</span></div>
+  <div class="section-title">Spacing Scale</div>
+  <div class="card-body">
+<div class="col" style="gap:8px">
+  
+    <div class="row" style="gap:14px">
+      <span class="dim" style="font-size:10px;width:60px">space-1</span>
+      <span style="display:block;height:10px;background:#6ee7b7;width:4px;border-radius:2px"></span>
+      <span style="font-size:10px;color:#8888a0">4px</span>
+      <span class="dim" style="font-size:9px;margin-left:auto">--cds-space-1</span>
+    </div>
+  
+    <div class="row" style="gap:14px">
+      <span class="dim" style="font-size:10px;width:60px">space-2</span>
+      <span style="display:block;height:10px;background:#6ee7b7;width:8px;border-radius:2px"></span>
+      <span style="font-size:10px;color:#8888a0">8px</span>
+      <span class="dim" style="font-size:9px;margin-left:auto">--cds-space-2</span>
+    </div>
+  
+    <div class="row" style="gap:14px">
+      <span class="dim" style="font-size:10px;width:60px">space-3</span>
+      <span style="display:block;height:10px;background:#6ee7b7;width:12px;border-radius:2px"></span>
+      <span style="font-size:10px;color:#8888a0">12px</span>
+      <span class="dim" style="font-size:9px;margin-left:auto">--cds-space-3</span>
+    </div>
+  
+    <div class="row" style="gap:14px">
+      <span class="dim" style="font-size:10px;width:60px">space-4</span>
+      <span style="display:block;height:10px;background:#6ee7b7;width:16px;border-radius:2px"></span>
+      <span style="font-size:10px;color:#8888a0">16px</span>
+      <span class="dim" style="font-size:9px;margin-left:auto">--cds-space-4</span>
+    </div>
+  
+    <div class="row" style="gap:14px">
+      <span class="dim" style="font-size:10px;width:60px">space-5</span>
+      <span style="display:block;height:10px;background:#6ee7b7;width:20px;border-radius:2px"></span>
+      <span style="font-size:10px;color:#8888a0">20px</span>
+      <span class="dim" style="font-size:9px;margin-left:auto">--cds-space-5</span>
+    </div>
+  
+    <div class="row" style="gap:14px">
+      <span class="dim" style="font-size:10px;width:60px">space-6</span>
+      <span style="display:block;height:10px;background:#6ee7b7;width:24px;border-radius:2px"></span>
+      <span style="font-size:10px;color:#8888a0">24px</span>
+      <span class="dim" style="font-size:9px;margin-left:auto">--cds-space-6</span>
+    </div>
+  
+    <div class="row" style="gap:14px">
+      <span class="dim" style="font-size:10px;width:60px">space-8</span>
+      <span style="display:block;height:10px;background:#6ee7b7;width:32px;border-radius:2px"></span>
+      <span style="font-size:10px;color:#8888a0">32px</span>
+      <span class="dim" style="font-size:9px;margin-left:auto">--cds-space-8</span>
+    </div>
+  
+    <div class="row" style="gap:14px">
+      <span class="dim" style="font-size:10px;width:60px">space-10</span>
+      <span style="display:block;height:10px;background:#6ee7b7;width:40px;border-radius:2px"></span>
+      <span style="font-size:10px;color:#8888a0">40px</span>
+      <span class="dim" style="font-size:9px;margin-left:auto">--cds-space-10</span>
+    </div>
+  
+    <div class="row" style="gap:14px">
+      <span class="dim" style="font-size:10px;width:60px">space-12</span>
+      <span style="display:block;height:10px;background:#6ee7b7;width:48px;border-radius:2px"></span>
+      <span style="font-size:10px;color:#8888a0">48px</span>
+      <span class="dim" style="font-size:9px;margin-left:auto">--cds-space-12</span>
+    </div>
+  
+</div></div>
+</section>
+<section class="page " id="sec-spacing-radii">
+  
+  <div class="section-title">Corner Radii</div>
+  <div class="card-body">
+<div class="wrap" style="gap:14px">
+  
+    <div style="flex:1;min-width:90px;text-align:center">
+      <div style="height:56px;border:1px solid var(--cds-border-bright);background:var(--cds-bg-elevated);border-radius:2px;display:flex;align-items:center;justify-content:center;color:#6ee7b7;font-size:10px">2px</div>
+      <div style="font-size:10px;margin-top:6px"><span style="color:#e8e8ed">radius-xs</span></div>
+      <div class="dim" style="font-size:9px;margin-top:2px">marks</div>
+    </div>
+  
+    <div style="flex:1;min-width:90px;text-align:center">
+      <div style="height:56px;border:1px solid var(--cds-border-bright);background:var(--cds-bg-elevated);border-radius:4px;display:flex;align-items:center;justify-content:center;color:#6ee7b7;font-size:10px">4px</div>
+      <div style="font-size:10px;margin-top:6px"><span style="color:#e8e8ed">radius-sm</span></div>
+      <div class="dim" style="font-size:9px;margin-top:2px">chips</div>
+    </div>
+  
+    <div style="flex:1;min-width:90px;text-align:center">
+      <div style="height:56px;border:1px solid var(--cds-border-bright);background:var(--cds-bg-elevated);border-radius:6px;display:flex;align-items:center;justify-content:center;color:#6ee7b7;font-size:10px">6px</div>
+      <div style="font-size:10px;margin-top:6px"><span style="color:#e8e8ed">radius-md</span></div>
+      <div class="dim" style="font-size:9px;margin-top:2px">buttons</div>
+    </div>
+  
+    <div style="flex:1;min-width:90px;text-align:center">
+      <div style="height:56px;border:1px solid var(--cds-border-bright);background:var(--cds-bg-elevated);border-radius:8px;display:flex;align-items:center;justify-content:center;color:#6ee7b7;font-size:10px">8px</div>
+      <div style="font-size:10px;margin-top:6px"><span style="color:#e8e8ed">radius-lg</span></div>
+      <div class="dim" style="font-size:9px;margin-top:2px">cards</div>
+    </div>
+  
+    <div style="flex:1;min-width:90px;text-align:center">
+      <div style="height:56px;border:1px solid var(--cds-border-bright);background:var(--cds-bg-elevated);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#6ee7b7;font-size:10px">12px</div>
+      <div style="font-size:10px;margin-top:6px"><span style="color:#e8e8ed">radius-xl</span></div>
+      <div class="dim" style="font-size:9px;margin-top:2px">bubbles</div>
+    </div>
+  
+    <div style="flex:1;min-width:90px;text-align:center">
+      <div style="height:56px;border:1px solid var(--cds-border-bright);background:var(--cds-bg-elevated);border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#6ee7b7;font-size:10px">9999px</div>
+      <div style="font-size:10px;margin-top:6px"><span style="color:#e8e8ed">radius-full</span></div>
+      <div class="dim" style="font-size:9px;margin-top:2px">dots·pills</div>
+    </div>
+  
+</div></div>
+</section>
+<section class="page " id="sec-elevation">
+  
+  <div class="section-title">Elevation</div>
+  <div class="card-body">
+<div class="col" style="gap:10px">
+  <div style="padding:14px 16px;border:1px solid var(--cds-border);background:var(--cds-bg-elevated);border-radius:8px">
+    <div style="font-size:11px">Default card · border + bg-elevated, <span class="dim">no shadow</span></div>
+  </div>
+  <div style="padding:14px 16px;border:1px solid rgba(110,231,183,.5);background:var(--cds-bg-elevated);border-radius:8px">
+    <div style="font-size:11px">Hover · <span class="mint">border → accent/50</span>, bg lift</div>
+  </div>
+  <div style="padding:14px 16px;border:1px solid var(--cds-border);background:var(--cds-bg-elevated);border-radius:8px;box-shadow:0 0 8px 3px rgba(110,231,183,.5)">
+    <div style="font-size:11px">Span glow · <span class="mint">0 0 8px 3px rgba(110,231,183,.5)</span> · flashes 2s</div>
+  </div>
+  <div style="padding:14px 16px;border:1px solid var(--cds-border);background:var(--cds-bg-elevated);border-radius:8px;box-shadow:0 24px 48px -12px rgba(0,0,0,.6)">
+    <div style="font-size:11px">Modal · <span class="dim">0 24px 48px -12px rgba(0,0,0,.6)</span></div>
+  </div>
+</div></div>
+</section>
+<section class="page group-start" id="sec-components-buttons">
+  <div class="group-header"><span class="group-dot"></span><span class="group-label">Components</span></div>
+  <div class="section-title">Buttons</div>
+  <div class="card-body">
+<div class="col" style="gap:14px">
+  <div class="row" style="gap:10px;flex-wrap:wrap">
+    <button style="background:#6ee7b7;color:#0c0c0f;border:0;padding:8px 16px;border-radius:8px;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer">Send</button>
+    <button style="background:#6ee7b7;color:#0c0c0f;border:0;padding:6px 12px;border-radius:6px;font-family:inherit;font-size:12px;font-weight:500">+ New</button>
+    <button style="background:transparent;color:#8888a0;border:0;padding:6px 12px;font-family:inherit;font-size:12px">Clear chat</button>
+    <button style="background:transparent;color:#55556a;border:0;padding:6px 12px;font-family:inherit;font-size:11px">reset</button>
+    <button style="background:#f87171;color:#fff;border:0;padding:6px 12px;border-radius:6px;font-family:inherit;font-size:12px;font-weight:500">Delete</button>
+    <button disabled style="background:#2a2a36;color:#55556a;border:0;padding:6px 12px;border-radius:6px;font-family:inherit;font-size:12px;cursor:not-allowed">Delete</button>
+  </div>
+  <div class="dim" style="font-size:10px">primary · secondary · ghost · link · destructive · disabled</div>
+</div></div>
+</section>
+<section class="page " id="sec-components-inputs">
+  
+  <div class="section-title">Inputs</div>
+  <div class="card-body">
+<div class="col" style="gap:12px">
+  <input placeholder="Type a message..." style="background:#1a1a22;border:1px solid #2a2a36;color:#e8e8ed;font-family:inherit;font-size:13px;padding:8px 12px;border-radius:8px;outline:0">
+  <input value="hybrid-kb-01" style="background:#1a1a22;border:1px solid rgba(110,231,183,.5);color:#e8e8ed;font-family:inherit;font-size:13px;padding:8px 12px;border-radius:8px;outline:0">
+  <div class="dim" style="font-size:10px;margin-top:-4px">default · focused (border → accent/50)</div>
+  <textarea rows="3" placeholder="Describe the agent's role..." style="background:#1a1a22;border:1px solid #2a2a36;color:#e8e8ed;font-family:inherit;font-size:12px;padding:10px 12px;border-radius:8px;outline:0;resize:none">You are a helpful customer support agent.</textarea>
+</div></div>
+</section>
+<section class="page " id="sec-components-chips">
+  
+  <div class="section-title">Chips & Pills</div>
+  <div class="card-body">
+<div class="wrap" style="gap:8px">
+  <span style="background:rgba(110,231,183,.1);color:#6ee7b7;border-radius:9999px;padding:2px 8px;font-size:9px">ready</span>
+  <span style="background:rgba(251,191,36,.1);color:#fbbf24;border-radius:9999px;padding:2px 8px;font-size:9px">indexing</span>
+  <span style="background:rgba(248,113,113,.1);color:#f87171;border-radius:9999px;padding:2px 8px;font-size:9px">error</span>
+  <span style="background:#141419;color:#8888a0;border-radius:4px;padding:2px 8px;font-size:8px">3 retrievers</span>
+  <span style="background:#141419;color:#8888a0;border-radius:4px;padding:2px 8px;font-size:8px">sonnet-4</span>
+  <span style="background:#1a1a22;border:1px solid #2a2a36;color:#8888a0;border-radius:6px;padding:4px 10px;font-size:10px;display:inline-flex;align-items:center;gap:6px">
+    <span style="color:#6ee7b7">⚡</span> <span>Searched <strong style="color:#e8e8ed;font-weight:500">Docs</strong></span> <span style="color:#55556a">▸</span>
+  </span>
+</div>
+<div class="dim" style="font-size:10px;margin-top:12px">status pill · meta tag · tool-call chip</div></div>
+</section>
+<section class="page " id="sec-components-tab-pill">
+  
+  <div class="section-title">Tab Pill + Toggle</div>
+  <div class="card-body">
+<div style="display:inline-flex;gap:2px;background:#0c0c0f;border-radius:6px;padding:2px">
+  <a style="padding:4px 12px;font-size:12px;color:#6ee7b7;background:#141419;border-radius:4px">Knowledge Base</a>
+  <a style="padding:4px 12px;font-size:12px;color:#8888a0">Dataset</a>
+  <a style="padding:4px 12px;font-size:12px;color:#8888a0">Retrievers</a>
+  <a style="padding:4px 12px;font-size:12px;color:#8888a0">Agents</a>
+  <a style="padding:4px 12px;font-size:12px;color:#8888a0">Experiments</a>
+</div>
+<div class="dim" style="font-size:10px;margin-top:12px">top-nav pill · active uses bg-elevated + accent fg</div>
+<div style="margin-top:16px;display:inline-flex;background:#1a1a22;border:1px solid #2a2a36;border-radius:9999px;overflow:hidden;font-size:10px">
+  <button style="padding:2px 10px;background:rgba(110,231,183,.2);color:#6ee7b7;border:0;font-family:inherit">Rendered</button>
+  <button style="padding:2px 10px;background:transparent;color:#8888a0;border:0;font-family:inherit">Raw</button>
+</div>
+<div class="dim" style="font-size:10px;margin-top:12px">segmented toggle · used in playground</div></div>
+</section>
+<section class="page " id="sec-components-cards">
+  
+  <div class="section-title">Landing Cards</div>
+  <div class="card-body">
+<div class="row" style="gap:12px;align-items:stretch">
+  <div style="flex:1;border:1px solid #2a2a36;background:#141419;border-radius:8px;padding:20px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <div style="width:36px;height:36px;border-radius:8px;background:rgba(110,231,183,.1);display:flex;align-items:center;justify-content:center;color:#6ee7b7;font-size:14px">⚡</div>
+      <h2 style="margin:0;font-size:14px;font-weight:500">Agents</h2>
+    </div>
+    <p style="margin:0;font-size:11px;color:#8888a0;line-height:1.6">Create CX agents with custom prompts and retriever tools.</p>
+    <div style="margin-top:14px;font-size:10px;color:#55556a;display:flex;gap:6px;flex-wrap:wrap">
+      <span>Create</span><span style="color:#2a2a36">→</span>
+      <span>Add tools</span><span style="color:#2a2a36">→</span>
+      <span>Iterate</span>
+    </div>
+  </div>
+  <div style="flex:1;border:1px solid rgba(110,231,183,.5);background:#141419;border-radius:8px;padding:20px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <div style="width:36px;height:36px;border-radius:8px;background:rgba(110,231,183,.2);display:flex;align-items:center;justify-content:center;color:#6ee7b7;font-size:14px">⚡</div>
+      <h2 style="margin:0;font-size:14px;font-weight:500;color:#6ee7b7">Agents</h2>
+    </div>
+    <p style="margin:0;font-size:11px;color:#8888a0;line-height:1.6">Hover state: border lifts to accent/50, icon wash darkens.</p>
+    <div style="margin-top:14px;font-size:10px;color:#55556a;display:flex;gap:6px;flex-wrap:wrap">
+      <span>Create</span><span style="color:#2a2a36">→</span>
+      <span>Add tools</span><span style="color:#2a2a36">→</span>
+      <span>Iterate</span>
+    </div>
+  </div>
+</div></div>
+</section>
+<section class="page " id="sec-components-sidebar-row">
+  
+  <div class="section-title">Sidebar Row</div>
+  <div class="card-body">
+<div style="width:240px;background:#141419;border:1px solid #2a2a36;border-radius:8px;padding:8px">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px 10px;border-bottom:1px solid #2a2a36;margin-bottom:8px">
+    <span class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:.12em">Agents</span>
+    <button style="background:#6ee7b7;color:#0c0c0f;border:0;padding:2px 10px;border-radius:4px;font-family:inherit;font-size:10px;font-weight:500">+ New</button>
+  </div>
+  <div style="border-left:3px solid #6ee7b7;background:#1a1a22;border-radius:6px;padding:8px 10px 8px 8px">
+    <div style="font-size:11px;color:#e8e8ed;font-weight:500">Support Agent</div>
+    <div style="font-size:9px;color:#55556a;margin-top:2px">sonnet-4</div>
+    <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">
+      <span style="background:#141419;color:#8888a0;border-radius:4px;padding:1px 6px;font-size:8px">3 retrievers</span>
+      <span style="background:rgba(110,231,183,.1);color:#6ee7b7;border-radius:9999px;padding:1px 6px;font-size:8px">ready</span>
+    </div>
+  </div>
+  <div style="border-left:3px solid transparent;padding:8px 10px 8px 8px;margin-top:2px">
+    <div style="font-size:11px;color:#8888a0">Billing Agent</div>
+    <div style="font-size:9px;color:#55556a;margin-top:2px">sonnet-4</div>
+    <div style="margin-top:6px;display:flex;gap:4px">
+      <span style="background:#141419;color:#8888a0;border-radius:4px;padding:1px 6px;font-size:8px">1 retriever</span>
+      <span style="background:rgba(251,191,36,.1);color:#fbbf24;border-radius:9999px;padding:1px 6px;font-size:8px">indexing</span>
+    </div>
+  </div>
+</div></div>
+</section>
+<section class="page " id="sec-components-message-bubbles">
+  
+  <div class="section-title">Message Bubbles</div>
+  <div class="card-body">
+<div class="col" style="gap:10px">
+  <div style="align-self:flex-end;max-width:60%;background:rgba(110,231,183,.1);border:1px solid rgba(110,231,183,.2);border-radius:12px;padding:8px 12px;font-size:13px">Where is my order?</div>
+  <div style="align-self:flex-start;max-width:60%">
+    <div style="font-size:8px;color:#55556a;margin-bottom:2px;margin-left:4px">Agent</div>
+    <div style="background:#141419;border:1px solid #2a2a36;border-radius:12px;padding:8px 12px;font-size:13px">Let me check that for you. <span style="display:inline-block;width:6px;height:12px;background:#6ee7b7;border-radius:2px;vertical-align:middle"></span></div>
+  </div>
+  <div style="align-self:flex-start;max-width:70%">
+    <button style="display:inline-flex;gap:6px;align-items:center;background:#141419;border:1px solid #2a2a36;border-radius:8px;padding:6px 10px;font-family:inherit;font-size:10px;color:#8888a0">
+      <span style="color:#6ee7b7">⚡</span>
+      <span><strong style="color:#e8e8ed;font-weight:500">2</strong> tools called</span>
+      <span style="color:#55556a">▾</span>
+    </button>
+  </div>
+</div></div>
+</section>
+<section class="page " id="sec-components-tool-chip">
+  
+  <div class="section-title">Tool-Call Chip</div>
+  <div class="card-body">
+<div class="col" style="gap:10px">
+  <button style="align-self:flex-start;display:inline-flex;gap:6px;align-items:center;background:#141419;border:1px solid #2a2a36;border-radius:6px;padding:4px 10px;font-family:inherit;font-size:9px;color:#8888a0">
+    <span style="color:#6ee7b7">⚡</span>
+    <span>Searched <strong style="color:#e8e8ed;font-weight:500">Order Lookup</strong></span>
+    <span style="color:#55556a">▸</span>
+  </button>
+  <div style="background:#141419;border:1px solid #2a2a36;border-radius:6px;padding:10px;font-size:9px">
+    <div style="color:#55556a">Query: <span style="color:#e8e8ed">"order #4821 status"</span></div>
+    <div style="margin-top:6px;color:#55556a">3 chunks returned</div>
+    <div style="margin-top:6px;background:#0c0c0f;border:1px solid #2a2a3680;border-radius:4px;padding:6px;color:#8888a0;line-height:1.4">Order #4821 shipped on Apr 18 via UPS Ground, tracking 1Z9W…</div>
+  </div>
+</div>
+<div class="dim" style="font-size:10px;margin-top:10px">collapsed + expanded · ⚡ is the signature tool-call glyph</div></div>
+</section>
+<section class="page " id="sec-components-modal">
+  
+  <div class="section-title">Delete Modal</div>
+  <div class="card-body">
+<div style="position:relative;background:#0c0c0f;padding:20px;border-radius:8px;overflow:hidden">
+  <div style="position:absolute;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(2px)"></div>
+  <div style="position:relative;max-width:360px;margin:0 auto;background:#141419;border:1px solid #2a2a36;border-radius:8px;padding:20px;box-shadow:0 24px 48px -12px rgba(0,0,0,.6)">
+    <h3 style="margin:0 0 6px;font-size:14px;font-weight:600">Delete Agent</h3>
+    <p style="margin:0 0 12px;font-size:11px;color:#8888a0;line-height:1.5">This will permanently delete this agent and cannot be undone. Type <strong style="color:#e8e8ed">delete</strong> to confirm.</p>
+    <input placeholder='Type "delete" to confirm' style="width:100%;background:#1a1a22;border:1px solid #2a2a36;color:#e8e8ed;font-family:inherit;font-size:11px;padding:8px 10px;border-radius:6px;outline:0;margin-bottom:12px;box-sizing:border-box">
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button style="background:transparent;color:#8888a0;border:0;padding:4px 10px;font-family:inherit;font-size:11px">Cancel</button>
+      <button disabled style="background:#2a2a36;color:#55556a;border:0;padding:4px 10px;border-radius:6px;font-family:inherit;font-size:11px">Delete</button>
+    </div>
+  </div>
+</div></div>
+</section>
+<section class="page " id="sec-components-header">
+  
+  <div class="section-title">App Header</div>
+  <div class="card-body">
+<div style="background:rgba(20,20,25,.8);backdrop-filter:blur(6px);border:1px solid #2a2a36;border-radius:8px;padding:0 18px;height:52px;display:flex;align-items:center;justify-content:space-between">
+  <div style="display:flex;align-items:center;gap:14px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="width:8px;height:8px;border-radius:9999px;background:#6ee7b7;animation:cds-pulse-dot 1.4s ease-in-out infinite"></span>
+      <span style="font-size:12px;font-weight:600;letter-spacing:.02em">CX Agent Evals</span>
+    </div>
+    <span class="dim" style="font-size:11px">/</span>
+    <div style="display:inline-flex;gap:2px;background:#0c0c0f;border-radius:6px;padding:2px">
+      <a style="padding:3px 10px;font-size:11px;color:#6ee7b7;background:#141419;border-radius:4px">Knowledge Base</a>
+      <a style="padding:3px 10px;font-size:11px;color:#8888a0">Agents</a>
+      <a style="padding:3px 10px;font-size:11px;color:#8888a0">Experiments</a>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="dim" style="font-size:11px">Tars · RAG Eng</span>
+    <span style="width:26px;height:26px;border-radius:9999px;background:linear-gradient(135deg,#2d6b54,#6ee7b7)"></span>
+  </div>
+</div></div>
+</section>
+<section class="page group-start" id="sec-brand-lockup">
+  <div class="group-header"><span class="group-dot"></span><span class="group-label">Brand</span></div>
+  <div class="section-title">Product Lockup</div>
+  <div class="card-body">
+<div style="padding:28px 0;display:flex;flex-direction:column;gap:24px">
+  <div style="display:flex;align-items:center;gap:14px">
+    <span style="width:14px;height:14px;border-radius:9999px;background:#6ee7b7;animation:cds-pulse-dot 1.4s ease-in-out infinite;box-shadow:0 0 12px rgba(110,231,183,.4)"></span>
+    <div>
+      <div style="font-size:22px;font-weight:600;letter-spacing:.02em">CX Agent Evals</div>
+      <div class="dim" style="font-size:11px;margin-top:2px">a Tars platform</div>
+    </div>
+  </div>
+  <div class="dim" style="font-size:10px;border-top:1px solid var(--cds-border);padding-top:10px">Live-dot + wordmark is the current product lockup. No standalone Tars mark found in repo — <span class="mint">flagged for replacement</span>.</div>
+</div></div>
+</section>
+<section class="page " id="sec-brand-motion">
+  
+  <div class="section-title">Motion Library</div>
+  <div class="card-body">
+<div class="col" style="gap:14px">
+  <div class="row" style="gap:14px">
+    <span style="width:10px;height:10px;border-radius:9999px;background:#6ee7b7;animation:cds-pulse-dot 1.4s ease-in-out infinite"></span>
+    <span style="font-size:11px"><span class="mono" style="color:#e8e8ed">pulse-dot</span> <span class="dim">· 1.4s infinite · opacity 0.4 ↔ 1 · the brand heartbeat</span></span>
+  </div>
+  <div class="row" style="gap:14px">
+    <span style="width:6px;height:14px;background:#6ee7b7;border-radius:2px;animation:cds-pulse-dot 1s ease-in-out infinite"></span>
+    <span style="font-size:11px"><span class="mono" style="color:#e8e8ed">stream-caret</span> <span class="dim">· 1s · during agent streaming</span></span>
+  </div>
+  <div class="row" style="gap:14px">
+    <span class="cds-fade-in" style="width:120px;height:14px;background:#141419;border:1px solid #2a2a36;border-radius:4px"></span>
+    <span style="font-size:11px"><span class="mono" style="color:#e8e8ed">fade-in</span> <span class="dim">· 300ms ease-out · translateY 6px</span></span>
+  </div>
+  <div class="row" style="gap:14px">
+    <span class="cds-slide-in" style="width:120px;height:14px;background:#141419;border:1px solid #2a2a36;border-radius:4px"></span>
+    <span style="font-size:11px"><span class="mono" style="color:#e8e8ed">slide-in</span> <span class="dim">· 250ms ease-out · translateX −8px</span></span>
+  </div>
+  <div class="row" style="gap:14px">
+    <span style="width:16px;height:16px;border-radius:2px;background:rgba(110,231,183,.3);animation:cds-span-glow 2s ease-in-out infinite"></span>
+    <span style="font-size:11px"><span class="mono" style="color:#e8e8ed">span-glow</span> <span class="dim">· 2s · 0 0 8px 3px accent/50 · citation flash</span></span>
+  </div>
+</div></div>
+</section>
+<section class="page " id="sec-brand-iconography">
+  
+  <div class="section-title">Iconography</div>
+  <div class="card-body">
+<div class="col" style="gap:14px">
+  <div class="row" style="gap:10px;align-items:flex-start">
+    <div style="width:40px;height:40px;border-radius:8px;background:rgba(110,231,183,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6ee7b7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+    </div>
+    <div>
+      <div style="font-size:11px">Heroicons outline · 24px · 2px stroke</div>
+      <div class="dim" style="font-size:10px;margin-top:2px">Always inline SVG. w-5 h-5 on the glyph, w-10 h-10 rounded-lg container with accent/10 wash.</div>
+    </div>
+  </div>
+  <div class="wrap" style="gap:8px;padding:10px;border:1px dashed var(--cds-border);border-radius:8px">
+    <span style="font-size:18px;color:#6ee7b7">⚡</span>
+    <span style="font-size:18px;color:#8888a0">→</span>
+    <span style="font-size:18px;color:#55556a">▸</span>
+    <span style="font-size:18px;color:#55556a">▾</span>
+    <span style="font-size:18px;color:#55556a">·</span>
+    <span style="font-size:18px;color:#55556a">—</span>
+  </div>
+  <div class="dim" style="font-size:10px">Permitted Unicode glyphs. No emoji, no PNG, no colored icons.</div>
+</div></div>
+</section>
+<section class="page " id="sec-content-voice">
+  
+  <div class="section-title">Content & Voice</div>
+  <div class="card-body">
+<div class="col" style="gap:10px">
+  <div style="border-left:2px solid #6ee7b7;padding:4px 12px">
+    <div style="font-size:11px;color:#e8e8ed">Build and Evaluate CX AI Agents</div>
+    <div class="dim" style="font-size:9px;margin-top:2px">Imperative. Title Case. No adjectives.</div>
+  </div>
+  <div style="border-left:2px solid #6ee7b7;padding:4px 12px">
+    <div style="font-size:11px;color:#e8e8ed">Generate questions <span style="color:#55556a">→</span> Edit &amp; curate <span style="color:#55556a">→</span> Ground truth spans</div>
+    <div class="dim" style="font-size:9px;margin-top:2px">Arrow-separated workflow trail (signature pattern).</div>
+  </div>
+  <div style="border-left:2px solid #6ee7b7;padding:4px 12px">
+    <div style="font-size:11px;color:#e8e8ed">No agents yet. Create one to get started.</div>
+    <div class="dim" style="font-size:9px;margin-top:2px">Empty state: flat, actionable, no "oops".</div>
+  </div>
+  <div style="border-left:2px solid #f87171;padding:4px 12px">
+    <div style="font-size:11px;color:#f87171">Check that ANTHROPIC_API_KEY is set in Convex dashboard environment variables.</div>
+    <div class="dim" style="font-size:9px;margin-top:2px">Error: names the fix location.</div>
+  </div>
+</div></div>
+</section>
+
+<script>
+(async () => {
+  try { await document.fonts.ready; } catch (e) {}
+  setTimeout(() => window.print(), 800);
+})();
+</script>
+</body>
+</html>
