@@ -1,7 +1,9 @@
 "use client";
 
+import { useMemo } from "react";
 import type { DetailQuestionRow, SpanLite } from "./types";
 import { SpanCard, type SpanCardKind } from "./SpanCard";
+import { buildDiffRows, type RetrievedWithRank } from "./useSpanDiff";
 
 interface QuestionDetailPaneProps {
   question: DetailQuestionRow | null;
@@ -37,7 +39,28 @@ function classifyRetrieved(span: SpanLite, gold: SpanLite[]): SpanCardKind {
   return gold.some((g) => spansOverlap(span, g)) ? "retrieved-hit" : "retrieved-over";
 }
 
+function ColumnHeader({ label, count }: { label: string; count: number }) {
+  return (
+    <div
+      className="flex items-center gap-2 px-6 py-2 sticky top-0 z-10"
+      style={{ background: "var(--color-bg)", borderBottom: "1px solid var(--color-border)" }}
+    >
+      <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        {label}
+      </span>
+      <span className="tabular-nums" style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
+        {count} span{count === 1 ? "" : "s"}
+      </span>
+    </div>
+  );
+}
+
 export function QuestionDetailPane({ question, metricNames }: QuestionDetailPaneProps) {
+  const rows = useMemo(
+    () => (question ? buildDiffRows(question.goldSpans, question.retrievedSpans) : []),
+    [question],
+  );
+
   if (!question) {
     return (
       <div className="flex-1 flex items-center justify-center" style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
@@ -67,55 +90,79 @@ export function QuestionDetailPane({ question, metricNames }: QuestionDetailPane
         </div>
       </div>
 
-      {/* Diff body — two columns */}
-      <div className="flex-1 grid grid-cols-2 gap-4 p-6">
-        {/* Ground truth */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 sticky top-0 pb-2" style={{ background: "var(--color-bg)", zIndex: 1 }}>
-            <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Ground truth
-            </span>
-            <span className="tabular-nums" style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
-              {question.goldSpans.length} span{question.goldSpans.length === 1 ? "" : "s"}
-            </span>
-          </div>
-          {question.goldSpans.length === 0 ? (
-            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>No ground-truth spans.</span>
-          ) : (
-            question.goldSpans.map((span, i) => (
-              <SpanCard
-                key={`gold-${i}`}
-                span={span}
-                kind={classifyGold(span, question.retrievedSpans)}
-              />
-            ))
-          )}
-        </div>
+      {/* Row-aligned diff body */}
+      <div className="grid grid-cols-2">
+        <ColumnHeader label="Ground truth" count={question.goldSpans.length} />
+        <ColumnHeader label="Retrieved" count={question.retrievedSpans.length} />
 
-        {/* Retrieved */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 sticky top-0 pb-2" style={{ background: "var(--color-bg)", zIndex: 1 }}>
-            <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Retrieved
-            </span>
-            <span className="tabular-nums" style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
-              {question.retrievedSpans.length} span{question.retrievedSpans.length === 1 ? "" : "s"}
-            </span>
+        {rows.length === 0 ? (
+          <div className="col-span-2 px-6 py-6 text-center" style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+            No spans to compare.
           </div>
-          {question.retrievedSpans.length === 0 ? (
-            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>No retrieved spans.</span>
-          ) : (
-            question.retrievedSpans.map((span, i) => (
-              <SpanCard
-                key={`ret-${i}`}
-                span={span}
-                kind={classifyRetrieved(span, question.goldSpans)}
-                rank={i + 1}
-              />
-            ))
-          )}
-        </div>
+        ) : (
+          rows.map((row, i) => (
+            <DiffRowCells
+              key={i}
+              row={row}
+              allGold={question.goldSpans}
+              allRetrieved={question.retrievedSpans}
+              isLast={i === rows.length - 1}
+            />
+          ))
+        )}
       </div>
     </div>
+  );
+}
+
+function DiffRowCells({
+  row,
+  allGold,
+  allRetrieved,
+  isLast,
+}: {
+  row: { gold: SpanLite[]; retrieved: RetrievedWithRank[] };
+  allGold: SpanLite[];
+  allRetrieved: SpanLite[];
+  isLast: boolean;
+}) {
+  const cellStyle: React.CSSProperties = {
+    padding: "12px 24px",
+    borderBottom: isLast ? "none" : "1px solid var(--color-border)",
+  };
+  return (
+    <>
+      <div className="flex flex-col gap-2" style={{ ...cellStyle, borderRight: "1px solid var(--color-border)" }}>
+        {row.gold.length === 0 ? (
+          <span style={{ fontSize: "11px", color: "var(--color-text-dim)", fontStyle: "italic" }}>
+            (no gold span)
+          </span>
+        ) : (
+          row.gold.map((span, i) => (
+            <SpanCard
+              key={`g-${i}`}
+              span={span}
+              kind={classifyGold(span, allRetrieved)}
+            />
+          ))
+        )}
+      </div>
+      <div className="flex flex-col gap-2" style={cellStyle}>
+        {row.retrieved.length === 0 ? (
+          <span style={{ fontSize: "11px", color: "var(--color-text-dim)", fontStyle: "italic" }}>
+            (no retrieved span)
+          </span>
+        ) : (
+          row.retrieved.map((span) => (
+            <SpanCard
+              key={`r-${span.rank}`}
+              span={span}
+              kind={classifyRetrieved(span, allGold)}
+              rank={span.rank}
+            />
+          ))
+        )}
+      </div>
+    </>
   );
 }

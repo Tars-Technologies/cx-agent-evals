@@ -48,8 +48,24 @@ export default function RetrieverDetailPage({
     return (
       <div className="flex flex-col h-screen">
         <Header mode="retrievers" />
-        <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
-          Loading…
+        <div className="flex flex-1 overflow-hidden">
+          <div
+            className="flex-shrink-0 h-full"
+            style={{ width: 360, borderRight: "1px solid var(--color-border)", background: "var(--color-bg-elevated)" }}
+          >
+            <div className="flex flex-col gap-2 p-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="rounded animate-pulse"
+                  style={{ height: 36, background: "var(--color-bg-surface)", opacity: 1 - i * 0.08 }}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
+            Loading…
+          </div>
         </div>
       </div>
     );
@@ -117,12 +133,20 @@ export default function RetrieverDetailPage({
             onFilterChange={setFilter}
           />
         </ResizablePanel>
-        <QuestionDetailPane
-          question={
-            visibleQuestions.find((q) => q.resultId === effectiveSelectedId) ?? null
-          }
-          metricNames={experiment.metricNames}
-        />
+        {sortedQuestions.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center" style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
+            {experiment.status === "running" || experiment.status === "pending"
+              ? "Evaluating… results will stream in here."
+              : "No results."}
+          </div>
+        ) : (
+          <QuestionDetailPane
+            question={
+              visibleQuestions.find((q) => q.resultId === effectiveSelectedId) ?? null
+            }
+            metricNames={experiment.metricNames}
+          />
+        )}
       </div>
     </div>
   );
