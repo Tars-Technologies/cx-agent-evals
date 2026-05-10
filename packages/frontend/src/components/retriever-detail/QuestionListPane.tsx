@@ -1,14 +1,48 @@
 "use client";
 
-import { type DetailQuestionRow, STATUS_COLORS } from "./types";
+import { useMemo } from "react";
+import {
+  type DetailQuestionRow,
+  type QuestionStatus,
+  STATUS_COLORS,
+} from "./types";
+
+export type StatusFilter = "all" | QuestionStatus;
 
 interface QuestionListPaneProps {
   questions: DetailQuestionRow[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  filter: StatusFilter;
+  onFilterChange: (f: StatusFilter) => void;
 }
 
-export function QuestionListPane({ questions, selectedId, onSelect }: QuestionListPaneProps) {
+const FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "miss", label: "Miss" },
+  { value: "partial", label: "Partial" },
+  { value: "hit", label: "Hit" },
+];
+
+export function QuestionListPane({
+  questions,
+  selectedId,
+  onSelect,
+  filter,
+  onFilterChange,
+}: QuestionListPaneProps) {
+  const counts = useMemo(() => {
+    const c: Record<StatusFilter, number> = { all: 0, hit: 0, partial: 0, miss: 0 };
+    c.all = questions.length;
+    for (const q of questions) c[q.status] += 1;
+    return c;
+  }, [questions]);
+
+  const filtered = useMemo(
+    () => (filter === "all" ? questions : questions.filter((q) => q.status === filter)),
+    [questions, filter],
+  );
+
   return (
     <div
       className="h-full flex flex-col overflow-hidden"
@@ -22,17 +56,56 @@ export function QuestionListPane({ questions, selectedId, onSelect }: QuestionLi
           Questions
         </span>
         <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }} className="tabular-nums">
-          {questions.length}
+          {filtered.length}
+          {filter !== "all" ? ` / ${counts.all}` : ""}
         </span>
       </div>
 
+      <div
+        className="px-3 py-2 flex items-center gap-1 flex-wrap"
+        style={{ borderBottom: "1px solid var(--color-border)" }}
+      >
+        {FILTER_OPTIONS.map((opt) => {
+          const isActive = filter === opt.value;
+          const dotColor = opt.value === "all" ? null : STATUS_COLORS[opt.value].dot;
+          return (
+            <button
+              key={opt.value}
+              onClick={() => onFilterChange(opt.value)}
+              className="inline-flex items-center gap-1.5 px-2 py-1 rounded transition-colors cursor-pointer"
+              style={{
+                fontSize: "11px",
+                fontWeight: 500,
+                color: isActive ? "var(--color-text)" : "var(--color-text-muted)",
+                background: isActive ? "var(--color-bg-surface)" : "transparent",
+                border: `1px solid ${isActive ? "var(--color-border)" : "transparent"}`,
+              }}
+            >
+              {dotColor && (
+                <span
+                  className="rounded-full"
+                  style={{ width: 6, height: 6, background: dotColor }}
+                />
+              )}
+              {opt.label}
+              <span
+                className="tabular-nums"
+                style={{ fontSize: "10px", color: "var(--color-text-dim)" }}
+              >
+                {counts[opt.value]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="flex-1 overflow-y-auto">
-        {questions.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="px-4 py-6 text-center" style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-            No results yet.
+            {questions.length === 0 ? "No results yet." : "No questions match this filter."}
           </div>
         ) : (
-          questions.map((q) => {
+          filtered.map((q) => {
             const isSelected = selectedId === q.resultId;
             const status = STATUS_COLORS[q.status];
             const recall = q.scores.recall ?? 0;

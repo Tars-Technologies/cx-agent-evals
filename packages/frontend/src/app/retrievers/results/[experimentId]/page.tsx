@@ -6,7 +6,7 @@ import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
 import { Header } from "@/components/Header";
 import { SummaryBar } from "@/components/retriever-detail/SummaryBar";
-import { QuestionListPane } from "@/components/retriever-detail/QuestionListPane";
+import { QuestionListPane, type StatusFilter } from "@/components/retriever-detail/QuestionListPane";
 import { QuestionDetailPane } from "@/components/retriever-detail/QuestionDetailPane";
 import { ResizablePanel } from "@/components/ResizablePanel";
 import { buildKbLink } from "@/lib/useKbFromUrl";
@@ -31,8 +31,18 @@ export default function RetrieverDetailPage({
   }, [data]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<StatusFilter>("all");
+
+  const visibleQuestions = useMemo(
+    () => (filter === "all" ? sortedQuestions : sortedQuestions.filter((q) => q.status === filter)),
+    [sortedQuestions, filter],
+  );
+
+  // If the selected question is filtered out, fall back to the first visible row
   const effectiveSelectedId =
-    selectedId ?? (sortedQuestions[0]?.resultId ?? null);
+    (selectedId && visibleQuestions.some((q) => q.resultId === selectedId)
+      ? selectedId
+      : visibleQuestions[0]?.resultId) ?? null;
 
   if (data === undefined) {
     return (
@@ -103,11 +113,13 @@ export default function RetrieverDetailPage({
             questions={sortedQuestions}
             selectedId={effectiveSelectedId}
             onSelect={setSelectedId}
+            filter={filter}
+            onFilterChange={setFilter}
           />
         </ResizablePanel>
         <QuestionDetailPane
           question={
-            sortedQuestions.find((q) => q.resultId === effectiveSelectedId) ?? null
+            visibleQuestions.find((q) => q.resultId === effectiveSelectedId) ?? null
           }
           metricNames={experiment.metricNames}
         />
