@@ -7,6 +7,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import { Header } from "@/components/Header";
 import { SummaryBar } from "@/components/retriever-detail/SummaryBar";
 import { QuestionListPane } from "@/components/retriever-detail/QuestionListPane";
+import { QuestionDetailPane } from "@/components/retriever-detail/QuestionDetailPane";
 import { ResizablePanel } from "@/components/ResizablePanel";
 import { buildKbLink } from "@/lib/useKbFromUrl";
 
@@ -104,11 +105,12 @@ export default function RetrieverDetailPage({
             onSelect={setSelectedId}
           />
         </ResizablePanel>
-        <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
-          {effectiveSelectedId
-            ? "Diff view coming next."
-            : "Select a question on the left."}
-        </div>
+        <QuestionDetailPane
+          question={
+            sortedQuestions.find((q) => q.resultId === effectiveSelectedId) ?? null
+          }
+          metricNames={experiment.metricNames}
+        />
       </div>
     </div>
   );
