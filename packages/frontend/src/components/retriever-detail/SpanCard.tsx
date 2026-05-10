@@ -29,8 +29,11 @@ export function SpanCard({ span, kind, rank, similarity }: SpanCardProps) {
       className="rounded p-2.5 flex flex-col gap-1.5"
       style={{
         background: style.bg,
-        borderLeft: `3px solid ${style.border}`,
-        border: `1px solid var(--color-border)`,
+        borderStyle: "solid",
+        borderColor: "var(--color-border)",
+        borderTopWidth: 1,
+        borderRightWidth: 1,
+        borderBottomWidth: 1,
         borderLeftWidth: 3,
         borderLeftColor: style.border,
       }}
