@@ -1,6 +1,6 @@
 "use client";
 
-import type { OptionDef } from "rag-evaluation-system/registry";
+import type { OptionDef } from "@tars-inc/eval-lib/registry";
 import { InfoTooltip } from "./InfoTooltip";
 
 interface OptionFieldProps {

@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: [
-    "rag-evaluation-system",
+    "@tars-inc/eval-lib",
     "openai",
     "langsmith",
     "@langchain/core",

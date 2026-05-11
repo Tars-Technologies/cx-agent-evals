@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { discoverDimensions } from "rag-evaluation-system/pipeline/internals";
-import { createLLMClient, getModel } from "rag-evaluation-system/llm";
+import { discoverDimensions } from "@tars-inc/eval-lib/pipeline/internals";
+import { createLLMClient, getModel } from "@tars-inc/eval-lib/llm";
 
 export async function POST(req: NextRequest) {
   try {

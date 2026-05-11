@@ -3,8 +3,8 @@
 import { useState, useMemo } from "react";
 import {
   PRESET_REGISTRY,
-} from "rag-evaluation-system/registry";
-import type { PresetEntry } from "rag-evaluation-system/registry";
+} from "@tars-inc/eval-lib/registry";
+import type { PresetEntry } from "@tars-inc/eval-lib/registry";
 import { StrategyCard } from "../shared/StrategyCard";
 import { ComplexityBadge } from "../shared/ComplexityBadge";
 

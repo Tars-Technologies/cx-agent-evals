@@ -1,6 +1,6 @@
 "use client";
 
-import { SEARCH_STRATEGY_REGISTRY } from "rag-evaluation-system/registry";
+import { SEARCH_STRATEGY_REGISTRY } from "@tars-inc/eval-lib/registry";
 import { StrategyCard } from "../shared/StrategyCard";
 import { OptionGroup } from "../shared/OptionGroup";
 import { IndexSearchNote } from "@/components/tabs/QuerySearchTab";

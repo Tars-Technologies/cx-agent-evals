@@ -5,7 +5,7 @@ import type {
   MessageType,
   Exchange,
   ExtractedInfo,
-} from "rag-evaluation-system/data-analysis";
+} from "@tars-inc/eval-lib/data-analysis";
 
 export type LivechatTab = "stats" | "conversations";
 

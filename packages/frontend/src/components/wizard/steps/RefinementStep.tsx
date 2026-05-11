@@ -3,7 +3,7 @@
 import {
   REFINEMENT_STEP_REGISTRY,
   RERANKER_REGISTRY,
-} from "rag-evaluation-system/registry";
+} from "@tars-inc/eval-lib/registry";
 import { OptionGroup } from "../shared/OptionGroup";
 
 // ---------------------------------------------------------------------------

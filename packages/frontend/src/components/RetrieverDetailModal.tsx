@@ -9,7 +9,7 @@ import {
   CHUNKER_REGISTRY,
   EMBEDDER_REGISTRY,
   RERANKER_REGISTRY,
-} from "rag-evaluation-system/registry";
+} from "@tars-inc/eval-lib/registry";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 
 // ---------------------------------------------------------------------------
