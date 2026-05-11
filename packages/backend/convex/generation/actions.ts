@@ -17,9 +17,9 @@ import {
   filterCombinations,
   generateForDocument,
   findCitationSpan,
-} from "rag-evaluation-system";
-import { createLLMClient, getModel } from "rag-evaluation-system/llm";
-import { QUESTION_INSERT_BATCH_SIZE } from "rag-evaluation-system/shared";
+} from "@tars-inc/eval-lib";
+import { createLLMClient, getModel } from "@tars-inc/eval-lib/llm";
+import { QUESTION_INSERT_BATCH_SIZE } from "@tars-inc/eval-lib/shared";
 import OpenAI from "openai";
 
 async function loadCorpusFromKb(

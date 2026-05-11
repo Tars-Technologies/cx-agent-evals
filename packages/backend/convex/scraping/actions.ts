@@ -3,7 +3,7 @@
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { ContentScraper, filterLinks, normalizeUrl } from "rag-evaluation-system/scraper";
+import { ContentScraper, filterLinks, normalizeUrl } from "@tars-inc/eval-lib/scraper";
 
 const TIME_BUDGET_MS = 9 * 60 * 1000; // 9 minutes (1 min buffer before Convex 10-min timeout)
 const BATCH_SIZE = 10;

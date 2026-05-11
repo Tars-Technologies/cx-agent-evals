@@ -9,8 +9,8 @@ import {
   DocumentId,
   type GroundTruth,
   type CharacterSpan,
-} from "rag-evaluation-system";
-import { uploadDataset, getLangSmithClient } from "rag-evaluation-system/langsmith";
+} from "@tars-inc/eval-lib";
+import { uploadDataset, getLangSmithClient } from "@tars-inc/eval-lib/langsmith";
 
 // ─── Dataset Sync ───
 
