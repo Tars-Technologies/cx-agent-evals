@@ -2,7 +2,7 @@
 // Frontend-side pipeline config types (mirrors eval-lib types without Node.js deps)
 // ---------------------------------------------------------------------------
 
-import { PRESET_REGISTRY } from "rag-evaluation-system/registry";
+import { PRESET_REGISTRY } from "@tars-inc/eval-lib/registry";
 
 // Stage 1 — Index
 export interface PlainIndexConfig {

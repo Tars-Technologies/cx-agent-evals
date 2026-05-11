@@ -10,7 +10,7 @@ This is a **pnpm workspace monorepo** with three packages:
 
 ```
 packages/
-  eval-lib/                     # Core library (TypeScript, published as rag-evaluation-system)
+  eval-lib/                     # Core library (TypeScript, published as @tars-inc/eval-lib)
     src/
       types/                    # Branded types, primitives, document/corpus interfaces
       chunkers/                 # Chunker interface + RecursiveCharacterChunker
@@ -25,9 +25,9 @@ packages/
           real-world-grounded/  # RealWorldGroundedStrategy — question matching with embedding similarity
         ground-truth/           # Ground truth assigner (span-based)
       experiments/              # Experiment runner, baseline retrievers, CallbackRetriever
-      langsmith/                # LangSmith client, dataset upload, experiment runner (sub-path: rag-evaluation-system/langsmith)
-      llm/                      # OpenAI client, embedder factory, model config (sub-path: rag-evaluation-system/llm)
-      shared/                   # JobStatus type, SerializedSpan, ExperimentResult, constants (sub-path: rag-evaluation-system/shared)
+      langsmith/                # LangSmith client, dataset upload, experiment runner (sub-path: @tars-inc/eval-lib/langsmith)
+      llm/                      # OpenAI client, embedder factory, model config (sub-path: @tars-inc/eval-lib/llm)
+      shared/                   # JobStatus type, SerializedSpan, ExperimentResult, constants (sub-path: @tars-inc/eval-lib/shared)
       utils/                    # Hashing, span utilities
     tests/                      # Vitest test suites
 

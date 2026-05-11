@@ -13,7 +13,7 @@ import {
   translateMessages,
   needsTranslation,
   type RawConversation,
-} from "rag-evaluation-system/data-analysis";
+} from "@tars-inc/eval-lib/data-analysis";
 
 export const runAnalysisPipeline = internalAction({
   args: {

@@ -1,112 +1,174 @@
-# rag-evaluation-system
+# @tars-inc/eval-lib
 
-Core TypeScript library for evaluating RAG retrieval pipelines. Supports **chunk-level** (chunk ID matching) and **token-level** (character span matching) evaluation.
+Composable TypeScript building blocks for evaluating RAG retrieval pipelines and CX (customer experience) agents end-to-end.
+
+**Capabilities:**
+
+- **Span-based RAG evaluation** — character-level recall, precision, IoU, F1 against ground-truth spans (not just chunk IDs)
+- **Configurable retrieval pipelines** — mix and match index strategies (Plain / Contextual / Summary / ParentChild), query rewriting (HyDE, MultiQuery, StepBack), search backends (Dense / BM25 / Hybrid), and refinement steps (Rerank / Threshold / Dedup / MMR / ExpandContext)
+- **Synthetic dataset generation** — three strategies: `SimpleStrategy`, `DimensionDrivenStrategy`, `RealWorldGroundedStrategy`, plus token-level ground-truth assignment
+- **Conversation analysis** — transcript parsing, microtopic extraction, message-type classification, agent-level statistics
+- **Source ingestion** — HTML scraping (`ContentScraper`) and file processing (PDF, Markdown, HTML → Markdown)
+- **LangSmith integration** — dataset upload, experiment runner, evaluator factory
 
 ## Install
 
 ```bash
-pnpm add rag-evaluation-system
+pnpm add @tars-inc/eval-lib@beta
 ```
 
-The core library depends only on `zod`. Optional integrations:
+Optional peer dependencies — install whichever providers you use:
 
 ```bash
-pnpm add openai        # OpenAI embeddings
-pnpm add chromadb      # Chroma vector store
-pnpm add cohere-ai     # Cohere reranker
-pnpm add langsmith     # LangSmith dataset management
+pnpm add openai           # OpenAIEmbedder, pipeline LLM client
+pnpm add cohere-ai        # CohereEmbedder, CohereReranker
+pnpm add @anthropic-ai/sdk  # Claude-based conversation classification
+pnpm add langsmith        # LangSmith dataset / experiment runner
 ```
 
-## Chunk-level evaluation
+## Quick start: span-based evaluation with a custom retriever
 
 ```typescript
 import {
-  createDocument, createCorpus, RecursiveCharacterChunker,
-  ChunkLevelEvaluation, chunkRecall, chunkPrecision, chunkF1,
-  ChunkId, QueryId, QueryText,
-} from "rag-evaluation-system";
-import { OpenAIEmbedder } from "rag-evaluation-system/embedders/openai";
+  createDocument,
+  createCorpus,
+  CallbackRetriever,
+  computeMetrics,
+  recall,
+  precision,
+  f1,
+  PositionAwareChunkId,
+  DocumentId,
+} from "@tars-inc/eval-lib";
 
-const corpus = createCorpus([createDocument({ id: "intro.md", content: "..." })]);
-const chunker = new RecursiveCharacterChunker({ chunkSize: 500, chunkOverlap: 50 });
+const corpus = createCorpus([
+  createDocument({
+    id: "faq.md",
+    content: "How do I reset my password? Click 'Forgot Password' on the login page.",
+  }),
+]);
+
+const retriever = new CallbackRetriever({
+  name: "keyword-matcher",
+  retrieveFn: async (query, k) => [
+    {
+      id: PositionAwareChunkId("chunk-1"),
+      content: "Click 'Forgot Password' on the login page.",
+      docId: DocumentId("faq.md"),
+      start: 28,
+      end: 70,
+      metadata: {},
+    },
+  ],
+});
+
+await retriever.init(corpus);
+
+const result = await computeMetrics({
+  retriever,
+  corpus,
+  metrics: [recall, precision, f1],
+  examples: [
+    {
+      inputs: { query: "how do I reset my password" },
+      outputs: {
+        relevantSpans: [{
+          docId: "faq.md",
+          start: 28,
+          end: 70,
+          text: "Click 'Forgot Password' on the login page.",
+        }],
+      },
+      metadata: {},
+    },
+  ],
+});
+
+console.log(result);
+await retriever.cleanup();
+```
+
+## Using a built-in retriever preset
+
+```typescript
+import { createHybridRerankedRetriever } from "@tars-inc/eval-lib";
+import { OpenAIEmbedder } from "@tars-inc/eval-lib/embedders/openai";
+import { CohereReranker } from "@tars-inc/eval-lib/rerankers/cohere";
+
 const embedder = await OpenAIEmbedder.create({ model: "text-embedding-3-small" });
+const reranker = new CohereReranker({ model: "rerank-english-v3.0" });
 
-const result = await new ChunkLevelEvaluation({ corpus, langsmithDatasetName: "my-eval" })
-  .run({
-    chunker, embedder, k: 5,
-    metrics: [chunkRecall, chunkPrecision, chunkF1],
-    groundTruth: [{
-      query: { id: QueryId("q1"), text: QueryText("What is RAG?"), metadata: {} },
-      relevantChunkIds: [ChunkId("chunk_abc123")],
-    }],
-  });
+const retriever = createHybridRerankedRetriever({ embedder, reranker });
+await retriever.init(corpus);
+const hits = await retriever.retrieve("how do I reset my password", 10);
 ```
 
-## Token-level evaluation
+## Generating a synthetic evaluation dataset
 
 ```typescript
 import {
-  createDocument, createCorpus, RecursiveCharacterChunker,
-  TokenLevelEvaluation, spanRecall, spanPrecision, spanIoU,
-  createCharacterSpan, QueryId, QueryText,
-} from "rag-evaluation-system";
-import { OpenAIEmbedder } from "rag-evaluation-system/embedders/openai";
-
-const result = await new TokenLevelEvaluation({ corpus, langsmithDatasetName: "my-eval" })
-  .run({
-    chunker, embedder, k: 5,
-    metrics: [spanRecall, spanPrecision, spanIoU],
-    groundTruth: [{
-      query: { id: QueryId("q1"), text: QueryText("What does RAG combine?"), metadata: {} },
-      relevantSpans: [createCharacterSpan({ docId: "intro.md", start: 0, end: 39, text: "..." })],
-    }],
-  });
-```
-
-## Synthetic data generation
-
-Two strategies for generating evaluation datasets:
-
-- **SimpleStrategy** — N questions per document via prompt-based generation
-- **DimensionDrivenStrategy** — Diverse questions via dimension discovery, filtering, relevance matrix, and stratified sampling
-
-```typescript
-import { corpusFromFolder, RecursiveCharacterChunker, SimpleStrategy, generate, openAIClientAdapter } from "rag-evaluation-system";
+  SimpleStrategy,
+  GroundTruthAssigner,
+  RecursiveCharacterChunker,
+  openAIClientAdapter,
+} from "@tars-inc/eval-lib";
 import OpenAI from "openai";
 
-const groundTruth = await generate({
-  strategy: new SimpleStrategy({ queriesPerDoc: 5 }),
-  evaluationType: "chunk-level",
-  corpus: await corpusFromFolder("./docs"),
-  llmClient: openAIClientAdapter(new OpenAI()),
-  model: "gpt-4o-mini",
-  chunker: new RecursiveCharacterChunker(),
-});
+const llm = openAIClientAdapter(new OpenAI());
+const strategy = new SimpleStrategy({ queriesPerDoc: 5 });
+const chunker = new RecursiveCharacterChunker({ chunkSize: 500, chunkOverlap: 50 });
+
+const queries = await strategy.generate({ corpus, llm, model: "gpt-4o-mini" });
+const groundTruth = await new GroundTruthAssigner({ chunker }).assign(queries, corpus);
 ```
 
-## Built-in optional implementations
+Other strategies:
+- `DimensionDrivenStrategy` — generates orthogonal coverage across dimensions you define (task type, difficulty, persona, etc.)
+- `RealWorldGroundedStrategy` — matches a list of real user questions to documents via embedding similarity, then synthesizes variants
 
-```typescript
-import { OpenAIEmbedder } from "rag-evaluation-system/embedders/openai";
-import { ChromaVectorStore } from "rag-evaluation-system/vector-stores/chroma";
-import { CohereReranker } from "rag-evaluation-system/rerankers/cohere";
-```
+## Sub-path entry points
 
-## Metrics
+Provider-specific code lives in sub-paths so you only pay for what you import:
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `chunkRecall` | Chunk | Fraction of relevant chunks retrieved |
-| `chunkPrecision` | Chunk | Fraction of retrieved chunks that are relevant |
-| `chunkF1` | Chunk | Harmonic mean of recall and precision |
-| `spanRecall` | Token | Fraction of ground truth character coverage retrieved |
-| `spanPrecision` | Token | Fraction of retrieved coverage that is relevant |
-| `spanIoU` | Token | Intersection over union of retrieved vs ground truth spans |
+| Path | Contents |
+|---|---|
+| `@tars-inc/eval-lib` | Core types, chunkers, retrievers, metrics, synthetic generation, presets |
+| `@tars-inc/eval-lib/embedders/openai` | `OpenAIEmbedder` |
+| `@tars-inc/eval-lib/embedders/cohere` | `CohereEmbedder` |
+| `@tars-inc/eval-lib/embedders/voyage` | `VoyageEmbedder` |
+| `@tars-inc/eval-lib/embedders/jina` | `JinaEmbedder` |
+| `@tars-inc/eval-lib/rerankers/cohere` | `CohereReranker` |
+| `@tars-inc/eval-lib/rerankers/jina` | `JinaReranker` |
+| `@tars-inc/eval-lib/rerankers/voyage` | `VoyageReranker` |
+| `@tars-inc/eval-lib/pipeline/internals` | `BM25SearchIndex`, fusion (`weightedScoreFusion`, `reciprocalRankFusion`), dimension discovery, refinement defaults |
+| `@tars-inc/eval-lib/pipeline/llm-openai` | `OpenAIPipelineLLM` for query expansion / rewrite |
+| `@tars-inc/eval-lib/llm` | `createLLMClient`, `createEmbedder`, `getModel`, `DEFAULT_MODEL` (Node-only) |
+| `@tars-inc/eval-lib/langsmith` | `getLangSmithClient`, `uploadDataset`, `runLangSmithExperiment`, `createLangSmithEvaluator` (Node-only) |
+| `@tars-inc/eval-lib/utils` | Hashing, span helpers, retry, concurrency, cosine similarity |
+| `@tars-inc/eval-lib/shared` | Constants and shared types (`JobStatus`, `SerializedSpan`, `ExperimentResult`) |
+| `@tars-inc/eval-lib/file-processing` | `processFile`, `htmlToMarkdown`, `pdfToMarkdown` |
+| `@tars-inc/eval-lib/scraper` | `ContentScraper`, `filterLinks`, `normalizeUrl`, seed-entity helpers |
+| `@tars-inc/eval-lib/registry` | Component registries for embedders, rerankers, chunkers, strategies, presets |
+| `@tars-inc/eval-lib/data-analysis` | `parseTranscript`, `parseBotFlowInput`, `computeBasicStats`, `classifyMessageTypes`, `extractMicrotopics` |
 
-## Development
+## Key concepts
 
-```bash
-pnpm build       # Build with tsup
-pnpm test        # Run vitest
-pnpm typecheck   # TypeScript check
-```
+- **`PositionAwareChunker`** — chunkers that preserve `start`/`end` character offsets in the source document. Required for span-based metrics.
+- **`Retriever` interface** — `init(corpus)` → `retrieve(query, k)` → `cleanup()`. Returns `PositionAwareChunk[]` with character offsets, enabling span-overlap metrics rather than chunk-ID matching.
+- **Span-based metrics** — `recall`, `precision`, `iou`, `f1` operate on `CharacterSpan[]` and compute character-level overlap. `mergeOverlappingSpans` coalesces before comparison.
+- **`PipelineRetriever`** — config-driven retriever composed of `IndexConfig` × `QueryConfig` × `SearchConfig` × `RefinementStepConfig[]`. Use the preset factories (`createBaselineVectorRagRetriever`, `createBM25Retriever`, `createHybridRetriever`, `createHybridRerankedRetriever`) for common combinations.
+
+## What this library is not
+
+- Not a vector database — `InMemoryVectorStore` is included for dev/test only
+- Not an LLM provider — wraps OpenAI / Cohere / Anthropic SDKs
+- Not a UI library or deployment platform
+- Not a multi-turn chat engine — focused on single-turn retrieval and conversation analysis
+
+## Source
+
+Source, tests, and end-to-end examples: [Tars-Technologies/cx-agent-evals](https://github.com/Tars-Technologies/cx-agent-evals) under `packages/eval-lib/`.
+
+## License
+
+MIT

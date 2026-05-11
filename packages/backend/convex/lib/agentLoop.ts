@@ -91,7 +91,7 @@ export async function runAgentLoop(
           ),
       }),
       execute: async ({ query, k }) => {
-        const { createEmbedder } = await import("rag-evaluation-system/llm");
+        const { createEmbedder } = await import("@tars-inc/eval-lib/llm");
         const embedder = createEmbedder(info.embeddingModel);
         const queryEmbedding = await embedder.embedQuery(query);
 

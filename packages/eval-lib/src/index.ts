@@ -47,7 +47,7 @@ export { OpenAIEmbedder } from "./embedders/index.js";
 
 // Vector Store
 export type { VectorStore, VectorSearchResult } from "./vector-stores/index.js";
-// InMemoryVectorStore moved to "rag-evaluation-system/pipeline/internals"
+// InMemoryVectorStore moved to "@tars-inc/eval-lib/pipeline/internals"
 
 // Reranker
 export type { Reranker } from "./rerankers/index.js";
@@ -59,7 +59,7 @@ export type { ComputeMetricsOptions } from "./evaluation/index.js";
 
 // Metrics
 export { recall, precision, iou, f1 } from "./evaluation/metrics/index.js";
-// mergeOverlappingSpans, calculateOverlap, totalSpanLength moved to "rag-evaluation-system/utils"
+// mergeOverlappingSpans, calculateOverlap, totalSpanLength moved to "@tars-inc/eval-lib/utils"
 
 // Retrievers (canonical location: src/retrievers/)
 /** @deprecated Use `createBaselineVectorRagRetriever()` from `experiments/presets` instead */
@@ -76,8 +76,8 @@ export {
   PipelineRetriever,
   computeIndexConfigHash,
   computeRetrieverConfigHash,
-  // DEFAULT_INDEX_CONFIG, DEFAULT_QUERY_CONFIG, DEFAULT_SEARCH_CONFIG moved to "rag-evaluation-system/pipeline/internals"
-  // BM25SearchIndex, weightedScoreFusion, reciprocalRankFusion, applyThresholdFilter moved to "rag-evaluation-system/pipeline/internals"
+  // DEFAULT_INDEX_CONFIG, DEFAULT_QUERY_CONFIG, DEFAULT_SEARCH_CONFIG moved to "@tars-inc/eval-lib/pipeline/internals"
+  // BM25SearchIndex, weightedScoreFusion, reciprocalRankFusion, applyThresholdFilter moved to "@tars-inc/eval-lib/pipeline/internals"
 } from "./retrievers/index.js";
 export type {
   PipelineRetrieverDeps,
@@ -136,8 +136,8 @@ export type { GenerateOptions } from "./synthetic-datagen/index.js";
 export { SimpleStrategy } from "./synthetic-datagen/strategies/simple/generator.js";
 export { DimensionDrivenStrategy } from "./synthetic-datagen/strategies/dimension-driven/generator.js";
 export { RealWorldGroundedStrategy } from "./synthetic-datagen/strategies/real-world-grounded/generator.js";
-// discoverDimensions moved to "rag-evaluation-system/pipeline/internals"
-// loadDimensions, loadDimensionsFromFile moved to "rag-evaluation-system/pipeline/internals"
+// discoverDimensions moved to "@tars-inc/eval-lib/pipeline/internals"
+// loadDimensions, loadDimensionsFromFile moved to "@tars-inc/eval-lib/pipeline/internals"
 export {
   parseDimensions,
 } from "./synthetic-datagen/strategies/dimension-driven/dimensions.js";

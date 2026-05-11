@@ -6,9 +6,9 @@ import { internal } from "../_generated/api";
 import {
   RecursiveCharacterChunker,
   createDocument,
-} from "rag-evaluation-system";
-import { EMBED_BATCH_SIZE, CLEANUP_BATCH_SIZE } from "rag-evaluation-system/shared";
-import { createEmbedder } from "rag-evaluation-system/llm";
+} from "@tars-inc/eval-lib";
+import { EMBED_BATCH_SIZE, CLEANUP_BATCH_SIZE } from "@tars-inc/eval-lib/shared";
+import { createEmbedder } from "@tars-inc/eval-lib/llm";
 
 /** Retry a mutation that may fail with TooManyWrites under concurrent load. */
 async function retryOnWriteLimit<T>(

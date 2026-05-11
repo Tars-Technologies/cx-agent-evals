@@ -12,7 +12,7 @@ import {
   type PipelineConfig,
   type PositionAwareChunk,
   type ScoredChunk,
-} from "rag-evaluation-system";
+} from "@tars-inc/eval-lib";
 import {
   BM25SearchIndex,
   weightedScoreFusion,
@@ -27,10 +27,10 @@ import {
   DEFAULT_STEP_BACK_PROMPT,
   DEFAULT_REWRITE_PROMPT,
   parseVariants,
-} from "rag-evaluation-system/pipeline/internals";
-import { OpenAIPipelineLLM } from "rag-evaluation-system/pipeline/llm-openai";
-import type { PipelineLLM, Reranker } from "rag-evaluation-system";
-import { createEmbedder } from "rag-evaluation-system/llm";
+} from "@tars-inc/eval-lib/pipeline/internals";
+import { OpenAIPipelineLLM } from "@tars-inc/eval-lib/pipeline/llm-openai";
+import type { PipelineLLM, Reranker } from "@tars-inc/eval-lib";
+import { createEmbedder } from "@tars-inc/eval-lib/llm";
 import { getAuthContext } from "../lib/auth";
 import { vectorSearchWithFilter } from "../lib/vectorSearch";
 
@@ -161,7 +161,7 @@ async function applyRefinementsForRetriever(
 /** Try to create a Cohere reranker. Returns undefined if not available. */
 async function tryCreateRerankerForRetriever(): Promise<Reranker | undefined> {
   try {
-    const { CohereReranker } = await import("rag-evaluation-system/rerankers/cohere");
+    const { CohereReranker } = await import("@tars-inc/eval-lib/rerankers/cohere");
     return await CohereReranker.create();
   } catch {
     return undefined;

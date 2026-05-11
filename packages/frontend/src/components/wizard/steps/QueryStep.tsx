@@ -1,6 +1,6 @@
 "use client";
 
-import { QUERY_STRATEGY_REGISTRY } from "rag-evaluation-system/registry";
+import { QUERY_STRATEGY_REGISTRY } from "@tars-inc/eval-lib/registry";
 import { StrategyCard } from "../shared/StrategyCard";
 
 // ---------------------------------------------------------------------------
