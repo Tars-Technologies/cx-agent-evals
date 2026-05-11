@@ -43,7 +43,7 @@ jobs:
       - name: Create Release Pull Request or Publish
         uses: changesets/action@v1
         with:
-          publish: pnpm changeset publish --tag beta
+          publish: pnpm changeset publish
           version: pnpm changeset version
           commit: "chore: version packages"
           title: "chore: version packages"
