@@ -2,7 +2,7 @@
  * Pipeline internals — config defaults, fusion functions, and search utilities.
  *
  * These are not part of the public root API surface but are available
- * for advanced use-cases via `rag-evaluation-system/pipeline/internals`.
+ * for advanced use-cases via `@tars-inc/eval-lib/pipeline/internals`.
  */
 
 // Config defaults
