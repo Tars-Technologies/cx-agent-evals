@@ -4,8 +4,17 @@
   "publishConfig": {
     "access": "public"
   },
-  "description": "A comprehensive framework for evaluating RAG retrieval pipelines",
+  "description": "TypeScript building blocks for evaluating RAG retrieval pipelines and CX agents: chunkers, embedders, retrievers, span-based metrics, synthetic data generation, transcript analysis, and LangSmith integration.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tars-Technologies/cx-agent-evals.git",
+    "directory": "packages/eval-lib"
+  },
+  "homepage": "https://github.com/Tars-Technologies/cx-agent-evals/tree/main/packages/eval-lib#readme",
+  "bugs": {
+    "url": "https://github.com/Tars-Technologies/cx-agent-evals/issues"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
