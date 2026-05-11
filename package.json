@@ -1,6 +1,7 @@
 {
   "name": "cx-agent-evals",
   "private": true,
+  "packageManager": "pnpm@10.6.5",
   "scripts": {
     "build": "pnpm -C packages/eval-lib build",
     "dev": "pnpm -C packages/frontend dev",
