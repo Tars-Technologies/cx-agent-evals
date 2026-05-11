@@ -6,7 +6,7 @@ A TypeScript framework for evaluating RAG retrieval pipelines, with a Convex bac
 
 ```
 packages/
-  eval-lib/     # Core evaluation library (rag-evaluation-system)
+  eval-lib/     # Core evaluation library (@tars-inc/eval-lib)
   backend/      # Convex backend (schema, actions, jobs pipeline)
   frontend/     # Next.js frontend (Clerk auth, Convex reactive UI)
 ```
