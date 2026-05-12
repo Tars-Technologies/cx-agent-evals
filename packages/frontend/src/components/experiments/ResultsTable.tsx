@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 interface RankedResult {
   experimentId: string;
@@ -12,6 +13,59 @@ interface RankedResult {
   f1?: number;
   iou?: number;
   status: string;
+  phase?: string | null;
+  totalQuestions?: number | null;
+  processedQuestions?: number | null;
+}
+
+const RUNNING_STATUSES = new Set(["pending", "running"]);
+
+function StatusOrProgress({ result }: { result: RankedResult }) {
+  if (RUNNING_STATUSES.has(result.status)) {
+    const processed = result.processedQuestions ?? 0;
+    const total = result.totalQuestions ?? 0;
+    const phase = result.phase;
+    let label: string;
+    if (phase && phase !== "evaluating" && phase !== "done") {
+      label = phase[0]!.toUpperCase() + phase.slice(1) + "…";
+    } else if (total > 0) {
+      label = `${processed} / ${total}`;
+    } else {
+      label = "Running…";
+    }
+    return (
+      <span
+        className="inline-flex items-center gap-1.5"
+        style={{ fontSize: "11px", color: "#3b82f6", fontWeight: 500 }}
+      >
+        <span
+          className="rounded-full"
+          style={{
+            width: 6,
+            height: 6,
+            background: "#3b82f6",
+            animation: "pulse-dot 1.4s ease-in-out infinite",
+          }}
+        />
+        {label}
+      </span>
+    );
+  }
+  if (result.status === "failed") {
+    return (
+      <span style={{ fontSize: "11px", color: "#ef4444", fontWeight: 500 }}>
+        Failed
+      </span>
+    );
+  }
+  if (result.status === "canceled" || result.status === "canceling") {
+    return (
+      <span style={{ fontSize: "11px", color: "var(--color-text-dim)" }}>
+        Canceled
+      </span>
+    );
+  }
+  return null;
 }
 
 interface ResultsTableProps {
@@ -101,6 +155,7 @@ export function ResultsTable({ results, metricNames }: ResultsTableProps) {
             {visibleRows.map((result, i) => {
               const rank = i + 1;
               const isFirst = rank === 1;
+              const isRunning = RUNNING_STATUSES.has(result.status);
               return (
                 <tr
                   key={result.experimentId + (result.retrieverId ?? i)}
@@ -116,28 +171,37 @@ export function ResultsTable({ results, metricNames }: ResultsTableProps) {
                   {/* Name */}
                   <td
                     className="px-3 py-2"
-                    style={{ fontSize: "12px", color: "var(--color-text)", fontWeight: 500 }}
+                    style={{ fontSize: "12px", fontWeight: 500 }}
                   >
-                    {result.retrieverName}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link
+                        href={`/retrievers/results/${result.experimentId}`}
+                        className="hover:underline"
+                        style={{ color: "var(--color-text)" }}
+                      >
+                        {result.retrieverName}
+                      </Link>
+                      <StatusOrProgress result={result} />
+                    </div>
                   </td>
                   {/* Recall */}
-                  <NumericCell value={result.recall} />
+                  {isRunning ? <td /> : <NumericCell value={result.recall} />}
                   {/* Precision */}
-                  <NumericCell value={result.precision} />
+                  {isRunning ? <td /> : <NumericCell value={result.precision} />}
                   {/* F1 */}
-                  {showF1 && <NumericCell value={result.f1} />}
+                  {showF1 && (isRunning ? <td /> : <NumericCell value={result.f1} />)}
                   {/* IoU */}
-                  {showIoU && <NumericCell value={result.iou} />}
+                  {showIoU && (isRunning ? <td /> : <NumericCell value={result.iou} />)}
                   {/* Score */}
                   <td
                     className="px-3 py-2 text-right tabular-nums"
                     style={{
                       fontSize: "12px",
-                      color: isFirst ? "var(--color-accent)" : "var(--color-text-muted)",
-                      fontWeight: isFirst ? 600 : 400,
+                      color: isFirst && !isRunning ? "var(--color-accent)" : "var(--color-text-muted)",
+                      fontWeight: isFirst && !isRunning ? 600 : 400,
                     }}
                   >
-                    {(result.compositeScore * 100).toFixed(1)}%
+                    {isRunning ? "—" : `${(result.compositeScore * 100).toFixed(1)}%`}
                   </td>
                 </tr>
               );
