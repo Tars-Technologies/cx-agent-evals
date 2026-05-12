@@ -23,6 +23,7 @@ export default defineSchema({
     entityType: v.optional(v.string()),
     sourceUrl: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
+    documentCount: v.optional(v.number()),
     createdBy: v.id("users"),
     createdAt: v.number(),
   })
