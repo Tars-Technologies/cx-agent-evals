@@ -3,6 +3,27 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { getAuthContext } from "../lib/auth";
 import { computeDocId } from "../lib/docId";
+import type { Doc } from "../_generated/dataModel";
+
+type DocSummary = Pick<
+  Doc<"documents">,
+  "_id" | "docId" | "title" | "contentLength" | "sourceType" | "priority"
+>;
+
+function projectDocSummary(doc: Doc<"documents">): DocSummary {
+  return {
+    _id: doc._id,
+    docId: doc.docId,
+    title: doc.title,
+    contentLength: doc.contentLength,
+    sourceType: doc.sourceType,
+    priority: doc.priority,
+  };
+}
+
+const MAX_DOC_IDS_PER_LOOKUP = 50;
+const MAX_TITLE_SEARCH_LIMIT = 100;
+const MAX_CUSTOMIZED_DOCS_LIMIT = 500;
 
 export const generateUploadUrl = mutation({
   args: {},
@@ -132,6 +153,93 @@ export const getByDocId = query({
       createdAt: doc.createdAt,
       priority: doc.priority,
     };
+  },
+});
+
+/**
+ * Resolve a known set of `docId` strings to their full doc rows. Used by the
+ * editor / dataset page to resolve span references without loading the whole
+ * KB doc list. Order matches input where possible; missing docs are omitted.
+ */
+export const getDocsByDocIds = query({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    docIds: v.array(v.string()),
+  },
+  handler: async (ctx, args): Promise<DocSummary[]> => {
+    const { orgId } = await getAuthContext(ctx);
+    const kb = await ctx.db.get(args.kbId);
+    if (!kb || kb.orgId !== orgId) return [];
+
+    const ids = args.docIds.slice(0, MAX_DOC_IDS_PER_LOOKUP);
+    const docs = await Promise.all(
+      ids.map((docId) =>
+        ctx.db
+          .query("documents")
+          .withIndex("by_kb_doc_id", (q) =>
+            q.eq("kbId", args.kbId).eq("docId", docId),
+          )
+          .first(),
+      ),
+    );
+    return docs.flatMap((doc) => (doc ? [projectDocSummary(doc)] : []));
+  },
+});
+
+/**
+ * Server-side title search within a KB. Empty/whitespace query returns [].
+ */
+export const searchDocsByTitle = query({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    query: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<DocSummary[]> => {
+    const { orgId } = await getAuthContext(ctx);
+    const kb = await ctx.db.get(args.kbId);
+    if (!kb || kb.orgId !== orgId) return [];
+
+    const trimmed = args.query.trim();
+    if (!trimmed) return [];
+
+    const limit = Math.min(args.limit ?? 20, MAX_TITLE_SEARCH_LIMIT);
+    const hits = await ctx.db
+      .query("documents")
+      .withSearchIndex("search_title", (q) =>
+        q.search("title", trimmed).eq("kbId", args.kbId),
+      )
+      .take(limit);
+
+    return hits.map(projectDocSummary);
+  },
+});
+
+/**
+ * Lists docs in a KB whose `priority` field is set. Uses the `by_kb_priority`
+ * compound index so only customized rows are read — scanning by_kb alone
+ * would read every doc's full content and re-hit the 16MB limit on large KBs.
+ */
+export const listCustomizedDocs = query({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<DocSummary[]> => {
+    const { orgId } = await getAuthContext(ctx);
+    const kb = await ctx.db.get(args.kbId);
+    if (!kb || kb.orgId !== orgId) return [];
+
+    const limit = Math.min(args.limit ?? 200, MAX_CUSTOMIZED_DOCS_LIMIT);
+    const rows = await ctx.db
+      .query("documents")
+      .withIndex("by_kb_priority", (q) =>
+        q.eq("kbId", args.kbId).gte("priority", 1),
+      )
+      .order("desc")
+      .take(limit);
+
+    return rows.map(projectDocSummary);
   },
 });
 
