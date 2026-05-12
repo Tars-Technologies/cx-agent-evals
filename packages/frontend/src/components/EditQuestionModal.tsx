@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import { Id } from "@convex/_generated/dataModel";
 import { SpanInfo } from "@/lib/types";
-import { searchDocuments } from "@/lib/fuzzySearch";
+import { DocSearchResults, type DocSearchHit } from "./DocSearchResults";
 
 const SPAN_COLORS = [
   "var(--color-chunk-1)",
@@ -49,11 +49,31 @@ export function EditQuestionModal({
   // Delete confirmation
   const [confirmDeleteIndex, setConfirmDeleteIndex] = useState<number | null>(null);
 
-  // Documents list for the KB
-  const documents = useQuery(api.crud.documents.listByKb, { kbId });
+  // Resolve referenced docIds (source + span docs) via point lookup. Includes
+  // every doc the user has added a span on, so navigation always has the _id.
+  const referencedDocIds = useMemo(() => {
+    const set = new Set<string>([question.sourceDocId]);
+    for (const s of spans) set.add(s.docId);
+    return [...set];
+  }, [question.sourceDocId, spans]);
 
-  // Selected document in right panel
-  const [selectedDocId, setSelectedDocId] = useState<Id<"documents"> | null>(null);
+  const resolvedDocs = useQuery(
+    api.crud.documents.getDocsByDocIds,
+    referencedDocIds.length > 0 ? { kbId, docIds: referencedDocIds } : "skip",
+  );
+
+  const docByDocId = useMemo(() => {
+    const map = new Map<string, Pick<DocSearchHit, "_id" | "docId" | "title">>();
+    for (const d of resolvedDocs ?? []) {
+      map.set(d.docId, { _id: d._id, docId: d.docId, title: d.title });
+    }
+    return map;
+  }, [resolvedDocs]);
+
+  // Explicit selection from the right-panel search; falls back to the source doc.
+  const [pickedDocId, setPickedDocId] = useState<Id<"documents"> | null>(null);
+  const selectedDocId =
+    pickedDocId ?? docByDocId.get(question.sourceDocId)?._id ?? null;
 
   // Saving state
   const [saving, setSaving] = useState(false);
@@ -75,14 +95,6 @@ export function EditQuestionModal({
     spansByDoc.set(span.docId, list);
   });
 
-  // Unique doc IDs that already have spans
-  const docsWithSpans = new Set(spans.map((s) => s.docId));
-
-  // Documents that don't have spans yet (for "add from another doc" chips)
-  const docsWithoutSpans = (documents ?? []).filter(
-    (d) => !docsWithSpans.has(d.docId),
-  );
-
   // Focused span for scroll-to + glow
   const [focusedSpanIndex, setFocusedSpanIndex] = useState<number | null>(null);
 
@@ -95,7 +107,6 @@ export function EditQuestionModal({
     setSpans((prev) => [...prev, span]);
   }
 
-  // Navigate to a span: open its document and focus it
   function handleSpanClick(globalIndex: number, span: SpanInfo) {
     navigateToDoc(span.docId);
     setFocusedSpanIndex(globalIndex);
@@ -116,18 +127,19 @@ export function EditQuestionModal({
     }
   }
 
-  // Navigate to a document in the right panel
   function navigateToDoc(docId: string) {
-    const doc = (documents ?? []).find((d) => d.docId === docId);
-    if (doc) setSelectedDocId(doc._id);
+    const doc = docByDocId.get(docId);
+    if (doc) setPickedDocId(doc._id);
+  }
+
+  function handlePickSearchResult(doc: DocSearchHit) {
+    setPickedDocId(doc._id);
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Overlay */}
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
 
-      {/* Modal */}
       <div
         className="relative bg-bg-elevated border border-border rounded-lg shadow-2xl flex flex-col animate-fade-in"
         style={{ width: "95vw", maxWidth: 1200, height: "80vh", maxHeight: 720 }}
@@ -196,109 +208,97 @@ export function EditQuestionModal({
 
             {/* Spans list */}
             <div className="flex-1 overflow-y-auto p-2">
-              {[...spansByDoc.entries()].map(([docId, items]) => (
-                <div key={docId} className="mb-3">
-                  <button
-                    onClick={() => navigateToDoc(docId)}
-                    className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-semibold text-text-muted hover:text-accent transition-colors cursor-pointer rounded hover:bg-bg-hover w-full text-left group"
-                  >
-                    <span className="text-accent text-[9px]">▶</span>
-                    <span className="flex-1 truncate">{docId}</span>
-                    <span className="text-[8px] text-text-dim opacity-0 group-hover:opacity-100">
-                      → view
-                    </span>
-                  </button>
-                  {items.map(({ span, globalIndex }) => (
-                    <div
-                      key={globalIndex}
-                      onClick={() => handleSpanClick(globalIndex, span)}
-                      className={`relative bg-bg border border-border rounded mx-1 my-1 px-2.5 py-2 text-[10px] leading-relaxed transition-colors group/span hover:border-border-bright cursor-pointer ${
-                        confirmDeleteIndex === globalIndex
-                          ? "border-red-500/30 bg-red-500/5"
-                          : ""
-                      }`}
+              {[...spansByDoc.entries()].map(([docId, items]) => {
+                const docRef = docByDocId.get(docId);
+                const label = docRef?.title ?? docId;
+                return (
+                  <div key={docId} className="mb-3">
+                    <button
+                      onClick={() => navigateToDoc(docId)}
+                      className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-semibold text-text-muted hover:text-accent transition-colors cursor-pointer rounded hover:bg-bg-hover w-full text-left group"
                     >
-                      {/* Color bar */}
+                      <span className="text-accent text-[9px]">▶</span>
+                      <span className="flex-1 truncate">{label}</span>
+                      <span className="text-[8px] text-text-dim opacity-0 group-hover:opacity-100">
+                        → view
+                      </span>
+                    </button>
+                    {items.map(({ span, globalIndex }) => (
                       <div
-                        className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l"
-                        style={{
-                          backgroundColor: SPAN_COLORS[globalIndex % SPAN_COLORS.length],
-                        }}
-                      />
-
-                      {/* Delete button (hover) */}
-                      {confirmDeleteIndex !== globalIndex && (
-                        <button
-                          onClick={() => setConfirmDeleteIndex(globalIndex)}
-                          className="absolute top-1.5 right-1.5 opacity-0 group-hover/span:opacity-100 text-[9px] text-red-400 bg-red-400/10 border border-red-400/20 rounded px-1.5 py-0.5 hover:bg-red-400/20 transition-all cursor-pointer flex items-center gap-1"
-                        >
-                          ✕ delete
-                        </button>
-                      )}
-
-                      {/* Inline confirmation */}
-                      {confirmDeleteIndex === globalIndex && (
-                        <div className="absolute -top-1 right-1 bg-bg-elevated border border-red-500 rounded px-2.5 py-1.5 flex items-center gap-2 shadow-lg z-10">
-                          <span className="text-[10px] text-text-muted">Remove?</span>
-                          <button
-                            onClick={() => handleDeleteSpan(globalIndex)}
-                            className="text-[9px] font-semibold bg-red-500 text-white px-2 py-0.5 rounded cursor-pointer"
-                          >
-                            Yes
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteIndex(null)}
-                            className="text-[9px] text-text-muted border border-border px-2 py-0.5 rounded cursor-pointer"
-                          >
-                            No
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Span text */}
-                      <p className="text-text line-clamp-3 pr-12">{span.text}</p>
-                      <p className="text-[8px] text-text-dim mt-1">
-                        chars {span.start.toLocaleString()} — {span.end.toLocaleString()}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ))}
-
-              {/* "Add from another doc" section */}
-              {docsWithoutSpans.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-border px-2">
-                  <p className="text-[9px] text-text-dim mb-2">
-                    Add spans from another document:
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {docsWithoutSpans.map((doc) => (
-                      <button
-                        key={doc._id}
-                        onClick={() => setSelectedDocId(doc._id)}
-                        className="text-[9px] text-text-muted bg-bg border border-border px-2 py-1 rounded hover:border-accent/30 hover:text-accent transition-colors cursor-pointer truncate max-w-[200px]"
+                        key={globalIndex}
+                        onClick={() => handleSpanClick(globalIndex, span)}
+                        className={`relative bg-bg border border-border rounded mx-1 my-1 px-2.5 py-2 text-[10px] leading-relaxed transition-colors group/span hover:border-border-bright cursor-pointer ${
+                          confirmDeleteIndex === globalIndex
+                            ? "border-red-500/30 bg-red-500/5"
+                            : ""
+                        }`}
                       >
-                        {doc.title}
-                      </button>
+                        <div
+                          className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l"
+                          style={{
+                            backgroundColor: SPAN_COLORS[globalIndex % SPAN_COLORS.length],
+                          }}
+                        />
+
+                        {confirmDeleteIndex !== globalIndex && (
+                          <button
+                            onClick={() => setConfirmDeleteIndex(globalIndex)}
+                            className="absolute top-1.5 right-1.5 opacity-0 group-hover/span:opacity-100 text-[9px] text-red-400 bg-red-400/10 border border-red-400/20 rounded px-1.5 py-0.5 hover:bg-red-400/20 transition-all cursor-pointer flex items-center gap-1"
+                          >
+                            ✕ delete
+                          </button>
+                        )}
+
+                        {confirmDeleteIndex === globalIndex && (
+                          <div className="absolute -top-1 right-1 bg-bg-elevated border border-red-500 rounded px-2.5 py-1.5 flex items-center gap-2 shadow-lg z-10">
+                            <span className="text-[10px] text-text-muted">Remove?</span>
+                            <button
+                              onClick={() => handleDeleteSpan(globalIndex)}
+                              className="text-[9px] font-semibold bg-red-500 text-white px-2 py-0.5 rounded cursor-pointer"
+                            >
+                              Yes
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteIndex(null)}
+                              className="text-[9px] text-text-muted border border-border px-2 py-0.5 rounded cursor-pointer"
+                            >
+                              No
+                            </button>
+                          </div>
+                        )}
+
+                        <p className="text-text line-clamp-3 pr-12">{span.text}</p>
+                        <p className="text-[8px] text-text-dim mt-1">
+                          chars {span.start.toLocaleString()} — {span.end.toLocaleString()}
+                        </p>
+                      </div>
                     ))}
                   </div>
-                </div>
-              )}
+                );
+              })}
 
               {spans.length === 0 && (
                 <div className="flex items-center justify-center py-8 text-[11px] text-text-dim">
                   Select text in a document to add a span →
                 </div>
               )}
+
+              {/* Hint to find another doc */}
+              <div className="mt-3 pt-3 border-t border-border px-2">
+                <p className="text-[9px] text-text-dim">
+                  To add spans from another document, search for it in the right
+                  panel.
+                </p>
+              </div>
             </div>
           </div>
 
           {/* RIGHT PANEL */}
           <div className="flex-1 flex flex-col overflow-hidden">
             <RightPanel
-              documents={documents ?? []}
+              kbId={kbId}
               selectedDocId={selectedDocId}
-              onSelectDoc={setSelectedDocId}
+              onPickDoc={handlePickSearchResult}
               existingSpans={spans}
               onAddSpan={handleAddSpan}
               focusedSpanIndex={focusedSpanIndex}
@@ -324,17 +324,17 @@ export function EditQuestionModal({
 // ─── Right Panel ───
 
 function RightPanel({
-  documents,
+  kbId,
   selectedDocId,
-  onSelectDoc,
+  onPickDoc,
   existingSpans,
   onAddSpan,
   focusedSpanIndex,
   onFocusHandled,
 }: {
-  documents: { _id: Id<"documents">; docId: string; title: string }[];
+  kbId: Id<"knowledgeBases">;
   selectedDocId: Id<"documents"> | null;
-  onSelectDoc: (id: Id<"documents">) => void;
+  onPickDoc: (doc: DocSearchHit) => void;
   existingSpans: SpanInfo[];
   onAddSpan: (span: SpanInfo) => void;
   focusedSpanIndex: number | null;
@@ -342,36 +342,10 @@ function RightPanel({
 }) {
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Load selected document content
   const docContent = useQuery(
     api.crud.documents.getContent,
     selectedDocId ? { id: selectedDocId } : "skip",
   );
-
-  // Load all doc contents for search (lazy — only when search is active)
-  const [loadedDocs, setLoadedDocs] = useState<
-    Map<string, { docId: string; title: string; content: string }>
-  >(new Map());
-
-  // When docContent loads, cache it
-  useEffect(() => {
-    if (docContent) {
-      setLoadedDocs((prev) => {
-        const next = new Map(prev);
-        next.set(docContent.docId, {
-          docId: docContent.docId,
-          title: docContent.docId,
-          content: docContent.content,
-        });
-        return next;
-      });
-    }
-  }, [docContent]);
-
-  // Search results (searchDocuments imported at top of file)
-  const searchResults = searchQuery.trim()
-    ? searchDocuments(searchQuery, [...loadedDocs.values()], 10)
-    : [];
 
   // Text selection state
   const [selection, setSelection] = useState<{
@@ -380,7 +354,6 @@ function RightPanel({
     end: number;
   } | null>(null);
 
-  // Handle text selection in document
   const handleMouseUp = useCallback(() => {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.rangeCount) {
@@ -403,8 +376,6 @@ function RightPanel({
       return;
     }
 
-    // Calculate character offset within the document content
-    // Walk text nodes to find the start offset
     const preRange = document.createRange();
     preRange.setStart(container, 0);
     preRange.setEnd(range.startContainer, range.startOffset);
@@ -429,7 +400,6 @@ function RightPanel({
   // Scroll to and glow focused span
   useEffect(() => {
     if (focusedSpanIndex === null || !docContent) return;
-    // Small delay to let the document render after navigation
     const timer = setTimeout(() => {
       const container = document.getElementById("doc-content-area");
       if (!container) return;
@@ -444,7 +414,6 @@ function RightPanel({
     return () => clearTimeout(timer);
   }, [focusedSpanIndex, docContent, onFocusHandled]);
 
-  // Highlights for existing spans in the currently viewed doc
   const docSpans = docContent
     ? existingSpans
         .map((s, i) => ({ ...s, colorIndex: i }))
@@ -452,7 +421,6 @@ function RightPanel({
         .sort((a, b) => a.start - b.start)
     : [];
 
-  // Render highlighted document content
   function renderContent(content: string) {
     if (docSpans.length === 0) return content;
 
@@ -491,56 +459,39 @@ function RightPanel({
     <>
       {/* Toolbar */}
       <div className="px-4 py-2.5 bg-bg-surface border-b border-border flex flex-col gap-2 flex-shrink-0">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            placeholder="Search across all documents in KB..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 bg-bg border border-border rounded px-2.5 py-1.5 text-xs text-text placeholder:text-text-dim focus:border-accent outline-none"
-          />
-          <select
-            value={selectedDocId ?? ""}
-            onChange={(e) => {
-              if (e.target.value) onSelectDoc(e.target.value as Id<"documents">);
-            }}
-            className="bg-bg border border-border rounded px-2.5 py-1.5 text-xs text-text min-w-[180px] focus:border-accent outline-none"
-          >
-            <option value="">Select document...</option>
-            {documents.map((d) => (
-              <option key={d._id} value={d._id}>
-                {d.title}
-              </option>
-            ))}
-          </select>
-        </div>
-        {searchQuery && (
-          <span className="text-[9px] text-text-dim">
-            {searchResults.length} match{searchResults.length !== 1 ? "es" : ""} across {loadedDocs.size} of {documents.length} documents
-          </span>
-        )}
+        <input
+          type="text"
+          placeholder="Search documents by title…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-xs text-text placeholder:text-text-dim focus:border-accent outline-none"
+        />
       </div>
 
-      {/* Search results */}
-      {searchResults.length > 0 && (
-        <div className="bg-bg-surface border-b border-border px-4 py-2 max-h-[140px] overflow-y-auto flex-shrink-0">
-          {searchResults.map((r: { docId: string; docTitle: string; snippet: string; matchStart: number }, i: number) => (
-            <button
-              key={i}
-              onClick={() => {
-                const doc = documents.find((d) => d.docId === r.docId);
-                if (doc) onSelectDoc(doc._id);
-              }}
-              className="w-full text-left px-2 py-1.5 rounded text-[10px] hover:bg-bg-hover transition-colors flex items-center gap-2 cursor-pointer"
-            >
-              <span className="text-accent font-medium min-w-[120px] truncate">
-                {r.docTitle}
-              </span>
-              <span className="text-text-muted truncate">{r.snippet}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      <DocSearchResults
+        kbId={kbId}
+        query={searchQuery}
+        limit={20}
+        variant="inline"
+        renderRow={(r) => (
+          <button
+            key={r._id}
+            onClick={() => {
+              onPickDoc(r);
+              setSearchQuery("");
+            }}
+            className="w-full text-left px-3 py-1.5 border-b border-border last:border-b-0 hover:bg-bg-hover transition-colors flex items-center gap-2 cursor-pointer"
+          >
+            <span className="text-accent font-medium min-w-[180px] truncate">
+              {r.title}
+            </span>
+            <span className="text-text-muted text-[10px]">
+              {r.contentLength.toLocaleString()} chars
+            </span>
+          </button>
+        )}
+      />
+
 
       {/* Document content */}
       <div
@@ -554,11 +505,10 @@ function RightPanel({
           </pre>
         ) : (
           <div className="flex items-center justify-center h-full text-[11px] text-text-dim">
-            {selectedDocId ? "Loading document..." : "Select a document to view its content"}
+            {selectedDocId ? "Loading document..." : "Search for a document to view its content"}
           </div>
         )}
 
-        {/* Floating action bar for text selection */}
         {selection && docContent && (
           <div className="sticky bottom-4 mx-auto w-fit bg-bg-elevated border border-accent rounded-md px-4 py-2 flex items-center gap-3 shadow-xl">
             <span className="text-[10px] text-text-muted">Selected</span>
