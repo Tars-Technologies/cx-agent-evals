@@ -2,6 +2,7 @@ import { mutation, query, internalQuery, internalMutation } from "../_generated/
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { getAuthContext } from "../lib/auth";
+import { computeDocId } from "../lib/docId";
 
 export const generateUploadUrl = mutation({
   args: {},
@@ -28,7 +29,7 @@ export const create = mutation({
     }
 
     const content = args.content;
-    const docId = args.title;
+    const docId = await computeDocId({ fileId: args.storageId });
 
     const docRowId = await ctx.db.insert("documents", {
       orgId,
@@ -147,7 +148,7 @@ export const getContent = query({
     // Verify org access via KB
     const kb = await ctx.db.get(doc.kbId);
     if (!kb || kb.orgId !== orgId) throw new Error("Access denied");
-    return { docId: doc.docId, content: doc.content, kbId: doc.kbId };
+    return { docId: doc.docId, title: doc.title, content: doc.content, kbId: doc.kbId };
   },
 });
 
@@ -231,7 +232,7 @@ export const createFromScrape = internalMutation({
     const docRowId = await ctx.db.insert("documents", {
       orgId: args.orgId,
       kbId: args.kbId,
-      docId: args.title,
+      docId: await computeDocId({ sourceUrl: args.sourceUrl }),
       title: args.title,
       content: args.content,
       contentLength: args.content.length,

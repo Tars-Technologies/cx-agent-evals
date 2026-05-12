@@ -26,6 +26,54 @@ describe("documents: createFromScrape", () => {
   });
 });
 
+describe("documents: ASCII-safe docId", () => {
+  let t: ReturnType<typeof import("convex-test").convexTest>;
+  beforeEach(() => { t = setupTest(); });
+
+  it("produces an ASCII hex docId even when title contains em-dash", async () => {
+    const userId = await seedUser(t);
+    const kbId = await seedKB(t, userId);
+    const id = await t.mutation(internal.crud.documents.createFromScrape, {
+      orgId: TEST_ORG_ID,
+      kbId,
+      title: "BRIGHT MINDS—Proven Ways to Reduce the Risk | Amen Clinics",
+      content: "body",
+      sourceUrl: "https://www.amenclinics.com/blog/bright-minds",
+      sourceType: "scraped",
+    });
+    const doc = await t.run(async (ctx) => ctx.db.get(id));
+    expect(doc!.docId).toMatch(/^[0-9a-f]{16}$/);
+    expect(doc!.title).toContain("—");
+  });
+
+  it("derives the same docId from the same sourceUrl deterministically", async () => {
+    const userId = await seedUser(t);
+    const kbId = await seedKB(t, userId);
+    const url = "https://example.com/page";
+    const id1 = await t.mutation(internal.crud.documents.createFromScrape, {
+      orgId: TEST_ORG_ID, kbId, title: "A", content: "x", sourceUrl: url,
+    });
+    const id2 = await t.mutation(internal.crud.documents.createFromScrape, {
+      orgId: TEST_ORG_ID, kbId, title: "B (renamed)", content: "y", sourceUrl: url,
+    });
+    const [d1, d2] = await t.run(async (ctx) => [
+      await ctx.db.get(id1),
+      await ctx.db.get(id2),
+    ]);
+    expect(d1!.docId).toBe(d2!.docId);
+  });
+
+  it("throws when scraped insert is missing sourceUrl", async () => {
+    const userId = await seedUser(t);
+    const kbId = await seedKB(t, userId);
+    await expect(
+      t.mutation(internal.crud.documents.createFromScrape, {
+        orgId: TEST_ORG_ID, kbId, title: "no url", content: "x",
+      }),
+    ).rejects.toThrow(/sourceUrl or fileId/);
+  });
+});
+
 describe("documents: remove", () => {
   let t: ReturnType<typeof import("convex-test").convexTest>;
   beforeEach(() => { t = setupTest(); });
