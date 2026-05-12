@@ -1,0 +1,47 @@
+import { internalAction } from "../_generated/server";
+import { internal } from "../_generated/api";
+import { v } from "convex/values";
+
+/**
+ * Backfills `documentCount` on every KB that lacks it. Paginates document
+ * scans to stay under the 16MB per-mutation read limit.
+ *
+ * Run from the Convex dashboard or CLI:
+ *   npx convex run crud/knowledgeBasesActions:backfillDocumentCounts
+ */
+export const backfillDocumentCounts = internalAction({
+  args: { batchSize: v.optional(v.number()) },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ kbs: number; updated: number }> => {
+    const kbIds: string[] = await ctx.runQuery(
+      internal.crud.knowledgeBases.listKbsMissingCount,
+      {},
+    );
+
+    let updated = 0;
+    for (const kbId of kbIds) {
+      let cursor: string | null = null;
+      let count = 0;
+      while (true) {
+        const res: { done: boolean; processedDelta: number; cursor: string | null } =
+          await ctx.runMutation(internal.crud.knowledgeBases.backfillOneKb, {
+            kbId: kbId as any,
+            cursor,
+            batchSize: args.batchSize ?? 100,
+          });
+        count += res.processedDelta;
+        cursor = res.cursor;
+        if (res.done) break;
+      }
+      await ctx.runMutation(internal.crud.knowledgeBases.setDocumentCount, {
+        kbId: kbId as any,
+        count,
+      });
+      updated++;
+    }
+
+    return { kbs: kbIds.length, updated };
+  },
+});
