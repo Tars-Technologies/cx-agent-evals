@@ -75,7 +75,6 @@ import type * as retrieval_pipelineActions from "../retrieval/pipelineActions.js
 import type * as retrieval_retrieverActions from "../retrieval/retrieverActions.js";
 import type * as scraping_actions from "../scraping/actions.js";
 import type * as scraping_orchestration from "../scraping/orchestration.js";
-import type * as tempSeed16mb from "../tempSeed16mb.js";
 
 import type {
   ApiFromModules,
@@ -151,7 +150,6 @@ declare const fullApi: ApiFromModules<{
   "retrieval/retrieverActions": typeof retrieval_retrieverActions;
   "scraping/actions": typeof scraping_actions;
   "scraping/orchestration": typeof scraping_orchestration;
-  tempSeed16mb: typeof tempSeed16mb;
 }>;
 
 /**
