@@ -312,7 +312,7 @@ function DocumentListPanel({
                 : "border-l-2 border-transparent hover:bg-bg-elevated"
             }`}
           >
-            <span className="text-xs text-text truncate block">{doc.docId}</span>
+            <span className="text-xs text-text truncate block">{doc.title}</span>
             <span className="text-[10px] text-text-dim">
               {(doc.contentLength ?? 0).toLocaleString()} chars
             </span>
@@ -335,7 +335,7 @@ function DocumentViewerPanel({
   onSelectChunk,
   isReady,
 }: {
-  docContent: { docId: string; content: string } | null | undefined;
+  docContent: { docId: string; title: string; content: string } | null | undefined;
   chunks: Chunk[];
   chunksLoading: boolean;
   selectedChunkIndex: number | null;
@@ -370,7 +370,7 @@ function DocumentViewerPanel({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-elevated/50 flex-shrink-0">
         <span className="text-xs text-accent font-medium truncate">
-          {docContent.docId}
+          {docContent.title}
         </span>
         <div className="flex items-center gap-3">
           {hasChunks && (
