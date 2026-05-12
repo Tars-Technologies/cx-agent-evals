@@ -48,9 +48,14 @@ export default defineSchema({
   })
     .index("by_kb", ["kbId"])
     .index("by_kb_doc_id", ["kbId", "docId"])
+    .index("by_kb_priority", ["kbId", "priority"])
     .index("by_org", ["orgId"])
     .searchIndex("search_content", {
       searchField: "content",
+      filterFields: ["kbId"],
+    })
+    .searchIndex("search_title", {
+      searchField: "title",
       filterFields: ["kbId"],
     }),
 
