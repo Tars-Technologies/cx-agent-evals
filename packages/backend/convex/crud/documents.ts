@@ -86,6 +86,41 @@ export const get = query({
 });
 
 /**
+ * Look up a document by its string docId within a KB. Used as a fallback when
+ * the paginated client-side document list doesn't include the target doc.
+ * Returns the same shape as a row from `listByKb` (minus full content).
+ */
+export const getByDocId = query({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    docId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { orgId } = await getAuthContext(ctx);
+
+    const kb = await ctx.db.get(args.kbId);
+    if (!kb || kb.orgId !== orgId) return null;
+
+    const doc = await ctx.db
+      .query("documents")
+      .withIndex("by_kb_doc_id", (q) =>
+        q.eq("kbId", args.kbId).eq("docId", args.docId),
+      )
+      .first();
+    if (!doc) return null;
+    return {
+      _id: doc._id,
+      docId: doc.docId,
+      title: doc.title,
+      contentLength: doc.contentLength,
+      sourceType: doc.sourceType,
+      createdAt: doc.createdAt,
+      priority: doc.priority,
+    };
+  },
+});
+
+/**
  * Public query that returns a document's content fields with auth check.
  * Used by the Index tab to display document source text alongside chunks.
  */
