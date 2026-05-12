@@ -37,6 +37,7 @@ import type * as crud_conversations from "../crud/conversations.js";
 import type * as crud_datasets from "../crud/datasets.js";
 import type * as crud_documents from "../crud/documents.js";
 import type * as crud_knowledgeBases from "../crud/knowledgeBases.js";
+import type * as crud_knowledgeBasesActions from "../crud/knowledgeBasesActions.js";
 import type * as crud_questions from "../crud/questions.js";
 import type * as crud_retrievers from "../crud/retrievers.js";
 import type * as crud_users from "../crud/users.js";
@@ -73,6 +74,7 @@ import type * as retrieval_pipelineActions from "../retrieval/pipelineActions.js
 import type * as retrieval_retrieverActions from "../retrieval/retrieverActions.js";
 import type * as scraping_actions from "../scraping/actions.js";
 import type * as scraping_orchestration from "../scraping/orchestration.js";
+import type * as tempSeed16mb from "../tempSeed16mb.js";
 
 import type {
   ApiFromModules,
@@ -110,6 +112,7 @@ declare const fullApi: ApiFromModules<{
   "crud/datasets": typeof crud_datasets;
   "crud/documents": typeof crud_documents;
   "crud/knowledgeBases": typeof crud_knowledgeBases;
+  "crud/knowledgeBasesActions": typeof crud_knowledgeBasesActions;
   "crud/questions": typeof crud_questions;
   "crud/retrievers": typeof crud_retrievers;
   "crud/users": typeof crud_users;
@@ -146,6 +149,7 @@ declare const fullApi: ApiFromModules<{
   "retrieval/retrieverActions": typeof retrieval_retrieverActions;
   "scraping/actions": typeof scraping_actions;
   "scraping/orchestration": typeof scraping_orchestration;
+  tempSeed16mb: typeof tempSeed16mb;
 }>;
 
 /**
