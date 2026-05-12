@@ -1,6 +1,6 @@
 "use client";
 
-import type { MessageRole } from "rag-evaluation-system/data-analysis";
+import type { MessageRole } from "@tars-inc/eval-lib/data-analysis";
 
 export function ChatBubble({
   id,

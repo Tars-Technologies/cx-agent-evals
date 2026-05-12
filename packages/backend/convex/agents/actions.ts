@@ -138,7 +138,7 @@ export const runAgent = internalAction({
           execute: async ({ query, k }) => {
             const topK = k ?? info.defaultK;
 
-            const { createEmbedder } = await import("rag-evaluation-system/llm");
+            const { createEmbedder } = await import("@tars-inc/eval-lib/llm");
             const embedder = createEmbedder(info.embeddingModel);
             const queryEmbedding = await embedder.embedQuery(query);
 

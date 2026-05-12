@@ -9,7 +9,7 @@ import {
   EMBEDDER_REGISTRY,
   RERANKER_REGISTRY,
   PRESET_REGISTRY,
-} from "rag-evaluation-system/registry";
+} from "@tars-inc/eval-lib/registry";
 
 // ---------------------------------------------------------------------------
 // Types

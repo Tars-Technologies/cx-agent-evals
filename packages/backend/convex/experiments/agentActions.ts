@@ -16,7 +16,7 @@ import {
   f1,
   type CharacterSpan,
   DocumentId,
-} from "rag-evaluation-system";
+} from "@tars-inc/eval-lib";
 
 // ─── Helpers ───
 
@@ -275,7 +275,7 @@ export const evaluateAgentQuestion = internalAction({
           const topK = k ?? info.defaultK;
 
           const { createEmbedder } = await import(
-            "rag-evaluation-system/llm"
+            "@tars-inc/eval-lib/llm"
           );
           const embedder = createEmbedder(info.embeddingModel);
           const queryEmbedding = await embedder.embedQuery(query);

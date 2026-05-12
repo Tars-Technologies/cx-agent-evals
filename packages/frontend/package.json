@@ -1,6 +1,6 @@
 {
   "name": "frontend",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -14,7 +14,7 @@
     "convex": "^1.21.0",
     "next": "16.1.6",
     "openai": ">=4.0",
-    "rag-evaluation-system": "workspace:*",
+    "@tars-inc/eval-lib": "workspace:*",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-markdown": "^10.1.0",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { MessageType } from "rag-evaluation-system/data-analysis";
+import type { MessageType } from "@tars-inc/eval-lib/data-analysis";
 import { ChatBubble } from "./ChatBubble";
 
 const TYPE_COLORS: Record<string, { badge: string; border: string }> = {

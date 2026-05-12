@@ -13,7 +13,7 @@ import {
   DocumentId,
   type PositionAwareChunk,
   type ScoredChunk,
-} from "rag-evaluation-system";
+} from "@tars-inc/eval-lib";
 import {
   BM25SearchIndex,
   weightedScoreFusion,
@@ -29,16 +29,16 @@ import {
   DEFAULT_STEP_BACK_PROMPT,
   DEFAULT_REWRITE_PROMPT,
   parseVariants,
-} from "rag-evaluation-system/pipeline/internals";
-import { OpenAIPipelineLLM } from "rag-evaluation-system/pipeline/llm-openai";
-import type { PipelineLLM } from "rag-evaluation-system";
-import type { Reranker } from "rag-evaluation-system";
+} from "@tars-inc/eval-lib/pipeline/internals";
+import { OpenAIPipelineLLM } from "@tars-inc/eval-lib/pipeline/llm-openai";
+import type { PipelineLLM } from "@tars-inc/eval-lib";
+import type { Reranker } from "@tars-inc/eval-lib";
 import {
   runLangSmithExperiment,
   type LangSmithExperimentConfig,
-} from "rag-evaluation-system/langsmith";
-import type { ExperimentResult } from "rag-evaluation-system/shared";
-import { createEmbedder } from "rag-evaluation-system/llm";
+} from "@tars-inc/eval-lib/langsmith";
+import type { ExperimentResult } from "@tars-inc/eval-lib/shared";
+import { createEmbedder } from "@tars-inc/eval-lib/llm";
 import { vectorSearchWithFilter } from "../lib/vectorSearch";
 import type { ActionCtx } from "../_generated/server";
 
@@ -259,7 +259,7 @@ async function applyRefinementChain(
 /** Try to create a Cohere reranker. Returns undefined if not available. */
 async function tryCreateReranker(): Promise<Reranker | undefined> {
   try {
-    const { CohereReranker } = await import("rag-evaluation-system/rerankers/cohere");
+    const { CohereReranker } = await import("@tars-inc/eval-lib/rerankers/cohere");
     return await CohereReranker.create();
   } catch {
     console.warn("[Reranker] Cohere reranker not available — rerank steps will be skipped");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { OptionDef } from "rag-evaluation-system/registry";
+import type { OptionDef } from "@tars-inc/eval-lib/registry";
 import { OptionField } from "./OptionField";
 
 interface OptionGroupProps {

@@ -1,6 +1,7 @@
 {
   "name": "cx-agent-evals",
   "private": true,
+  "packageManager": "pnpm@10.6.5",
   "scripts": {
     "build": "pnpm -C packages/eval-lib build",
     "dev": "pnpm -C packages/frontend dev",
@@ -14,5 +15,8 @@
   "dependencies": {
     "@clerk/themes": "^2.4.52",
     "next": "16.1.6"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0"
   }
 }

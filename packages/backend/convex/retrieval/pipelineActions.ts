@@ -12,8 +12,8 @@ import type {
   StepBackQueryConfig,
   RewriteQueryConfig,
   RefinementStepConfig,
-} from "rag-evaluation-system";
-import { createLLMClient, createEmbedder } from "rag-evaluation-system/llm";
+} from "@tars-inc/eval-lib";
+import { createLLMClient, createEmbedder } from "@tars-inc/eval-lib/llm";
 import { getAuthContext } from "../lib/auth";
 import { vectorSearchWithFilter } from "../lib/vectorSearch";
 import type { Id } from "../_generated/dataModel";

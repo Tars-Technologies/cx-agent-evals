@@ -10,7 +10,7 @@ import { Workpool, WorkId, vOnCompleteArgs, type RunResult } from "@convex-dev/w
 import { getAuthContext } from "../lib/auth";
 import { applyResult, counterPatch } from "../lib/workpool";
 import { Id } from "../_generated/dataModel";
-import type { JobStatus } from "rag-evaluation-system/shared";
+import type { JobStatus } from "@tars-inc/eval-lib/shared";
 
 // ─── WorkPool Instance ───
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { PRESET_REGISTRY } from "rag-evaluation-system/registry";
+import { PRESET_REGISTRY } from "@tars-inc/eval-lib/registry";
 import { WizardNav } from "./WizardNav";
 import { ChoosePresetStep } from "./steps/ChoosePresetStep";
 import { IndexStep } from "./steps/IndexStep";

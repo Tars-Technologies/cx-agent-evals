@@ -4,7 +4,7 @@ import {
   INDEX_STRATEGY_REGISTRY,
   CHUNKER_REGISTRY,
   EMBEDDER_REGISTRY,
-} from "rag-evaluation-system/registry";
+} from "@tars-inc/eval-lib/registry";
 import { StrategyCard } from "../shared/StrategyCard";
 import { OptionGroup } from "../shared/OptionGroup";
 
