@@ -47,6 +47,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_kb", ["kbId"])
+    .index("by_kb_doc_id", ["kbId", "docId"])
     .index("by_org", ["orgId"])
     .searchIndex("search_content", {
       searchField: "content",
