@@ -1,4 +1,4 @@
-import { mutation, query, internalQuery } from "../_generated/server";
+import { mutation, query, internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { getAuthContext } from "../lib/auth";
 
@@ -97,15 +97,61 @@ export const listWithDocCounts = query({
         .order("desc")
         .collect();
     }
-    return Promise.all(
-      kbs.map(async (kb) => {
-        const docs = await ctx.db
-          .query("documents")
-          .withIndex("by_kb", (q) => q.eq("kbId", kb._id))
-          .collect();
-        return { ...kb, documentCount: docs.length };
-      }),
-    );
+    return kbs.map((kb) => ({
+      ...kb,
+      documentCount: kb.documentCount ?? 0,
+    }));
+  },
+});
+
+/**
+ * Backfill documentCount on a single KB by paginating through documents.
+ * Reads content along with each row — keep batch size small to stay under
+ * the 16MB per-mutation read limit.
+ *
+ * Returns { done, processed, cursor }. Caller (action) drives the loop.
+ */
+export const backfillOneKb = internalMutation({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    cursor: v.union(v.string(), v.null()),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const kb = await ctx.db.get(args.kbId);
+    if (!kb) return { done: true, processedDelta: 0, cursor: null };
+    const page = await ctx.db
+      .query("documents")
+      .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
+      .paginate({ numItems: args.batchSize ?? 200, cursor: args.cursor });
+    return {
+      done: page.isDone,
+      processedDelta: page.page.length,
+      cursor: page.continueCursor,
+    };
+  },
+});
+
+/**
+ * Sets documentCount on a KB after counting has finished externally.
+ */
+export const setDocumentCount = internalMutation({
+  args: { kbId: v.id("knowledgeBases"), count: v.number() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.kbId, { documentCount: args.count });
+  },
+});
+
+/**
+ * Lists KB ids needing backfill (documentCount === undefined).
+ */
+export const listKbsMissingCount = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const kbs = await ctx.db.query("knowledgeBases").collect();
+    return kbs
+      .filter((kb) => kb.documentCount === undefined)
+      .map((kb) => kb._id);
   },
 });
 
