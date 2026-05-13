@@ -21,6 +21,11 @@ function projectDocSummary(doc: Doc<"documents">): DocSummary {
   };
 }
 
+// Cap on point lookups per call. Questions referencing more than this many
+// distinct docs will have the overflow silently dropped — span-group headers
+// for those docs fall back to raw docId strings and navigateToDoc() becomes
+// a no-op for them. In practice questions span <10 docs; revisit if that
+// changes.
 const MAX_DOC_IDS_PER_LOOKUP = 50;
 const MAX_TITLE_SEARCH_LIMIT = 100;
 const MAX_CUSTOMIZED_DOCS_LIMIT = 500;
