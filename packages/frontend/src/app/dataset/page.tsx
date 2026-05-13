@@ -314,7 +314,13 @@ function GeneratePageContent() {
     }
   }, [job?.status, datasetId, mode]);
 
-  const hasDocuments = (selectedKb?.documentCount ?? 0) > 0;
+  // undefined while selectedKb is still loading so callers can distinguish
+  // "still loading" from "KB has zero docs" — prevents the empty-state UI
+  // (e.g. disabled "New Generation" with "Upload documents" tooltip) from
+  // flashing during the initial query window.
+  const hasDocuments: boolean | undefined = selectedKb === undefined
+    ? undefined
+    : (selectedKb?.documentCount ?? 0) > 0;
 
   return (
     <div className="flex flex-col h-screen">
@@ -458,16 +464,18 @@ function GeneratePageContent() {
             <button
               onClick={() => setShowWizardModal(true)}
               disabled={
-                !hasDocuments ||
+                hasDocuments !== true ||
                 (datasetType === "questions" && !!activeJob) ||
                 (datasetType === "conversation_sim" && !!activeScenarioJob)
               }
               title={
-                !hasDocuments
-                  ? "Upload documents before generating"
-                  : (datasetType === "questions" && activeJob) || (datasetType === "conversation_sim" && activeScenarioJob)
-                    ? "A generation is already in progress"
-                    : undefined
+                hasDocuments === undefined
+                  ? "Loading…"
+                  : hasDocuments === false
+                    ? "Upload documents before generating"
+                    : (datasetType === "questions" && activeJob) || (datasetType === "conversation_sim" && activeScenarioJob)
+                      ? "A generation is already in progress"
+                      : undefined
               }
               className="px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
             >
