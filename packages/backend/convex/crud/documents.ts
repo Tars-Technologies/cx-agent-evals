@@ -28,7 +28,12 @@ function projectDocSummary(doc: Doc<"documents">): DocSummary {
 // changes.
 const MAX_DOC_IDS_PER_LOOKUP = 50;
 const MAX_TITLE_SEARCH_LIMIT = 100;
-const MAX_CUSTOMIZED_DOCS_LIMIT = 500;
+// Hard cap on listCustomizedDocs. Each row reads full `content` (Convex
+// materializes the whole document regardless of projection), so 100 × ~100KB
+// keeps us well under the per-function 16MB read budget. The wizard's
+// allocation math needs the full customized set, so we don't paginate —
+// just cap. Revisit if a customer customizes more than 100 docs.
+const MAX_CUSTOMIZED_DOCS_LIMIT = 100;
 
 export const generateUploadUrl = mutation({
   args: {},
@@ -127,41 +132,6 @@ export const get = query({
 });
 
 /**
- * Look up a document by its string docId within a KB. Used as a fallback when
- * the paginated client-side document list doesn't include the target doc.
- * Returns the same shape as a row from `listByKb` (minus full content).
- */
-export const getByDocId = query({
-  args: {
-    kbId: v.id("knowledgeBases"),
-    docId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-
-    const kb = await ctx.db.get(args.kbId);
-    if (!kb || kb.orgId !== orgId) return null;
-
-    const doc = await ctx.db
-      .query("documents")
-      .withIndex("by_kb_doc_id", (q) =>
-        q.eq("kbId", args.kbId).eq("docId", args.docId),
-      )
-      .first();
-    if (!doc) return null;
-    return {
-      _id: doc._id,
-      docId: doc.docId,
-      title: doc.title,
-      contentLength: doc.contentLength,
-      sourceType: doc.sourceType,
-      createdAt: doc.createdAt,
-      priority: doc.priority,
-    };
-  },
-});
-
-/**
  * Resolve a known set of `docId` strings to their full doc rows. Used by the
  * editor / dataset page to resolve span references without loading the whole
  * KB doc list. Order matches input where possible; missing docs are omitted.
@@ -235,7 +205,7 @@ export const listCustomizedDocs = query({
     const kb = await ctx.db.get(args.kbId);
     if (!kb || kb.orgId !== orgId) return [];
 
-    const limit = Math.min(args.limit ?? 200, MAX_CUSTOMIZED_DOCS_LIMIT);
+    const limit = Math.min(args.limit ?? MAX_CUSTOMIZED_DOCS_LIMIT, MAX_CUSTOMIZED_DOCS_LIMIT);
     const rows = await ctx.db
       .query("documents")
       .withIndex("by_kb_priority", (q) =>
@@ -281,8 +251,16 @@ export const remove = mutation({
     // Decrement denormalized document count
     const kb = await ctx.db.get(doc.kbId);
     if (kb) {
+      const currentCount = kb.documentCount ?? 0;
+      if (currentCount === 0) {
+        // Floor clamp will fire — counter is already out of sync with reality.
+        // Surface this so we notice instead of silently masking the drift.
+        console.warn(
+          `documentCount drift: remove called on kb=${doc.kbId} where documentCount is already 0`,
+        );
+      }
       await ctx.db.patch(doc.kbId, {
-        documentCount: Math.max(0, (kb.documentCount ?? 0) - 1),
+        documentCount: Math.max(0, currentCount - 1),
       });
     }
   },
