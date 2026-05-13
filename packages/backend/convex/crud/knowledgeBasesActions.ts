@@ -1,6 +1,7 @@
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
+import type { Id } from "../_generated/dataModel";
 
 /**
  * Backfills `documentCount` on every KB that lacks it. Paginates document
@@ -15,7 +16,7 @@ export const backfillDocumentCounts = internalAction({
     ctx,
     args,
   ): Promise<{ kbs: number; updated: number }> => {
-    const kbIds: string[] = await ctx.runQuery(
+    const kbIds: Id<"knowledgeBases">[] = await ctx.runQuery(
       internal.crud.knowledgeBases.listKbsMissingCount,
       {},
     );
@@ -27,7 +28,7 @@ export const backfillDocumentCounts = internalAction({
       while (true) {
         const res: { done: boolean; processedDelta: number; cursor: string | null } =
           await ctx.runMutation(internal.crud.knowledgeBases.backfillOneKb, {
-            kbId: kbId as any,
+            kbId,
             cursor,
             batchSize: args.batchSize ?? 100,
           });
@@ -36,7 +37,7 @@ export const backfillDocumentCounts = internalAction({
         if (res.done) break;
       }
       await ctx.runMutation(internal.crud.knowledgeBases.setDocumentCount, {
-        kbId: kbId as any,
+        kbId,
         count,
       });
       updated++;
