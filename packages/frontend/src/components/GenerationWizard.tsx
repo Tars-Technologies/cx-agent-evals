@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import { Id } from "@convex/_generated/dataModel";
-import type { Dimension, PromptPreferences, UnifiedWizardConfig } from "@/lib/types";
+import type { PromptPreferences, UnifiedWizardConfig } from "@/lib/types";
 import { WizardStepRealWorld } from "./WizardStepRealWorld";
 import { WizardStepDimensions } from "./WizardStepDimensions";
 import { WizardStepPreferences } from "./WizardStepPreferences";
@@ -34,16 +34,10 @@ const DEFAULT_CONFIG: UnifiedWizardConfig = {
 
 const STEPS = ["Real-World Qs", "Dimensions", "Preferences", "Review"];
 
-interface DocInfo {
-  _id: string;
-  docId: string;
-  title: string;
-  priority: number;
-}
+export const DEFAULT_PRIORITY = 3;
 
 interface GenerationWizardProps {
   kbId: Id<"knowledgeBases">;
-  documents: DocInfo[];
   generating: boolean;
   disabledReason?: string;
   onGenerated: (datasetId: Id<"datasets">, jobId: Id<"generationJobs">) => void;
@@ -53,7 +47,6 @@ interface GenerationWizardProps {
 
 export function GenerationWizard({
   kbId,
-  documents,
   generating,
   disabledReason,
   onGenerated,
@@ -71,7 +64,6 @@ export function GenerationWizard({
     return DEFAULT_CONFIG;
   });
 
-  // Persist config to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(wizardKey(kbId), JSON.stringify(config));
@@ -80,7 +72,6 @@ export function GenerationWizard({
     }
   }, [config, kbId]);
 
-  // Reload config when KB changes
   useEffect(() => {
     try {
       const saved = localStorage.getItem(wizardKey(kbId));
@@ -95,10 +86,8 @@ export function GenerationWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbId]);
 
-  // One-time migration from the old global storage key
   useEffect(() => {
     try {
-      // Migrate wizard config
       const oldConfig = localStorage.getItem(OLD_WIZARD_CONFIG_KEY);
       if (oldConfig != null) {
         const currentKey = wizardKey(kbId);
@@ -107,7 +96,6 @@ export function GenerationWizard({
         }
         localStorage.removeItem(OLD_WIZARD_CONFIG_KEY);
       }
-      // Migrate discover URL
       const oldUrl = localStorage.getItem(OLD_DISCOVER_URL_KEY);
       if (oldUrl != null) {
         const currentUrlKey = discoverUrlKey(kbId);
@@ -122,34 +110,29 @@ export function GenerationWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Document priorities (local state, syncs to Convex on change)
-  const [docPriorities, setDocPriorities] = useState<Record<string, number>>(() => {
-    const map: Record<string, number> = {};
-    documents.forEach((d) => {
-      map[d._id] = d.priority ?? 3;
-    });
-    return map;
+  // KB metadata (for total doc count, emptiness check)
+  const kb = useQuery(api.crud.knowledgeBases.get, { id: kbId });
+  const totalDocCount = kb?.documentCount ?? 0;
+
+  // Reactive list of docs the user has customized priority on. Server-side
+  // bounded; the wizard never loads the full KB doc list.
+  const customizedDocs = useQuery(api.crud.documents.listCustomizedDocs, {
+    kbId,
   });
 
   const updatePriority = useMutation(api.crud.documents.updatePriority);
   const startGeneration = useMutation(api.generation.orchestration.startGeneration);
 
   const handlePriorityChange = useCallback(
-    async (docId: string, priority: number) => {
-      setDocPriorities((prev) => ({ ...prev, [docId]: priority }));
+    async (documentId: Id<"documents">, priority: number) => {
       try {
-        await updatePriority({ documentId: docId as Id<"documents">, priority });
+        await updatePriority({ documentId, priority });
       } catch {
-        // Best-effort sync
+        // Best-effort sync — Convex reactivity will re-fetch customizedDocs
       }
     },
     [updatePriority],
   );
-
-  const docsWithPriority: DocInfo[] = documents.map((d) => ({
-    ...d,
-    priority: docPriorities[d._id] ?? 3,
-  }));
 
   async function handleGenerate() {
     if (!kbId || generating) return;
@@ -260,15 +243,17 @@ export function GenerationWizard({
           )}
           {step === 3 && (
             <WizardStepReview
+              kbId={kbId}
               config={config}
-              documents={docsWithPriority}
+              totalDocCount={totalDocCount}
+              customizedDocs={customizedDocs ?? []}
               onTotalQuestionsChange={(n) => setConfig((prev) => ({ ...prev, totalQuestions: n }))}
               onPriorityChange={handlePriorityChange}
               onGenerate={handleGenerate}
               onBack={() => setStep(2)}
               onEditStep={(s) => setStep(s)}
               generating={generating}
-              disabled={!documents.length}
+              disabled={totalDocCount === 0}
               disabledReason={disabledReason}
             />
           )}

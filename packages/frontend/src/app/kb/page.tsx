@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { Suspense, useState, useEffect, useRef } from "react";
+import { useQuery, useMutation, usePaginatedQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import { Id } from "@convex/_generated/dataModel";
 import { Header } from "@/components/Header";
@@ -41,10 +41,33 @@ function KBPageContent() {
     api.crud.knowledgeBases.listWithDocCounts,
     {},
   );
-  const documents = useQuery(
+  const {
+    results: documents,
+    status: docPaginationStatus,
+    loadMore: loadMoreDocs,
+  } = usePaginatedQuery(
     api.crud.documents.listByKb,
     selectedKbId ? { kbId: selectedKbId } : "skip",
+    { initialNumItems: 50 },
   );
+
+  // Auto-load next page on scroll
+  const docScrollRef = useRef<HTMLDivElement | null>(null);
+  const docSentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (docPaginationStatus !== "CanLoadMore") return;
+    const el = docSentinelRef.current;
+    const root = docScrollRef.current;
+    if (!el || !root) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMoreDocs(50);
+      },
+      { root, rootMargin: "200px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [docPaginationStatus, loadMoreDocs]);
   const selectedDoc = useQuery(
     api.crud.documents.get,
     selectedDocId ? { id: selectedDocId } : "skip",
@@ -58,13 +81,19 @@ function KBPageContent() {
   const removeDoc = useMutation(api.crud.documents.remove);
   const cancelCrawl = useMutation(api.scraping.orchestration.cancelCrawl);
 
+  // --- Search ---
+  const searchTrimmed = docSearchQuery.trim();
+  const searchResults = useQuery(
+    api.crud.documents.searchDocsByTitle,
+    selectedKbId && searchTrimmed
+      ? { kbId: selectedKbId, query: searchTrimmed, limit: 50 }
+      : "skip",
+  );
+
   // --- Derived ---
   const selectedKb = kbs?.find((kb) => kb._id === selectedKbId);
-  const filteredDocs = documents?.filter(
-    (doc) =>
-      !docSearchQuery ||
-      doc.title.toLowerCase().includes(docSearchQuery.toLowerCase()),
-  );
+  const isSearching = searchTrimmed.length > 0;
+  const displayDocs = isSearching ? searchResults : documents;
 
   // Reset doc selection when KB changes
   useEffect(() => {
@@ -241,14 +270,19 @@ function KBPageContent() {
               </div>
 
               {/* Document list (scrollable) */}
-              <div className="flex-1 overflow-y-auto">
-                {documents === undefined ? (
+              <div ref={docScrollRef} className="flex-1 overflow-y-auto">
+                {!isSearching && docPaginationStatus === "LoadingFirstPage" ? (
                   <div className="p-4 flex items-center gap-2 text-text-dim text-xs">
                     <div className="w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
                     Loading...
                   </div>
-                ) : filteredDocs && filteredDocs.length > 0 ? (
-                  filteredDocs.map((doc) => (
+                ) : isSearching && searchResults === undefined ? (
+                  <div className="p-4 flex items-center gap-2 text-text-dim text-xs">
+                    <div className="w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                    Searching...
+                  </div>
+                ) : displayDocs && displayDocs.length > 0 ? (
+                  displayDocs.map((doc) => (
                     <div
                       key={doc._id}
                       onClick={() => setSelectedDocId(doc._id)}
@@ -302,6 +336,15 @@ function KBPageContent() {
                     {docSearchQuery
                       ? "No matching documents."
                       : "No documents yet. Upload files or import from URL."}
+                  </div>
+                )}
+                {!isSearching && docPaginationStatus === "CanLoadMore" && (
+                  <div ref={docSentinelRef} className="h-1" />
+                )}
+                {!isSearching && docPaginationStatus === "LoadingMore" && (
+                  <div className="p-2 flex items-center justify-center gap-2 text-text-dim text-xs">
+                    <div className="w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                    Loading...
                   </div>
                 )}
               </div>

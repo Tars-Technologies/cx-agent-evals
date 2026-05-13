@@ -37,6 +37,7 @@ import type * as crud_conversations from "../crud/conversations.js";
 import type * as crud_datasets from "../crud/datasets.js";
 import type * as crud_documents from "../crud/documents.js";
 import type * as crud_knowledgeBases from "../crud/knowledgeBases.js";
+import type * as crud_knowledgeBasesActions from "../crud/knowledgeBasesActions.js";
 import type * as crud_questions from "../crud/questions.js";
 import type * as crud_retrievers from "../crud/retrievers.js";
 import type * as crud_users from "../crud/users.js";
@@ -111,6 +112,7 @@ declare const fullApi: ApiFromModules<{
   "crud/datasets": typeof crud_datasets;
   "crud/documents": typeof crud_documents;
   "crud/knowledgeBases": typeof crud_knowledgeBases;
+  "crud/knowledgeBasesActions": typeof crud_knowledgeBasesActions;
   "crud/questions": typeof crud_questions;
   "crud/retrievers": typeof crud_retrievers;
   "crud/users": typeof crud_users;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useQuery, usePaginatedQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
 import { MarkdownViewer } from "@/components/MarkdownViewer";
@@ -281,9 +281,32 @@ function DocumentListPanel({
   selectedDocId: Id<"documents"> | null;
   onSelect: (id: Id<"documents">) => void;
 }) {
-  const docs = useQuery(api.crud.documents.listByKb, { kbId });
+  const { results: docs, status, loadMore } = usePaginatedQuery(
+    api.crud.documents.listByKb,
+    { kbId },
+    { initialNumItems: 50 },
+  );
 
-  if (docs === undefined) {
+  // Auto-load the next page when the sentinel scrolls into view inside
+  // this list's scroll container.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (status !== "CanLoadMore") return;
+    const el = sentinelRef.current;
+    const root = scrollRef.current;
+    if (!el || !root) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore(50);
+      },
+      { root, rootMargin: "200px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [status, loadMore]);
+
+  if (status === "LoadingFirstPage") {
     return (
       <div className="flex items-center justify-center h-full">
         <Spinner />
@@ -298,7 +321,7 @@ function DocumentListPanel({
   }
 
   return (
-    <div className="overflow-y-auto h-full">
+    <div ref={scrollRef} className="overflow-y-auto h-full">
       {docs.map((doc) => {
         const isActive = selectedDocId === doc._id;
         return (
@@ -319,6 +342,12 @@ function DocumentListPanel({
           </button>
         );
       })}
+      {status === "CanLoadMore" && <div ref={sentinelRef} className="h-1" />}
+      {status === "LoadingMore" && (
+        <div className="flex items-center justify-center p-2">
+          <Spinner />
+        </div>
+      )}
     </div>
   );
 }

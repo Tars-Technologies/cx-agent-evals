@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/lib/convex";
 import { Id } from "@convex/_generated/dataModel";
@@ -45,10 +45,10 @@ function GeneratePageContent() {
     datasetId ? { datasetId } : "skip",
   );
 
-  // Documents in the selected KB
-  const documentsData = useQuery(
-    api.crud.documents.listByKb,
-    selectedKbId ? { kbId: selectedKbId } : "skip",
+  // KB metadata for emptiness check (replaces loading the full doc list)
+  const selectedKb = useQuery(
+    api.crud.knowledgeBases.get,
+    selectedKbId ? { id: selectedKbId } : "skip",
   );
 
   // Job status (reactive — updates as generation progresses)
@@ -234,21 +234,44 @@ function GeneratePageContent() {
         : `Phase: Generating │ ${activeJob.processedItems} of ${activeJob.totalItems} docs │ ${activeJob.questionsGenerated ?? 0} questions`
       : null;
 
-  // When a question is selected, load its source document
+  // When a question is selected, load its source document.
   const selectedQ = selectedQuestion !== null ? displayQuestions[selectedQuestion] : null;
+
+  // Resolve the small set of docIds referenced by the selected question
+  // (source + span docs) via point lookup — never via a full KB list.
+  const selectedQDocIdList = useMemo(() => {
+    if (!selectedQ) return [];
+    const set = new Set<string>([selectedQ.docId]);
+    if (selectedQ.relevantSpans) {
+      for (const s of selectedQ.relevantSpans) set.add(s.docId);
+    }
+    return [...set];
+  }, [selectedQ]);
+
+  const resolvedDocs = useQuery(
+    api.crud.documents.getDocsByDocIds,
+    selectedKbId && selectedQDocIdList.length > 0
+      ? { kbId: selectedKbId, docIds: selectedQDocIdList }
+      : "skip",
+  );
+
+  const docIdToConvexId = useMemo(() => {
+    const map = new Map<string, Id<"documents">>();
+    for (const d of resolvedDocs ?? []) map.set(d.docId, d._id);
+    return map;
+  }, [resolvedDocs]);
+
   const prevSelectedQuestion = useRef<number | null>(null);
   useEffect(() => {
     // Only auto-navigate to source doc when the selected question *changes*,
     // not on every render — otherwise it fights manual doc navigation.
     if (selectedQuestion === prevSelectedQuestion.current) return;
+    if (!selectedQ) return;
+    const sourceId = docIdToConvexId.get(selectedQ.docId);
+    if (!sourceId) return; // wait for resolvedDocs to load
     prevSelectedQuestion.current = selectedQuestion;
-    if (selectedQ && documentsData) {
-      const doc = documentsData.find((d) => d.docId === selectedQ.docId);
-      if (doc) {
-        setSelectedDocId(doc._id);
-      }
-    }
-  }, [selectedQuestion, selectedQ, documentsData]);
+    setSelectedDocId(sourceId);
+  }, [selectedQuestion, selectedQ, docIdToConvexId]);
 
   // Build doc info for DocumentViewer
   const selectedDoc: DocumentInfo | null = selectedDocData
@@ -273,9 +296,10 @@ function GeneratePageContent() {
   })();
 
   function handleNavigateDoc(docId: string) {
-    if (!documentsData) return;
-    const doc = documentsData.find((d) => d.docId === docId);
-    if (doc) setSelectedDocId(doc._id);
+    const id = docIdToConvexId.get(docId);
+    if (id) setSelectedDocId(id);
+    // If not yet resolved, the useQuery above will re-fetch on next render
+    // since docId is part of the question's referenced set.
   }
 
   // When generation completes, switch to browsing the new dataset
@@ -290,7 +314,13 @@ function GeneratePageContent() {
     }
   }, [job?.status, datasetId, mode]);
 
-  const hasDocuments = (documentsData ?? []).length > 0;
+  // undefined while selectedKb is still loading so callers can distinguish
+  // "still loading" from "KB has zero docs" — prevents the empty-state UI
+  // (e.g. disabled "New Generation" with "Upload documents" tooltip) from
+  // flashing during the initial query window.
+  const hasDocuments: boolean | undefined = selectedKb === undefined
+    ? undefined
+    : (selectedKb?.documentCount ?? 0) > 0;
 
   return (
     <div className="flex flex-col h-screen">
@@ -434,16 +464,18 @@ function GeneratePageContent() {
             <button
               onClick={() => setShowWizardModal(true)}
               disabled={
-                !hasDocuments ||
+                hasDocuments !== true ||
                 (datasetType === "questions" && !!activeJob) ||
                 (datasetType === "conversation_sim" && !!activeScenarioJob)
               }
               title={
-                !hasDocuments
-                  ? "Upload documents before generating"
-                  : (datasetType === "questions" && activeJob) || (datasetType === "conversation_sim" && activeScenarioJob)
-                    ? "A generation is already in progress"
-                    : undefined
+                hasDocuments === undefined
+                  ? "Loading…"
+                  : hasDocuments === false
+                    ? "Upload documents before generating"
+                    : (datasetType === "questions" && activeJob) || (datasetType === "conversation_sim" && activeScenarioJob)
+                      ? "A generation is already in progress"
+                      : undefined
               }
               className="px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -566,12 +598,6 @@ function GeneratePageContent() {
             ) : (
               <GenerationWizard
                 kbId={selectedKbId}
-                documents={(documentsData ?? []).map((d) => ({
-                  _id: d._id as string,
-                  docId: d.docId,
-                  title: d.title,
-                  priority: d.priority ?? 3,
-                }))}
                 generating={generating}
                 disabledReason={activeJob ? "Only one generation at a time" : undefined}
                 onGenerated={(dsId, jId) => {

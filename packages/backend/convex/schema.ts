@@ -23,6 +23,7 @@ export default defineSchema({
     entityType: v.optional(v.string()),
     sourceUrl: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
+    documentCount: v.optional(v.number()),
     createdBy: v.id("users"),
     createdAt: v.number(),
   })
@@ -46,9 +47,15 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_kb", ["kbId"])
+    .index("by_kb_doc_id", ["kbId", "docId"])
+    .index("by_kb_priority", ["kbId", "priority"])
     .index("by_org", ["orgId"])
     .searchIndex("search_content", {
       searchField: "content",
+      filterFields: ["kbId"],
+    })
+    .searchIndex("search_title", {
+      searchField: "title",
       filterFields: ["kbId"],
     }),
 
