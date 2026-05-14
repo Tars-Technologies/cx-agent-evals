@@ -10,6 +10,84 @@ import { paginationOptsValidator } from "convex/server";
 import { Workpool, vOnCompleteArgs, type RunResult } from "@convex-dev/workpool";
 import { getAuthContext } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
+import type { MutationCtx } from "../_generated/server";
+
+type ClassificationStatus = "none" | "running" | "done" | "failed";
+type ClassificationCounts = {
+  total: number;
+  none: number;
+  classified: number;
+  running: number;
+  failed: number;
+};
+
+function classificationCountKey(status: ClassificationStatus) {
+  return status === "done" ? "classified" : status;
+}
+
+async function patchConversationClassificationFields(
+  ctx: MutationCtx,
+  args: {
+    conversationId: Id<"livechatConversations">;
+    status: ClassificationStatus;
+    messageTypes?: unknown;
+    error?: string;
+  },
+) {
+  await ctx.db.patch(args.conversationId, {
+    classificationStatus: args.status,
+    ...(args.messageTypes !== undefined ? { messageTypes: args.messageTypes } : {}),
+    ...(args.error !== undefined ? { classificationError: args.error } : {}),
+  });
+}
+
+async function updateUploadClassificationCounts(
+  ctx: MutationCtx,
+  args: {
+    uploadId: Id<"livechatUploads">;
+    from: ClassificationStatus;
+    to: ClassificationStatus;
+  },
+) {
+  if (args.from === args.to) return;
+
+  const upload = await ctx.db.get(args.uploadId);
+  const counts = upload?.classificationCounts;
+  if (!counts) return;
+
+  const previousKey = classificationCountKey(args.from);
+  const nextKey = classificationCountKey(args.to);
+  const nextCounts: ClassificationCounts = {
+    ...counts,
+    [previousKey]: Math.max(0, counts[previousKey] - 1),
+    [nextKey]: counts[nextKey] + 1,
+  };
+
+  await ctx.db.patch(args.uploadId, {
+    classificationCounts: nextCounts,
+  });
+}
+
+async function updateClassificationStatusAndCounts(
+  ctx: MutationCtx,
+  args: {
+    conversationId: Id<"livechatConversations">;
+    status: ClassificationStatus;
+    messageTypes?: unknown;
+    error?: string;
+  },
+) {
+  const conversation = await ctx.db.get(args.conversationId);
+  if (!conversation) throw new Error("Conversation not found");
+
+  const previousStatus = conversation.classificationStatus;
+  await patchConversationClassificationFields(ctx, args);
+  await updateUploadClassificationCounts(ctx, {
+    uploadId: conversation.uploadId,
+    from: previousStatus,
+    to: args.status,
+  });
+}
 
 // ─── WorkPool Instance ───
 // Low parallelism because the pipeline action is long-running (minutes)
@@ -56,6 +134,13 @@ export const markReady = internalMutation({
       status: "ready",
       basicStats: args.basicStats,
       conversationCount: args.conversationCount,
+      classificationCounts: {
+        total: args.conversationCount,
+        none: args.conversationCount,
+        classified: 0,
+        running: 0,
+        failed: 0,
+      },
       completedAt: Date.now(),
     });
   },
@@ -126,10 +211,11 @@ export const patchClassificationStatus = internalMutation({
     error: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.conversationId, {
-      classificationStatus: args.status,
-      ...(args.messageTypes !== undefined ? { messageTypes: args.messageTypes } : {}),
-      ...(args.error !== undefined ? { classificationError: args.error } : {}),
+    await updateClassificationStatusAndCounts(ctx, {
+      conversationId: args.conversationId,
+      status: args.status,
+      messageTypes: args.messageTypes,
+      error: args.error,
     });
   },
 });
@@ -439,15 +525,24 @@ export const getClassificationCounts = query({
     const upload = await ctx.db.get(args.uploadId);
     if (!upload || upload.orgId !== orgId)
       return { total: 0, classified: 0, running: 0, failed: 0 };
-    const all = await ctx.db
-      .query("livechatConversations")
-      .withIndex("by_upload", (q) => q.eq("uploadId", args.uploadId))
-      .collect();
+
+    if (!upload.classificationCounts) {
+      return {
+        total: upload.conversationCount ?? 0,
+        classified: 0,
+        running: 0,
+        failed: 0,
+        unavailable: true,
+        reason: "legacy_missing_classification_counts",
+      };
+    }
+
     return {
-      total: all.length,
-      classified: all.filter((c) => c.classificationStatus === "done").length,
-      running: all.filter((c) => c.classificationStatus === "running").length,
-      failed: all.filter((c) => c.classificationStatus === "failed").length,
+      total: upload.classificationCounts.total,
+      classified: upload.classificationCounts.classified,
+      running: upload.classificationCounts.running,
+      failed: upload.classificationCounts.failed,
+      none: upload.classificationCounts.none,
     };
   },
 });
@@ -575,9 +670,10 @@ export const onClassifyComplete = internalMutation({
     for (const convId of context.conversationIds) {
       const conv = await ctx.db.get(convId);
       if (conv && conv.classificationStatus === "running") {
-        await ctx.db.patch(convId, {
-          classificationStatus: "failed",
-          classificationError:
+        await updateClassificationStatusAndCounts(ctx, {
+          conversationId: convId,
+          status: "failed",
+          error:
             result.kind === "failed"
               ? (result.error ?? "Classification action crashed")
               : "Classification was canceled",

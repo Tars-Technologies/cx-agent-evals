@@ -37,6 +37,16 @@ const TYPE_COLORS: Record<string, string> = {
   uncategorized: "text-text-dim",
 };
 
+type ClassificationCountsResult = {
+  total: number;
+  classified: number;
+  running: number;
+  failed: number;
+  none?: number;
+  unavailable?: boolean;
+  reason?: string;
+};
+
 export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads"> }) {
   // --- State ---
   const [view, setView] = useState<"conversation" | "messageType">("conversation");
@@ -67,7 +77,9 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
     selectedConvId ? { id: selectedConvId } : "skip",
   );
 
-  const counts = useQuery(api.livechat.orchestration.getClassificationCounts, { uploadId });
+  const counts = useQuery(api.livechat.orchestration.getClassificationCounts, {
+    uploadId,
+  }) as ClassificationCountsResult | undefined;
 
   // --- Mutations ---
   const classifySingle = useMutation(api.livechat.orchestration.classifySingle);
@@ -164,6 +176,15 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
 
   // Total classified count from the messagesByType map
   const classifiedCount = counts?.classified ?? 0;
+  const countsUnavailable = counts?.unavailable === true;
+  const totalCountLabel = counts
+    ? counts.total.toLocaleString()
+    : "...";
+  const classifiedCountLabel = counts
+    ? countsUnavailable
+      ? "unavailable"
+      : `${classifiedCount.toLocaleString()} classified`
+    : "...";
 
   // --- Handlers ---
   function handleToggleSelect(id: string) {
@@ -232,7 +253,7 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
                 : "text-text-dim hover:text-text"
             }`}
           >
-            By Conversation ({counts?.total ?? "..."})
+            By Conversation ({totalCountLabel})
           </button>
           <button
             onClick={() => setView("messageType")}
@@ -242,7 +263,7 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
                 : "text-text-dim hover:text-text"
             }`}
           >
-            By Message Type ({classifiedCount} classified)
+            By Message Type ({classifiedCountLabel})
           </button>
         </div>
         {view === "conversation" && (
@@ -274,6 +295,12 @@ export function ConversationsTab({ uploadId }: { uploadId: Id<"livechatUploads">
           </div>
         )}
       </div>
+      {countsUnavailable && (
+        <div className="bg-yellow-500/10 border-b border-yellow-500/20 px-3 py-2 text-[10px] text-yellow-300">
+          Classification counts are unavailable for this legacy upload. Re-upload
+          the CSV to regenerate lightweight counters.
+        </div>
+      )}
 
       {/* Main content */}
       {view === "conversation" ? (

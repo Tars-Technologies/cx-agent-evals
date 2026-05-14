@@ -36,6 +36,13 @@ async function seedUpload(
   userId: Id<"users">,
   csvStorageId: Id<"_storage">,
   orgId = TEST_ORG_ID,
+  classificationCounts?: {
+    total: number;
+    none: number;
+    classified: number;
+    running: number;
+    failed: number;
+  },
 ) {
   return await t.run(async (ctx) =>
     ctx.db.insert("livechatUploads", {
@@ -45,6 +52,8 @@ async function seedUpload(
       csvStorageId,
       status: "ready",
       createdAt: Date.now(),
+      conversationCount: classificationCounts?.total,
+      classificationCounts,
     }),
   );
 }
@@ -177,6 +186,31 @@ describe("livechat orchestration", () => {
     expect(rows[1].conversationId).toBe("conv-1");
   });
 
+  it("markReady initializes classification counts for new uploads", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+
+    const csvStorageId = await t.run(async (ctx) =>
+      ctx.storage.store(new Blob(["csv"])),
+    );
+    const uploadId = await seedUpload(t, userId, csvStorageId);
+
+    await t.mutation(internal.livechat.orchestration.markReady, {
+      uploadId,
+      basicStats: {},
+      conversationCount: 3,
+    });
+
+    const upload = await t.run(async (ctx) => ctx.db.get(uploadId));
+    expect(upload?.classificationCounts).toEqual({
+      total: 3,
+      none: 3,
+      classified: 0,
+      running: 0,
+      failed: 0,
+    });
+  });
+
   it("listConversations paginates correctly", async () => {
     const t = setupTest();
     const userId = await seedUser(t);
@@ -217,7 +251,13 @@ describe("livechat orchestration", () => {
     const csvStorageId = await t.run(async (ctx) =>
       ctx.storage.store(new Blob(["csv"])),
     );
-    const uploadId = await seedUpload(t, userId, csvStorageId);
+    const uploadId = await seedUpload(t, userId, csvStorageId, TEST_ORG_ID, {
+      total: 5,
+      none: 1,
+      classified: 2,
+      running: 1,
+      failed: 1,
+    });
 
     await t.run(async (ctx) => {
       // 2 done, 1 running, 1 failed, 1 none
@@ -252,6 +292,39 @@ describe("livechat orchestration", () => {
     expect(counts.classified).toBe(2);
     expect(counts.running).toBe(1);
     expect(counts.failed).toBe(1);
+  });
+
+  it("getClassificationCounts does not scan legacy uploads without stored counts", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const asUser = t.withIdentity(testIdentity);
+
+    const csvStorageId = await t.run(async (ctx) =>
+      ctx.storage.store(new Blob(["csv"])),
+    );
+    const uploadId = await seedUpload(t, userId, csvStorageId);
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(uploadId, { conversationCount: 5 });
+      await ctx.db.insert("livechatConversations", {
+        ...stubConversation(uploadId, TEST_ORG_ID, 0),
+        classificationStatus: "done",
+      });
+    });
+
+    const counts = await asUser.query(
+      api.livechat.orchestration.getClassificationCounts,
+      { uploadId },
+    );
+
+    expect(counts).toEqual({
+      total: 5,
+      classified: 0,
+      running: 0,
+      failed: 0,
+      unavailable: true,
+      reason: "legacy_missing_classification_counts",
+    });
   });
 
   it("classifyBatch throws on >100 conversations", async () => {
@@ -352,7 +425,13 @@ describe("livechat orchestration", () => {
     const csvStorageId = await t.run(async (ctx) =>
       ctx.storage.store(new Blob(["csv"])),
     );
-    const uploadId = await seedUpload(t, userId, csvStorageId);
+    const uploadId = await seedUpload(t, userId, csvStorageId, TEST_ORG_ID, {
+      total: 1,
+      none: 1,
+      classified: 0,
+      running: 0,
+      failed: 0,
+    });
 
     const convId = await t.run(async (ctx) =>
       ctx.db.insert(
@@ -368,9 +447,17 @@ describe("livechat orchestration", () => {
     });
 
     const row = await t.run(async (ctx) => ctx.db.get(convId));
+    const upload = await t.run(async (ctx) => ctx.db.get(uploadId));
     expect(row?.classificationStatus).toBe("done");
     expect(row?.messageTypes).toEqual([{ type: "inquiry", count: 2 }]);
     expect(row?.classificationError).toBeUndefined();
+    expect(upload?.classificationCounts).toEqual({
+      total: 1,
+      none: 0,
+      classified: 1,
+      running: 0,
+      failed: 0,
+    });
   });
 
   it("patchTranslationStatus updates fields correctly", async () => {
