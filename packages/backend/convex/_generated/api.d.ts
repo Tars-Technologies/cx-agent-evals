@@ -74,7 +74,9 @@ import type * as retrieval_indexingActions from "../retrieval/indexingActions.js
 import type * as retrieval_pipelineActions from "../retrieval/pipelineActions.js";
 import type * as retrieval_retrieverActions from "../retrieval/retrieverActions.js";
 import type * as scraping_actions from "../scraping/actions.js";
+import type * as scraping_categorize from "../scraping/categorize.js";
 import type * as scraping_orchestration from "../scraping/orchestration.js";
+import type * as scraping_sources from "../scraping/sources.js";
 
 import type {
   ApiFromModules,
@@ -149,7 +151,9 @@ declare const fullApi: ApiFromModules<{
   "retrieval/pipelineActions": typeof retrieval_pipelineActions;
   "retrieval/retrieverActions": typeof retrieval_retrieverActions;
   "scraping/actions": typeof scraping_actions;
+  "scraping/categorize": typeof scraping_categorize;
   "scraping/orchestration": typeof scraping_orchestration;
+  "scraping/sources": typeof scraping_sources;
 }>;
 
 /**
