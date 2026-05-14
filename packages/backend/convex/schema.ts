@@ -627,6 +627,8 @@ export default defineSchema({
     kbId: v.id("knowledgeBases"),
     userId: v.id("users"),
     startUrl: v.string(),
+    mode: v.optional(v.union(v.literal("crawl"), v.literal("paste"))),
+    sitemapUrl: v.optional(v.string()),
     config: v.object({
       maxDepth: v.optional(v.number()),
       maxPages: v.optional(v.number()),
@@ -677,6 +679,7 @@ export default defineSchema({
     error: v.optional(v.string()),
     retryCount: v.optional(v.number()),
     scrapedAt: v.optional(v.number()),
+    topic: v.optional(v.string()),
   })
     .index("by_job_status", ["crawlJobId", "status"])
     .index("by_job_url", ["crawlJobId", "normalizedUrl"]),
