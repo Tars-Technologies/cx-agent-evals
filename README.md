@@ -175,6 +175,10 @@ Backend changes in `packages/backend/convex/` are automatically picked up by `pn
 - **backend** — Convex functions: schema, auth (Clerk JWT), file upload, org-scoped data, job pipeline with batch processing, RAG with vector search, and LangSmith sync.
 - **frontend** — Next.js app using Convex reactive queries (`useQuery`/`useMutation`) for real-time UI updates. Clerk handles authentication and organization switching.
 
+## Deployment
+
+For how the frontend (Vercel), backend (Convex), and `@tars-inc/eval-lib` (npm) are deployed — including what every push to GitHub does, what Convex deployment a Vercel preview talks to, and the manual `npx convex deploy` flow for production — see [DEPLOYMENT.md](./DEPLOYMENT.md).
+
 ## License
 
 MIT
