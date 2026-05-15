@@ -10,7 +10,7 @@ The project has three independently-deployed surfaces:
 
 | Surface | What it is | Where it lives | How it deploys |
 |---|---|---|---|
-| **Frontend** | The Next.js app in `packages/frontend` | Vercel | Automatic on every push (preview or production) via Vercel's GitHub integration |
+| **Frontend** | The Next.js app in `packages/frontend` | Vercel | Automatic on push to `main` via Vercel's GitHub integration |
 | **Backend** | The Convex functions in `packages/backend/convex` | Convex (production deployment) | **Manual**, by running `npx convex deploy` from `packages/backend` |
 | **`@tars-inc/eval-lib`** | The TypeScript library in `packages/eval-lib` | npm registry | Automatic on merge to `main` via [Changesets](https://github.com/changesets/changesets) and `.github/workflows/release.yml` |
 
@@ -20,41 +20,22 @@ These three surfaces are **decoupled**. A Vercel deploy does not deploy Convex. 
 
 The Vercel project is connected to the GitHub repo via Vercel's built-in GitHub integration (not via GitHub Actions — there is no Vercel-related workflow file in `.github/workflows/`).
 
-### What each push does
+The Vercel project lives under **Vinit's personal Vercel account** (a free plan, with no Teams). Because of this:
 
-| Push target | Vercel build | Vercel deployment URL |
-|---|---|---|
-| `main` | Production build | The production domain |
-| Any other branch (including PRs) | Preview build | A unique preview URL per commit (e.g. `cx-agent-evals-git-<branch>-<team>.vercel.app`) |
+- Only Vinit can push to `main` and have the build succeed and deploy to production. The Vercel GitHub integration runs the build under his account, and only commits authored/pushed by him on `main` produce a successful production deployment.
+- Pushes to `main` from anyone else are **rejected** at the Vercel build step — there is no access for other GitHub users on this Vercel account, and the free plan has no Teams concept to share access.
+- Pushes to non-`main` branches are not deployed at all (no preview builds — see below).
 
-This means **every push to any branch triggers a Vercel build**. That is expected, and it is Vercel's default behavior — it is not something configured in this repo.
+The build command Vercel runs is the standard `next build` from `packages/frontend/package.json`. There is **no `convex deploy` step in the Vercel build**, so a Vercel build never modifies any Convex deployment.
 
-The build command Vercel runs is the standard `next build` from `packages/frontend/package.json`. There is **no `convex deploy` step in the Vercel build**, so a Vercel preview build never modifies any Convex deployment.
+### Convex URL used by the production build
 
-### What Convex deployment does a preview point to?
+The Vercel production build reads `NEXT_PUBLIC_CONVEX_URL` from the Vercel project's Environment Variables (Production scope). It points to the production Convex deployment.
 
-A preview build does not deploy Convex, but it still needs a Convex URL to connect to at runtime. That URL comes from `NEXT_PUBLIC_CONVEX_URL`, which is read from the Vercel project's Environment Variables.
-
-Vercel scopes environment variables per environment (Production / Preview / Development). The current configuration is:
-
-- **Production** environment in Vercel → `NEXT_PUBLIC_CONVEX_URL` points to the production Convex deployment.
-- **Preview** environment in Vercel → `NEXT_PUBLIC_CONVEX_URL` is whatever is configured for the Preview scope in the Vercel dashboard.
-
-**There is no shared "staging" Convex deployment.** The project has exactly two kinds of Convex deployments today:
+There is no shared "staging" Convex deployment. The project has exactly two kinds of Convex deployments today:
 
 1. One **production** Convex deployment (deployed manually — see below).
 2. One **dev** Convex deployment **per developer**, created locally by `npx convex dev`. These are not shared and are not used by Vercel.
-
-> **Practical implication:** because there is no staging Convex, if the Preview environment in Vercel is set to the production Convex URL, every preview deployment hits production Convex (production schema, production data, production rate limits). If you want previews to be safe to click around in, point the Preview-scoped `NEXT_PUBLIC_CONVEX_URL` at a Convex deployment you are comfortable writing to, or treat preview builds as read-only. Check the Vercel project's Environment Variables tab to confirm the current setting.
-
-### Do we get a separate Convex deployment per preview?
-
-No. We do not use [Convex preview deployments](https://docs.convex.dev/production/hosting/preview-deployments) today. Enabling that would require:
-
-- Changing the Vercel build command to something like `npx convex deploy --cmd 'pnpm build' --preview-create` (with `CONVEX_DEPLOY_KEY` set in Vercel).
-- Accepting the cost of an ephemeral Convex deployment per PR.
-
-That change is out of scope for this document — it is tracked separately if/when we decide to adopt it.
 
 ## Backend (Convex)
 
@@ -96,7 +77,7 @@ The library is published to npm via [Changesets](https://github.com/changesets/c
 ### Day-to-day flow
 
 1. While making changes to `packages/eval-lib`, run `pnpm changeset` to record a version bump (patch / minor / major) and a short summary. Commit the generated file in `.changeset/`.
-2. Open a PR as normal. Vercel will still create a frontend preview for the PR (it doesn't know or care about the changeset).
+2. Open a PR as normal.
 3. When the PR merges to `main`, the `Release` workflow runs:
    - If there are pending changesets, it opens (or updates) a "Version Packages" PR that bumps `package.json` versions and updates `CHANGELOG.md`.
    - When that "Version Packages" PR is itself merged, the workflow publishes the new version of `@tars-inc/eval-lib` to npm.
@@ -107,30 +88,20 @@ The workflow only handles publishing the library. It does **not** deploy the fro
 ## End-to-end picture
 
 ```
-                 git push (any branch)
-                          │
-            ┌─────────────┴──────────────┐
-            ▼                            ▼
-    Vercel GitHub integration     (no other CI triggers
-            │                      for frontend/backend)
+ git push to main (by Vinit)
             │
-   ┌────────┴────────┐
-   ▼                 ▼
- main branch?     other branch?
-   │                 │
-   ▼                 ▼
- Production       Preview build
- build            (unique URL per commit)
-   │                 │
-   ▼                 ▼
- Reads NEXT_PUBLIC_CONVEX_URL from Vercel
- env vars (Production scope vs. Preview scope)
-   │                 │
-   └────────┬────────┘
             ▼
-     Convex production deployment
-     (deployed manually via
-      `npx convex deploy`)
+ Vercel GitHub integration
+            │
+            ▼
+ Production build of packages/frontend
+            │
+            ▼
+ Reads NEXT_PUBLIC_CONVEX_URL (Production scope)
+            │
+            ▼
+ Convex production deployment
+ (deployed manually via `npx convex deploy`)
 ```
 
 Separately, on merge to `main`:
@@ -139,33 +110,17 @@ Separately, on merge to `main`:
  main ──► .github/workflows/release.yml ──► Changesets ──► npm publish @tars-inc/eval-lib
 ```
 
-## Environment variable matrix
-
-A consolidated view of where each variable lives. `Y` = required, `–` = not used in that location.
-
-| Variable | Local `.env` (frontend) | Vercel Production | Vercel Preview | Convex dashboard | Local `.env.local` (backend) |
-|---|---|---|---|---|---|
-| `NEXT_PUBLIC_CONVEX_URL` | Y (your dev Convex) | Y (prod Convex URL) | Y (whichever Convex you want previews to hit) | – | – |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Y | Y | Y | – | – |
-| `CLERK_SECRET_KEY` | Y | Y | Y | – | – |
-| `OPENAI_API_KEY` | Y | Y | Y | Y (used by Convex actions) | – |
-| `LANGSMITH_API_KEY` | optional | optional | optional | optional (required for experiment runs) | – |
-| `CONVEX_DEPLOYMENT`, `CONVEX_URL` | – | – | – | – | Y (auto-generated by `npx convex dev`) |
-| `CLERK_JWT_ISSUER_DOMAIN` | – | – | – | Y (set as Convex auth provider) | – |
-
 ## Common gotchas
 
-- **A Vercel preview is talking to production Convex.** Check the Vercel project's Environment Variables tab and confirm what `NEXT_PUBLIC_CONVEX_URL` is set to under the **Preview** scope. There is no automated guard against this.
 - **Backend code merged to `main` but production not updated.** Convex production is only updated by someone running `npx convex deploy` locally. Merging to `main` does nothing on its own.
-- **Schema drift between previews and production Convex.** If a preview build relies on a new field/table that hasn't been deployed to the Convex deployment the preview connects to, the preview will fail at runtime. Either deploy Convex first, or point the preview at a Convex deployment that has the new schema.
+- **Someone other than Vinit pushed to `main` and the production site didn't update.** That's expected on the current Vercel setup — only Vinit's pushes produce a successful production deploy. Ask him to push (or pull and re-push) the commit.
 - **`@tars-inc/eval-lib` not republished after a change.** If you change `packages/eval-lib/src` but forget to run `pnpm changeset`, the release workflow won't publish a new version. External consumers will keep getting the old version.
 
 ## Future work (not implemented today)
 
 These are not part of the current deployment setup. They're listed here so the doc is honest about what is and isn't in place.
 
-- Per-PR ephemeral Convex preview deployments (via `npx convex deploy --preview-create`).
-- A shared staging Convex deployment for Vercel previews to point at.
+- Moving the Vercel project off Vinit's personal account onto a shared Team so anyone can deploy to production.
 - A CI step that deploys Convex automatically on merge to `main`.
 - A CI step that runs `pnpm -C packages/backend test` and `pnpm -C packages/frontend build` on PRs to catch breakage before Vercel does.
 
