@@ -24,9 +24,18 @@ The Vercel project lives under **Vinit's personal Vercel account** (a free plan,
 
 - Only Vinit can push to `main` and have the build succeed and deploy to production. The Vercel GitHub integration runs the build under his account, and only commits authored/pushed by him on `main` produce a successful production deployment.
 - Pushes to `main` from anyone else are **rejected** at the Vercel build step — there is no access for other GitHub users on this Vercel account, and the free plan has no Teams concept to share access.
-- Pushes to non-`main` branches are not deployed at all (no preview builds — see below).
+- Pushes to non-`main` branches that are part of an open PR **do** produce Preview builds (see below). The "only Vinit can deploy" restriction applies to Production only.
 
 The build command Vercel runs is the standard `next build` from `packages/frontend/package.json`. There is **no `convex deploy` step in the Vercel build**, so a Vercel build never modifies any Convex deployment.
+
+### Preview deployments
+
+Every push to a branch with an open PR triggers a Vercel **Preview** build:
+
+- Each push produces a new Preview at a unique `*.vercel.app` URL, linked on the PR.
+- The build is the same `next build` as production — there is no `convex deploy` step, so Previews never modify any Convex deployment.
+- Previews use Vercel's **Preview**-scoped environment variables. Whatever `NEXT_PUBLIC_CONVEX_URL` is set to under the Preview scope is the Convex backend the Preview talks to. Verify this value in the Vercel dashboard before testing destructive flows on a Preview — if it points at production Convex, the Preview is reading and writing prod data.
+- Previews build successfully for pushes from any collaborator, not just Vinit. The "only Vinit can deploy" constraint applies to Production only.
 
 ### Convex URL used by the production build
 
