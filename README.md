@@ -73,6 +73,9 @@ In the [Convex dashboard](https://dashboard.convex.dev), go to your project's **
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `OPENAI_API_KEY` | Yes | Used by Convex actions for embeddings and LLM calls |
+| `ANTHROPIC_API_KEY` | Yes | Used by Convex actions that call Claude via `@ai-sdk/anthropic` (evaluator, agent, livechat) |
+| `CLERK_JWT_ISSUER_DOMAIN` | Yes | Clerk issuer domain — read by `convex/auth.config.ts` to validate JWTs |
+| `COHERE_API_KEY` | No | Required only if you use the Cohere rerank refinement step in retrieval pipelines |
 | `LANGSMITH_API_KEY` | No | For automatic LangSmith dataset/experiment sync |
 
 These are server-side variables that run inside Convex actions (Node.js runtime).
@@ -139,6 +142,9 @@ Visit [http://localhost:3000](http://localhost:3000). You should see the Clerk s
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `OPENAI_API_KEY` | Yes | Used by Convex actions for embeddings and LLM calls |
+| `ANTHROPIC_API_KEY` | Yes | Used by Convex actions that call Claude via `@ai-sdk/anthropic` (evaluator, agent, livechat) |
+| `CLERK_JWT_ISSUER_DOMAIN` | Yes | Clerk issuer domain — read by `convex/auth.config.ts` to validate JWTs |
+| `COHERE_API_KEY` | No | Required only if you use the Cohere rerank refinement step in retrieval pipelines |
 | `LANGSMITH_API_KEY` | No | Used by LangSmith sync actions |
 
 ### Backend local (`packages/backend/.env.local`)
@@ -174,6 +180,10 @@ Backend changes in `packages/backend/convex/` are automatically picked up by `pn
 - **eval-lib** — Pure TypeScript library with no Node.js-specific APIs in its core. Provides chunkers, embedders, metrics (recall, precision, IoU, F1), synthetic question generation, and LangSmith integration.
 - **backend** — Convex functions: schema, auth (Clerk JWT), file upload, org-scoped data, job pipeline with batch processing, RAG with vector search, and LangSmith sync.
 - **frontend** — Next.js app using Convex reactive queries (`useQuery`/`useMutation`) for real-time UI updates. Clerk handles authentication and organization switching.
+
+## Deployment
+
+For how the frontend (Vercel), backend (Convex), and `@tars-inc/eval-lib` (npm) are deployed — including what every push to GitHub does, what Convex deployment a Vercel preview talks to, and the manual `npx convex deploy` flow for production — see [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ## License
 
