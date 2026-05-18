@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "Security vulnerability reporting"
+    url: "https://github.com/Tars-Technologies/cx-agent-evals/security/advisories"
+    about: "Please do not use public issues for security reports. Use the repository's Advisories page for private reporting, or see SECURITY.md for the email fallback."
