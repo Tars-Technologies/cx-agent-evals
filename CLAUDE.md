@@ -208,3 +208,14 @@ Key eval-lib types for experiment integration:
 - backend: 46 convex-test integration tests covering generation callbacks, experiment callbacks, indexing callbacks, retriever CRUD, shared index protection, and workpool helpers
 - Shared test helpers in `packages/backend/tests/helpers.ts` (setupTest, seedUser, seedKB, seedDataset, testIdentity)
 - Mock LLM clients for testing strategies (return canned JSON responses)
+
+## Parked work
+
+- **Conversation simulation — deferred ideas:** Whenever the conversation
+  simulation system, scenarios, user-sim fidelity, transcript grounding,
+  persona generation, evaluators, drift, or replay come up in a brainstorm,
+  read [`docs/conversation-simulation-future-ideas.md`](docs/conversation-simulation-future-ideas.md)
+  first. It captures ideas the user has already evaluated and explicitly
+  parked for later (outcome-anchored scenarios, empirical persona archetypes,
+  coverage-driven generation, live drift monitoring, bidirectional replay,
+  CS-team workflow). Surface relevant entries before proposing new ones.
