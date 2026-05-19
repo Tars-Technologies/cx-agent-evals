@@ -8,7 +8,8 @@ import { components, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { Workpool, WorkId, vOnCompleteArgs, type RunResult } from "@convex-dev/workpool";
 import { getAuthContext } from "../lib/auth";
-import { Id } from "../_generated/dataModel";
+import { Id, Doc } from "../_generated/dataModel";
+import type { PaginationResult } from "convex/server";
 import type { JobStatus } from "@tars-inc/eval-lib/shared";
 
 // ─── WorkPool Instance ───
@@ -30,6 +31,21 @@ const TIER_PARALLELISM: Record<string, number> = {
   pro: 10,
   enterprise: 20,
 };
+
+// ─── Document Page Query ───
+
+export const getDocumentPage = internalQuery({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    cursor: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    return ctx.db
+      .query("documents")
+      .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
+      .paginate({ numItems: 100, cursor: args.cursor });
+  },
+});
 
 // ─── Start Indexing ───
 
@@ -125,15 +141,16 @@ export const startIndexing = internalMutation({
     // Extract chunking/embedding config
     const indexConfig = args.indexConfig as Record<string, any>;
 
-    // Enqueue one action per document. Paginate to avoid 16MB read limit;
-    // only doc._id is needed here — content is read later by the action.
+    // Enqueue one action per document. Use ctx.runQuery per page so each
+    // paginate() call is its own function invocation (Convex allows only one
+    // paginated query per invocation).
     const workIds: WorkId[] = [];
     let cursor: string | null = null;
     while (true) {
-      const page = await ctx.db
-        .query("documents")
-        .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
-        .paginate({ numItems: 100, cursor });
+      const page: PaginationResult<Doc<"documents">> = await ctx.runQuery(
+        internal.retrieval.indexing.getDocumentPage,
+        { kbId: args.kbId, cursor },
+      );
       for (const doc of page.page) {
         const wId = await pool.enqueueAction(
           ctx,
