@@ -1,0 +1,108 @@
+name: Feature Request
+description: Propose a new capability or improvement
+title: "[Feature] "
+labels:
+  - enhancement
+  - triage
+type: feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem first, then propose the smallest useful change. Concrete acceptance criteria make this much easier to plan.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is needed?
+      description: Explain the missing capability or friction point.
+      placeholder: We need a way to compare experiment runs across retrievers without leaving the app.
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Why does this matter?
+      description: Describe the user need, workflow gap, or business value.
+      placeholder: Reviewing results currently requires jumping between Convex data and LangSmith, which slows down experiment analysis.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Suggested approach
+      description: Describe the implementation direction, expected behavior, or UX shape.
+      placeholder: Add an experiment comparison view that groups runs by dataset and shows score deltas.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary area
+      options:
+        - packages/eval-lib
+        - packages/backend
+        - packages/frontend
+        - docs / repository workflow
+        - multiple areas
+        - unsure
+      default: 5
+    validations:
+      required: true
+  - type: textarea
+    id: affected_files
+    attributes:
+      label: Affected files or components
+      description: List specific files, modules, pages, or systems if known.
+      placeholder: |
+        - packages/frontend/src/app/experiments/...
+        - packages/backend/convex/experiments/...
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else was considered, and why is it weaker?
+      placeholder: Keep this entirely in LangSmith, but that would not satisfy the in-app workflow.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Define what must be true when this is done.
+      placeholder: |
+        - [ ] Users can compare at least two experiment runs side by side
+        - [ ] The comparison view shows per-metric deltas
+        - [ ] The flow works on mobile and desktop
+    validations:
+      required: true
+  - type: input
+    id: branch
+    attributes:
+      label: Related branch or PR
+      description: If this request is connected to ongoing work, share the branch name, PR, or related issue.
+      placeholder: rm_improvement_docs / #123
+  - type: upload
+    id: mockups
+    attributes:
+      label: Screenshots, mockups, or references
+      description: Upload designs, mockups, screenshots, or reference files if available.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution interest
+      options:
+        - label: I want to work on this issue.
+  - type: textarea
+    id: internal_tracker
+    attributes:
+      label: Internal tracker (optional)
+      description: Internal-only field. External contributors can leave this blank. Maintainers may fill it in during or after triage.
+      value: |
+        - Link:
+        - Priority:
+  - type: checkboxes
+    id: search
+    attributes:
+      label: Before submitting
+      description: Confirm the basics before opening the issue.
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
