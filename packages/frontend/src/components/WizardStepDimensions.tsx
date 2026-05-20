@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { useAction } from "convex/react";
+import { api } from "@/lib/convex";
 import type { Dimension } from "@/lib/types";
 
 const DISCOVER_URL_PREFIX = "rag-eval:dimension-discover-url:";
@@ -32,26 +34,22 @@ export function WizardStepDimensions({ kbId, dimensions, onChange, onNext, onSki
   const [error, setError] = useState<string | null>(null);
   const [newValueInputs, setNewValueInputs] = useState<Record<number, string>>({});
 
+  const discoverAction = useAction(api.generation.actions.discoverDimensions);
+
   const handleDiscover = useCallback(async () => {
     if (!url.trim()) return;
     setDiscovering(true);
     setError(null);
     try {
-      const res = await fetch("/api/discover-dimensions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || "Discovery failed"); return; }
-      onChange(data.dimensions);
+      const dimensions = await discoverAction({ url: url.trim() });
+      onChange(dimensions as Dimension[]);
       try { localStorage.setItem(discoverUrlKey(kbId), url); } catch {}
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to discover");
     } finally {
       setDiscovering(false);
     }
-  }, [url, onChange, kbId]);
+  }, [url, onChange, kbId, discoverAction]);
 
   const addDimension = () => {
     onChange([...dimensions, { name: "", description: "", values: [] }]);

@@ -1,9 +1,11 @@
 "use node";
 
-import { internalAction } from "../_generated/server";
+import { action, internalAction } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
+import { getAuthContext } from "../lib/auth";
+import { discoverDimensions as discoverDimensionsFn } from "@tars-inc/eval-lib/pipeline/internals";
 import {
   SimpleStrategy,
   DimensionDrivenStrategy,
@@ -531,5 +533,23 @@ export const assignGroundTruthForQuestion = internalAction({
     }
 
     return { spansFound: 0 };
+  },
+});
+
+// ─── Dimension Discovery ───
+
+export const discoverDimensions = action({
+  args: {
+    url: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await getAuthContext(ctx);
+    const llmClient = createLLMClient();
+    const model = getModel({});
+    try {
+      return await discoverDimensionsFn({ url: args.url, llmClient, model });
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Dimension discovery failed");
+    }
   },
 });
