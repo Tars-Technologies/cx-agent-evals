@@ -24,10 +24,29 @@ const pool = new Workpool(components.scrapingPool, {
 
 // ─── Start Crawl ───
 
+const MAX_EXACT_URLS = 1000;
+
+function normalizeUrlInline(u: string): string {
+  return u.toLowerCase().replace(/#.*$/, "").replace(/\/+$/, "") || u;
+}
+
+function isValidHttpUrl(s: string): boolean {
+  try {
+    const u = new URL(s);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export const startCrawl = mutation({
   args: {
     kbId: v.id("knowledgeBases"),
     startUrl: v.string(),
+    mode: v.optional(v.union(v.literal("crawl"), v.literal("paste"))),
+    urls: v.optional(v.array(v.string())),
+    sitemapUrl: v.optional(v.string()),
+    topics: v.optional(v.record(v.string(), v.string())),
     config: v.optional(v.object({
       maxDepth: v.optional(v.number()),
       maxPages: v.optional(v.number()),
@@ -53,9 +72,16 @@ export const startCrawl = mutation({
       .unique();
     if (!user) throw new Error("User not found");
 
+    const mode = args.mode ?? "crawl";
+    // Exact-list = caller supplied a URL list (paste mode, or crawl mode
+    // backed by a discovered sitemap). BFS = no URLs given, walk from startUrl.
+    const isExactList = (args.urls?.length ?? 0) > 0;
+
     const userConfig = args.config ?? {};
     const config = {
-      maxDepth: userConfig.maxDepth ?? 3,
+      // Exact-list jobs must not follow discovered links — force depth 0 so
+      // persistScrapedPage drops any links it finds while scraping.
+      maxDepth: isExactList ? 0 : (userConfig.maxDepth ?? 3),
       maxPages: userConfig.maxPages ?? 200,
       includePaths: userConfig.includePaths,
       excludePaths: userConfig.excludePaths,
@@ -65,32 +91,61 @@ export const startCrawl = mutation({
       concurrency: userConfig.concurrency ?? 3,
     };
 
-    // Create crawl job
+    // Build the seed URL list per mode.
+    let seedUrls: string[];
+    if (isExactList) {
+      const provided = args.urls ?? [];
+      const valid = provided.filter(isValidHttpUrl);
+      const seen = new Set<string>();
+      seedUrls = [];
+      for (const u of valid) {
+        const n = normalizeUrlInline(u);
+        if (seen.has(n)) continue;
+        seen.add(n);
+        seedUrls.push(u);
+      }
+      if (seedUrls.length === 0) {
+        throw new Error("No valid URLs to import.");
+      }
+      if (seedUrls.length > MAX_EXACT_URLS) {
+        seedUrls = seedUrls.slice(0, MAX_EXACT_URLS);
+      }
+    } else {
+      seedUrls = [args.startUrl];
+    }
+
     const jobId = await ctx.db.insert("crawlJobs", {
       orgId,
       kbId: args.kbId,
       userId: user._id,
       startUrl: args.startUrl,
+      mode,
+      ...(args.sitemapUrl ? { sitemapUrl: args.sitemapUrl } : {}),
       config,
       status: "running",
-      stats: { discovered: 1, scraped: 0, failed: 0, skipped: 0 },
+      stats: {
+        discovered: seedUrls.length,
+        scraped: 0,
+        failed: 0,
+        skipped: 0,
+      },
       createdAt: Date.now(),
     });
 
-    // Normalize the start URL for dedup
-    const normalizedUrl = args.startUrl.toLowerCase().replace(/#.*$/, "").replace(/\/+$/, "") || args.startUrl;
+    const topics = args.topics ?? {};
+    for (const url of seedUrls) {
+      const normalizedUrl = normalizeUrlInline(url);
+      await ctx.db.insert("crawlUrls", {
+        crawlJobId: jobId,
+        url,
+        normalizedUrl,
+        status: "pending",
+        depth: 0,
+        ...(topics[url] ? { topic: topics[url] } : {}),
+      });
+    }
 
-    // Insert seed URL into frontier
-    await ctx.db.insert("crawlUrls", {
-      crawlJobId: jobId,
-      url: args.startUrl,
-      normalizedUrl,
-      status: "pending",
-      depth: 0,
-    });
-
-    // Enqueue the first batch scrape action
-    const workId = await pool.enqueueAction(
+    await pool.enqueueAction(
       ctx,
       internal.scraping.actions.batchScrape,
       { crawlJobId: jobId },
