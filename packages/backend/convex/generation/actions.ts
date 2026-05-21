@@ -544,10 +544,15 @@ export const discoverDimensions = action({
   },
   handler: async (ctx, args) => {
     await getAuthContext(ctx);
+
+    const url = args.url.trim();
+    if (!url) throw new Error("url is required");
+    try { new URL(url); } catch { throw new Error("url must be a valid URL"); }
+
     const llmClient = createLLMClient();
     const model = getModel({});
     try {
-      return await discoverDimensionsFn({ url: args.url, llmClient, model });
+      return await discoverDimensionsFn({ url, llmClient, model });
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : "Dimension discovery failed");
     }
