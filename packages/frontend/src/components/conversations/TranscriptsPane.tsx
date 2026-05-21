@@ -1,14 +1,11 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
-import { ResizablePanel } from "../ResizablePanel";
-import { TabBar } from "./TabBar";
-import { StatsTab } from "./StatsTab";
-import { ConversationsTab } from "./ConversationsTab";
-import type { LivechatTab, BasicStats } from "./types";
+import { TranscriptDetail } from "./TranscriptDetail";
 
 function DeleteConfirmModal({
   filename,
@@ -20,21 +17,16 @@ function DeleteConfirmModal({
   onCancel: () => void;
 }) {
   const [confirmText, setConfirmText] = useState("");
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="bg-bg-elevated border border-border rounded-lg p-5 w-[400px] shadow-xl">
-        <h3 className="text-sm font-semibold text-text mb-2">
-          Delete upload?
-        </h3>
+        <h3 className="text-sm font-semibold text-text mb-2">Delete upload?</h3>
         <p className="text-xs text-text-muted mb-1">
-          This will permanently delete the uploaded CSV and all processed output
-          files for:
+          This will permanently delete the uploaded CSV and all processed output files for:
         </p>
         <p className="text-xs text-accent mb-3 truncate">{filename}</p>
         <p className="text-xs text-text-dim mb-2">
-          Type <span className="text-red-400 font-semibold">delete</span> to
-          confirm.
+          Type <span className="text-red-400 font-semibold">delete</span> to confirm.
         </p>
         <input
           type="text"
@@ -64,27 +56,25 @@ function DeleteConfirmModal({
   );
 }
 
-export function LivechatView() {
-  const [activeTab, setActiveTab] = useState<LivechatTab>("stats");
-  const [selectedUploadId, setSelectedUploadId] =
-    useState<Id<"livechatUploads"> | null>(null);
-  const [deleteTargetId, setDeleteTargetId] =
-    useState<Id<"livechatUploads"> | null>(null);
+export function TranscriptsPane({ selectedId }: { selectedId?: string }) {
+  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<Id<"livechatUploads"> | null>(null);
 
-  // Reactive Convex queries
   const uploads = useQuery(api.livechat.orchestration.list) ?? [];
-  const selectedUpload = useQuery(
-    api.livechat.orchestration.get,
-    selectedUploadId ? { id: selectedUploadId } : "skip",
-  );
-
-  // Mutations
-  const generateUploadUrl = useMutation(
-    api.livechat.orchestration.generateUploadUrl,
-  );
+  const generateUploadUrl = useMutation(api.livechat.orchestration.generateUploadUrl);
   const createUpload = useMutation(api.livechat.orchestration.create);
   const removeUpload = useMutation(api.livechat.orchestration.remove);
+
+  function select(id: string) {
+    router.replace(`/conversations?tab=transcripts&id=${id}`, { scroll: false });
+  }
+
+  useEffect(() => {
+    if (!selectedId && uploads.length > 0) {
+      router.replace(`/conversations?tab=transcripts&id=${uploads[0]._id}`, { scroll: false });
+    }
+  }, [selectedId, uploads, router]);
 
   async function handleUpload(file: File) {
     try {
@@ -94,9 +84,7 @@ export function LivechatView() {
         headers: { "Content-Type": file.type || "text/csv" },
         body: file,
       });
-      if (!postRes.ok) {
-        throw new Error(`Upload failed with status ${postRes.status}`);
-      }
+      if (!postRes.ok) throw new Error(`Upload failed with status ${postRes.status}`);
       const { storageId } = (await postRes.json()) as { storageId: string };
       await createUpload({
         filename: file.name,
@@ -110,9 +98,7 @@ export function LivechatView() {
   async function handleDelete(id: Id<"livechatUploads">) {
     try {
       await removeUpload({ id });
-      if (selectedUploadId === id) {
-        setSelectedUploadId(null);
-      }
+      if (selectedId === id) router.replace("/conversations?tab=transcripts");
     } catch (err) {
       console.error("Delete failed:", err);
     }
@@ -121,9 +107,8 @@ export function LivechatView() {
   const deleteTargetUpload = uploads.find((u) => u._id === deleteTargetId) ?? null;
 
   return (
-    <div className="flex flex-1 overflow-hidden">
-      {/* Upload Sidebar */}
-      <ResizablePanel storageKey="livechat-uploads" defaultWidth={360} className="border-r border-border flex flex-col bg-bg-elevated">
+    <div className="flex border border-border rounded-lg overflow-hidden flex-1 min-h-0">
+      <aside className="w-80 shrink-0 border-r border-border flex flex-col bg-bg-elevated">
         <div className="p-3 border-b border-border">
           <input
             ref={fileInputRef}
@@ -138,7 +123,7 @@ export function LivechatView() {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors whitespace-nowrap"
+            className="w-full px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors"
           >
             + Upload CSV
           </button>
@@ -146,7 +131,7 @@ export function LivechatView() {
         <div className="flex-1 overflow-y-auto">
           {uploads.length === 0 && (
             <div className="p-4 text-xs text-text-dim">
-              No uploads yet. Upload a CSV file to get started.
+              No uploads yet. Upload a CSV to get started.
             </div>
           )}
           {uploads.map((upload) => {
@@ -154,25 +139,22 @@ export function LivechatView() {
               upload.status === "pending" ||
               upload.status === "parsing" ||
               upload.status === "deleting";
+            const isActive = selectedId === upload._id;
             return (
               <div
                 key={upload._id}
-                onClick={() => setSelectedUploadId(upload._id)}
+                onClick={() => select(upload._id)}
                 className={`group flex items-center justify-between px-3 py-2 cursor-pointer border-b border-border/50 transition-colors ${
-                  selectedUploadId === upload._id
+                  isActive
                     ? "bg-accent/10 border-l-2 border-l-accent"
                     : "hover:bg-bg-hover"
                 }`}
               >
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-text truncate">
-                    {upload.filename}
-                  </div>
+                  <div className="text-xs text-text truncate">{upload.filename}</div>
                   <div className="flex items-center gap-2 text-[10px] text-text-dim mt-0.5">
                     {upload.conversationCount != null && (
-                      <span>
-                        {upload.conversationCount.toLocaleString()} convos
-                      </span>
+                      <span>{upload.conversationCount.toLocaleString()} convos</span>
                     )}
                     {upload.status === "parsing" && upload.parsedConversations != null ? (
                       <span className="px-1 py-0.5 rounded text-[9px] bg-yellow-500/10 text-yellow-400">
@@ -200,9 +182,7 @@ export function LivechatView() {
                   }}
                   disabled={isBusy}
                   className={`opacity-0 group-hover:opacity-100 text-text-dim transition-all p-1 ${
-                    isBusy
-                      ? "cursor-not-allowed"
-                      : "hover:text-red-400"
+                    isBusy ? "cursor-not-allowed" : "hover:text-red-400"
                   }`}
                   title={
                     isBusy
@@ -210,12 +190,7 @@ export function LivechatView() {
                       : "Delete upload"
                   }
                 >
-                  <svg
-                    className="w-3.5 h-3.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -228,22 +203,20 @@ export function LivechatView() {
             );
           })}
         </div>
-      </ResizablePanel>
+      </aside>
 
-      {/* Tab Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
-        <div className="flex-1 overflow-hidden">
-          {activeTab === "stats" && (
-            <StatsTab stats={(selectedUpload?.basicStats as BasicStats | undefined) ?? null} />
-          )}
-          {activeTab === "conversations" && selectedUpload && (
-            <ConversationsTab uploadId={selectedUpload._id} />
-          )}
-        </div>
-      </div>
+      <section className="flex-1 min-w-0 bg-bg overflow-hidden flex flex-col">
+        {selectedId ? (
+          <div className="flex-1 min-h-0">
+            <TranscriptDetail uploadId={selectedId as Id<"livechatUploads">} />
+          </div>
+        ) : (
+          <div className="h-full flex items-center justify-center text-xs text-text-dim">
+            Select a transcript to view its analysis.
+          </div>
+        )}
+      </section>
 
-      {/* Delete Confirmation Modal */}
       {deleteTargetId && deleteTargetUpload && (
         <DeleteConfirmModal
           filename={deleteTargetUpload.filename}
