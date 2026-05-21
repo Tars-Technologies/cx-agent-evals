@@ -4,23 +4,27 @@ import { use, useState, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
-import { Header } from "@/components/Header";
+import { EntityDetailLayout } from "@/components/shell/EntityDetailLayout";
+import { Spinner } from "@/components/shell/Spinner";
+import { kbSidebar } from "@/components/shell/sidebars";
+import { useKbBreadcrumb } from "@/lib/useKbBreadcrumb";
 import { SummaryBar } from "@/components/retriever-detail/SummaryBar";
 import { QuestionListPane, type StatusFilter } from "@/components/retriever-detail/QuestionListPane";
 import { QuestionDetailPane } from "@/components/retriever-detail/QuestionDetailPane";
 import { ResizablePanel } from "@/components/ResizablePanel";
-import { buildKbLink } from "@/lib/useKbFromUrl";
 
-export default function RetrieverDetailPage({
+export default function KbExperimentDetailPage({
   params,
 }: {
-  params: Promise<{ experimentId: string }>;
+  params: Promise<{ id: string; expId: string }>;
 }) {
-  const { experimentId } = use(params);
-  const expId = experimentId as Id<"experiments">;
+  const { id, expId } = use(params);
+  const kbId = id as Id<"knowledgeBases">;
+  const experimentId = expId as Id<"experiments">;
 
+  const { labelOverrides: kbLabelOverrides } = useKbBreadcrumb(kbId);
   const data = useQuery(api.experiments.results.getDetailForExperiment, {
-    experimentId: expId,
+    experimentId,
   });
 
   const sortedQuestions = useMemo(() => {
@@ -34,63 +38,51 @@ export default function RetrieverDetailPage({
   const [filter, setFilter] = useState<StatusFilter>("all");
 
   const visibleQuestions = useMemo(
-    () => (filter === "all" ? sortedQuestions : sortedQuestions.filter((q) => q.status === filter)),
+    () =>
+      filter === "all"
+        ? sortedQuestions
+        : sortedQuestions.filter((q) => q.status === filter),
     [sortedQuestions, filter],
   );
 
-  // If the selected question is filtered out, fall back to the first visible row
   const effectiveSelectedId =
     (selectedId && visibleQuestions.some((q) => q.resultId === selectedId)
       ? selectedId
       : visibleQuestions[0]?.resultId) ?? null;
 
+  const breadcrumbLabelOverrides = data?.experiment?.name
+    ? { ...(kbLabelOverrides ?? {}), [experimentId]: data.experiment.name }
+    : kbLabelOverrides;
+
   if (data === undefined) {
     return (
-      <div className="flex flex-col h-screen">
-        <Header mode="retrievers" />
-        <div className="flex flex-1 overflow-hidden">
-          <div
-            className="flex-shrink-0 h-full"
-            style={{ width: 360, borderRight: "1px solid var(--color-border)", background: "var(--color-bg-elevated)" }}
-          >
-            <div className="flex flex-col gap-2 p-4">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="rounded animate-pulse"
-                  style={{ height: 36, background: "var(--color-bg-surface)", opacity: 1 - i * 0.08 }}
-                />
-              ))}
-            </div>
-          </div>
-          <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
-            Loading…
-          </div>
-        </div>
-      </div>
+      <EntityDetailLayout
+        sidebarTitle="Knowledge Base"
+        sidebar={kbSidebar(kbId)}
+        breadcrumbLabelOverrides={breadcrumbLabelOverrides}
+      >
+        <Spinner label="Loading…" />
+      </EntityDetailLayout>
     );
   }
 
   if (data === null) {
     return (
-      <div className="flex flex-col h-screen">
-        <Header mode="retrievers" />
-        <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
-          Experiment not found.
-        </div>
-      </div>
+      <EntityDetailLayout
+        sidebarTitle="Knowledge Base"
+        sidebar={kbSidebar(kbId)}
+        breadcrumbLabelOverrides={breadcrumbLabelOverrides}
+      >
+        <div className="text-text-muted text-sm">Experiment not found.</div>
+      </EntityDetailLayout>
     );
   }
 
   const { experiment } = data;
-  const kbId = experiment.kbId as Id<"knowledgeBases"> | null;
-
-  // Build a back link that lands on the parent experiment-run results
   const backHref = experiment.experimentRunId
-    ? buildKbLink(`/retrievers?runId=${experiment.experimentRunId}&mode=experiment`, kbId)
-    : buildKbLink("/retrievers", kbId);
+    ? `/kb/${kbId}/evaluate/experiments?runId=${experiment.experimentRunId}`
+    : `/kb/${kbId}/evaluate/experiments`;
 
-  // Build a small config chip from the retriever config
   const cfg = experiment.retrieverConfig as
     | { index?: { chunkSize?: number }; k?: number; search?: { embedder?: string } }
     | null;
@@ -101,8 +93,12 @@ export default function RetrieverDetailPage({
   const configChip = configBits.join(" · ") || undefined;
 
   return (
-    <div className="flex flex-col h-screen">
-      <Header mode="retrievers" kbId={kbId} />
+    <EntityDetailLayout
+      sidebarTitle="Knowledge Base"
+      sidebar={kbSidebar(kbId)}
+      breadcrumbLabelOverrides={breadcrumbLabelOverrides}
+      fullWidth
+    >
       <SummaryBar
         retrieverName={experiment.retrieverName}
         experimentName={experiment.name}
@@ -117,9 +113,9 @@ export default function RetrieverDetailPage({
         totalQuestions={experiment.totalQuestions}
         processedQuestions={experiment.processedQuestions}
       />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex border border-border rounded-lg overflow-hidden bg-bg-elevated mt-3 flex-1 min-h-0">
         <ResizablePanel
-          storageKey="retriever-detail:questions"
+          storageKey="kb-experiment-detail:questions"
           defaultWidth={360}
           minWidth={260}
           maxWidth={520}
@@ -148,6 +144,6 @@ export default function RetrieverDetailPage({
           />
         )}
       </div>
-    </div>
+    </EntityDetailLayout>
   );
 }
