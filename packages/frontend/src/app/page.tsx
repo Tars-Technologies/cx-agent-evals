@@ -1,5 +1,5 @@
-import { ModeSelector } from "@/components/ModeSelector";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return <ModeSelector />;
+  redirect("/kb");
 }
