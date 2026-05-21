@@ -31,6 +31,46 @@ export const get = query({
   },
 });
 
+export const listForOrg = query({
+  args: {},
+  handler: async (ctx) => {
+    const { orgId } = await getAuthContext(ctx);
+    const conversations = await ctx.db
+      .query("conversations")
+      .withIndex("by_org", (q) => q.eq("orgId", orgId))
+      .order("desc")
+      .collect();
+
+    return Promise.all(
+      conversations.map(async (conv) => {
+        const agents = await Promise.all(
+          conv.agentIds.map(async (id) => {
+            const a = await ctx.db.get(id);
+            return a ? { _id: a._id, name: a.name } : null;
+          }),
+        );
+        const lastMessage = await ctx.db
+          .query("messages")
+          .withIndex("by_conversation", (q) =>
+            q.eq("conversationId", conv._id),
+          )
+          .order("desc")
+          .first();
+        return {
+          _id: conv._id,
+          title: conv.title,
+          status: conv.status,
+          source: conv.source,
+          createdAt: conv.createdAt,
+          agents: agents.filter((a): a is { _id: typeof conv.agentIds[number]; name: string } => a !== null),
+          lastMessagePreview: lastMessage?.content?.slice(0, 120) ?? null,
+          lastMessageAt: lastMessage?.createdAt ?? conv.createdAt,
+        };
+      }),
+    );
+  },
+});
+
 export const listMessages = query({
   args: { conversationId: v.id("conversations") },
   handler: async (ctx, { conversationId }) => {
