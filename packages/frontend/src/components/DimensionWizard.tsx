@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useAction } from "convex/react";
+import { api } from "@/lib/convex";
 import { Dimension } from "@/lib/types";
 
 interface DimensionWizardProps {
@@ -36,37 +38,28 @@ export function DimensionWizard({
     new Set(),
   );
 
+  const discoverAction = useAction(api.generation.actions.discoverDimensions);
+
   const handleDiscover = useCallback(async () => {
     if (!url.trim()) return;
     setDiscovering(true);
     setError(null);
 
     try {
-      const res = await fetch("/api/discover-dimensions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Discovery failed");
-        return;
-      }
-
-      setDimensions(data.dimensions);
+      const dimensions = await discoverAction({ url: url.trim() });
+      setDimensions(dimensions as Dimension[]);
       try {
         localStorage.setItem("rag-eval:dimension-discover-url", url);
       } catch {
         // localStorage full or unavailable
       }
       setStep(2);
-    } catch {
-      setError("Connection failed — check server");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Discovery failed");
     } finally {
       setDiscovering(false);
     }
-  }, [url]);
+  }, [url, discoverAction]);
 
   function handleSkip() {
     setDimensions([
