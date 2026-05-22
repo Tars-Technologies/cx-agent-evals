@@ -14,6 +14,9 @@
       "!**/build",
       "!**/.turbo",
       "!**/.vscode",
+      "!**/.claude",
+      "!**/.claire",
+      "!**/.changeset",
       "!**/pnpm-lock.yaml",
       "!**/.planning",
       "!**/_generated",
@@ -58,6 +61,17 @@
       },
       "performance": {
         "noImgElement": "off"
+      },
+      "a11y": {
+        "recommended": false,
+        "useButtonType": "off",
+        "noLabelWithoutControl": "off",
+        "noStaticElementInteractions": "off",
+        "useKeyWithClickEvents": "off",
+        "noSvgWithoutTitle": "off",
+        "noAutofocus": "off",
+        "useSemanticElements": "off",
+        "useAriaPropsSupportedByRole": "off"
       }
     }
   },
