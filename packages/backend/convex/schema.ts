@@ -193,6 +193,15 @@ export default defineSchema({
     conversationCount: v.optional(v.number()),
     parsedConversations: v.optional(v.number()),
     basicStats: v.optional(v.any()),
+    classificationCounts: v.optional(
+      v.object({
+        total: v.number(),
+        none: v.number(),
+        classified: v.number(),
+        running: v.number(),
+        failed: v.number(),
+      }),
+    ),
 
     createdAt: v.number(),
     startedAt: v.optional(v.number()),
