@@ -17,6 +17,7 @@
     "next": "16.1.6"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.4.10",
     "@changesets/cli": "^2.31.0"
   }
 }
