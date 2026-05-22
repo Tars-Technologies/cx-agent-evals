@@ -113,9 +113,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src tests",
-    "lint:fix": "eslint src tests --fix",
-    "format": "prettier --write src tests",
+    "lint": "biome check .",
+    "format": "biome format --write .",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "pnpm build"
   },
