@@ -1,34 +1,34 @@
-"use client";
+"use client"
 
-import { useEffect, useRef } from "react";
-import type { FilterType } from "./types";
+import { useEffect, useRef } from "react"
+import type { FilterType } from "./types"
 
-export type QuestionItem = { question: any; result: any | null };
+export type QuestionItem = { question: any; result: any | null }
 
 interface QuestionListPaneProps {
-  items: QuestionItem[];
-  annotationMap: Map<string, any>;
-  currentIndex: number;
-  onSelectResult: (index: number) => void;
+  items: QuestionItem[]
+  annotationMap: Map<string, any>
+  currentIndex: number
+  onSelectResult: (index: number) => void
   stats: {
-    total: number;
-    annotated: number;
-    great: number;
-    good_enough: number;
-    bad: number;
-    pass: number;
-    fail: number;
-  } | null;
-  totalQuestions: number;
-  totalResults: number;
-  isLive: boolean;
-  filter: FilterType;
-  onFilterChange: (f: FilterType) => void;
-  searchQuery: string;
-  onSearchChange: (q: string) => void;
-  tagFilter: string;
-  onTagFilterChange: (t: string) => void;
-  allTags: string[];
+    total: number
+    annotated: number
+    great: number
+    good_enough: number
+    bad: number
+    pass: number
+    fail: number
+  } | null
+  totalQuestions: number
+  totalResults: number
+  isLive: boolean
+  filter: FilterType
+  onFilterChange: (f: FilterType) => void
+  searchQuery: string
+  onSearchChange: (q: string) => void
+  tagFilter: string
+  onTagFilterChange: (t: string) => void
+  allTags: string[]
 }
 
 export function QuestionListPane({
@@ -46,14 +46,14 @@ export function QuestionListPane({
   onSearchChange,
   tagFilter,
   onTagFilterChange,
-  allTags,
+  allTags
 }: QuestionListPaneProps) {
-  const selectedRef = useRef<HTMLButtonElement>(null);
+  const selectedRef = useRef<HTMLButtonElement>(null)
 
   // Auto-scroll selected item into view
   useEffect(() => {
-    selectedRef.current?.scrollIntoView({ block: "nearest" });
-  }, [currentIndex]);
+    selectedRef.current?.scrollIntoView({ block: "nearest" })
+  }, [currentIndex])
 
   return (
     <div className="w-72 border-r border-border shrink-0 flex flex-col h-full bg-bg">
@@ -67,15 +67,13 @@ export function QuestionListPane({
             </>
           ) : (
             <>
-              <span className="text-accent font-medium">{totalResults}</span>
-              /{totalQuestions} evaluated
+              <span className="text-accent font-medium">{totalResults}</span>/
+              {totalQuestions} evaluated
             </>
           )}
         </span>
         {isLive && (
-          <span className="ml-2 text-[10px] text-purple-300">
-            (live)
-          </span>
+          <span className="ml-2 text-[10px] text-purple-300">(live)</span>
         )}
       </div>
 
@@ -100,7 +98,11 @@ export function QuestionListPane({
             Unrated ({(stats?.total ?? 0) - (stats?.annotated ?? 0)})
           </option>
           <option value="pass">
-            Pass ({(stats?.pass ?? 0) + (stats?.great ?? 0) + (stats?.good_enough ?? 0)})
+            Pass (
+            {(stats?.pass ?? 0) +
+              (stats?.great ?? 0) +
+              (stats?.good_enough ?? 0)}
+            )
           </option>
           <option value="fail">
             Fail ({(stats?.fail ?? 0) + (stats?.bad ?? 0)})
@@ -132,9 +134,9 @@ export function QuestionListPane({
           </div>
         ) : (
           items.map(({ question, result }, i) => {
-            const annotation = result ? annotationMap.get(result._id) : null;
-            const isSelected = i === currentIndex;
-            const isPending = result === null;
+            const annotation = result ? annotationMap.get(result._id) : null
+            const isSelected = i === currentIndex
+            const isPending = result === null
 
             return (
               <button
@@ -157,7 +159,9 @@ export function QuestionListPane({
                 )}
 
                 <div className="flex-1 min-w-0">
-                  <div className={`text-sm leading-snug line-clamp-2 ${isPending ? "text-text-dim" : "text-text"}`}>
+                  <div
+                    className={`text-sm leading-snug line-clamp-2 ${isPending ? "text-text-dim" : "text-text"}`}
+                  >
                     {question?.queryText ?? "Loading..."}
                   </div>
                   <div className="flex items-center gap-1.5 mt-1">
@@ -181,19 +185,19 @@ export function QuestionListPane({
                   </div>
                 </div>
               </button>
-            );
+            )
           })
         )}
       </div>
     </div>
-  );
+  )
 }
 
 function StatusDot({ rating }: { rating?: string }) {
   if (!rating) {
     return (
       <span className="mt-1 w-3 h-3 rounded-full border-2 border-border shrink-0" />
-    );
+    )
   }
   const colors: Record<string, string> = {
     pass: "bg-accent",
@@ -201,17 +205,17 @@ function StatusDot({ rating }: { rating?: string }) {
     // Legacy ratings
     great: "bg-accent",
     good_enough: "bg-accent",
-    bad: "bg-red-400",
-  };
+    bad: "bg-red-400"
+  }
   return (
     <span
       className={`mt-1 w-3 h-3 rounded-full shrink-0 ${colors[rating] ?? "bg-border"}`}
     />
-  );
+  )
 }
 
 function PendingDot() {
   return (
     <span className="mt-1 w-3 h-3 rounded-full border-2 border-purple-400/40 shrink-0 animate-pulse" />
-  );
+  )
 }

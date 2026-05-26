@@ -1,50 +1,50 @@
-"use client";
+"use client"
 
-import { useState, useRef } from "react";
+import { useRef, useState } from "react"
 
 export function RealWorldQuestionsModal({
   initialQuestions,
   onSave,
-  onClose,
+  onClose
 }: {
-  initialQuestions: string[];
-  onSave: (questions: string[]) => void;
-  onClose: () => void;
+  initialQuestions: string[]
+  onSave: (questions: string[]) => void
+  onClose: () => void
 }) {
-  const [tab, setTab] = useState<"upload" | "paste">("upload");
-  const [questions, setQuestions] = useState<string[]>(initialQuestions);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [tab, setTab] = useState<"upload" | "paste">("upload")
+  const [questions, setQuestions] = useState<string[]>(initialQuestions)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   function parseLines(text: string): string[] {
     return text
       .split("\n")
       .map((line) => line.trim())
-      .filter(Boolean);
+      .filter(Boolean)
   }
 
   function handleCSVUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const file = e.target.files?.[0]
+    if (!file) return
 
-    const reader = new FileReader();
+    const reader = new FileReader()
     reader.onload = () => {
-      const text = reader.result as string;
-      const lines = parseLines(text);
+      const text = reader.result as string
+      const lines = parseLines(text)
       // Skip header if it looks like one (contains "question" case-insensitive)
       if (lines.length > 0 && /^"?question"?$/i.test(lines[0])) {
-        lines.shift();
+        lines.shift()
       }
       // Remove CSV quoting
       const cleaned = lines.map((l) =>
-        l.startsWith('"') && l.endsWith('"') ? l.slice(1, -1) : l,
-      );
-      setQuestions(cleaned);
-    };
-    reader.readAsText(file);
+        l.startsWith('"') && l.endsWith('"') ? l.slice(1, -1) : l
+      )
+      setQuestions(cleaned)
+    }
+    reader.readAsText(file)
   }
 
   function handlePaste(text: string) {
-    setQuestions(parseLines(text));
+    setQuestions(parseLines(text))
   }
 
   return (
@@ -177,5 +177,5 @@ export function RealWorldQuestionsModal({
         </div>
       </div>
     </div>
-  );
+  )
 }

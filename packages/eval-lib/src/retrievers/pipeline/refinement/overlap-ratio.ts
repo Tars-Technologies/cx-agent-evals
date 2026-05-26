@@ -1,5 +1,5 @@
-import type { PositionAwareChunk } from "../../../types/chunks.js";
-import { spanOverlapChars } from "../../../utils/span.js";
+import type { PositionAwareChunk } from "../../../types/chunks.js"
+import { spanOverlapChars } from "../../../utils/span.js"
 
 /**
  * Compute character span overlap ratio between two chunks.
@@ -7,17 +7,17 @@ import { spanOverlapChars } from "../../../utils/span.js";
  */
 export function contentOverlapRatio(
   a: PositionAwareChunk,
-  b: PositionAwareChunk,
+  b: PositionAwareChunk
 ): number {
-  if (a.docId !== b.docId) return 0;
+  if (a.docId !== b.docId) return 0
 
   const overlapChars = spanOverlapChars(
     { docId: a.docId, start: a.start, end: a.end },
-    { docId: b.docId, start: b.start, end: b.end },
-  );
+    { docId: b.docId, start: b.start, end: b.end }
+  )
 
-  const minLength = Math.min(a.end - a.start, b.end - b.start);
-  if (minLength === 0) return 0;
+  const minLength = Math.min(a.end - a.start, b.end - b.start)
+  if (minLength === 0) return 0
 
-  return overlapChars / minLength;
+  return overlapChars / minLength
 }

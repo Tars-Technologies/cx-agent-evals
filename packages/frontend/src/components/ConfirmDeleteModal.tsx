@@ -1,28 +1,28 @@
-"use client";
+"use client"
 
-import { useState } from "react";
+import { useState } from "react"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface SharingRetriever {
-  name: string;
+  name: string
 }
 
 interface ConfirmDeleteModalProps {
   /** "retriever" or "index" */
-  action: "retriever" | "index";
+  action: "retriever" | "index"
   /** Name of the retriever being acted on */
-  retrieverName: string;
+  retrieverName: string
   /** Retrievers that share the same index (excluding the current one) */
-  sharingRetrievers: SharingRetriever[];
+  sharingRetrievers: SharingRetriever[]
   /** Whether the retriever has an index (status is "ready" or "error") */
-  hasIndex: boolean;
+  hasIndex: boolean
   /** Callback when confirmed */
-  onConfirm: () => void;
+  onConfirm: () => void
   /** Callback to close modal */
-  onClose: () => void;
+  onClose: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -35,14 +35,13 @@ export function ConfirmDeleteModal({
   sharingRetrievers,
   hasIndex,
   onConfirm,
-  onClose,
+  onClose
 }: ConfirmDeleteModalProps) {
-  const [input, setInput] = useState("");
-  const isConfirmed = input === "DELETE";
+  const [input, setInput] = useState("")
+  const isConfirmed = input === "DELETE"
 
-  const isShared = sharingRetrievers.length > 0;
-  const title =
-    action === "retriever" ? "Delete Retriever" : "Delete Index";
+  const isShared = sharingRetrievers.length > 0
+  const title = action === "retriever" ? "Delete Retriever" : "Delete Index"
 
   return (
     <div
@@ -78,7 +77,9 @@ export function ConfirmDeleteModal({
               <div className="flex items-center gap-2">
                 <span className="text-xs text-text-dim">Index:</span>
                 <span className="text-xs text-text">
-                  {isShared ? "Shared with other retrievers" : "Unique to this retriever"}
+                  {isShared
+                    ? "Shared with other retrievers"
+                    : "Unique to this retriever"}
                 </span>
               </div>
             )}
@@ -114,8 +115,8 @@ export function ConfirmDeleteModal({
           {action === "index" && isShared && (
             <div className="border border-red-500/30 bg-red-500/5 rounded-lg p-3">
               <p className="text-xs text-red-400 font-medium mb-1">
-                This will also affect {sharingRetrievers.length} other
-                retriever{sharingRetrievers.length > 1 ? "s" : ""}:
+                This will also affect {sharingRetrievers.length} other retriever
+                {sharingRetrievers.length > 1 ? "s" : ""}:
               </p>
               <ul className="text-xs text-red-400 list-disc list-inside">
                 {sharingRetrievers.map((r) => (
@@ -139,7 +140,8 @@ export function ConfirmDeleteModal({
           {/* Typed confirmation */}
           <div>
             <label className="text-xs text-text-dim block mb-1">
-              Type <span className="text-text font-mono font-medium">DELETE</span> to
+              Type{" "}
+              <span className="text-text font-mono font-medium">DELETE</span> to
               confirm
             </label>
             <input
@@ -163,5 +165,5 @@ export function ConfirmDeleteModal({
         </div>
       </div>
     </div>
-  );
+  )
 }

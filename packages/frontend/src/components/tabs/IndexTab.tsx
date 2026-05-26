@@ -1,12 +1,12 @@
-"use client";
+"use client"
 
-import { useQuery, usePaginatedQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import type { Id } from "@convex/_generated/dataModel";
-import { MarkdownViewer } from "@/components/MarkdownViewer";
-import { resolveConfig } from "@/lib/pipeline-types";
-import type { PipelineConfig } from "@/lib/pipeline-types";
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import type { Id } from "@convex/_generated/dataModel"
+import { usePaginatedQuery, useQuery } from "convex/react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { MarkdownViewer } from "@/components/MarkdownViewer"
+import { api } from "@/lib/convex"
+import type { PipelineConfig } from "@/lib/pipeline-types"
+import { resolveConfig } from "@/lib/pipeline-types"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -14,25 +14,25 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 
 interface IndexTabProps {
   retriever: {
-    _id: Id<"retrievers">;
-    kbId: Id<"knowledgeBases">;
-    indexConfigHash: string;
-    retrieverConfig: unknown;
-    status: string;
-    chunkCount?: number;
-  };
-  onStartIndexing: () => void;
+    _id: Id<"retrievers">
+    kbId: Id<"knowledgeBases">
+    indexConfigHash: string
+    retrieverConfig: unknown
+    status: string
+    chunkCount?: number
+  }
+  onStartIndexing: () => void
 }
 
 /** A chunk as returned by the paginated query (no embedding). */
 interface Chunk {
-  _id: string;
-  chunkId: string;
-  documentId: string;
-  content: string;
-  start: number;
-  end: number;
-  metadata: Record<string, unknown>;
+  _id: string
+  chunkId: string
+  documentId: string
+  content: string
+  start: number
+  end: number
+  metadata: Record<string, unknown>
 }
 
 // ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ function Spinner({ className }: { className?: string }) {
     <div
       className={`w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin ${className ?? ""}`}
     />
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -54,23 +54,23 @@ function Spinner({ className }: { className?: string }) {
 /** Find chunk(s) that contain the given character position. */
 function findChunksAtPosition(
   chunks: Chunk[],
-  position: number,
+  position: number
 ): { primary: number | null; overlap: number | null } {
-  let primary: number | null = null;
-  let overlap: number | null = null;
+  let primary: number | null = null
+  let overlap: number | null = null
 
   for (let i = 0; i < chunks.length; i++) {
     if (position >= chunks[i].start && position < chunks[i].end) {
       if (primary === null) {
-        primary = i;
+        primary = i
       } else {
-        overlap = i;
-        break;
+        overlap = i
+        break
       }
     }
   }
 
-  return { primary, overlap };
+  return { primary, overlap }
 }
 
 /**
@@ -83,98 +83,104 @@ function ClickableDocumentContent({
   chunks,
   selectedChunkIndex,
   overlapChunkIndex,
-  onSelectChunk,
+  onSelectChunk
 }: {
-  content: string;
-  chunks: Chunk[];
-  selectedChunkIndex: number | null;
-  overlapChunkIndex: number | null;
-  onSelectChunk: (index: number | null) => void;
+  content: string
+  chunks: Chunk[]
+  selectedChunkIndex: number | null
+  overlapChunkIndex: number | null
+  onSelectChunk: (index: number | null) => void
 }) {
-  const contentRef = useRef<HTMLPreElement>(null);
+  const contentRef = useRef<HTMLPreElement>(null)
 
   // Split content into lines, each in a span with data-offset
   const lines = useMemo(() => {
-    const result: Array<{ text: string; offset: number }> = [];
-    let pos = 0;
-    const parts = content.split("\n");
+    const result: Array<{ text: string; offset: number }> = []
+    let pos = 0
+    const parts = content.split("\n")
     for (let i = 0; i < parts.length; i++) {
-      result.push({ text: parts[i], offset: pos });
-      pos += parts[i].length + 1; // +1 for \n
+      result.push({ text: parts[i], offset: pos })
+      pos += parts[i].length + 1 // +1 for \n
     }
-    return result;
-  }, [content]);
+    return result
+  }, [content])
 
   // Click handler: map click to character position, find chunk
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       // Walk up from target to find span with data-offset
-      let el = e.target as HTMLElement | null;
+      let el = e.target as HTMLElement | null
       while (el && !el.dataset.offset) {
-        el = el.parentElement;
+        el = el.parentElement
       }
-      if (!el?.dataset.offset) return;
+      if (!el?.dataset.offset) return
 
-      const lineOffset = parseInt(el.dataset.offset, 10);
+      const lineOffset = parseInt(el.dataset.offset, 10)
 
       // Use Selection API to get offset within the text node
-      const selection = window.getSelection();
-      let charOffset = 0;
+      const selection = window.getSelection()
+      let charOffset = 0
       if (selection && selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        charOffset = range.startOffset;
+        const range = selection.getRangeAt(0)
+        charOffset = range.startOffset
       }
 
-      const position = lineOffset + charOffset;
-      const hit = findChunksAtPosition(chunks, position);
+      const position = lineOffset + charOffset
+      const hit = findChunksAtPosition(chunks, position)
 
       if (hit.primary !== null) {
-        onSelectChunk(hit.primary);
+        onSelectChunk(hit.primary)
       } else {
-        onSelectChunk(null);
+        onSelectChunk(null)
       }
     },
-    [chunks, onSelectChunk],
-  );
+    [chunks, onSelectChunk]
+  )
 
   // Escape to clear
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onSelectChunk(null);
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onSelectChunk]);
+      if (e.key === "Escape") onSelectChunk(null)
+    }
+    document.addEventListener("keydown", handler)
+    return () => document.removeEventListener("keydown", handler)
+  }, [onSelectChunk])
 
   // Scroll to selected chunk
   useEffect(() => {
-    if (selectedChunkIndex === null || !contentRef.current) return;
-    const chunk = chunks[selectedChunkIndex];
-    if (!chunk) return;
-    const spans = contentRef.current.querySelectorAll("[data-offset]");
+    if (selectedChunkIndex === null || !contentRef.current) return
+    const chunk = chunks[selectedChunkIndex]
+    if (!chunk) return
+    const spans = contentRef.current.querySelectorAll("[data-offset]")
     for (const span of spans) {
-      const offset = parseInt((span as HTMLElement).dataset.offset ?? "0", 10);
+      const offset = parseInt((span as HTMLElement).dataset.offset ?? "0", 10)
       if (offset >= chunk.start) {
-        span.scrollIntoView({ behavior: "smooth", block: "center" });
-        break;
+        span.scrollIntoView({ behavior: "smooth", block: "center" })
+        break
       }
     }
-  }, [selectedChunkIndex, chunks]);
+  }, [selectedChunkIndex, chunks])
 
   // Build highlight ranges
-  const selectedChunk = selectedChunkIndex !== null ? chunks[selectedChunkIndex] : null;
-  const overlapChunk = overlapChunkIndex !== null ? chunks[overlapChunkIndex] : null;
+  const selectedChunk =
+    selectedChunkIndex !== null ? chunks[selectedChunkIndex] : null
+  const overlapChunk =
+    overlapChunkIndex !== null ? chunks[overlapChunkIndex] : null
 
   // Render a line, applying highlights if the line intersects a selected chunk
   const renderLine = useCallback(
     (line: { text: string; offset: number }, idx: number) => {
-      const lineEnd = line.offset + line.text.length;
+      const lineEnd = line.offset + line.text.length
 
       // Check if this line intersects any highlighted chunk
       const intersectsSelected =
-        selectedChunk && line.offset < selectedChunk.end && lineEnd > selectedChunk.start;
+        selectedChunk &&
+        line.offset < selectedChunk.end &&
+        lineEnd > selectedChunk.start
       const intersectsOverlap =
-        overlapChunk && line.offset < overlapChunk.end && lineEnd > overlapChunk.start;
+        overlapChunk &&
+        line.offset < overlapChunk.end &&
+        lineEnd > overlapChunk.start
 
       if (!intersectsSelected && !intersectsOverlap) {
         return (
@@ -182,44 +188,44 @@ function ClickableDocumentContent({
             {line.text}
             {"\n"}
           </span>
-        );
+        )
       }
 
       // Build sub-segments within this line for highlighting
-      const segments: React.ReactNode[] = [];
-      let cursor = 0;
-      const text = line.text;
+      const segments: React.ReactNode[] = []
+      let cursor = 0
+      const text = line.text
 
       // Collect highlight ranges within this line
-      type Range = { start: number; end: number; cls: string };
-      const ranges: Range[] = [];
+      type Range = { start: number; end: number; cls: string }
+      const ranges: Range[] = []
       if (selectedChunk) {
-        const s = Math.max(0, selectedChunk.start - line.offset);
-        const e = Math.min(text.length, selectedChunk.end - line.offset);
-        if (s < e) ranges.push({ start: s, end: e, cls: "bg-accent/10" });
+        const s = Math.max(0, selectedChunk.start - line.offset)
+        const e = Math.min(text.length, selectedChunk.end - line.offset)
+        if (s < e) ranges.push({ start: s, end: e, cls: "bg-accent/10" })
       }
       if (overlapChunk) {
-        const s = Math.max(0, overlapChunk.start - line.offset);
-        const e = Math.min(text.length, overlapChunk.end - line.offset);
-        if (s < e) ranges.push({ start: s, end: e, cls: "bg-blue-400/10" });
+        const s = Math.max(0, overlapChunk.start - line.offset)
+        const e = Math.min(text.length, overlapChunk.end - line.offset)
+        if (s < e) ranges.push({ start: s, end: e, cls: "bg-blue-400/10" })
       }
 
       // Sort ranges by start
-      ranges.sort((a, b) => a.start - b.start);
+      ranges.sort((a, b) => a.start - b.start)
 
       for (const range of ranges) {
         if (range.start > cursor) {
-          segments.push(text.slice(cursor, range.start));
+          segments.push(text.slice(cursor, range.start))
         }
         segments.push(
           <span key={`hl-${range.start}`} className={range.cls}>
             {text.slice(range.start, range.end)}
-          </span>,
-        );
-        cursor = range.end;
+          </span>
+        )
+        cursor = range.end
       }
       if (cursor < text.length) {
-        segments.push(text.slice(cursor));
+        segments.push(text.slice(cursor))
       }
 
       return (
@@ -227,10 +233,10 @@ function ClickableDocumentContent({
           {segments}
           {"\n"}
         </span>
-      );
+      )
     },
-    [selectedChunk, overlapChunk],
-  );
+    [selectedChunk, overlapChunk]
+  )
 
   return (
     <div className="relative">
@@ -240,18 +246,18 @@ function ClickableDocumentContent({
           {chunks.map((chunk, i) => {
             // Approximate position (line-based; exact calc needs layout measurement)
             const chunkLine = lines.findIndex(
-              (l) => l.offset + l.text.length >= chunk.start,
-            );
-            if (chunkLine < 0) return null;
-            const totalLines = lines.length;
-            const pct = (chunkLine / Math.max(totalLines, 1)) * 100;
+              (l) => l.offset + l.text.length >= chunk.start
+            )
+            if (chunkLine < 0) return null
+            const totalLines = lines.length
+            const pct = (chunkLine / Math.max(totalLines, 1)) * 100
             return (
               <div
                 key={i}
                 className="absolute w-full bg-accent/20"
                 style={{ top: `${pct}%`, height: "1px" }}
               />
-            );
+            )
           })}
         </div>
       )}
@@ -265,7 +271,7 @@ function ClickableDocumentContent({
         {lines.map(renderLine)}
       </pre>
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -275,55 +281,59 @@ function ClickableDocumentContent({
 function DocumentListPanel({
   kbId,
   selectedDocId,
-  onSelect,
+  onSelect
 }: {
-  kbId: Id<"knowledgeBases">;
-  selectedDocId: Id<"documents"> | null;
-  onSelect: (id: Id<"documents">) => void;
+  kbId: Id<"knowledgeBases">
+  selectedDocId: Id<"documents"> | null
+  onSelect: (id: Id<"documents">) => void
 }) {
-  const { results: docs, status, loadMore } = usePaginatedQuery(
+  const {
+    results: docs,
+    status,
+    loadMore
+  } = usePaginatedQuery(
     api.crud.documents.listByKb,
     { kbId },
-    { initialNumItems: 50 },
-  );
+    { initialNumItems: 50 }
+  )
 
   // Auto-load the next page when the sentinel scrolls into view inside
   // this list's scroll container.
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
-    if (status !== "CanLoadMore") return;
-    const el = sentinelRef.current;
-    const root = scrollRef.current;
-    if (!el || !root) return;
+    if (status !== "CanLoadMore") return
+    const el = sentinelRef.current
+    const root = scrollRef.current
+    if (!el || !root) return
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) loadMore(50);
+        if (entries[0]?.isIntersecting) loadMore(50)
       },
-      { root, rootMargin: "200px" },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [status, loadMore]);
+      { root, rootMargin: "200px" }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [status, loadMore])
 
   if (status === "LoadingFirstPage") {
     return (
       <div className="flex items-center justify-center h-full">
         <Spinner />
       </div>
-    );
+    )
   }
 
   if (docs.length === 0) {
     return (
       <div className="p-3 text-xs text-text-dim">No documents in this KB.</div>
-    );
+    )
   }
 
   return (
     <div ref={scrollRef} className="overflow-y-auto h-full">
       {docs.map((doc) => {
-        const isActive = selectedDocId === doc._id;
+        const isActive = selectedDocId === doc._id
         return (
           <button
             key={doc._id}
@@ -335,12 +345,14 @@ function DocumentListPanel({
                 : "border-l-2 border-transparent hover:bg-bg-elevated"
             }`}
           >
-            <span className="text-xs text-text truncate block">{doc.title}</span>
+            <span className="text-xs text-text truncate block">
+              {doc.title}
+            </span>
             <span className="text-[10px] text-text-dim">
               {(doc.contentLength ?? 0).toLocaleString()} chars
             </span>
           </button>
-        );
+        )
       })}
       {status === "CanLoadMore" && <div ref={sentinelRef} className="h-1" />}
       {status === "LoadingMore" && (
@@ -349,7 +361,7 @@ function DocumentListPanel({
         </div>
       )}
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -362,26 +374,32 @@ function DocumentViewerPanel({
   chunksLoading,
   selectedChunkIndex,
   onSelectChunk,
-  isReady,
+  isReady
 }: {
-  docContent: { docId: string; title: string; content: string } | null | undefined;
-  chunks: Chunk[];
-  chunksLoading: boolean;
-  selectedChunkIndex: number | null;
-  onSelectChunk: (index: number | null) => void;
+  docContent:
+    | { docId: string; title: string; content: string }
+    | null
+    | undefined
+  chunks: Chunk[]
+  chunksLoading: boolean
+  selectedChunkIndex: number | null
+  onSelectChunk: (index: number | null) => void
   /** Whether the retriever has been indexed (chunks exist). */
-  isReady: boolean;
+  isReady: boolean
 }) {
   const [viewMode, setViewMode] = useState<"raw" | "rendered">(
-    isReady ? "raw" : "rendered",
-  );
+    isReady ? "raw" : "rendered"
+  )
 
-  if (docContent === undefined || (isReady && chunksLoading && chunks.length === 0)) {
+  if (
+    docContent === undefined ||
+    (isReady && chunksLoading && chunks.length === 0)
+  ) {
     return (
       <div className="flex items-center justify-center h-full">
         <Spinner />
       </div>
-    );
+    )
   }
 
   if (!docContent) {
@@ -389,10 +407,10 @@ function DocumentViewerPanel({
       <div className="flex items-center justify-center h-full text-xs text-text-dim">
         Document not found.
       </div>
-    );
+    )
   }
 
-  const hasChunks = chunks.length > 0;
+  const hasChunks = chunks.length > 0
 
   return (
     <div className="h-full flex flex-col">
@@ -465,9 +483,8 @@ function DocumentViewerPanel({
         )}
       </div>
     </div>
-  );
+  )
 }
-
 
 // ---------------------------------------------------------------------------
 // Chunk List Panel (right, top half)
@@ -476,36 +493,36 @@ function DocumentViewerPanel({
 function ChunkListPanel({
   chunks,
   selectedIndex,
-  onSelect,
+  onSelect
 }: {
-  chunks: Chunk[];
-  selectedIndex: number | null;
-  onSelect: (index: number) => void;
+  chunks: Chunk[]
+  selectedIndex: number | null
+  onSelect: (index: number) => void
 }) {
-  const [search, setSearch] = useState("");
-  const [jumpTo, setJumpTo] = useState("");
-  const listRef = useRef<HTMLDivElement>(null);
+  const [search, setSearch] = useState("")
+  const [jumpTo, setJumpTo] = useState("")
+  const listRef = useRef<HTMLDivElement>(null)
 
   const maxSize = useMemo(
     () => Math.max(...chunks.map((c) => c.end - c.start), 1),
-    [chunks],
-  );
+    [chunks]
+  )
 
   const filtered = useMemo(() => {
-    if (!search) return chunks.map((c, i) => ({ chunk: c, index: i }));
-    const lower = search.toLowerCase();
+    if (!search) return chunks.map((c, i) => ({ chunk: c, index: i }))
+    const lower = search.toLowerCase()
     return chunks
       .map((c, i) => ({ chunk: c, index: i }))
-      .filter(({ chunk }) => chunk.content.toLowerCase().includes(lower));
-  }, [chunks, search]);
+      .filter(({ chunk }) => chunk.content.toLowerCase().includes(lower))
+  }, [chunks, search])
 
   const handleJump = () => {
-    const n = parseInt(jumpTo, 10);
+    const n = parseInt(jumpTo, 10)
     if (n >= 1 && n <= chunks.length) {
-      onSelect(n - 1);
-      setJumpTo("");
+      onSelect(n - 1)
+      setJumpTo("")
     }
-  };
+  }
 
   return (
     <div className="flex flex-col h-1/2 border-b border-border">
@@ -534,8 +551,8 @@ function ChunkListPanel({
       {/* List */}
       <div ref={listRef} className="flex-1 overflow-y-auto">
         {filtered.map(({ chunk, index }) => {
-          const size = chunk.end - chunk.start;
-          const isSelected = selectedIndex === index;
+          const size = chunk.end - chunk.start
+          const isSelected = selectedIndex === index
           return (
             <button
               key={chunk._id}
@@ -560,11 +577,11 @@ function ChunkListPanel({
                 />
               </div>
             </button>
-          );
+          )
         })}
       </div>
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -577,48 +594,52 @@ function ChunkDetailPanel({
   total,
   documentContent,
   onPrev,
-  onNext,
+  onNext
 }: {
-  chunk: Chunk;
-  index: number;
-  total: number;
-  documentContent: string;
-  onPrev: () => void;
-  onNext: () => void;
+  chunk: Chunk
+  index: number
+  total: number
+  documentContent: string
+  onPrev: () => void
+  onNext: () => void
 }) {
-  const [showContent, setShowContent] = useState(false);
-  const [showMetadata, setShowMetadata] = useState(false);
+  const [showContent, setShowContent] = useState(false)
+  const [showMetadata, setShowMetadata] = useState(false)
 
-  const size = chunk.end - chunk.start;
-  const originalText = documentContent.slice(chunk.start, chunk.end);
+  const size = chunk.end - chunk.start
+  const originalText = documentContent.slice(chunk.start, chunk.end)
 
   // Detect extra content (contextual prefix or summary replacement)
   const hasPrefix =
     chunk.content.length > originalText.length &&
-    chunk.content.endsWith(originalText);
+    chunk.content.endsWith(originalText)
   const prefix = hasPrefix
     ? chunk.content.slice(0, chunk.content.length - originalText.length)
-    : null;
+    : null
 
   const isSummary =
-    !hasPrefix && chunk.content !== originalText && chunk.content.length > 0;
+    !hasPrefix && chunk.content !== originalText && chunk.content.length > 0
 
   // Parent-child info
-  const isChild = chunk.metadata?.level === "child";
-  const isParent = chunk.metadata?.level === "parent";
+  const isChild = chunk.metadata?.level === "child"
+  const isParent = chunk.metadata?.level === "parent"
 
   const metadataEntries = Object.entries(chunk.metadata ?? {}).filter(
-    ([k]) => !["level", "parentChunkId"].includes(k),
-  );
+    ([k]) => !["level", "parentChunkId"].includes(k)
+  )
 
   return (
     <div className="flex flex-col h-1/2">
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {/* Header */}
         <div>
-          <div className="text-xs text-text font-medium">Chunk #{index + 1}</div>
+          <div className="text-xs text-text font-medium">
+            Chunk #{index + 1}
+          </div>
           <div className="text-[10px] text-text-dim">
-            chars {chunk.start.toLocaleString()}{"\u2192"}{chunk.end.toLocaleString()} {"\u00B7"} {size} chars
+            chars {chunk.start.toLocaleString()}
+            {"\u2192"}
+            {chunk.end.toLocaleString()} {"\u00B7"} {size} chars
           </div>
         </div>
 
@@ -679,7 +700,8 @@ function ChunkDetailPanel({
           onClick={() => setShowContent(!showContent)}
           className="text-[10px] text-accent hover:text-accent-bright transition-colors cursor-pointer"
         >
-          {showContent ? "\u25B2 Hide" : "\u25B6 Show"} chunk text ({size} chars)
+          {showContent ? "\u25B2 Hide" : "\u25B6 Show"} chunk text ({size}{" "}
+          chars)
         </button>
         {showContent && (
           <pre className="text-[11px] text-text-muted whitespace-pre-wrap font-mono bg-bg-surface rounded p-2 max-h-48 overflow-auto">
@@ -694,15 +716,20 @@ function ChunkDetailPanel({
               onClick={() => setShowMetadata(!showMetadata)}
               className="text-[10px] text-text-dim hover:text-text transition-colors cursor-pointer"
             >
-              {showMetadata ? "\u25B2" : "\u25B6"} Metadata ({metadataEntries.length} keys)
+              {showMetadata ? "\u25B2" : "\u25B6"} Metadata (
+              {metadataEntries.length} keys)
             </button>
             {showMetadata && (
               <div className="bg-bg-surface rounded p-2 space-y-1">
                 {metadataEntries.map(([key, value]) => (
                   <div key={key} className="flex gap-2 text-[10px]">
-                    <span className="text-text-dim font-mono flex-shrink-0">{key}:</span>
+                    <span className="text-text-dim font-mono flex-shrink-0">
+                      {key}:
+                    </span>
                     <span className="text-text-muted truncate">
-                      {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                      {typeof value === "object"
+                        ? JSON.stringify(value)
+                        : String(value)}
                     </span>
                   </div>
                 ))}
@@ -733,7 +760,7 @@ function ChunkDetailPanel({
         </button>
       </div>
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -743,54 +770,54 @@ function ChunkDetailPanel({
 function StatsBanner({
   retrieverConfig,
   chunks,
-  chunkCount,
+  chunkCount
 }: {
-  retrieverConfig: unknown;
-  chunks: Chunk[];
-  chunkCount?: number;
+  retrieverConfig: unknown
+  chunks: Chunk[]
+  chunkCount?: number
 }) {
-  const [showHistogram, setShowHistogram] = useState(false);
-  const config = resolveConfig(retrieverConfig as PipelineConfig);
-  const { embeddingModel } = config.index;
-  const embedShort = embeddingModel.replace("text-embedding-", "");
+  const [showHistogram, setShowHistogram] = useState(false)
+  const config = resolveConfig(retrieverConfig as PipelineConfig)
+  const { embeddingModel } = config.index
+  const embedShort = embeddingModel.replace("text-embedding-", "")
 
-  const strategy = config.index.strategy;
-  const isParentChild = strategy === "parent-child";
+  const strategy = config.index.strategy
+  const isParentChild = strategy === "parent-child"
   const chunkerLabel = isParentChild
     ? `Parent-child (${config.index.childChunkSize ?? 200}/${config.index.parentChunkSize ?? 1000})`
-    : `Recursive (${config.index.chunkSize}/${config.index.chunkOverlap})`;
+    : `Recursive (${config.index.chunkSize}/${config.index.chunkOverlap})`
 
   // Compute stats from loaded chunks
   const stats = useMemo(() => {
-    if (chunks.length === 0) return null;
-    const sizes = chunks.map((c) => c.end - c.start);
-    const total = chunkCount ?? chunks.length;
-    const avg = Math.round(sizes.reduce((a, b) => a + b, 0) / sizes.length);
-    const min = Math.min(...sizes);
-    const max = Math.max(...sizes);
+    if (chunks.length === 0) return null
+    const sizes = chunks.map((c) => c.end - c.start)
+    const total = chunkCount ?? chunks.length
+    const avg = Math.round(sizes.reduce((a, b) => a + b, 0) / sizes.length)
+    const min = Math.min(...sizes)
+    const max = Math.max(...sizes)
 
     // Compute overlap %
-    let overlapChars = 0;
-    const sorted = [...chunks].sort((a, b) => a.start - b.start);
+    let overlapChars = 0
+    const sorted = [...chunks].sort((a, b) => a.start - b.start)
     for (let i = 1; i < sorted.length; i++) {
-      const overlap = sorted[i - 1].end - sorted[i].start;
-      if (overlap > 0) overlapChars += overlap;
+      const overlap = sorted[i - 1].end - sorted[i].start
+      if (overlap > 0) overlapChars += overlap
     }
     const overlapPct =
-      avg > 0 ? Math.round((overlapChars / sorted.length / avg) * 100) : 0;
+      avg > 0 ? Math.round((overlapChars / sorted.length / avg) * 100) : 0
 
     // Histogram buckets (100-char width)
-    const bucketWidth = 100;
-    const buckets = new Map<number, number>();
+    const bucketWidth = 100
+    const buckets = new Map<number, number>()
     for (const s of sizes) {
-      const bucket = Math.floor(s / bucketWidth) * bucketWidth;
-      buckets.set(bucket, (buckets.get(bucket) ?? 0) + 1);
+      const bucket = Math.floor(s / bucketWidth) * bucketWidth
+      buckets.set(bucket, (buckets.get(bucket) ?? 0) + 1)
     }
-    const sortedBuckets = [...buckets.entries()].sort((a, b) => a[0] - b[0]);
-    const maxCount = Math.max(...sortedBuckets.map(([, c]) => c));
+    const sortedBuckets = [...buckets.entries()].sort((a, b) => a[0] - b[0])
+    const maxCount = Math.max(...sortedBuckets.map(([, c]) => c))
 
-    return { total, avg, min, max, overlapPct, sortedBuckets, maxCount };
-  }, [chunks, chunkCount]);
+    return { total, avg, min, max, overlapPct, sortedBuckets, maxCount }
+  }, [chunks, chunkCount])
 
   return (
     <div className="px-3 py-2 border-b border-border flex-shrink-0">
@@ -818,7 +845,7 @@ function StatsBanner({
               { label: "chunks", value: stats.total.toLocaleString() },
               { label: "avg size", value: `${stats.avg}` },
               { label: "min/max", value: `${stats.min}\u2013${stats.max}` },
-              { label: "overlap", value: `${stats.overlapPct}%` },
+              { label: "overlap", value: `${stats.overlapPct}%` }
             ].map((card) => (
               <div
                 key={card.label}
@@ -847,10 +874,7 @@ function StatsBanner({
         {showHistogram && stats && (
           <div className="space-y-0.5 pt-1">
             {stats.sortedBuckets.map(([bucket, count]) => (
-              <div
-                key={bucket}
-                className="flex items-center gap-2 text-[10px]"
-              >
+              <div key={bucket} className="flex items-center gap-2 text-[10px]">
                 <span className="w-16 text-right text-text-dim">
                   {bucket}\u2013{bucket + 100}
                 </span>
@@ -858,7 +882,7 @@ function StatsBanner({
                   <div
                     className="h-full bg-accent/40 rounded"
                     style={{
-                      width: `${(count / stats.maxCount) * 100}%`,
+                      width: `${(count / stats.maxCount) * 100}%`
                     }}
                   />
                 </div>
@@ -869,7 +893,7 @@ function StatsBanner({
         )}
       </div>
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -878,23 +902,23 @@ function StatsBanner({
 
 export function IndexTab({ retriever, onStartIndexing }: IndexTabProps) {
   const [selectedDocId, setSelectedDocId] = useState<Id<"documents"> | null>(
-    null,
-  );
+    null
+  )
   const [selectedChunkIndex, setSelectedChunkIndex] = useState<number | null>(
-    null,
-  );
+    null
+  )
 
-  const isReady = retriever.status === "ready";
-  const isIndexing = retriever.status === "indexing";
+  const isReady = retriever.status === "ready"
+  const isIndexing = retriever.status === "indexing"
 
   // ---------------------------------------------------------------------------
   // Lifted chunk loading (shared by StatsBanner, DocumentViewer, ChunkList, ChunkDetail)
   // ---------------------------------------------------------------------------
 
-  const [allChunks, setAllChunks] = useState<Chunk[]>([]);
-  const [chunkCursor, setChunkCursor] = useState<string | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [pagesLoaded, setPagesLoaded] = useState(0);
+  const [allChunks, setAllChunks] = useState<Chunk[]>([])
+  const [chunkCursor, setChunkCursor] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [pagesLoaded, setPagesLoaded] = useState(0)
 
   const firstPage = useQuery(
     api.retrieval.chunks.getChunksByRetrieverPage,
@@ -904,29 +928,29 @@ export function IndexTab({ retriever, onStartIndexing }: IndexTabProps) {
           indexConfigHash: retriever.indexConfigHash,
           documentId: selectedDocId,
           cursor: null,
-          pageSize: 100,
+          pageSize: 100
         }
-      : "skip",
-  );
+      : "skip"
+  )
 
   // Reset when document changes
   useEffect(() => {
-    setAllChunks([]);
-    setChunkCursor(null);
-    setPagesLoaded(0);
-    setLoadingMore(false);
-    setSelectedChunkIndex(null);
-  }, [selectedDocId, retriever.indexConfigHash]);
+    setAllChunks([])
+    setChunkCursor(null)
+    setPagesLoaded(0)
+    setLoadingMore(false)
+    setSelectedChunkIndex(null)
+  }, [selectedDocId, retriever.indexConfigHash])
 
   // Ingest first page
   useEffect(() => {
     if (firstPage && pagesLoaded === 0) {
-      setAllChunks(firstPage.chunks as Chunk[]);
-      setChunkCursor(firstPage.isDone ? null : firstPage.continueCursor);
-      setPagesLoaded(1);
-      if (!firstPage.isDone) setLoadingMore(true);
+      setAllChunks(firstPage.chunks as Chunk[])
+      setChunkCursor(firstPage.isDone ? null : firstPage.continueCursor)
+      setPagesLoaded(1)
+      if (!firstPage.isDone) setLoadingMore(true)
     }
-  }, [firstPage, pagesLoaded]);
+  }, [firstPage, pagesLoaded])
 
   // Auto-load subsequent pages
   const nextPage = useQuery(
@@ -937,28 +961,29 @@ export function IndexTab({ retriever, onStartIndexing }: IndexTabProps) {
           indexConfigHash: retriever.indexConfigHash,
           documentId: selectedDocId!,
           cursor: chunkCursor,
-          pageSize: 100,
+          pageSize: 100
         }
-      : "skip",
-  );
+      : "skip"
+  )
 
   useEffect(() => {
     if (nextPage && loadingMore) {
-      setAllChunks((prev) => [...prev, ...(nextPage.chunks as Chunk[])]);
-      const nextCur = nextPage.isDone ? null : nextPage.continueCursor;
-      setChunkCursor(nextCur);
-      setPagesLoaded((p) => p + 1);
-      setLoadingMore(false);
-      if (!nextPage.isDone) setLoadingMore(true);
+      setAllChunks((prev) => [...prev, ...(nextPage.chunks as Chunk[])])
+      const nextCur = nextPage.isDone ? null : nextPage.continueCursor
+      setChunkCursor(nextCur)
+      setPagesLoaded((p) => p + 1)
+      setLoadingMore(false)
+      if (!nextPage.isDone) setLoadingMore(true)
     }
-  }, [nextPage, loadingMore]);
+  }, [nextPage, loadingMore])
 
   const sortedChunks = useMemo(
     () => [...allChunks].sort((a, b) => a.start - b.start),
-    [allChunks],
-  );
+    [allChunks]
+  )
 
-  const chunksStillLoading = isReady && selectedDocId != null && (firstPage === undefined || loadingMore);
+  const chunksStillLoading =
+    isReady && selectedDocId != null && (firstPage === undefined || loadingMore)
 
   // ---------------------------------------------------------------------------
   // Lifted document content (shared by DocumentViewer + ChunkDetailPanel)
@@ -966,8 +991,8 @@ export function IndexTab({ retriever, onStartIndexing }: IndexTabProps) {
 
   const docContent = useQuery(
     api.crud.documents.getContent,
-    selectedDocId ? { id: selectedDocId } : "skip",
-  );
+    selectedDocId ? { id: selectedDocId } : "skip"
+  )
 
   // ---------------------------------------------------------------------------
   // Chunk navigation callbacks
@@ -975,15 +1000,15 @@ export function IndexTab({ retriever, onStartIndexing }: IndexTabProps) {
 
   const handlePrevChunk = useCallback(() => {
     setSelectedChunkIndex((prev) =>
-      prev !== null && prev > 0 ? prev - 1 : prev,
-    );
-  }, []);
+      prev !== null && prev > 0 ? prev - 1 : prev
+    )
+  }, [])
 
   const handleNextChunk = useCallback(() => {
     setSelectedChunkIndex((prev) =>
-      prev !== null && prev < sortedChunks.length - 1 ? prev + 1 : prev,
-    );
-  }, [sortedChunks.length]);
+      prev !== null && prev < sortedChunks.length - 1 ? prev + 1 : prev
+    )
+  }, [sortedChunks.length])
 
   // ---------------------------------------------------------------------------
   // Render
@@ -992,7 +1017,7 @@ export function IndexTab({ retriever, onStartIndexing }: IndexTabProps) {
   const selectedChunk =
     selectedChunkIndex !== null && selectedChunkIndex < sortedChunks.length
       ? sortedChunks[selectedChunkIndex]
-      : null;
+      : null
 
   return (
     <div className="flex flex-col h-full border-t border-border">
@@ -1077,7 +1102,7 @@ export function IndexTab({ retriever, onStartIndexing }: IndexTabProps) {
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -1088,12 +1113,12 @@ function IndexingActionPanel({
   status,
   isIndexing,
   chunkCount,
-  onStartIndexing,
+  onStartIndexing
 }: {
-  status: string;
-  isIndexing: boolean;
-  chunkCount?: number;
-  onStartIndexing: () => void;
+  status: string
+  isIndexing: boolean
+  chunkCount?: number
+  onStartIndexing: () => void
 }) {
   return (
     <div className="h-full flex flex-col">
@@ -1172,6 +1197,5 @@ function IndexingActionPanel({
         </div>
       </div>
     </div>
-  );
+  )
 }
-

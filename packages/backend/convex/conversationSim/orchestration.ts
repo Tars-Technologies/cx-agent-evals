@@ -1,18 +1,23 @@
-import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
-import { components, internal } from "../_generated/api";
-import { v } from "convex/values";
 import {
-  Workpool,
-  WorkId,
-  vOnCompleteArgs,
   type RunResult,
-} from "@convex-dev/workpool";
-import { getAuthContext, lookupUser } from "../lib/auth";
-import { Id } from "../_generated/dataModel";
+  vOnCompleteArgs,
+  type WorkId,
+  Workpool
+} from "@convex-dev/workpool"
+import { v } from "convex/values"
+import { components, internal } from "../_generated/api"
+import type { Id } from "../_generated/dataModel"
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query
+} from "../_generated/server"
+import { getAuthContext, lookupUser } from "../lib/auth"
 
 const pool = new Workpool(components.conversationSimPool, {
-  maxParallelism: 2,
-});
+  maxParallelism: 2
+})
 
 // ─── Start Simulation ───
 
@@ -27,41 +32,41 @@ export const start = mutation({
     maxTurns: v.optional(v.number()),
     timeoutMs: v.optional(v.number()),
     userSimModel: v.optional(v.string()),
-    seed: v.optional(v.number()),
+    seed: v.optional(v.number())
   },
   handler: async (ctx, args) => {
-    const { orgId, userId } = await getAuthContext(ctx);
+    const { orgId, userId } = await getAuthContext(ctx)
 
     // Validate agent
-    const agent = await ctx.db.get(args.agentId);
-    if (!agent || agent.orgId !== orgId) throw new Error("Agent not found");
-    if (agent.status !== "ready") throw new Error("Agent is not ready");
+    const agent = await ctx.db.get(args.agentId)
+    if (!agent || agent.orgId !== orgId) throw new Error("Agent not found")
+    if (agent.status !== "ready") throw new Error("Agent is not ready")
 
     // Validate dataset is conversation_sim type
-    const dataset = await ctx.db.get(args.datasetId);
+    const dataset = await ctx.db.get(args.datasetId)
     if (!dataset || dataset.orgId !== orgId)
-      throw new Error("Dataset not found");
+      throw new Error("Dataset not found")
     if (dataset.type !== "conversation_sim")
-      throw new Error("Dataset must be conversation_sim type");
+      throw new Error("Dataset must be conversation_sim type")
 
     // Lookup user for userId field
-    const user = await lookupUser(ctx, userId);
+    const user = await lookupUser(ctx, userId)
 
-    const k = args.k ?? 1;
-    const maxTurns = args.maxTurns ?? 5;
-    const timeoutMs = args.timeoutMs ?? 120000;
-    const concurrency = args.concurrency ?? 2;
-    const userSimModel = args.userSimModel ?? "claude-sonnet-4-20250514";
+    const k = args.k ?? 1
+    const maxTurns = args.maxTurns ?? 5
+    const timeoutMs = args.timeoutMs ?? 120000
+    const concurrency = args.concurrency ?? 2
+    const userSimModel = args.userSimModel ?? "claude-sonnet-4-20250514"
 
     // Load all scenarios for dataset
     const scenarios = await ctx.db
       .query("conversationScenarios")
       .withIndex("by_dataset", (q) => q.eq("datasetId", args.datasetId))
-      .collect();
+      .collect()
 
-    if (scenarios.length === 0) throw new Error("Dataset has no scenarios");
+    if (scenarios.length === 0) throw new Error("Dataset has no scenarios")
 
-    const totalRuns = scenarios.length * k;
+    const totalRuns = scenarios.length * k
 
     // Create simulation record
     const simulationId = await ctx.db.insert("conversationSimulations", {
@@ -81,16 +86,16 @@ export const start = mutation({
       totalRuns,
       completedRuns: 0,
       failedRuns: 0,
-      startedAt: Date.now(),
-    });
+      startedAt: Date.now()
+    })
 
     // Create runs and enqueue via WorkPool
-    const workIds: WorkId[] = [];
-    const baseSeed = args.seed ?? Math.floor(Math.random() * 1000000);
+    const workIds: WorkId[] = []
+    const baseSeed = args.seed ?? Math.floor(Math.random() * 1000000)
 
     for (const scenario of scenarios) {
       for (let ki = 0; ki < k; ki++) {
-        const seed = baseSeed + ki;
+        const seed = baseSeed + ki
 
         const runId = await ctx.db.insert("conversationSimRuns", {
           simulationId,
@@ -98,8 +103,8 @@ export const start = mutation({
           agentId: args.agentId,
           kIndex: ki,
           seed,
-          status: "pending",
-        });
+          status: "pending"
+        })
 
         const wId = await pool.enqueueAction(
           ctx,
@@ -107,20 +112,19 @@ export const start = mutation({
           { runId },
           {
             context: { simulationId, runId: runId as string },
-            onComplete:
-              internal.conversationSim.orchestration.onRunComplete,
-          },
-        );
-        workIds.push(wId);
+            onComplete: internal.conversationSim.orchestration.onRunComplete
+          }
+        )
+        workIds.push(wId)
       }
     }
 
     // Store workIds for cancellation
-    await ctx.db.patch(simulationId, { workIds: workIds as string[] });
+    await ctx.db.patch(simulationId, { workIds: workIds as string[] })
 
-    return simulationId;
-  },
-});
+    return simulationId
+  }
+})
 
 // ─── On Run Complete (WorkPool callback) ───
 
@@ -128,101 +132,102 @@ export const onRunComplete = internalMutation({
   args: vOnCompleteArgs(
     v.object({
       simulationId: v.string(),
-      runId: v.string(),
-    }),
+      runId: v.string()
+    })
   ),
   handler: async (
     ctx,
     {
       context,
-      result,
+      result
     }: {
-      workId: string;
-      context: { simulationId: string; runId: string };
-      result: RunResult;
-    },
+      workId: string
+      context: { simulationId: string; runId: string }
+      result: RunResult
+    }
   ) => {
-    const simId = context.simulationId as Id<"conversationSimulations">;
-    const sim = await ctx.db.get(simId);
-    if (!sim) return;
-    if (sim.status === "cancelled") return;
+    const simId = context.simulationId as Id<"conversationSimulations">
+    const sim = await ctx.db.get(simId)
+    if (!sim) return
+    if (sim.status === "cancelled") return
 
     const completedRuns =
-      sim.completedRuns + (result.kind === "success" ? 1 : 0);
+      sim.completedRuns + (result.kind === "success" ? 1 : 0)
     const failedRuns =
-      (sim.failedRuns ?? 0) + (result.kind === "failed" ? 1 : 0);
-    const totalHandled = completedRuns + failedRuns;
+      (sim.failedRuns ?? 0) + (result.kind === "failed" ? 1 : 0)
+    const totalHandled = completedRuns + failedRuns
 
     if (totalHandled >= sim.totalRuns) {
       await ctx.db.patch(simId, {
         completedRuns,
         failedRuns,
         status: failedRuns === sim.totalRuns ? "failed" : "completed",
-        completedAt: Date.now(),
-      });
+        completedAt: Date.now()
+      })
     } else {
       await ctx.db.patch(simId, {
         completedRuns,
-        failedRuns,
-      });
+        failedRuns
+      })
     }
-  },
-});
+  }
+})
 
 // ─── Cancel Simulation ───
 
 export const cancel = mutation({
   args: { simulationId: v.id("conversationSimulations") },
   handler: async (ctx, { simulationId }) => {
-    const { orgId } = await getAuthContext(ctx);
-    const sim = await ctx.db.get(simulationId);
-    if (!sim || sim.orgId !== orgId) throw new Error("Simulation not found");
+    const { orgId } = await getAuthContext(ctx)
+    const sim = await ctx.db.get(simulationId)
+    if (!sim || sim.orgId !== orgId) throw new Error("Simulation not found")
     if (sim.status !== "running" && sim.status !== "pending") {
-      throw new Error(`Cannot cancel simulation in status: ${sim.status}`);
+      throw new Error(`Cannot cancel simulation in status: ${sim.status}`)
     }
 
-    await ctx.db.patch(simulationId, { status: "cancelled" });
+    await ctx.db.patch(simulationId, { status: "cancelled" })
 
-    const workIds = sim.workIds ?? [];
+    const workIds = sim.workIds ?? []
     for (const wId of workIds) {
-      await pool.cancel(ctx, wId as WorkId);
+      await pool.cancel(ctx, wId as WorkId)
     }
-  },
-});
+  }
+})
 
 // ─── Start Evaluation ───
 
 export const startEvaluation = mutation({
   args: {
     simulationId: v.id("conversationSimulations"),
-    evaluatorSetId: v.id("evaluatorSets"),
+    evaluatorSetId: v.id("evaluatorSets")
   },
   handler: async (ctx, { simulationId, evaluatorSetId }) => {
-    const { orgId } = await getAuthContext(ctx);
-    const sim = await ctx.db.get(simulationId);
-    if (!sim || sim.orgId !== orgId) throw new Error("Simulation not found");
+    const { orgId } = await getAuthContext(ctx)
+    const sim = await ctx.db.get(simulationId)
+    if (!sim || sim.orgId !== orgId) throw new Error("Simulation not found")
     if (sim.status !== "completed") {
-      throw new Error("Cannot evaluate: conversations not yet completed");
+      throw new Error("Cannot evaluate: conversations not yet completed")
     }
     if (sim.evaluationStatus === "running") {
-      throw new Error("Evaluation already in progress");
+      throw new Error("Evaluation already in progress")
     }
 
-    const evalSet = await ctx.db.get(evaluatorSetId);
-    if (!evalSet || evalSet.orgId !== orgId) throw new Error("Evaluator set not found");
+    const evalSet = await ctx.db.get(evaluatorSetId)
+    if (!evalSet || evalSet.orgId !== orgId)
+      throw new Error("Evaluator set not found")
 
     const runs = await ctx.db
       .query("conversationSimRuns")
       .withIndex("by_simulation", (q) => q.eq("simulationId", simulationId))
-      .collect();
+      .collect()
 
-    const completedRuns = runs.filter(r => r.status === "completed");
+    const completedRuns = runs.filter((r) => r.status === "completed")
     for (const run of completedRuns) {
       await ctx.db.patch(run._id, {
         evaluatorResults: undefined,
         score: undefined,
-        passed: undefined,
-      });
+        passed: undefined
+      })
     }
 
     await ctx.db.patch(simulationId, {
@@ -231,10 +236,10 @@ export const startEvaluation = mutation({
       evaluationCompletedRuns: 0,
       evaluationFailedRuns: 0,
       overallPassRate: undefined,
-      avgScore: undefined,
-    });
+      avgScore: undefined
+    })
 
-    const workIds: WorkId[] = [];
+    const workIds: WorkId[] = []
     for (const run of completedRuns) {
       const wId = await pool.enqueueAction(
         ctx,
@@ -243,17 +248,20 @@ export const startEvaluation = mutation({
         {
           onComplete:
             internal.conversationSim.orchestration.onEvaluationRunComplete,
-          context: { simulationId: simulationId.toString(), runId: run._id.toString() },
-        },
-      );
-      workIds.push(wId);
+          context: {
+            simulationId: simulationId.toString(),
+            runId: run._id.toString()
+          }
+        }
+      )
+      workIds.push(wId)
     }
 
     await ctx.db.patch(simulationId, {
-      evaluationWorkIds: workIds.map(String),
-    });
-  },
-});
+      evaluationWorkIds: workIds.map(String)
+    })
+  }
+})
 
 // ─── On Evaluation Run Complete ───
 
@@ -261,68 +269,77 @@ export const onEvaluationRunComplete = internalMutation({
   args: vOnCompleteArgs(
     v.object({
       simulationId: v.string(),
-      runId: v.string(),
-    }),
+      runId: v.string()
+    })
   ),
   handler: async (
     ctx,
-    { context, result }: {
-      workId: string;
-      context: { simulationId: string; runId: string };
-      result: RunResult;
-    },
+    {
+      context,
+      result
+    }: {
+      workId: string
+      context: { simulationId: string; runId: string }
+      result: RunResult
+    }
   ) => {
-    const simId = context.simulationId as Id<"conversationSimulations">;
-    const sim = await ctx.db.get(simId);
-    if (!sim) return;
+    const simId = context.simulationId as Id<"conversationSimulations">
+    const sim = await ctx.db.get(simId)
+    if (!sim) return
 
-    const evalCompleted = (sim.evaluationCompletedRuns ?? 0) + (result.kind === "success" ? 1 : 0);
-    const evalFailed = (sim.evaluationFailedRuns ?? 0) + (result.kind === "failed" ? 1 : 0);
-    const totalHandled = evalCompleted + evalFailed;
+    const evalCompleted =
+      (sim.evaluationCompletedRuns ?? 0) + (result.kind === "success" ? 1 : 0)
+    const evalFailed =
+      (sim.evaluationFailedRuns ?? 0) + (result.kind === "failed" ? 1 : 0)
+    const totalHandled = evalCompleted + evalFailed
 
-    const totalEvalRuns = (sim.evaluationWorkIds ?? []).length;
+    const totalEvalRuns = (sim.evaluationWorkIds ?? []).length
 
     if (totalHandled >= totalEvalRuns) {
       const allRuns = await ctx.db
         .query("conversationSimRuns")
         .withIndex("by_simulation", (q) => q.eq("simulationId", simId))
-        .collect();
+        .collect()
 
-      const evaluatedRuns = allRuns.filter(r => r.status === "completed");
+      const evaluatedRuns = allRuns.filter((r) => r.status === "completed")
 
-      const scenarioMap = new Map<string, boolean[]>();
+      const scenarioMap = new Map<string, boolean[]>()
       for (const run of evaluatedRuns) {
-        const key = run.scenarioId as string;
-        if (!scenarioMap.has(key)) scenarioMap.set(key, []);
-        scenarioMap.get(key)!.push(run.passed ?? false);
+        const key = run.scenarioId as string
+        if (!scenarioMap.has(key)) scenarioMap.set(key, [])
+        scenarioMap.get(key)!.push(run.passed ?? false)
       }
 
-      let scenariosPassed = 0;
+      let scenariosPassed = 0
       for (const [, passes] of scenarioMap) {
-        if (passes.every((p) => p)) scenariosPassed++;
+        if (passes.every((p) => p)) scenariosPassed++
       }
-      const overallPassRate = scenarioMap.size > 0 ? scenariosPassed / scenarioMap.size : 0;
+      const overallPassRate =
+        scenarioMap.size > 0 ? scenariosPassed / scenarioMap.size : 0
 
-      const scores = evaluatedRuns.map(r => r.score).filter((s): s is number => s !== undefined);
-      const avgScore = scores.length > 0
-        ? scores.reduce((a, b) => a + b, 0) / scores.length
-        : undefined;
+      const scores = evaluatedRuns
+        .map((r) => r.score)
+        .filter((s): s is number => s !== undefined)
+      const avgScore =
+        scores.length > 0
+          ? scores.reduce((a, b) => a + b, 0) / scores.length
+          : undefined
 
       await ctx.db.patch(simId, {
         evaluationCompletedRuns: evalCompleted,
         evaluationFailedRuns: evalFailed,
         evaluationStatus: "completed",
         overallPassRate,
-        avgScore,
-      });
+        avgScore
+      })
     } else {
       await ctx.db.patch(simId, {
         evaluationCompletedRuns: evalCompleted,
-        evaluationFailedRuns: evalFailed,
-      });
+        evaluationFailedRuns: evalFailed
+      })
     }
-  },
-});
+  }
+})
 
 // ─── Queries ───
 
@@ -330,43 +347,43 @@ export const onEvaluationRunComplete = internalMutation({
 export const get = query({
   args: { id: v.id("conversationSimulations") },
   handler: async (ctx, { id }) => {
-    const { orgId } = await getAuthContext(ctx);
-    const sim = await ctx.db.get(id);
-    if (!sim || sim.orgId !== orgId) return null;
-    return sim;
-  },
-});
+    const { orgId } = await getAuthContext(ctx)
+    const sim = await ctx.db.get(id)
+    if (!sim || sim.orgId !== orgId) return null
+    return sim
+  }
+})
 
 // List simulations for org
 export const byOrg = query({
   args: {},
   handler: async (ctx) => {
-    const { orgId } = await getAuthContext(ctx);
+    const { orgId } = await getAuthContext(ctx)
     return ctx.db
       .query("conversationSimulations")
       .withIndex("by_org", (q) => q.eq("orgId", orgId))
       .order("desc")
-      .collect();
-  },
-});
+      .collect()
+  }
+})
 
 // Internal get (for actions — no auth)
 export const getInternal = internalQuery({
   args: { id: v.id("conversationSimulations") },
-  handler: async (ctx, { id }) => ctx.db.get(id),
-});
+  handler: async (ctx, { id }) => ctx.db.get(id)
+})
 
 // List simulations for specific agent
 export const byAgent = query({
   args: { agentId: v.id("agents") },
   handler: async (ctx, { agentId }) => {
-    const { orgId } = await getAuthContext(ctx);
-    const agent = await ctx.db.get(agentId);
-    if (!agent || agent.orgId !== orgId) throw new Error("Agent not found");
+    const { orgId } = await getAuthContext(ctx)
+    const agent = await ctx.db.get(agentId)
+    if (!agent || agent.orgId !== orgId) throw new Error("Agent not found")
     return ctx.db
       .query("conversationSimulations")
       .withIndex("by_agent", (q) => q.eq("agentId", agentId))
       .order("desc")
-      .collect();
-  },
-});
+      .collect()
+  }
+})

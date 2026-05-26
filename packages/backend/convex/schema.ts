@@ -1,6 +1,6 @@
-import { defineSchema, defineTable } from "convex/server";
-import { v } from "convex/values";
-import { spanValidator } from "./lib/validators";
+import { defineSchema, defineTable } from "convex/server"
+import { v } from "convex/values"
+import { spanValidator } from "./lib/validators"
 
 export default defineSchema({
   // ─── Users (synced from Clerk) ───
@@ -8,7 +8,7 @@ export default defineSchema({
     clerkId: v.string(),
     email: v.string(),
     name: v.string(),
-    createdAt: v.number(),
+    createdAt: v.number()
   }).index("by_clerk_id", ["clerkId"]),
 
   // ─── Knowledge Bases (org-scoped, replaces "corpora") ───
@@ -25,7 +25,7 @@ export default defineSchema({
     tags: v.optional(v.array(v.string())),
     documentCount: v.optional(v.number()),
     createdBy: v.id("users"),
-    createdAt: v.number(),
+    createdAt: v.number()
   })
     .index("by_org", ["orgId"])
     .index("by_org_industry", ["orgId", "industry"])
@@ -43,8 +43,8 @@ export default defineSchema({
     metadata: v.any(),
     sourceUrl: v.optional(v.string()),
     sourceType: v.optional(v.string()),
-    priority: v.optional(v.number()),  // 1-5, default 3
-    createdAt: v.number(),
+    priority: v.optional(v.number()), // 1-5, default 3
+    createdAt: v.number()
   })
     .index("by_kb", ["kbId"])
     .index("by_kb_doc_id", ["kbId", "docId"])
@@ -52,11 +52,11 @@ export default defineSchema({
     .index("by_org", ["orgId"])
     .searchIndex("search_content", {
       searchField: "content",
-      filterFields: ["kbId"],
+      filterFields: ["kbId"]
     })
     .searchIndex("search_title", {
       searchField: "title",
-      filterFields: ["kbId"],
+      filterFields: ["kbId"]
     }),
 
   // ─── Datasets (sets of generated questions) ───
@@ -72,10 +72,12 @@ export default defineSchema({
     langsmithSyncStatus: v.optional(v.string()),
     metadata: v.any(),
     realWorldQuestionCount: v.optional(v.number()),
-    type: v.optional(v.union(v.literal("questions"), v.literal("conversation_sim"))),
+    type: v.optional(
+      v.union(v.literal("questions"), v.literal("conversation_sim"))
+    ),
     scenarioCount: v.optional(v.number()),
     createdBy: v.id("users"),
-    createdAt: v.number(),
+    createdAt: v.number()
   })
     .index("by_org", ["orgId"])
     .index("by_kb", ["kbId"])
@@ -90,7 +92,7 @@ export default defineSchema({
     relevantSpans: v.array(spanValidator),
     langsmithExampleId: v.optional(v.string()),
     metadata: v.any(),
-    source: v.optional(v.string()),
+    source: v.optional(v.string())
   })
     .index("by_dataset", ["datasetId"])
     .index("by_source_doc", ["datasetId", "sourceDocId"]),
@@ -109,12 +111,12 @@ export default defineSchema({
       v.literal("configuring"),
       v.literal("indexing"),
       v.literal("ready"),
-      v.literal("error"),
+      v.literal("error")
     ),
     chunkCount: v.optional(v.number()),
     error: v.optional(v.string()),
     createdBy: v.id("users"),
-    createdAt: v.number(),
+    createdAt: v.number()
   })
     .index("by_org", ["orgId"])
     .index("by_kb", ["kbId"])
@@ -133,7 +135,7 @@ export default defineSchema({
       v.literal("completed_with_errors"),
       v.literal("failed"),
       v.literal("canceling"),
-      v.literal("canceled"),
+      v.literal("canceled")
     ),
     phase: v.string(),
     totalItems: v.number(),
@@ -145,17 +147,17 @@ export default defineSchema({
       v.array(
         v.object({
           itemKey: v.string(),
-          error: v.string(),
-        }),
-      ),
+          error: v.string()
+        })
+      )
     ),
     workIds: v.optional(v.array(v.string())),
     phase1Stats: v.optional(
       v.object({
         processedItems: v.number(),
         failedItems: v.number(),
-        skippedItems: v.number(),
-      }),
+        skippedItems: v.number()
+      })
     ),
     createdBy: v.id("users"),
     createdAt: v.number(),
@@ -168,7 +170,7 @@ export default defineSchema({
     questionsGenerated: v.optional(v.number()),
     missedQuestions: v.optional(v.number()),
     pass2Enriched: v.optional(v.number()),
-    pass2Unchanged: v.optional(v.number()),
+    pass2Unchanged: v.optional(v.number())
   })
     .index("by_dataset", ["datasetId"])
     .index("by_org", ["orgId"])
@@ -186,7 +188,7 @@ export default defineSchema({
       v.literal("parsing"),
       v.literal("ready"),
       v.literal("failed"),
-      v.literal("deleting"),
+      v.literal("deleting")
     ),
     error: v.optional(v.string()),
 
@@ -197,7 +199,7 @@ export default defineSchema({
     createdAt: v.number(),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
-    workIds: v.optional(v.array(v.string())),
+    workIds: v.optional(v.array(v.string()))
   })
     .index("by_org", ["orgId"])
     .index("by_org_created", ["orgId", "createdAt"]),
@@ -225,10 +227,10 @@ export default defineSchema({
         role: v.union(
           v.literal("user"),
           v.literal("human_agent"),
-          v.literal("workflow_input"),
+          v.literal("workflow_input")
         ),
-        text: v.string(),
-      }),
+        text: v.string()
+      })
     ),
 
     metadata: v.any(),
@@ -236,8 +238,8 @@ export default defineSchema({
     botFlowInput: v.optional(
       v.object({
         intent: v.string(),
-        language: v.string(),
-      }),
+        language: v.string()
+      })
     ),
 
     messageTypes: v.optional(v.any()),
@@ -248,7 +250,7 @@ export default defineSchema({
       v.literal("none"),
       v.literal("running"),
       v.literal("done"),
-      v.literal("failed"),
+      v.literal("failed")
     ),
     classificationError: v.optional(v.string()),
 
@@ -256,17 +258,17 @@ export default defineSchema({
       v.array(
         v.object({
           id: v.number(),
-          text: v.string(),
-        }),
-      ),
+          text: v.string()
+        })
+      )
     ),
     translationStatus: v.union(
       v.literal("none"),
       v.literal("running"),
       v.literal("done"),
-      v.literal("failed"),
+      v.literal("failed")
     ),
-    translationError: v.optional(v.string()),
+    translationError: v.optional(v.string())
   })
     .index("by_upload", ["uploadId"])
     .index("by_upload_classification", ["uploadId", "classificationStatus"])
@@ -282,7 +284,7 @@ export default defineSchema({
     retrieverConfig: v.optional(v.any()),
     experimentRunId: v.optional(v.id("experimentRuns")),
     experimentType: v.optional(
-      v.union(v.literal("retriever"), v.literal("agent")),
+      v.union(v.literal("retriever"), v.literal("agent"))
     ),
     agentId: v.optional(v.id("agents")),
     k: v.optional(v.number()),
@@ -294,7 +296,7 @@ export default defineSchema({
       v.literal("completed_with_errors"),
       v.literal("failed"),
       v.literal("canceling"),
-      v.literal("canceled"),
+      v.literal("canceled")
     ),
     phase: v.optional(
       v.union(
@@ -302,8 +304,8 @@ export default defineSchema({
         v.literal("indexing"),
         v.literal("syncing"),
         v.literal("evaluating"),
-        v.literal("done"),
-      ),
+        v.literal("done")
+      )
     ),
     totalQuestions: v.optional(v.number()),
     processedQuestions: v.optional(v.number()),
@@ -320,7 +322,7 @@ export default defineSchema({
     error: v.optional(v.string()),
     createdBy: v.id("users"),
     createdAt: v.number(),
-    completedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number())
   })
     .index("by_org", ["orgId"])
     .index("by_dataset", ["datasetId"])
@@ -339,7 +341,7 @@ export default defineSchema({
     metricNames: v.array(v.string()),
     scoringWeights: v.object({
       recall: v.number(),
-      precision: v.number(),
+      precision: v.number()
     }),
     status: v.union(
       v.literal("pending"),
@@ -348,7 +350,7 @@ export default defineSchema({
       v.literal("completed_with_errors"),
       v.literal("failed"),
       v.literal("canceling"),
-      v.literal("canceled"),
+      v.literal("canceled")
     ),
     totalRetrievers: v.number(),
     completedRetrievers: v.number(),
@@ -359,7 +361,7 @@ export default defineSchema({
     error: v.optional(v.string()),
     createdBy: v.id("users"),
     createdAt: v.number(),
-    completedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number())
   })
     .index("by_org", ["orgId"])
     .index("by_kb", ["kbId"])
@@ -371,7 +373,7 @@ export default defineSchema({
     questionId: v.id("questions"),
     retrievedSpans: v.array(spanValidator),
     scores: v.record(v.string(), v.number()),
-    metadata: v.any(),
+    metadata: v.any()
   }).index("by_experiment", ["experimentId"]),
 
   // ─── Agent Experiment Results (per-question agent answers + tool calls) ───
@@ -389,30 +391,30 @@ export default defineSchema({
             content: v.string(),
             docId: v.string(),
             start: v.number(),
-            end: v.number(),
-          }),
-        ),
-      }),
+            end: v.number()
+          })
+        )
+      })
     ),
     retrievedChunks: v.array(
       v.object({
         content: v.string(),
         docId: v.string(),
         start: v.number(),
-        end: v.number(),
-      }),
+        end: v.number()
+      })
     ),
     scores: v.optional(v.record(v.string(), v.number())),
     usage: v.optional(
       v.object({
         promptTokens: v.number(),
-        completionTokens: v.number(),
-      }),
+        completionTokens: v.number()
+      })
     ),
     latencyMs: v.number(),
     status: v.union(v.literal("complete"), v.literal("error")),
     error: v.optional(v.string()),
-    createdAt: v.number(),
+    createdAt: v.number()
   }).index("by_experiment", ["experimentId"]),
 
   // ─── Annotations (human ratings for agent experiment results) ───
@@ -426,13 +428,13 @@ export default defineSchema({
       v.literal("good_enough"),
       v.literal("bad"),
       v.literal("pass"),
-      v.literal("fail"),
+      v.literal("fail")
     ),
     comment: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
     ratedBy: v.id("users"),
     createdAt: v.number(),
-    updatedAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number())
   })
     .index("by_experiment", ["experimentId"])
     .index("by_result", ["resultId"]),
@@ -445,7 +447,7 @@ export default defineSchema({
     description: v.string(),
     order: v.number(),
     createdAt: v.number(),
-    updatedAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number())
   }).index("by_experiment", ["experimentId"]),
 
   // ─── Failure Mode Question Mappings (many-to-many) ───
@@ -454,7 +456,7 @@ export default defineSchema({
     failureModeId: v.id("failureModes"),
     questionId: v.id("questions"),
     experimentId: v.id("experiments"),
-    createdAt: v.number(),
+    createdAt: v.number()
   })
     .index("by_failure_mode", ["failureModeId"])
     .index("by_experiment", ["experimentId"])
@@ -474,33 +476,33 @@ export default defineSchema({
     splitConfig: v.object({
       trainPct: v.number(),
       devPct: v.number(),
-      testPct: v.number(),
+      testPct: v.number()
     }),
     splitSeed: v.number(),
     status: v.union(
       v.literal("draft"),
       v.literal("validating"),
       v.literal("validated"),
-      v.literal("ready"),
+      v.literal("ready")
     ),
     devMetrics: v.optional(
       v.object({
         tpr: v.number(),
         tnr: v.number(),
         accuracy: v.number(),
-        total: v.number(),
-      }),
+        total: v.number()
+      })
     ),
     testMetrics: v.optional(
       v.object({
         tpr: v.number(),
         tnr: v.number(),
         accuracy: v.number(),
-        total: v.number(),
-      }),
+        total: v.number()
+      })
     ),
     createdAt: v.number(),
-    updatedAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number())
   })
     .index("by_experiment", ["experimentId"])
     .index("by_failure_mode", ["failureModeId"]),
@@ -510,16 +512,12 @@ export default defineSchema({
     orgId: v.string(),
     evaluatorConfigId: v.id("evaluatorConfigs"),
     targetExperimentId: v.id("experiments"),
-    runType: v.union(
-      v.literal("dev"),
-      v.literal("test"),
-      v.literal("full"),
-    ),
+    runType: v.union(v.literal("dev"), v.literal("test"), v.literal("full")),
     status: v.union(
       v.literal("pending"),
       v.literal("running"),
       v.literal("completed"),
-      v.literal("failed"),
+      v.literal("failed")
     ),
     totalTraces: v.number(),
     processedTraces: v.number(),
@@ -529,14 +527,14 @@ export default defineSchema({
     confidenceInterval: v.optional(
       v.object({
         lower: v.number(),
-        upper: v.number(),
-      }),
+        upper: v.number()
+      })
     ),
     tprUsed: v.optional(v.number()),
     tnrUsed: v.optional(v.number()),
     error: v.optional(v.string()),
     createdAt: v.number(),
-    completedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number())
   })
     .index("by_evaluator_config", ["evaluatorConfigId"])
     .index("by_target_experiment", ["targetExperimentId"]),
@@ -554,11 +552,11 @@ export default defineSchema({
     usage: v.optional(
       v.object({
         promptTokens: v.number(),
-        completionTokens: v.number(),
-      }),
+        completionTokens: v.number()
+      })
     ),
     latencyMs: v.optional(v.number()),
-    createdAt: v.number(),
+    createdAt: v.number()
   }).index("by_run", ["runId"]),
 
   // ─── Document Chunks (position-aware, with vector embeddings) ───
@@ -571,7 +569,7 @@ export default defineSchema({
     start: v.number(),
     end: v.number(),
     embedding: v.optional(v.array(v.float64())),
-    metadata: v.any(),
+    metadata: v.any()
   })
     .index("by_document", ["documentId"])
     .index("by_kb", ["kbId"])
@@ -580,7 +578,7 @@ export default defineSchema({
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
       dimensions: 1536,
-      filterFields: ["kbId", "indexConfigHash"],
+      filterFields: ["kbId", "indexConfigHash"]
     }),
 
   // ─── Indexing Jobs (WorkPool-based KB indexing tracking) ───
@@ -596,7 +594,7 @@ export default defineSchema({
       v.literal("completed_with_errors"),
       v.literal("failed"),
       v.literal("canceling"),
-      v.literal("canceled"),
+      v.literal("canceled")
     ),
     totalDocs: v.number(),
     processedDocs: v.number(),
@@ -609,13 +607,13 @@ export default defineSchema({
       v.array(
         v.object({
           documentId: v.id("documents"),
-          error: v.string(),
-        }),
-      ),
+          error: v.string()
+        })
+      )
     ),
     createdBy: v.id("users"),
     createdAt: v.number(),
-    completedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number())
   })
     .index("by_kb_config", ["kbId", "indexConfigHash"])
     .index("by_org", ["orgId"])
@@ -635,7 +633,7 @@ export default defineSchema({
       allowSubdomains: v.optional(v.boolean()),
       onlyMainContent: v.optional(v.boolean()),
       delay: v.optional(v.number()),
-      concurrency: v.optional(v.number()),
+      concurrency: v.optional(v.number())
     }),
     status: v.union(
       v.literal("pending"),
@@ -643,17 +641,17 @@ export default defineSchema({
       v.literal("completed"),
       v.literal("completed_with_errors"),
       v.literal("failed"),
-      v.literal("cancelled"),
+      v.literal("cancelled")
     ),
     stats: v.object({
       discovered: v.number(),
       scraped: v.number(),
       failed: v.number(),
-      skipped: v.number(),
+      skipped: v.number()
     }),
     error: v.optional(v.string()),
     createdAt: v.number(),
-    completedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number())
   })
     .index("by_org", ["orgId"])
     .index("by_kb", ["kbId"])
@@ -669,14 +667,14 @@ export default defineSchema({
       v.literal("scraping"),
       v.literal("done"),
       v.literal("failed"),
-      v.literal("skipped"),
+      v.literal("skipped")
     ),
     depth: v.number(),
     parentUrl: v.optional(v.string()),
     documentId: v.optional(v.id("documents")),
     error: v.optional(v.string()),
     retryCount: v.optional(v.number()),
-    scrapedAt: v.optional(v.number()),
+    scrapedAt: v.optional(v.number())
   })
     .index("by_job_status", ["crawlJobId", "status"])
     .index("by_job_url", ["crawlJobId", "normalizedUrl"]),
@@ -693,18 +691,18 @@ export default defineSchema({
       companyUrl: v.optional(v.string()),
       companyContext: v.optional(v.string()),
       roleDescription: v.string(),
-      brandVoice: v.optional(v.string()),
+      brandVoice: v.optional(v.string())
     }),
     guardrails: v.object({
       outOfScope: v.optional(v.string()),
       escalationRules: v.optional(v.string()),
-      compliance: v.optional(v.string()),
+      compliance: v.optional(v.string())
     }),
     responseStyle: v.object({
       formatting: v.optional(v.string()),
       length: v.optional(v.string()),
       formality: v.optional(v.string()),
-      language: v.optional(v.string()),
+      language: v.optional(v.string())
     }),
     additionalInstructions: v.optional(v.string()),
 
@@ -712,26 +710,24 @@ export default defineSchema({
     enableReflection: v.boolean(),
     retrieverIds: v.array(v.id("retrievers")),
 
-    status: v.union(
-      v.literal("draft"),
-      v.literal("ready"),
-      v.literal("error"),
-    ),
-    createdAt: v.number(),
-  })
-    .index("by_org", ["orgId"]),
+    status: v.union(v.literal("draft"), v.literal("ready"), v.literal("error")),
+    createdAt: v.number()
+  }).index("by_org", ["orgId"]),
 
   conversations: defineTable({
     orgId: v.string(),
     title: v.optional(v.string()),
     agentIds: v.array(v.id("agents")),
     status: v.union(v.literal("active"), v.literal("archived")),
-    source: v.optional(v.union(
-      v.literal("playground"), v.literal("simulation"), v.literal("experiment"),
-    )),
-    createdAt: v.number(),
-  })
-    .index("by_org", ["orgId"]),
+    source: v.optional(
+      v.union(
+        v.literal("playground"),
+        v.literal("simulation"),
+        v.literal("experiment")
+      )
+    ),
+    createdAt: v.number()
+  }).index("by_org", ["orgId"]),
 
   messages: defineTable({
     conversationId: v.id("conversations"),
@@ -741,7 +737,7 @@ export default defineSchema({
       v.literal("user"),
       v.literal("assistant"),
       v.literal("tool_call"),
-      v.literal("tool_result"),
+      v.literal("tool_result")
     ),
     content: v.string(),
     agentId: v.optional(v.id("agents")),
@@ -750,40 +746,38 @@ export default defineSchema({
         toolCallId: v.string(),
         toolName: v.string(),
         toolArgs: v.string(),
-        retrieverId: v.optional(v.id("retrievers")),
-      }),
+        retrieverId: v.optional(v.id("retrievers"))
+      })
     ),
     toolResult: v.optional(
       v.object({
         toolCallId: v.string(),
         toolName: v.string(),
         result: v.string(),
-        retrieverId: v.optional(v.id("retrievers")),
-      }),
+        retrieverId: v.optional(v.id("retrievers"))
+      })
     ),
     status: v.union(
       v.literal("pending"),
       v.literal("streaming"),
       v.literal("complete"),
-      v.literal("error"),
+      v.literal("error")
     ),
     usage: v.optional(
       v.object({
         promptTokens: v.number(),
-        completionTokens: v.number(),
-      }),
+        completionTokens: v.number()
+      })
     ),
-    createdAt: v.number(),
-  })
-    .index("by_conversation", ["conversationId", "order"]),
+    createdAt: v.number()
+  }).index("by_conversation", ["conversationId", "order"]),
 
   streamDeltas: defineTable({
     messageId: v.id("messages"),
     start: v.number(),
     end: v.number(),
-    text: v.string(),
-  })
-    .index("by_message", ["messageId", "start"]),
+    text: v.string()
+  }).index("by_message", ["messageId", "start"]),
 
   // === Conversation Simulation ===
 
@@ -794,42 +788,76 @@ export default defineSchema({
       type: v.string(),
       traits: v.array(v.string()),
       communicationStyle: v.string(),
-      patienceLevel: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
+      patienceLevel: v.union(
+        v.literal("low"),
+        v.literal("medium"),
+        v.literal("high")
+      )
     }),
     topic: v.string(),
     intent: v.string(),
-    complexity: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
+    complexity: v.union(
+      v.literal("low"),
+      v.literal("medium"),
+      v.literal("high")
+    ),
     reasonForContact: v.string(),
     knownInfo: v.string(),
     unknownInfo: v.string(),
     instruction: v.string(),
-    referenceMessages: v.optional(v.array(v.object({
-      role: v.literal("user"),
-      content: v.string(),
-      turnIndex: v.number(),
-    }))),
-    sourceType: v.optional(v.union(v.literal("transcript_grounded"), v.literal("synthetic"))),
+    referenceMessages: v.optional(
+      v.array(
+        v.object({
+          role: v.literal("user"),
+          content: v.string(),
+          turnIndex: v.number()
+        })
+      )
+    ),
+    sourceType: v.optional(
+      v.union(v.literal("transcript_grounded"), v.literal("synthetic"))
+    ),
     sourceTranscriptId: v.optional(v.id("livechatConversations")),
     languages: v.optional(v.array(v.string())),
     // ── New: user-simulator fidelity (additive) ──
-    referenceTranscript: v.optional(v.array(v.object({
-      id: v.number(),
-      role: v.union(v.literal("user"), v.literal("human_agent"), v.literal("workflow_input")),
-      text: v.string(),
-    }))),
-    referenceExemplars: v.optional(v.array(v.object({
-      sourceTranscriptId: v.id("livechatConversations"),
-      messages: v.array(v.object({
-        id: v.number(),
-        role: v.union(v.literal("user"), v.literal("human_agent"), v.literal("workflow_input")),
-        text: v.string(),
-      })),
-    }))),
-    userMessageLengthStats: v.optional(v.object({
-      median: v.number(),
-      p90: v.number(),
-    })),
-    behaviorAnchors: v.optional(v.array(v.string())),
+    referenceTranscript: v.optional(
+      v.array(
+        v.object({
+          id: v.number(),
+          role: v.union(
+            v.literal("user"),
+            v.literal("human_agent"),
+            v.literal("workflow_input")
+          ),
+          text: v.string()
+        })
+      )
+    ),
+    referenceExemplars: v.optional(
+      v.array(
+        v.object({
+          sourceTranscriptId: v.id("livechatConversations"),
+          messages: v.array(
+            v.object({
+              id: v.number(),
+              role: v.union(
+                v.literal("user"),
+                v.literal("human_agent"),
+                v.literal("workflow_input")
+              ),
+              text: v.string()
+            })
+          )
+        })
+      )
+    ),
+    userMessageLengthStats: v.optional(
+      v.object({
+        median: v.number(),
+        p90: v.number()
+      })
+    ),
+    behaviorAnchors: v.optional(v.array(v.string()))
   })
     .index("by_dataset", ["datasetId"])
     .index("by_org", ["orgId"]),
@@ -840,30 +868,39 @@ export default defineSchema({
     description: v.string(),
     type: v.union(v.literal("code"), v.literal("llm_judge")),
     scope: v.union(v.literal("session"), v.literal("turn")),
-    codeConfig: v.optional(v.object({
-      checkType: v.union(
-        v.literal("tool_call_match"),
-        v.literal("string_contains"),
-        v.literal("regex_match"),
-        v.literal("response_format"),
-      ),
-      params: v.any(),
-    })),
-    judgeConfig: v.optional(v.object({
-      rubric: v.string(),
-      passExamples: v.array(v.string()),
-      failExamples: v.array(v.string()),
-      model: v.string(),
-      inputContext: v.array(v.union(
-        v.literal("transcript"),
-        v.literal("tool_calls"),
-        v.literal("kb_documents"),
-      )),
-    })),
-    createdFrom: v.union(v.literal("template"), v.literal("error_analysis"), v.literal("manual")),
-    tags: v.array(v.string()),
-  })
-    .index("by_org", ["orgId"]),
+    codeConfig: v.optional(
+      v.object({
+        checkType: v.union(
+          v.literal("tool_call_match"),
+          v.literal("string_contains"),
+          v.literal("regex_match"),
+          v.literal("response_format")
+        ),
+        params: v.any()
+      })
+    ),
+    judgeConfig: v.optional(
+      v.object({
+        rubric: v.string(),
+        passExamples: v.array(v.string()),
+        failExamples: v.array(v.string()),
+        model: v.string(),
+        inputContext: v.array(
+          v.union(
+            v.literal("transcript"),
+            v.literal("tool_calls"),
+            v.literal("kb_documents")
+          )
+        )
+      })
+    ),
+    createdFrom: v.union(
+      v.literal("template"),
+      v.literal("error_analysis"),
+      v.literal("manual")
+    ),
+    tags: v.array(v.string())
+  }).index("by_org", ["orgId"]),
 
   evaluatorSets: defineTable({
     orgId: v.string(),
@@ -871,9 +908,8 @@ export default defineSchema({
     description: v.string(),
     evaluatorIds: v.array(v.id("evaluators")),
     requiredEvaluatorIds: v.array(v.id("evaluators")),
-    passThreshold: v.number(),
-  })
-    .index("by_org", ["orgId"]),
+    passThreshold: v.number()
+  }).index("by_org", ["orgId"]),
 
   conversationSimulations: defineTable({
     orgId: v.string(),
@@ -889,8 +925,11 @@ export default defineSchema({
     userSimModel: v.string(),
     seed: v.optional(v.number()),
     status: v.union(
-      v.literal("pending"), v.literal("running"), v.literal("completed"),
-      v.literal("failed"), v.literal("cancelled"),
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("cancelled")
     ),
     totalRuns: v.number(),
     completedRuns: v.number(),
@@ -898,18 +937,20 @@ export default defineSchema({
     overallPassRate: v.optional(v.number()),
     avgScore: v.optional(v.number()),
     workIds: v.optional(v.array(v.string())),
-    evaluationStatus: v.optional(v.union(
-      v.literal("not_started"),
-      v.literal("running"),
-      v.literal("completed"),
-      v.literal("failed"),
-    )),
+    evaluationStatus: v.optional(
+      v.union(
+        v.literal("not_started"),
+        v.literal("running"),
+        v.literal("completed"),
+        v.literal("failed")
+      )
+    ),
     evaluationEvaluatorSetId: v.optional(v.id("evaluatorSets")),
     evaluationCompletedRuns: v.optional(v.number()),
     evaluationFailedRuns: v.optional(v.number()),
     evaluationWorkIds: v.optional(v.array(v.string())),
     startedAt: v.optional(v.number()),
-    completedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number())
   })
     .index("by_org", ["orgId"])
     .index("by_agent", ["agentId"])
@@ -923,27 +964,38 @@ export default defineSchema({
     seed: v.number(),
     conversationId: v.optional(v.id("conversations")),
     status: v.union(
-      v.literal("pending"), v.literal("running"),
-      v.literal("completed"), v.literal("failed"),
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed")
     ),
-    terminationReason: v.optional(v.union(
-      v.literal("user_stop"), v.literal("agent_stop"),
-      v.literal("max_turns"), v.literal("timeout"), v.literal("error"),
-    )),
+    terminationReason: v.optional(
+      v.union(
+        v.literal("user_stop"),
+        v.literal("agent_stop"),
+        v.literal("max_turns"),
+        v.literal("timeout"),
+        v.literal("error")
+      )
+    ),
     turnCount: v.optional(v.number()),
-    evaluatorResults: v.optional(v.array(v.object({
-      evaluatorId: v.id("evaluators"),
-      evaluatorName: v.string(),
-      passed: v.boolean(),
-      justification: v.string(),
-      required: v.boolean(),
-    }))),
+    evaluatorResults: v.optional(
+      v.array(
+        v.object({
+          evaluatorId: v.id("evaluators"),
+          evaluatorName: v.string(),
+          passed: v.boolean(),
+          justification: v.string(),
+          required: v.boolean()
+        })
+      )
+    ),
     score: v.optional(v.number()),
     passed: v.optional(v.boolean()),
     toolCallCount: v.optional(v.number()),
     totalTokens: v.optional(v.number()),
     latencyMs: v.optional(v.number()),
-    annotations: v.optional(v.string()),
+    annotations: v.optional(v.string())
   })
     .index("by_simulation", ["simulationId"])
     .index("by_scenario", ["scenarioId"])
@@ -957,7 +1009,7 @@ export default defineSchema({
       v.literal("pending"),
       v.literal("running"),
       v.literal("completed"),
-      v.literal("failed"),
+      v.literal("failed")
     ),
     targetCount: v.number(),
     generatedCount: v.number(),
@@ -965,11 +1017,13 @@ export default defineSchema({
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
     transcriptUploadIds: v.optional(v.array(v.id("livechatUploads"))),
-    transcriptConversationIds: v.optional(v.array(v.id("livechatConversations"))),
-    distribution: v.optional(v.number()),  // 0-100, % transcript-grounded
-    fidelity: v.optional(v.number()),      // 0-100, high = faithful
+    transcriptConversationIds: v.optional(
+      v.array(v.id("livechatConversations"))
+    ),
+    distribution: v.optional(v.number()), // 0-100, % transcript-grounded
+    fidelity: v.optional(v.number()) // 0-100, high = faithful
   })
     .index("by_org", ["orgId"])
     .index("by_org_status", ["orgId", "status"])
-    .index("by_dataset", ["datasetId"]),
-});
+    .index("by_dataset", ["datasetId"])
+})

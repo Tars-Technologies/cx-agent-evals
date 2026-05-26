@@ -1,13 +1,13 @@
-"use client";
+"use client"
 
-import { useState, useEffect, useMemo } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id, Doc } from "@convex/_generated/dataModel";
+import type { Doc, Id } from "@convex/_generated/dataModel"
+import { useMutation, useQuery } from "convex/react"
+import { useEffect, useMemo, useState } from "react"
+import { api } from "@/lib/convex"
 
 const MODEL_GROUPS: Array<{
-  label: string;
-  models: Array<{ id: string; label: string }>;
+  label: string
+  models: Array<{ id: string; label: string }>
 }> = [
   {
     label: "Claude (Anthropic)",
@@ -15,8 +15,8 @@ const MODEL_GROUPS: Array<{
       { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
       { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
       { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
-      { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-    ],
+      { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" }
+    ]
   },
   {
     label: "OpenAI",
@@ -26,57 +26,57 @@ const MODEL_GROUPS: Array<{
       { id: "gpt-4.1-nano", label: "GPT-4.1 Nano" },
       { id: "o3", label: "o3" },
       { id: "o4-mini", label: "o4-mini" },
-      { id: "gpt-4o", label: "GPT-4o" },
-    ],
-  },
-];
+      { id: "gpt-4o", label: "GPT-4o" }
+    ]
+  }
+]
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: "Draft", color: "text-text-dim" },
   validating: { label: "Awaiting Test", color: "text-yellow-400" },
   validated: { label: "Validated", color: "text-blue-400" },
-  ready: { label: "Ready", color: "text-accent" },
-};
+  ready: { label: "Ready", color: "text-accent" }
+}
 
 const DEFAULT_OUTPUT_FORMAT = `{
   "reasoning": "<brief 1-2 sentence explanation>",
   "answer": "Pass" | "Fail"
-}`;
+}`
 
 interface ConfigurePanelProps {
-  config: Doc<"evaluatorConfigs">;
-  experimentId: Id<"experiments">;
+  config: Doc<"evaluatorConfigs">
+  experimentId: Id<"experiments">
 }
 
-type RightPaneMode = "editor" | "preview";
+type RightPaneMode = "editor" | "preview"
 
 export function ConfigurePanel({ config, experimentId }: ConfigurePanelProps) {
-  const updateConfig = useMutation(api.evaluator.crud.updateConfig);
+  const updateConfig = useMutation(api.evaluator.crud.updateConfig)
 
   // Local edit state
-  const [editName, setEditName] = useState(config.name);
+  const [editName, setEditName] = useState(config.name)
   const [editFmId, setEditFmId] = useState<Id<"failureModes">>(
-    config.failureModeId,
-  );
-  const [editModel, setEditModel] = useState(config.modelId);
+    config.failureModeId
+  )
+  const [editModel, setEditModel] = useState(config.modelId)
   const [editOutputFormat, setEditOutputFormat] = useState(
-    config.outputFormatJson ?? DEFAULT_OUTPUT_FORMAT,
-  );
-  const [editPrompt, setEditPrompt] = useState(config.judgePrompt);
+    config.outputFormatJson ?? DEFAULT_OUTPUT_FORMAT
+  )
+  const [editPrompt, setEditPrompt] = useState(config.judgePrompt)
   const [editMaxFewShot, setEditMaxFewShot] = useState(
-    config.maxFewShotExamples ?? 8,
-  );
-  const [rightMode, setRightMode] = useState<RightPaneMode>("editor");
-  const [saving, setSaving] = useState(false);
+    config.maxFewShotExamples ?? 8
+  )
+  const [rightMode, setRightMode] = useState<RightPaneMode>("editor")
+  const [saving, setSaving] = useState(false)
 
   // Sync local state when config changes (e.g., user picks a different evaluator)
   useEffect(() => {
-    setEditName(config.name);
-    setEditFmId(config.failureModeId);
-    setEditModel(config.modelId);
-    setEditOutputFormat(config.outputFormatJson ?? DEFAULT_OUTPUT_FORMAT);
-    setEditPrompt(config.judgePrompt);
-    setEditMaxFewShot(config.maxFewShotExamples ?? 8);
+    setEditName(config.name)
+    setEditFmId(config.failureModeId)
+    setEditModel(config.modelId)
+    setEditOutputFormat(config.outputFormatJson ?? DEFAULT_OUTPUT_FORMAT)
+    setEditPrompt(config.judgePrompt)
+    setEditMaxFewShot(config.maxFewShotExamples ?? 8)
   }, [
     config._id,
     config.name,
@@ -84,24 +84,24 @@ export function ConfigurePanel({ config, experimentId }: ConfigurePanelProps) {
     config.modelId,
     config.outputFormatJson,
     config.judgePrompt,
-    config.maxFewShotExamples,
-  ]);
+    config.maxFewShotExamples
+  ])
 
   // Load failure modes for this experiment
   const failureModes = useQuery(api.failureModes.crud.byExperiment, {
-    experimentId,
-  });
+    experimentId
+  })
 
   // Load training-split examples for visibility + preview rendering.
   // Pass the live slider value as an override so the display updates
   // immediately without saving.
   const trainingData = useQuery(api.evaluator.crud.trainingExamplesByConfig, {
     configId: config._id,
-    overrideMaxFewShot: editMaxFewShot,
-  });
+    overrideMaxFewShot: editMaxFewShot
+  })
 
   const handleSave = async () => {
-    setSaving(true);
+    setSaving(true)
     try {
       await updateConfig({
         id: config._id,
@@ -110,12 +110,12 @@ export function ConfigurePanel({ config, experimentId }: ConfigurePanelProps) {
         judgePrompt: editPrompt,
         outputFormatJson: editOutputFormat,
         maxFewShotExamples: editMaxFewShot,
-        modelId: editModel,
-      });
+        modelId: editModel
+      })
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
-  };
+  }
 
   const hasUnsavedChanges =
     editName !== config.name ||
@@ -123,65 +123,62 @@ export function ConfigurePanel({ config, experimentId }: ConfigurePanelProps) {
     editModel !== config.modelId ||
     editOutputFormat !== (config.outputFormatJson ?? DEFAULT_OUTPUT_FORMAT) ||
     editPrompt !== config.judgePrompt ||
-    editMaxFewShot !== (config.maxFewShotExamples ?? 8);
+    editMaxFewShot !== (config.maxFewShotExamples ?? 8)
 
   // Build assembled prompt for the preview pane
   const assembledPrompt = useMemo(() => {
     const escapeXml = (text: string) =>
-      text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
+      text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 
-    const parts: string[] = [];
+    const parts: string[] = []
 
     // System message section
-    parts.push("══ SYSTEM ══");
-    parts.push("");
-    parts.push(editPrompt);
-    parts.push("");
+    parts.push("══ SYSTEM ══")
+    parts.push("")
+    parts.push(editPrompt)
+    parts.push("")
 
     // User message section
-    parts.push("══ USER ══");
-    parts.push("");
+    parts.push("══ USER ══")
+    parts.push("")
 
     if (trainingData && trainingData.fewShotExamples.length > 0) {
-      parts.push("<examples>");
+      parts.push("<examples>")
       trainingData.fewShotExamples.forEach((ex) => {
         const truncatedAnswer =
           ex.answerText.slice(0, 400) +
-          (ex.answerText.length > 400 ? "..." : "");
-        parts.push("  <example>");
-        parts.push(`    <question>${escapeXml(ex.questionText)}</question>`);
+          (ex.answerText.length > 400 ? "..." : "")
+        parts.push("  <example>")
+        parts.push(`    <question>${escapeXml(ex.questionText)}</question>`)
         parts.push(
-          `    <agent_answer>${escapeXml(truncatedAnswer)}</agent_answer>`,
-        );
-        const verdict = ex.humanLabel === "pass" ? "Pass" : "Fail";
+          `    <agent_answer>${escapeXml(truncatedAnswer)}</agent_answer>`
+        )
+        const verdict = ex.humanLabel === "pass" ? "Pass" : "Fail"
         parts.push(
-          `    <evaluation>{"reasoning": "...", "answer": "${verdict}"}</evaluation>`,
-        );
-        parts.push("  </example>");
-      });
-      parts.push("</examples>");
-      parts.push("");
+          `    <evaluation>{"reasoning": "...", "answer": "${verdict}"}</evaluation>`
+        )
+        parts.push("  </example>")
+      })
+      parts.push("</examples>")
+      parts.push("")
     }
 
-    parts.push("<input>");
-    parts.push("  <question>{question}</question>");
-    parts.push("  <agent_answer>{answer}</agent_answer>");
-    parts.push("  <retrieved_context>{context}</retrieved_context>");
-    parts.push("</input>");
-    parts.push("");
-    parts.push("<output_format>");
-    parts.push(editOutputFormat);
-    parts.push("</output_format>");
-    parts.push("");
+    parts.push("<input>")
+    parts.push("  <question>{question}</question>")
+    parts.push("  <agent_answer>{answer}</agent_answer>")
+    parts.push("  <retrieved_context>{context}</retrieved_context>")
+    parts.push("</input>")
+    parts.push("")
+    parts.push("<output_format>")
+    parts.push(editOutputFormat)
+    parts.push("</output_format>")
+    parts.push("")
     parts.push(
-      "Evaluate the <input> above and return a JSON object matching <output_format>.",
-    );
+      "Evaluate the <input> above and return a JSON object matching <output_format>."
+    )
 
-    return parts.join("\n");
-  }, [editPrompt, editOutputFormat, trainingData]);
+    return parts.join("\n")
+  }, [editPrompt, editOutputFormat, trainingData])
 
   return (
     <div className="flex-1 flex overflow-hidden min-h-0">
@@ -443,5 +440,5 @@ export function ConfigurePanel({ config, experimentId }: ConfigurePanelProps) {
         </div>
       </div>
     </div>
-  );
+  )
 }

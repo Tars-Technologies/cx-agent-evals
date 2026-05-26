@@ -1,16 +1,21 @@
-"use client";
+"use client"
 
-import { useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useQuery } from "convex/react"
+import { api } from "@/lib/convex"
 
 interface ExperimentSidebarProps {
-  kbId: Id<"knowledgeBases">;
-  selectedRunId: Id<"experimentRuns"> | null;
-  onSelect: (runId: Id<"experimentRuns">) => void;
+  kbId: Id<"knowledgeBases">
+  selectedRunId: Id<"experimentRuns"> | null
+  onSelect: (runId: Id<"experimentRuns">) => void
 }
 
-type RunStatus = "pending" | "running" | "completed" | "completed_with_errors" | "failed";
+type RunStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "completed_with_errors"
+  | "failed"
 
 function StatusDot({ status }: { status: RunStatus }) {
   const colorMap: Record<RunStatus, string> = {
@@ -18,9 +23,9 @@ function StatusDot({ status }: { status: RunStatus }) {
     running: "#3b82f6",
     failed: "#ef4444",
     pending: "#eab308",
-    completed_with_errors: "#f97316",
-  };
-  const color = colorMap[status] ?? "#6b7280";
+    completed_with_errors: "#f97316"
+  }
+  const color = colorMap[status] ?? "#6b7280"
 
   return (
     <span
@@ -30,19 +35,27 @@ function StatusDot({ status }: { status: RunStatus }) {
         height: "7px",
         borderRadius: "50%",
         background: color,
-        flexShrink: 0,
+        flexShrink: 0
       }}
     />
-  );
+  )
 }
 
 function formatDate(ts: number): string {
-  const d = new Date(ts);
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  const d = new Date(ts)
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  })
 }
 
-export function ExperimentSidebar({ kbId, selectedRunId, onSelect }: ExperimentSidebarProps) {
-  const runs = useQuery(api.experimentRuns.orchestration.byKb, { kbId });
+export function ExperimentSidebar({
+  kbId,
+  selectedRunId,
+  onSelect
+}: ExperimentSidebarProps) {
+  const runs = useQuery(api.experimentRuns.orchestration.byKb, { kbId })
 
   return (
     <div
@@ -52,7 +65,7 @@ export function ExperimentSidebar({ kbId, selectedRunId, onSelect }: ExperimentS
         minWidth: "220px",
         maxWidth: "280px",
         width: "260px",
-        flexShrink: 0,
+        flexShrink: 0
       }}
     >
       {/* Header */}
@@ -60,7 +73,7 @@ export function ExperimentSidebar({ kbId, selectedRunId, onSelect }: ExperimentS
         className="px-3 py-3"
         style={{
           borderBottom: "1px solid var(--color-border)",
-          background: "var(--color-bg-elevated)",
+          background: "var(--color-bg-elevated)"
         }}
       >
         <span
@@ -69,7 +82,7 @@ export function ExperimentSidebar({ kbId, selectedRunId, onSelect }: ExperimentS
             color: "var(--color-text-dim)",
             textTransform: "uppercase",
             letterSpacing: "0.08em",
-            fontWeight: 600,
+            fontWeight: 600
           }}
         >
           Experiment Runs
@@ -94,8 +107,8 @@ export function ExperimentSidebar({ kbId, selectedRunId, onSelect }: ExperimentS
       ) : (
         <ul className="flex flex-col">
           {runs.map((run) => {
-            const isSelected = run._id === selectedRunId;
-            const status = run.status as RunStatus;
+            const isSelected = run._id === selectedRunId
+            const status = run.status as RunStatus
 
             return (
               <li key={run._id}>
@@ -111,7 +124,7 @@ export function ExperimentSidebar({ kbId, selectedRunId, onSelect }: ExperimentS
                       : "3px solid transparent",
                     borderBottom: "1px solid var(--color-border)",
                     cursor: "pointer",
-                    transition: "background 0.1s",
+                    transition: "background 0.1s"
                   }}
                 >
                   {/* Row 1: name + status dot */}
@@ -122,7 +135,7 @@ export function ExperimentSidebar({ kbId, selectedRunId, onSelect }: ExperimentS
                       style={{
                         fontSize: "12px",
                         color: "var(--color-text)",
-                        fontWeight: 500,
+                        fontWeight: 500
                       }}
                       title={run.name}
                     >
@@ -133,38 +146,50 @@ export function ExperimentSidebar({ kbId, selectedRunId, onSelect }: ExperimentS
                   {/* Row 2: retrievers count + date */}
                   <div
                     className="flex items-center justify-between gap-2"
-                    style={{ fontSize: "10px", color: "var(--color-text-muted)" }}
+                    style={{
+                      fontSize: "10px",
+                      color: "var(--color-text-muted)"
+                    }}
                   >
                     <span>
                       {run.retrieverIds.length}{" "}
-                      {run.retrieverIds.length === 1 ? "retriever" : "retrievers"}
+                      {run.retrieverIds.length === 1
+                        ? "retriever"
+                        : "retrievers"}
                     </span>
                     <span>{formatDate(run.createdAt)}</span>
                   </div>
 
                   {/* Row 3: winner (if completed) */}
-                  {(status === "completed" || status === "completed_with_errors") &&
+                  {(status === "completed" ||
+                    status === "completed_with_errors") &&
                     run.winnerName !== undefined &&
                     run.winnerScore !== undefined && (
                       <div
                         className="flex items-center gap-1 truncate"
-                        style={{ fontSize: "10px", color: "var(--color-accent)" }}
+                        style={{
+                          fontSize: "10px",
+                          color: "var(--color-accent)"
+                        }}
                       >
                         <span>★</span>
                         <span className="truncate" title={run.winnerName}>
                           {run.winnerName}
                         </span>
-                        <span className="tabular-nums" style={{ flexShrink: 0 }}>
+                        <span
+                          className="tabular-nums"
+                          style={{ flexShrink: 0 }}
+                        >
                           {(run.winnerScore * 100).toFixed(1)}%
                         </span>
                       </div>
                     )}
                 </button>
               </li>
-            );
+            )
           })}
         </ul>
       )}
     </div>
-  );
+  )
 }

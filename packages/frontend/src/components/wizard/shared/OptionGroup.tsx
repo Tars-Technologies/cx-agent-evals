@@ -1,26 +1,26 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import type { OptionDef } from "@tars-inc/eval-lib/registry";
-import { OptionField } from "./OptionField";
+import type { OptionDef } from "@tars-inc/eval-lib/registry"
+import { useState } from "react"
+import { OptionField } from "./OptionField"
 
 interface OptionGroupProps {
-  options: readonly OptionDef[];
-  values: Record<string, unknown>;
-  onChange: (key: string, value: unknown) => void;
-  disabled?: boolean;
+  options: readonly OptionDef[]
+  values: Record<string, unknown>
+  onChange: (key: string, value: unknown) => void
+  disabled?: boolean
 }
 
 export function OptionGroup({
   options,
   values,
   onChange,
-  disabled = false,
+  disabled = false
 }: OptionGroupProps) {
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
-  const regularOptions = options.filter((o) => !o.advanced);
-  const advancedOptions = options.filter((o) => o.advanced);
+  const regularOptions = options.filter((o) => !o.advanced)
+  const advancedOptions = options.filter((o) => o.advanced)
 
   return (
     <div className="flex flex-col gap-4">
@@ -70,5 +70,5 @@ export function OptionGroup({
         </div>
       )}
     </div>
-  );
+  )
 }

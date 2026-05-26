@@ -1,87 +1,86 @@
+import { v } from "convex/values"
+import { internal } from "../_generated/api"
 import {
-  query,
-  mutation,
   internalMutation,
   internalQuery,
-} from "../_generated/server";
-import { v } from "convex/values";
-import { internal } from "../_generated/api";
-import { getAuthContext } from "../lib/auth";
-import { computeSplit, stratifiedFewShot } from "./splits";
-import { toBinaryLabel } from "../lib/labels";
+  mutation,
+  query
+} from "../_generated/server"
+import { getAuthContext } from "../lib/auth"
+import { toBinaryLabel } from "../lib/labels"
+import { computeSplit, stratifiedFewShot } from "./splits"
 
 // ─── Config Queries ───
 
 export const configsByExperiment = query({
   args: { experimentId: v.id("experiments") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-    const exp = await ctx.db.get(args.experimentId);
-    if (!exp || exp.orgId !== orgId) throw new Error("Experiment not found");
+    const { orgId } = await getAuthContext(ctx)
+    const exp = await ctx.db.get(args.experimentId)
+    if (!exp || exp.orgId !== orgId) throw new Error("Experiment not found")
 
     return await ctx.db
       .query("evaluatorConfigs")
       .withIndex("by_experiment", (q) =>
-        q.eq("experimentId", args.experimentId),
+        q.eq("experimentId", args.experimentId)
       )
-      .collect();
-  },
-});
+      .collect()
+  }
+})
 
 export const configsByKb = query({
   args: { kbId: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-    const kb = await ctx.db.get(args.kbId);
-    if (!kb || kb.orgId !== orgId)
-      throw new Error("Knowledge base not found");
+    const { orgId } = await getAuthContext(ctx)
+    const kb = await ctx.db.get(args.kbId)
+    if (!kb || kb.orgId !== orgId) throw new Error("Knowledge base not found")
 
     // Find all experiments for this KB
     const experiments = await ctx.db
       .query("experiments")
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
-      .collect();
+      .collect()
 
     // Collect configs from all those experiments
-    const allConfigs = [];
+    const allConfigs = []
     for (const exp of experiments) {
       const configs = await ctx.db
         .query("evaluatorConfigs")
         .withIndex("by_experiment", (q) => q.eq("experimentId", exp._id))
-        .collect();
+        .collect()
 
       // Resolve failure mode and experiment names for display
       for (const c of configs) {
-        const fm = await ctx.db.get(c.failureModeId);
+        const fm = await ctx.db.get(c.failureModeId)
         allConfigs.push({
           ...c,
           experimentName: exp.name,
           failureModeName: fm?.name ?? "Unknown",
-          failureModeDescription: fm?.description ?? "",
-        });
+          failureModeDescription: fm?.description ?? ""
+        })
       }
     }
 
-    return allConfigs.sort((a, b) => b.createdAt - a.createdAt);
-  },
-});
+    return allConfigs.sort((a, b) => b.createdAt - a.createdAt)
+  }
+})
 
 export const getConfig = query({
   args: { id: v.id("evaluatorConfigs") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-    const config = await ctx.db.get(args.id);
-    if (!config || config.orgId !== orgId) return null;
-    return config;
-  },
-});
+    const { orgId } = await getAuthContext(ctx)
+    const config = await ctx.db.get(args.id)
+    if (!config || config.orgId !== orgId) return null
+    return config
+  }
+})
 
 export const getConfigInternal = internalQuery({
   args: { id: v.id("evaluatorConfigs") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
-  },
-});
+    return await ctx.db.get(args.id)
+  }
+})
 
 /**
  * Returns the train/dev/test split for a config, and the training-set
@@ -94,44 +93,44 @@ export const trainingExamplesByConfig = query({
   args: {
     configId: v.id("evaluatorConfigs"),
     /** Optional override for unsaved slider preview in the UI */
-    overrideMaxFewShot: v.optional(v.number()),
+    overrideMaxFewShot: v.optional(v.number())
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-    const config = await ctx.db.get(args.configId);
-    if (!config || config.orgId !== orgId) return null;
+    const { orgId } = await getAuthContext(ctx)
+    const config = await ctx.db.get(args.configId)
+    if (!config || config.orgId !== orgId) return null
 
     // Build the same eligibility set used by the actions
     const mappings = await ctx.db
       .query("failureModeQuestionMappings")
       .withIndex("by_experiment", (q) =>
-        q.eq("experimentId", config.experimentId),
+        q.eq("experimentId", config.experimentId)
       )
-      .collect();
+      .collect()
     const fmQuestionIds = new Set(
       mappings
         .filter((m) => m.failureModeId === config.failureModeId)
-        .map((m) => m.questionId as string),
-    );
+        .map((m) => m.questionId as string)
+    )
 
     const annotations = await ctx.db
       .query("annotations")
       .withIndex("by_experiment", (q) =>
-        q.eq("experimentId", config.experimentId),
+        q.eq("experimentId", config.experimentId)
       )
-      .collect();
+      .collect()
 
-    const eligibleIds: string[] = [];
-    const labelByQuestion = new Map<string, "pass" | "fail">();
-    const seen = new Set<string>();
+    const eligibleIds: string[] = []
+    const labelByQuestion = new Map<string, "pass" | "fail">()
+    const seen = new Set<string>()
     for (const a of annotations) {
-      const qId = a.questionId as string;
-      if (seen.has(qId)) continue;
-      seen.add(qId);
-      const label = toBinaryLabel(a.rating);
+      const qId = a.questionId as string
+      if (seen.has(qId)) continue
+      seen.add(qId)
+      const label = toBinaryLabel(a.rating)
       if (fmQuestionIds.has(qId) || label === "pass") {
-        eligibleIds.push(qId);
-        labelByQuestion.set(qId, label);
+        eligibleIds.push(qId)
+        labelByQuestion.set(qId, label)
       }
     }
 
@@ -139,126 +138,125 @@ export const trainingExamplesByConfig = query({
       eligibleIds,
       config.splitConfig,
       config.splitSeed,
-      labelByQuestion,
-    );
+      labelByQuestion
+    )
 
     // Stratified few-shot sampling from the training set
     const annotationByQuestion = new Map(
-      annotations.map((a) => [a.questionId as string, a]),
-    );
-    const trainPasses: string[] = [];
-    const trainFails: string[] = [];
+      annotations.map((a) => [a.questionId as string, a])
+    )
+    const trainPasses: string[] = []
+    const trainFails: string[] = []
     for (const qId of split.train) {
-      const ann = annotationByQuestion.get(qId);
-      if (!ann) continue;
-      if (toBinaryLabel(ann.rating) === "pass") trainPasses.push(qId);
-      else trainFails.push(qId);
+      const ann = annotationByQuestion.get(qId)
+      if (!ann) continue
+      if (toBinaryLabel(ann.rating) === "pass") trainPasses.push(qId)
+      else trainFails.push(qId)
     }
 
-    const maxFewShot =
-      args.overrideMaxFewShot ?? config.maxFewShotExamples ?? 8;
+    const maxFewShot = args.overrideMaxFewShot ?? config.maxFewShotExamples ?? 8
     const sampled = stratifiedFewShot(
       trainPasses,
       trainFails,
       maxFewShot,
-      config.splitSeed,
-    );
+      config.splitSeed
+    )
 
     // Hydrate the picked few-shot examples
     const agentResults = await ctx.db
       .query("agentExperimentResults")
       .withIndex("by_experiment", (q) =>
-        q.eq("experimentId", config.experimentId),
+        q.eq("experimentId", config.experimentId)
       )
-      .collect();
+      .collect()
     const resultByQuestion = new Map(
-      agentResults.map((r) => [r.questionId as string, r]),
-    );
+      agentResults.map((r) => [r.questionId as string, r])
+    )
 
-    const fewShotExamples = [];
+    const fewShotExamples = []
     for (const qId of sampled.ids) {
-      const question = await ctx.db.get(qId as any);
-      const annotation = annotationByQuestion.get(qId);
-      const result = resultByQuestion.get(qId);
-      if (!question || !annotation || !result) continue;
+      const question = await ctx.db.get(qId as any)
+      const annotation = annotationByQuestion.get(qId)
+      const result = resultByQuestion.get(qId)
+      if (!question || !annotation || !result) continue
       fewShotExamples.push({
         questionId: qId,
         questionText: (question as any).queryText as string,
         answerText: result.answerText ?? "(no answer)",
-        humanLabel: toBinaryLabel(annotation.rating),
-      });
+        humanLabel: toBinaryLabel(annotation.rating)
+      })
     }
 
     return {
       splitSizes: {
         train: split.train.length,
         dev: split.dev.length,
-        test: split.test.length,
+        test: split.test.length
       },
       fewShotBreakdown: {
         passes: sampled.passCount,
         fails: sampled.failCount,
         total: sampled.ids.length,
         availablePasses: trainPasses.length,
-        availableFails: trainFails.length,
+        availableFails: trainFails.length
       },
-      fewShotExamples,
-    };
-  },
-});
+      fewShotExamples
+    }
+  }
+})
 
 // ─── Run Queries ───
 
 export const runsByConfig = query({
   args: { evaluatorConfigId: v.id("evaluatorConfigs") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-    const config = await ctx.db.get(args.evaluatorConfigId);
-    if (!config || config.orgId !== orgId) return [];
+    const { orgId } = await getAuthContext(ctx)
+    const config = await ctx.db.get(args.evaluatorConfigId)
+    if (!config || config.orgId !== orgId) return []
 
     const runs = await ctx.db
       .query("evaluatorRuns")
       .withIndex("by_evaluator_config", (q) =>
-        q.eq("evaluatorConfigId", args.evaluatorConfigId),
+        q.eq("evaluatorConfigId", args.evaluatorConfigId)
       )
-      .collect();
+      .collect()
 
-    return runs.sort((a, b) => b.createdAt - a.createdAt);
-  },
-});
+    return runs.sort((a, b) => b.createdAt - a.createdAt)
+  }
+})
 
 export const getRun = query({
   args: { id: v.id("evaluatorRuns") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-    const run = await ctx.db.get(args.id);
-    if (!run || run.orgId !== orgId) return null;
-    return run;
-  },
-});
+    const { orgId } = await getAuthContext(ctx)
+    const run = await ctx.db.get(args.id)
+    if (!run || run.orgId !== orgId) return null
+    return run
+  }
+})
 
 export const getRunInternal = internalQuery({
   args: { id: v.id("evaluatorRuns") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
-  },
-});
+    return await ctx.db.get(args.id)
+  }
+})
 
 // ─── Result Queries ───
 
 export const resultsByRun = query({
   args: { runId: v.id("evaluatorRuns") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-    const run = await ctx.db.get(args.runId);
-    if (!run || run.orgId !== orgId) return [];
+    const { orgId } = await getAuthContext(ctx)
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.orgId !== orgId) return []
 
     return await ctx.db
       .query("evaluatorResults")
       .withIndex("by_run", (q) => q.eq("runId", args.runId))
-      .collect();
-  },
-});
+      .collect()
+  }
+})
 
 export const resultsByRunInternal = internalQuery({
   args: { runId: v.id("evaluatorRuns") },
@@ -266,20 +264,20 @@ export const resultsByRunInternal = internalQuery({
     return await ctx.db
       .query("evaluatorResults")
       .withIndex("by_run", (q) => q.eq("runId", args.runId))
-      .collect();
-  },
-});
+      .collect()
+  }
+})
 
 // ─── Config Mutations ───
 
 const DEFAULT_OUTPUT_FORMAT = `{
   "reasoning": "<brief 1-2 sentence explanation>",
   "answer": "Pass" | "Fail"
-}`;
+}`
 
 const DEFAULT_JUDGE_PROMPT_TEMPLATE = (
   fmName: string,
-  fmDescription: string,
+  fmDescription: string
 ) => `You are an expert evaluator assessing outputs from an AI agent.
 
 Your Task: Determine if the agent's response exhibits the following failure mode.
@@ -289,7 +287,7 @@ Description: ${fmDescription}
 
 Definition of Pass/Fail:
 - Fail: The agent's response clearly exhibits this failure mode.
-- Pass: The agent's response does NOT exhibit this failure mode.`;
+- Pass: The agent's response does NOT exhibit this failure mode.`
 
 export const createConfig = mutation({
   args: {
@@ -300,30 +298,30 @@ export const createConfig = mutation({
       v.object({
         trainPct: v.number(),
         devPct: v.number(),
-        testPct: v.number(),
-      }),
-    ),
+        testPct: v.number()
+      })
+    )
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-    const exp = await ctx.db.get(args.experimentId);
-    if (!exp || exp.orgId !== orgId) throw new Error("Experiment not found");
+    const { orgId } = await getAuthContext(ctx)
+    const exp = await ctx.db.get(args.experimentId)
+    if (!exp || exp.orgId !== orgId) throw new Error("Experiment not found")
 
     // Pre-populate failureModeId with the first failure mode for the experiment
     const failureModes = await ctx.db
       .query("failureModes")
       .withIndex("by_experiment", (q) =>
-        q.eq("experimentId", args.experimentId),
+        q.eq("experimentId", args.experimentId)
       )
-      .collect();
+      .collect()
 
     if (failureModes.length === 0) {
       throw new Error(
-        "Generate failure modes for this experiment before creating an evaluator",
-      );
+        "Generate failure modes for this experiment before creating an evaluator"
+      )
     }
 
-    const defaultFm = failureModes.sort((a, b) => a.order - b.order)[0];
+    const defaultFm = failureModes.sort((a, b) => a.order - b.order)[0]
 
     return await ctx.db.insert("evaluatorConfigs", {
       orgId,
@@ -332,7 +330,7 @@ export const createConfig = mutation({
       name: args.name.trim() || defaultFm.name,
       judgePrompt: DEFAULT_JUDGE_PROMPT_TEMPLATE(
         defaultFm.name,
-        defaultFm.description,
+        defaultFm.description
       ),
       outputFormatJson: DEFAULT_OUTPUT_FORMAT,
       fewShotExampleIds: [],
@@ -341,14 +339,14 @@ export const createConfig = mutation({
       splitConfig: args.splitConfig ?? {
         trainPct: 15,
         devPct: 43,
-        testPct: 42,
+        testPct: 42
       },
       splitSeed: Math.floor(Math.random() * 2147483647),
       status: "draft",
-      createdAt: Date.now(),
-    });
-  },
-});
+      createdAt: Date.now()
+    })
+  }
+})
 
 export const updateConfig = mutation({
   args: {
@@ -363,38 +361,36 @@ export const updateConfig = mutation({
       v.object({
         trainPct: v.number(),
         devPct: v.number(),
-        testPct: v.number(),
-      }),
-    ),
+        testPct: v.number()
+      })
+    )
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-    const config = await ctx.db.get(args.id);
-    if (!config || config.orgId !== orgId)
-      throw new Error("Config not found");
+    const { orgId } = await getAuthContext(ctx)
+    const config = await ctx.db.get(args.id)
+    if (!config || config.orgId !== orgId) throw new Error("Config not found")
 
-    const patch: Record<string, unknown> = { updatedAt: Date.now() };
+    const patch: Record<string, unknown> = { updatedAt: Date.now() }
 
-    if (args.name !== undefined) patch.name = args.name;
+    if (args.name !== undefined) patch.name = args.name
     if (args.failureModeId !== undefined) {
       // Validate the new failure mode belongs to same experiment + org
-      const fm = await ctx.db.get(args.failureModeId);
-      if (!fm || fm.orgId !== orgId)
-        throw new Error("Failure mode not found");
+      const fm = await ctx.db.get(args.failureModeId)
+      if (!fm || fm.orgId !== orgId) throw new Error("Failure mode not found")
       if (fm.experimentId !== config.experimentId)
-        throw new Error("Failure mode must be from the same experiment");
-      patch.failureModeId = args.failureModeId;
+        throw new Error("Failure mode must be from the same experiment")
+      patch.failureModeId = args.failureModeId
     }
-    if (args.judgePrompt !== undefined) patch.judgePrompt = args.judgePrompt;
+    if (args.judgePrompt !== undefined) patch.judgePrompt = args.judgePrompt
     if (args.outputFormatJson !== undefined)
-      patch.outputFormatJson = args.outputFormatJson;
+      patch.outputFormatJson = args.outputFormatJson
     if (args.maxFewShotExamples !== undefined)
-      patch.maxFewShotExamples = args.maxFewShotExamples;
-    if (args.modelId !== undefined) patch.modelId = args.modelId;
+      patch.maxFewShotExamples = args.maxFewShotExamples
+    if (args.modelId !== undefined) patch.modelId = args.modelId
     if (args.splitConfig !== undefined) {
-      patch.splitConfig = args.splitConfig;
+      patch.splitConfig = args.splitConfig
       // Reset seed when split changes so data is re-shuffled
-      patch.splitSeed = Math.floor(Math.random() * 2147483647);
+      patch.splitSeed = Math.floor(Math.random() * 2147483647)
     }
 
     // Reset metrics if anything that affects judgment changed
@@ -406,31 +402,30 @@ export const updateConfig = mutation({
       args.modelId !== undefined ||
       args.splitConfig !== undefined
     ) {
-      patch.devMetrics = undefined;
-      patch.testMetrics = undefined;
-      patch.status = "draft";
+      patch.devMetrics = undefined
+      patch.testMetrics = undefined
+      patch.status = "draft"
     }
 
-    await ctx.db.patch(args.id, patch);
-  },
-});
+    await ctx.db.patch(args.id, patch)
+  }
+})
 
 // ─── Run Mutations ───
 
 export const startValidation = mutation({
   args: {
     evaluatorConfigId: v.id("evaluatorConfigs"),
-    runType: v.union(v.literal("dev"), v.literal("test")),
+    runType: v.union(v.literal("dev"), v.literal("test"))
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-    const config = await ctx.db.get(args.evaluatorConfigId);
-    if (!config || config.orgId !== orgId)
-      throw new Error("Config not found");
+    const { orgId } = await getAuthContext(ctx)
+    const config = await ctx.db.get(args.evaluatorConfigId)
+    if (!config || config.orgId !== orgId) throw new Error("Config not found")
 
     // For test runs, require dev metrics first
     if (args.runType === "test" && !config.devMetrics) {
-      throw new Error("Run validation on dev set first");
+      throw new Error("Run validation on dev set first")
     }
 
     const runId = await ctx.db.insert("evaluatorRuns", {
@@ -442,41 +437,36 @@ export const startValidation = mutation({
       totalTraces: 0,
       processedTraces: 0,
       failedTraces: 0,
-      createdAt: Date.now(),
-    });
+      createdAt: Date.now()
+    })
 
-    await ctx.scheduler.runAfter(
-      0,
-      internal.evaluator.actions.runValidation,
-      {
-        configId: args.evaluatorConfigId,
-        runId,
-        runType: args.runType,
-      },
-    );
+    await ctx.scheduler.runAfter(0, internal.evaluator.actions.runValidation, {
+      configId: args.evaluatorConfigId,
+      runId,
+      runType: args.runType
+    })
 
-    return runId;
-  },
-});
+    return runId
+  }
+})
 
 export const startFullRun = mutation({
   args: {
     evaluatorConfigId: v.id("evaluatorConfigs"),
-    targetExperimentId: v.id("experiments"),
+    targetExperimentId: v.id("experiments")
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-    const config = await ctx.db.get(args.evaluatorConfigId);
-    if (!config || config.orgId !== orgId)
-      throw new Error("Config not found");
+    const { orgId } = await getAuthContext(ctx)
+    const config = await ctx.db.get(args.evaluatorConfigId)
+    if (!config || config.orgId !== orgId) throw new Error("Config not found")
 
     if (!config.testMetrics) {
-      throw new Error("Validate on test set before running on experiments");
+      throw new Error("Validate on test set before running on experiments")
     }
 
-    const targetExp = await ctx.db.get(args.targetExperimentId);
+    const targetExp = await ctx.db.get(args.targetExperimentId)
     if (!targetExp || targetExp.orgId !== orgId)
-      throw new Error("Target experiment not found");
+      throw new Error("Target experiment not found")
 
     const runId = await ctx.db.insert("evaluatorRuns", {
       orgId,
@@ -487,8 +477,8 @@ export const startFullRun = mutation({
       totalTraces: 0,
       processedTraces: 0,
       failedTraces: 0,
-      createdAt: Date.now(),
-    });
+      createdAt: Date.now()
+    })
 
     await ctx.scheduler.runAfter(
       0,
@@ -496,13 +486,13 @@ export const startFullRun = mutation({
       {
         configId: args.evaluatorConfigId,
         runId,
-        targetExperimentId: args.targetExperimentId,
-      },
-    );
+        targetExperimentId: args.targetExperimentId
+      }
+    )
 
-    return runId;
-  },
-});
+    return runId
+  }
+})
 
 // ─── Internal Mutations (for use by actions) ───
 
@@ -513,7 +503,7 @@ export const updateRunStatusInternal = internalMutation({
       v.literal("pending"),
       v.literal("running"),
       v.literal("completed"),
-      v.literal("failed"),
+      v.literal("failed")
     ),
     totalTraces: v.optional(v.number()),
     processedTraces: v.optional(v.number()),
@@ -521,35 +511,35 @@ export const updateRunStatusInternal = internalMutation({
     rawPassRate: v.optional(v.number()),
     correctedPassRate: v.optional(v.number()),
     confidenceInterval: v.optional(
-      v.object({ lower: v.number(), upper: v.number() }),
+      v.object({ lower: v.number(), upper: v.number() })
     ),
     tprUsed: v.optional(v.number()),
     tnrUsed: v.optional(v.number()),
-    error: v.optional(v.string()),
+    error: v.optional(v.string())
   },
   handler: async (ctx, args) => {
-    const { runId, ...patch } = args;
-    const updates: Record<string, unknown> = { ...patch };
+    const { runId, ...patch } = args
+    const updates: Record<string, unknown> = { ...patch }
     if (patch.status === "completed" || patch.status === "failed") {
-      updates.completedAt = Date.now();
+      updates.completedAt = Date.now()
     }
-    await ctx.db.patch(runId, updates);
-  },
-});
+    await ctx.db.patch(runId, updates)
+  }
+})
 
 export const updateRunProgressInternal = internalMutation({
   args: {
     runId: v.id("evaluatorRuns"),
     processedTraces: v.number(),
-    failedTraces: v.number(),
+    failedTraces: v.number()
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.runId, {
       processedTraces: args.processedTraces,
-      failedTraces: args.failedTraces,
-    });
-  },
-});
+      failedTraces: args.failedTraces
+    })
+  }
+})
 
 export const insertResultInternal = internalMutation({
   args: {
@@ -564,18 +554,18 @@ export const insertResultInternal = internalMutation({
     usage: v.optional(
       v.object({
         promptTokens: v.number(),
-        completionTokens: v.number(),
-      }),
+        completionTokens: v.number()
+      })
     ),
-    latencyMs: v.optional(v.number()),
+    latencyMs: v.optional(v.number())
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("evaluatorResults", {
       ...args,
-      createdAt: Date.now(),
-    });
-  },
-});
+      createdAt: Date.now()
+    })
+  }
+})
 
 export const runsByConfigInternal = internalQuery({
   args: { evaluatorConfigId: v.id("evaluatorConfigs") },
@@ -583,11 +573,11 @@ export const runsByConfigInternal = internalQuery({
     return await ctx.db
       .query("evaluatorRuns")
       .withIndex("by_evaluator_config", (q) =>
-        q.eq("evaluatorConfigId", args.evaluatorConfigId),
+        q.eq("evaluatorConfigId", args.evaluatorConfigId)
       )
-      .collect();
-  },
-});
+      .collect()
+  }
+})
 
 export const updateConfigMetricsInternal = internalMutation({
   args: {
@@ -597,24 +587,24 @@ export const updateConfigMetricsInternal = internalMutation({
       tpr: v.number(),
       tnr: v.number(),
       accuracy: v.number(),
-      total: v.number(),
-    }),
+      total: v.number()
+    })
   },
   handler: async (ctx, args) => {
-    const patch: Record<string, unknown> = { updatedAt: Date.now() };
+    const patch: Record<string, unknown> = { updatedAt: Date.now() }
 
     if (args.metricsType === "dev") {
-      patch.devMetrics = args.metrics;
-      patch.status = "validating";
+      patch.devMetrics = args.metrics
+      patch.status = "validating"
     } else {
-      patch.testMetrics = args.metrics;
+      patch.testMetrics = args.metrics
       // Auto-set to "ready" if TPR/TNR >= 80%, otherwise "validated"
       patch.status =
         args.metrics.tpr >= 0.8 && args.metrics.tnr >= 0.8
           ? "ready"
-          : "validated";
+          : "validated"
     }
 
-    await ctx.db.patch(args.configId, patch);
-  },
-});
+    await ctx.db.patch(args.configId, patch)
+  }
+})

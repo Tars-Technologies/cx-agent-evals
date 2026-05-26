@@ -1,20 +1,20 @@
-"use client";
+"use client"
 
-import { RatingButton } from "./RatingButton";
-import { MarkdownViewer } from "@/components/MarkdownViewer";
-import type { Rating } from "./types";
+import { MarkdownViewer } from "@/components/MarkdownViewer"
+import { RatingButton } from "./RatingButton"
+import type { Rating } from "./types"
 
 interface AnnotationWorkspaceProps {
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  result: any | null;
-  question: any | null;
-  annotation: any | null;
-  comment: string;
-  onCommentChange: (c: string) => void;
-  onCommentBlur: () => void;
-  onRate: (rating: Rating) => void;
-  isPending: boolean;
-  emptyMessage: string;
+  result: any | null
+  question: any | null
+  annotation: any | null
+  comment: string
+  onCommentChange: (c: string) => void
+  onCommentBlur: () => void
+  onRate: (rating: Rating) => void
+  isPending: boolean
+  emptyMessage: string
 }
 
 export function AnnotationWorkspace({
@@ -26,7 +26,7 @@ export function AnnotationWorkspace({
   onCommentBlur,
   onRate,
   isPending,
-  emptyMessage,
+  emptyMessage
 }: AnnotationWorkspaceProps) {
   // Nothing selected at all
   if (!result && !isPending) {
@@ -34,7 +34,7 @@ export function AnnotationWorkspace({
       <div className="flex-1 flex items-center justify-center text-text-dim text-sm">
         {emptyMessage}
       </div>
-    );
+    )
   }
 
   // Pending question — show question + skeleton answer
@@ -85,7 +85,7 @@ export function AnnotationWorkspace({
           </div>
         </div>
       </div>
-    );
+    )
   }
 
   return (
@@ -116,9 +116,8 @@ export function AnnotationWorkspace({
         )}
         {result.usage && (
           <div className="mt-3 text-[10px] text-text-dim">
-            {result.usage.promptTokens} prompt +{" "}
-            {result.usage.completionTokens} completion tokens |{" "}
-            {(result.latencyMs / 1000).toFixed(1)}s
+            {result.usage.promptTokens} prompt + {result.usage.completionTokens}{" "}
+            completion tokens | {(result.latencyMs / 1000).toFixed(1)}s
           </div>
         )}
       </div>
@@ -135,14 +134,20 @@ export function AnnotationWorkspace({
           <RatingButton
             label="Pass"
             shortcut="1"
-            active={annotation?.rating === "pass" || annotation?.rating === "great" || annotation?.rating === "good_enough"}
+            active={
+              annotation?.rating === "pass" ||
+              annotation?.rating === "great" ||
+              annotation?.rating === "good_enough"
+            }
             color="accent"
             onClick={() => onRate("pass")}
           />
           <RatingButton
             label="Fail"
             shortcut="2"
-            active={annotation?.rating === "fail" || annotation?.rating === "bad"}
+            active={
+              annotation?.rating === "fail" || annotation?.rating === "bad"
+            }
             color="red"
             onClick={() => onRate("fail")}
           />
@@ -157,5 +162,5 @@ export function AnnotationWorkspace({
         />
       </div>
     </div>
-  );
+  )
 }

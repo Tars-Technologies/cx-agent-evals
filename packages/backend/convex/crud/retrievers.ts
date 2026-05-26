@@ -1,27 +1,32 @@
-import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
-import { internal } from "../_generated/api";
-import { v } from "convex/values";
-import { getAuthContext } from "../lib/auth";
+import { v } from "convex/values"
+import { internal } from "../_generated/api"
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query
+} from "../_generated/server"
+import { getAuthContext } from "../lib/auth"
 
 // ─── Queries ───
 
 export const byKb = query({
   args: { kbId: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
+    const { orgId } = await getAuthContext(ctx)
 
-    const kb = await ctx.db.get(args.kbId);
+    const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) {
-      throw new Error("Knowledge base not found");
+      throw new Error("Knowledge base not found")
     }
 
     return await ctx.db
       .query("retrievers")
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
       .order("desc")
-      .collect();
-  },
-});
+      .collect()
+  }
+})
 
 export const byOrg = query({
   args: {
@@ -30,49 +35,49 @@ export const byOrg = query({
         v.literal("configuring"),
         v.literal("indexing"),
         v.literal("ready"),
-        v.literal("error"),
-      ),
-    ),
+        v.literal("error")
+      )
+    )
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
+    const { orgId } = await getAuthContext(ctx)
 
     const all = await ctx.db
       .query("retrievers")
       .withIndex("by_org", (q) => q.eq("orgId", orgId))
       .order("desc")
-      .collect();
+      .collect()
 
     if (args.status) {
-      return all.filter((r) => r.status === args.status);
+      return all.filter((r) => r.status === args.status)
     }
-    return all;
-  },
-});
+    return all
+  }
+})
 
 export const get = query({
   args: { id: v.id("retrievers") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
+    const { orgId } = await getAuthContext(ctx)
 
-    const retriever = await ctx.db.get(args.id);
+    const retriever = await ctx.db.get(args.id)
     if (!retriever || retriever.orgId !== orgId) {
-      throw new Error("Retriever not found");
+      throw new Error("Retriever not found")
     }
-    return retriever;
-  },
-});
+    return retriever
+  }
+})
 
 // ─── Internal Queries/Mutations ───
 
 export const getInternal = internalQuery({
   args: { id: v.id("retrievers") },
   handler: async (ctx, args) => {
-    const retriever = await ctx.db.get(args.id);
-    if (!retriever) throw new Error("Retriever not found");
-    return retriever;
-  },
-});
+    const retriever = await ctx.db.get(args.id)
+    if (!retriever) throw new Error("Retriever not found")
+    return retriever
+  }
+})
 
 /**
  * Insert a new retriever record. Called from the "use node" create action
@@ -92,10 +97,10 @@ export const insertRetriever = internalMutation({
       v.literal("configuring"),
       v.literal("indexing"),
       v.literal("ready"),
-      v.literal("error"),
+      v.literal("error")
     ),
     chunkCount: v.optional(v.number()),
-    createdBy: v.id("users"),
+    createdBy: v.id("users")
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("retrievers", {
@@ -110,10 +115,10 @@ export const insertRetriever = internalMutation({
       status: args.status,
       chunkCount: args.chunkCount,
       createdBy: args.createdBy,
-      createdAt: Date.now(),
-    });
-  },
-});
+      createdAt: Date.now()
+    })
+  }
+})
 
 /**
  * Update retriever with indexing job info. Called from startIndexing action.
@@ -126,19 +131,19 @@ export const updateIndexingStatus = internalMutation({
       v.literal("configuring"),
       v.literal("indexing"),
       v.literal("ready"),
-      v.literal("error"),
+      v.literal("error")
     ),
-    chunkCount: v.optional(v.number()),
+    chunkCount: v.optional(v.number())
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.retrieverId, {
       indexingJobId: args.indexingJobId,
       status: args.status,
       chunkCount: args.chunkCount,
-      error: undefined,
-    });
-  },
-});
+      error: undefined
+    })
+  }
+})
 
 /**
  * Check for existing retriever by (kbId, retrieverConfigHash) for dedup.
@@ -146,7 +151,7 @@ export const updateIndexingStatus = internalMutation({
 export const findByConfigHash = internalQuery({
   args: {
     kbId: v.id("knowledgeBases"),
-    retrieverConfigHash: v.string(),
+    retrieverConfigHash: v.string()
   },
   handler: async (ctx, args) => {
     return await ctx.db
@@ -154,36 +159,38 @@ export const findByConfigHash = internalQuery({
       .withIndex("by_kb_config_hash", (q) =>
         q
           .eq("kbId", args.kbId)
-          .eq("retrieverConfigHash", args.retrieverConfigHash),
+          .eq("retrieverConfigHash", args.retrieverConfigHash)
       )
-      .first();
-  },
-});
+      .first()
+  }
+})
 
 // ─── Mutations ───
 
 export const remove = mutation({
   args: { id: v.id("retrievers") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
+    const { orgId } = await getAuthContext(ctx)
 
-    const retriever = await ctx.db.get(args.id);
+    const retriever = await ctx.db.get(args.id)
     if (!retriever || retriever.orgId !== orgId) {
-      throw new Error("Retriever not found");
+      throw new Error("Retriever not found")
     }
 
     // Cascade: delete index if it exists and no other retriever shares it
-    if (retriever.indexingJobId && (retriever.status === "ready" || retriever.status === "indexing")) {
+    if (
+      retriever.indexingJobId &&
+      (retriever.status === "ready" || retriever.status === "indexing")
+    ) {
       const allForKb = await ctx.db
         .query("retrievers")
         .withIndex("by_kb", (q) => q.eq("kbId", retriever.kbId))
-        .collect();
+        .collect()
 
       const sharingChunks = allForKb.filter(
         (r) =>
-          r._id !== args.id &&
-          r.indexConfigHash === retriever.indexConfigHash,
-      );
+          r._id !== args.id && r.indexConfigHash === retriever.indexConfigHash
+      )
 
       // Only cleanup if no other retriever shares this index
       if (sharingChunks.length === 0) {
@@ -193,16 +200,16 @@ export const remove = mutation({
           {
             kbId: retriever.kbId,
             indexConfigHash: retriever.indexConfigHash,
-            jobId: retriever.indexingJobId,
-          },
-        );
+            jobId: retriever.indexingJobId
+          }
+        )
       }
     }
 
-    await ctx.db.delete(args.id);
-    return { deleted: true };
-  },
-});
+    await ctx.db.delete(args.id)
+    return { deleted: true }
+  }
+})
 
 /**
  * Reset retriever status after indexing is canceled.
@@ -211,23 +218,23 @@ export const remove = mutation({
 export const resetAfterCancel = mutation({
   args: { id: v.id("retrievers") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
+    const { orgId } = await getAuthContext(ctx)
 
-    const retriever = await ctx.db.get(args.id);
+    const retriever = await ctx.db.get(args.id)
     if (!retriever || retriever.orgId !== orgId) {
-      throw new Error("Retriever not found");
+      throw new Error("Retriever not found")
     }
 
     await ctx.db.patch(args.id, {
       status: "configuring",
       indexingJobId: undefined,
       chunkCount: undefined,
-      error: undefined,
-    });
+      error: undefined
+    })
 
-    return { reset: true };
-  },
-});
+    return { reset: true }
+  }
+})
 
 /**
  * Delete only the index (chunks) for a retriever, resetting it to "configuring".
@@ -236,28 +243,27 @@ export const resetAfterCancel = mutation({
 export const deleteIndex = mutation({
   args: { id: v.id("retrievers") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
+    const { orgId } = await getAuthContext(ctx)
 
-    const retriever = await ctx.db.get(args.id);
+    const retriever = await ctx.db.get(args.id)
     if (!retriever || retriever.orgId !== orgId) {
-      throw new Error("Retriever not found");
+      throw new Error("Retriever not found")
     }
 
     if (retriever.status !== "ready" && retriever.status !== "error") {
-      throw new Error(`Cannot delete index: retriever is ${retriever.status}`);
+      throw new Error(`Cannot delete index: retriever is ${retriever.status}`)
     }
 
     // Check if another retriever shares the same (kbId, indexConfigHash)
     const allForKb = await ctx.db
       .query("retrievers")
       .withIndex("by_kb", (q) => q.eq("kbId", retriever.kbId))
-      .collect();
+      .collect()
 
     const sharingChunks = allForKb.filter(
       (r) =>
-        r._id !== args.id &&
-        r.indexConfigHash === retriever.indexConfigHash,
-    );
+        r._id !== args.id && r.indexConfigHash === retriever.indexConfigHash
+    )
 
     // Reset any other retrievers sharing this index to "configuring"
     for (const sharer of sharingChunks) {
@@ -265,8 +271,8 @@ export const deleteIndex = mutation({
         status: "configuring",
         chunkCount: undefined,
         indexingJobId: undefined,
-        error: undefined,
-      });
+        error: undefined
+      })
     }
 
     if (retriever.indexingJobId) {
@@ -276,46 +282,46 @@ export const deleteIndex = mutation({
         {
           kbId: retriever.kbId,
           indexConfigHash: retriever.indexConfigHash,
-          jobId: retriever.indexingJobId,
-        },
-      );
+          jobId: retriever.indexingJobId
+        }
+      )
     }
 
     await ctx.db.patch(args.id, {
       status: "configuring",
       chunkCount: undefined,
       indexingJobId: undefined,
-      error: undefined,
-    });
+      error: undefined
+    })
 
-    return { deleted: true };
-  },
-});
+    return { deleted: true }
+  }
+})
 
 // ─── Internal: Update retriever status on indexing completion ───
 
 export const syncStatusFromIndexingJob = internalMutation({
   args: { retrieverId: v.id("retrievers") },
   handler: async (ctx, args) => {
-    const retriever = await ctx.db.get(args.retrieverId);
-    if (!retriever || retriever.status !== "indexing") return;
-    if (!retriever.indexingJobId) return;
+    const retriever = await ctx.db.get(args.retrieverId)
+    if (!retriever || retriever.status !== "indexing") return
+    if (!retriever.indexingJobId) return
 
-    const job = await ctx.db.get(retriever.indexingJobId);
-    if (!job) return;
+    const job = await ctx.db.get(retriever.indexingJobId)
+    if (!job) return
 
     if (job.status === "completed" || job.status === "completed_with_errors") {
       await ctx.db.patch(args.retrieverId, {
         status: "ready",
-        chunkCount: job.totalChunks,
-      });
+        chunkCount: job.totalChunks
+      })
     } else if (job.status === "failed") {
       await ctx.db.patch(args.retrieverId, {
         status: "error",
-        error: job.error ?? "Indexing failed",
-      });
+        error: job.error ?? "Indexing failed"
+      })
     }
     // Note: "canceled" status is intentionally not handled here.
     // resetAfterCancel owns the cancel path to avoid race conditions.
-  },
-});
+  }
+})

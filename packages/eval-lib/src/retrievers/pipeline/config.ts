@@ -1,18 +1,18 @@
-import { createHash } from "node:crypto";
+import { createHash } from "node:crypto"
 import {
   DEFAULT_CONTEXT_PROMPT,
-  DEFAULT_SUMMARY_PROMPT,
-} from "./query/prompts.js";
+  DEFAULT_SUMMARY_PROMPT
+} from "./query/prompts.js"
 
 /** Deterministic JSON serialization — recursively sorts object keys at every level. */
 function stableStringify(value: unknown): string {
   return JSON.stringify(value, (_key, val) =>
     val && typeof val === "object" && !Array.isArray(val)
       ? Object.fromEntries(
-          Object.entries(val).sort(([a], [b]) => a.localeCompare(b)),
+          Object.entries(val).sort(([a], [b]) => a.localeCompare(b))
         )
-      : val,
-  );
+      : val
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -20,105 +20,105 @@ function stableStringify(value: unknown): string {
 // ---------------------------------------------------------------------------
 
 export interface PlainIndexConfig {
-  readonly strategy: "plain";
-  readonly chunkSize?: number;
-  readonly chunkOverlap?: number;
-  readonly separators?: readonly string[];
-  readonly embeddingModel?: string;
+  readonly strategy: "plain"
+  readonly chunkSize?: number
+  readonly chunkOverlap?: number
+  readonly separators?: readonly string[]
+  readonly embeddingModel?: string
 }
 
 export interface ContextualIndexConfig {
-  readonly strategy: "contextual";
-  readonly chunkSize?: number;
-  readonly chunkOverlap?: number;
-  readonly embeddingModel?: string;
-  readonly contextPrompt?: string;
+  readonly strategy: "contextual"
+  readonly chunkSize?: number
+  readonly chunkOverlap?: number
+  readonly embeddingModel?: string
+  readonly contextPrompt?: string
   /** Number of parallel LLM calls during indexing. @default 5 */
-  readonly concurrency?: number;
+  readonly concurrency?: number
 }
 
 export interface SummaryIndexConfig {
-  readonly strategy: "summary";
-  readonly chunkSize?: number;
-  readonly chunkOverlap?: number;
-  readonly embeddingModel?: string;
-  readonly summaryPrompt?: string;
+  readonly strategy: "summary"
+  readonly chunkSize?: number
+  readonly chunkOverlap?: number
+  readonly embeddingModel?: string
+  readonly summaryPrompt?: string
   /** Number of parallel LLM calls during indexing. @default 5 */
-  readonly concurrency?: number;
+  readonly concurrency?: number
 }
 
 export interface ParentChildIndexConfig {
-  readonly strategy: "parent-child";
-  readonly embeddingModel?: string;
+  readonly strategy: "parent-child"
+  readonly embeddingModel?: string
   /** Small chunk size for retrieval matching. @default 200 */
-  readonly childChunkSize?: number;
+  readonly childChunkSize?: number
   /** Large chunk size for context return. @default 1000 */
-  readonly parentChunkSize?: number;
+  readonly parentChunkSize?: number
   /** @default 0 */
-  readonly childOverlap?: number;
+  readonly childOverlap?: number
   /** @default 100 */
-  readonly parentOverlap?: number;
+  readonly parentOverlap?: number
 }
 
 export type IndexConfig =
   | PlainIndexConfig
   | ContextualIndexConfig
   | SummaryIndexConfig
-  | ParentChildIndexConfig;
+  | ParentChildIndexConfig
 
 export const DEFAULT_INDEX_CONFIG: PlainIndexConfig = {
   strategy: "plain",
   chunkSize: 1000,
   chunkOverlap: 200,
-  embeddingModel: "text-embedding-3-small",
-} as const;
+  embeddingModel: "text-embedding-3-small"
+} as const
 
 // ---------------------------------------------------------------------------
 // Stage 2 — Query configuration (extensible discriminated union)
 // ---------------------------------------------------------------------------
 
 export interface IdentityQueryConfig {
-  readonly strategy: "identity";
+  readonly strategy: "identity"
 }
 
 export interface HydeQueryConfig {
-  readonly strategy: "hyde";
+  readonly strategy: "hyde"
   /** Custom prompt for generating hypothetical documents. */
-  readonly hydePrompt?: string;
+  readonly hydePrompt?: string
   /**
    * Number of hypothetical documents to generate.
    * Each produces a separate search query whose results are fused via RRF.
    * @default 1
    */
-  readonly numHypotheticalDocs?: number;
+  readonly numHypotheticalDocs?: number
 }
 
 export interface MultiQueryConfig {
-  readonly strategy: "multi-query";
+  readonly strategy: "multi-query"
   /**
    * Number of query variants to generate.
    * @default 3
    */
-  readonly numQueries?: number;
+  readonly numQueries?: number
   /** Custom prompt for generating query variants. Use `{n}` as placeholder for count. */
-  readonly generationPrompt?: string;
+  readonly generationPrompt?: string
 }
 
 export interface StepBackQueryConfig {
-  readonly strategy: "step-back";
+  readonly strategy: "step-back"
   /** Custom prompt for generating the abstract step-back question. */
-  readonly stepBackPrompt?: string;
+  readonly stepBackPrompt?: string
   /**
    * Whether to also search with the original query.
    * @default true
    */
-  readonly includeOriginal?: boolean;
+  readonly includeOriginal?: boolean
 }
 
 export interface RewriteQueryConfig {
-  readonly strategy: "rewrite";
+  readonly strategy: "rewrite"
   /** Custom prompt for rewriting the query. */
-  readonly rewritePrompt?: string;
+  readonly rewritePrompt?: string
 }
 
 export type QueryConfig =
@@ -126,81 +126,84 @@ export type QueryConfig =
   | HydeQueryConfig
   | MultiQueryConfig
   | StepBackQueryConfig
-  | RewriteQueryConfig;
+  | RewriteQueryConfig
 
 export const DEFAULT_QUERY_CONFIG: QueryConfig = {
-  strategy: "identity",
-} as const;
+  strategy: "identity"
+} as const
 
 // ---------------------------------------------------------------------------
 // Stage 3 — Search configuration (discriminated union on strategy)
 // ---------------------------------------------------------------------------
 
 export interface DenseSearchConfig {
-  readonly strategy: "dense";
+  readonly strategy: "dense"
 }
 
 export interface BM25SearchConfig {
-  readonly strategy: "bm25";
-  readonly k1?: number;
-  readonly b?: number;
+  readonly strategy: "bm25"
+  readonly k1?: number
+  readonly b?: number
 }
 
 export interface HybridSearchConfig {
-  readonly strategy: "hybrid";
-  readonly denseWeight?: number;
-  readonly sparseWeight?: number;
-  readonly fusionMethod?: "weighted" | "rrf";
-  readonly candidateMultiplier?: number;
-  readonly rrfK?: number;
-  readonly k1?: number;
-  readonly b?: number;
+  readonly strategy: "hybrid"
+  readonly denseWeight?: number
+  readonly sparseWeight?: number
+  readonly fusionMethod?: "weighted" | "rrf"
+  readonly candidateMultiplier?: number
+  readonly rrfK?: number
+  readonly k1?: number
+  readonly b?: number
 }
 
-export type SearchConfig = DenseSearchConfig | BM25SearchConfig | HybridSearchConfig;
+export type SearchConfig =
+  | DenseSearchConfig
+  | BM25SearchConfig
+  | HybridSearchConfig
 
 export const DEFAULT_SEARCH_CONFIG: SearchConfig = {
-  strategy: "dense",
-} as const;
+  strategy: "dense"
+} as const
 
 // ---------------------------------------------------------------------------
 // Stage 4 — Refinement steps (discriminated union on type)
 // ---------------------------------------------------------------------------
 
 export interface RerankRefinementStep {
-  readonly type: "rerank";
+  readonly type: "rerank"
   /**
    * Cap the rerank output to the top N chunks. When omitted, the rerank step
    * narrows to the pipeline's overall topK — same behavior as before this
    * field was added. Use this to widen-then-narrow (e.g. fetch 25 candidates,
    * keep the top 6 after reranking).
    */
-  readonly topN?: number;
+  readonly topN?: number
 }
 
 export interface ThresholdRefinementStep {
-  readonly type: "threshold";
-  readonly minScore: number;
+  readonly type: "threshold"
+  readonly minScore: number
 }
 
 export interface DedupRefinementStep {
-  readonly type: "dedup";
+  readonly type: "dedup"
   /** @default "overlap" */
-  readonly method?: "exact" | "overlap";
+  readonly method?: "exact" | "overlap"
   /** Minimum overlap ratio to consider chunks duplicates. @default 0.5 */
-  readonly overlapThreshold?: number;
+  readonly overlapThreshold?: number
 }
 
 export interface MmrRefinementStep {
-  readonly type: "mmr";
+  readonly type: "mmr"
   /** Trade-off: 1.0 = pure relevance, 0.0 = pure diversity. @default 0.7 */
-  readonly lambda?: number;
+  readonly lambda?: number
 }
 
 export interface ExpandContextRefinementStep {
-  readonly type: "expand-context";
+  readonly type: "expand-context"
   /** Characters to include before and after each chunk. @default 500 */
-  readonly windowChars?: number;
+  readonly windowChars?: number
 }
 
 export type RefinementStepConfig =
@@ -208,18 +211,18 @@ export type RefinementStepConfig =
   | ThresholdRefinementStep
   | DedupRefinementStep
   | MmrRefinementStep
-  | ExpandContextRefinementStep;
+  | ExpandContextRefinementStep
 
 // ---------------------------------------------------------------------------
 // Pipeline configuration (composes all four stages)
 // ---------------------------------------------------------------------------
 
 export interface PipelineConfig {
-  readonly name: string;
-  readonly index?: IndexConfig;
-  readonly query?: QueryConfig;
-  readonly search?: SearchConfig;
-  readonly refinement?: readonly RefinementStepConfig[];
+  readonly name: string
+  readonly index?: IndexConfig
+  readonly query?: QueryConfig
+  readonly search?: SearchConfig
+  readonly refinement?: readonly RefinementStepConfig[]
 }
 
 // ---------------------------------------------------------------------------
@@ -238,24 +241,24 @@ function buildIndexPayload(index: IndexConfig): Record<string, unknown> {
         chunkSize: index.chunkSize ?? 1000,
         chunkOverlap: index.chunkOverlap ?? 200,
         separators: index.separators,
-        embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
-      };
+        embeddingModel: index.embeddingModel ?? "text-embedding-3-small"
+      }
     case "contextual":
       return {
         strategy: "contextual",
         chunkSize: index.chunkSize ?? 1000,
         chunkOverlap: index.chunkOverlap ?? 200,
         embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
-        contextPrompt: index.contextPrompt ?? DEFAULT_CONTEXT_PROMPT,
-      };
+        contextPrompt: index.contextPrompt ?? DEFAULT_CONTEXT_PROMPT
+      }
     case "summary":
       return {
         strategy: "summary",
         chunkSize: index.chunkSize ?? 1000,
         chunkOverlap: index.chunkOverlap ?? 200,
         embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
-        summaryPrompt: index.summaryPrompt ?? DEFAULT_SUMMARY_PROMPT,
-      };
+        summaryPrompt: index.summaryPrompt ?? DEFAULT_SUMMARY_PROMPT
+      }
     case "parent-child":
       return {
         strategy: "parent-child",
@@ -263,8 +266,8 @@ function buildIndexPayload(index: IndexConfig): Record<string, unknown> {
         parentChunkSize: index.parentChunkSize ?? 1000,
         childOverlap: index.childOverlap ?? 0,
         parentOverlap: index.parentOverlap ?? 100,
-        embeddingModel: index.embeddingModel ?? "text-embedding-3-small",
-      };
+        embeddingModel: index.embeddingModel ?? "text-embedding-3-small"
+      }
   }
 }
 
@@ -272,28 +275,31 @@ function buildIndexPayload(index: IndexConfig): Record<string, unknown> {
  * Compute a deterministic SHA-256 hash of the full retriever config (all four stages + k).
  * Two configs with identical stages and k produce the same hash regardless of name.
  */
-export function computeRetrieverConfigHash(config: PipelineConfig, k: number): string {
-  const index = config.index ?? DEFAULT_INDEX_CONFIG;
-  const query = config.query ?? DEFAULT_QUERY_CONFIG;
-  const search = config.search ?? DEFAULT_SEARCH_CONFIG;
-  const refinement = config.refinement ?? [];
+export function computeRetrieverConfigHash(
+  config: PipelineConfig,
+  k: number
+): string {
+  const index = config.index ?? DEFAULT_INDEX_CONFIG
+  const query = config.query ?? DEFAULT_QUERY_CONFIG
+  const search = config.search ?? DEFAULT_SEARCH_CONFIG
+  const refinement = config.refinement ?? []
 
   const payload = {
     index: buildIndexPayload(index),
     k,
     query,
     refinement,
-    search,
-  };
+    search
+  }
 
-  const json = stableStringify(payload);
-  return createHash("sha256").update(json).digest("hex");
+  const json = stableStringify(payload)
+  return createHash("sha256").update(json).digest("hex")
 }
 
 export function computeIndexConfigHash(config: PipelineConfig): string {
-  const index = config.index ?? DEFAULT_INDEX_CONFIG;
-  const payload = buildIndexPayload(index);
+  const index = config.index ?? DEFAULT_INDEX_CONFIG
+  const payload = buildIndexPayload(index)
 
-  const json = stableStringify(payload);
-  return createHash("sha256").update(json).digest("hex");
+  const json = stableStringify(payload)
+  return createHash("sha256").update(json).digest("hex")
 }

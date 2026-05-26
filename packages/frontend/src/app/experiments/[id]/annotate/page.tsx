@@ -1,18 +1,17 @@
-"use client";
+"use client"
 
-import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
-import { Header } from "@/components/Header";
-import { useParams } from "next/navigation";
-import Link from "next/link";
-
-import { QuestionListPane } from "./_components/QuestionListPane";
-import { AnnotationWorkspace } from "./_components/AnnotationWorkspace";
-import { MetadataPane } from "./_components/MetadataPane";
-import { ExperimentNavSidebar } from "../_components/ExperimentNavSidebar";
-import type { FilterType, Rating } from "./_components/types";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation, useQuery } from "convex/react"
+import Link from "next/link"
+import { useParams } from "next/navigation"
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
+import { Header } from "@/components/Header"
+import { api } from "@/lib/convex"
+import { ExperimentNavSidebar } from "../_components/ExperimentNavSidebar"
+import { AnnotationWorkspace } from "./_components/AnnotationWorkspace"
+import { MetadataPane } from "./_components/MetadataPane"
+import { QuestionListPane } from "./_components/QuestionListPane"
+import type { FilterType, Rating } from "./_components/types"
 
 export default function AnnotatePage() {
   return (
@@ -25,149 +24,150 @@ export default function AnnotatePage() {
     >
       <AnnotateContent />
     </Suspense>
-  );
+  )
 }
 
 function AnnotateContent() {
-  const params = useParams();
-  const experimentId = params.id as Id<"experiments">;
+  const params = useParams()
+  const experimentId = params.id as Id<"experiments">
 
   // --- Data queries ---
   const experiment = useQuery(api.experiments.orchestration.get, {
-    id: experimentId,
-  });
+    id: experimentId
+  })
   const results = useQuery(api.experiments.agentResults.byExperiment, {
-    experimentId,
-  });
+    experimentId
+  })
   const annotations = useQuery(api.annotations.crud.byExperiment, {
-    experimentId,
-  });
-  const stats = useQuery(api.annotations.crud.stats, { experimentId });
+    experimentId
+  })
+  const stats = useQuery(api.annotations.crud.stats, { experimentId })
   const questions = useQuery(
     api.crud.questions.byDataset,
-    experiment?.datasetId ? { datasetId: experiment.datasetId } : "skip",
-  );
-  const allTags = useQuery(api.annotations.crud.allTags, { experimentId });
+    experiment?.datasetId ? { datasetId: experiment.datasetId } : "skip"
+  )
+  const allTags = useQuery(api.annotations.crud.allTags, { experimentId })
 
-  const upsertAnnotation = useMutation(api.annotations.crud.upsert);
+  const upsertAnnotation = useMutation(api.annotations.crud.upsert)
 
   // --- State ---
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [filter, setFilter] = useState<FilterType>("all");
-  const [comment, setComment] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [tagFilter, setTagFilter] = useState("");
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [filter, setFilter] = useState<FilterType>("all")
+  const [comment, setComment] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [tagFilter, setTagFilter] = useState("")
 
-  const isLive = experiment?.status === "running" || experiment?.status === "pending";
+  const isLive =
+    experiment?.status === "running" || experiment?.status === "pending"
 
   // --- Build joined data ---
   const questionMap = useMemo(() => {
-    const map = new Map<string, any>();
+    const map = new Map<string, any>()
     for (const q of questions ?? []) {
-      map.set(q._id, q);
+      map.set(q._id, q)
     }
-    return map;
-  }, [questions]);
+    return map
+  }, [questions])
 
   // Map from questionId -> result (for merging questions with results)
   const resultByQuestionId = useMemo(() => {
-    const map = new Map<string, any>();
+    const map = new Map<string, any>()
     for (const r of results ?? []) {
-      map.set(r.questionId, r);
+      map.set(r.questionId, r)
     }
-    return map;
-  }, [results]);
+    return map
+  }, [results])
 
   const annotationMap = useMemo(() => {
-    const map = new Map<string, any>();
+    const map = new Map<string, any>()
     for (const a of annotations ?? []) {
-      map.set(a.resultId, a);
+      map.set(a.resultId, a)
     }
-    return map;
-  }, [annotations]);
+    return map
+  }, [annotations])
 
   // Build unified list: only questions with ground truth spans (matches backend filter)
   // Questions without relevantSpans are skipped during experiment execution
-  type QuestionItem = { question: any; result: any | null };
+  type QuestionItem = { question: any; result: any | null }
   const allItems: QuestionItem[] = useMemo(() => {
-    if (!questions) return [];
+    if (!questions) return []
     const evaluatable = questions.filter(
-      (q) => Array.isArray(q.relevantSpans) && q.relevantSpans.length > 0,
-    );
+      (q) => Array.isArray(q.relevantSpans) && q.relevantSpans.length > 0
+    )
     return evaluatable.map((q) => ({
       question: q,
-      result: resultByQuestionId.get(q._id) ?? null,
-    }));
-  }, [questions, resultByQuestionId]);
+      result: resultByQuestionId.get(q._id) ?? null
+    }))
+  }, [questions, resultByQuestionId])
 
   // Filter items: rating -> tag -> search
   const filteredItems = useMemo(() => {
     return allItems.filter(({ question: q, result: r }) => {
-      const annotation = r ? annotationMap.get(r._id) : null;
+      const annotation = r ? annotationMap.get(r._id) : null
       // Rating filter
       if (filter === "unrated") {
-        if (annotation) return false; // rated items excluded
+        if (annotation) return false // rated items excluded
       } else if (filter === "pass") {
-        const r = annotation?.rating;
-        if (r !== "pass" && r !== "great" && r !== "good_enough") return false;
+        const r = annotation?.rating
+        if (r !== "pass" && r !== "great" && r !== "good_enough") return false
       } else if (filter === "fail") {
-        const r = annotation?.rating;
-        if (r !== "fail" && r !== "bad") return false;
+        const r = annotation?.rating
+        if (r !== "fail" && r !== "bad") return false
       } else if (filter !== "all") {
-        if (annotation?.rating !== filter) return false;
+        if (annotation?.rating !== filter) return false
       }
       // Tag filter
-      if (tagFilter && !annotation?.tags?.includes(tagFilter)) return false;
+      if (tagFilter && !annotation?.tags?.includes(tagFilter)) return false
       // Search filter
       if (searchQuery) {
         if (!q?.queryText.toLowerCase().includes(searchQuery.toLowerCase()))
-          return false;
+          return false
       }
-      return true;
-    });
-  }, [allItems, filter, tagFilter, searchQuery, annotationMap]);
+      return true
+    })
+  }, [allItems, filter, tagFilter, searchQuery, annotationMap])
 
   // Current item
-  const currentItem = filteredItems[currentIndex] ?? null;
-  const currentResult = currentItem?.result ?? null;
-  const currentQuestion = currentItem?.question ?? null;
+  const currentItem = filteredItems[currentIndex] ?? null
+  const currentResult = currentItem?.result ?? null
+  const currentQuestion = currentItem?.question ?? null
   const currentAnnotation = currentResult
     ? annotationMap.get(currentResult._id)
-    : null;
+    : null
 
   // Load existing annotation into comment field when navigating
   useEffect(() => {
-    setComment(currentAnnotation?.comment ?? "");
-  }, [currentAnnotation?.comment, currentIndex]);
+    setComment(currentAnnotation?.comment ?? "")
+  }, [currentAnnotation?.comment, currentIndex])
 
   // Reset index when filter changes
   useEffect(() => {
-    setCurrentIndex(0);
-  }, [filter, tagFilter, searchQuery]);
+    setCurrentIndex(0)
+  }, [filter, tagFilter, searchQuery])
 
   // --- Rating handler ---
   const handleRate = useCallback(
     async (rating: Rating) => {
-      if (!currentResult) return;
+      if (!currentResult) return
       await upsertAnnotation({
         resultId: currentResult._id,
         rating,
-        comment: comment || undefined,
-      });
+        comment: comment || undefined
+      })
     },
-    [currentResult, comment, upsertAnnotation],
-  );
+    [currentResult, comment, upsertAnnotation]
+  )
 
   // --- Save comment on blur (if annotation already exists) ---
   const handleCommentBlur = useCallback(async () => {
-    if (!currentResult || !currentAnnotation) return;
-    if (comment === (currentAnnotation.comment ?? "")) return; // no change
+    if (!currentResult || !currentAnnotation) return
+    if (comment === (currentAnnotation.comment ?? "")) return // no change
     await upsertAnnotation({
       resultId: currentResult._id,
       rating: currentAnnotation.rating,
-      comment: comment || undefined,
-    });
-  }, [currentResult, currentAnnotation, comment, upsertAnnotation]);
+      comment: comment || undefined
+    })
+  }, [currentResult, currentAnnotation, comment, upsertAnnotation])
 
   // --- Keyboard shortcuts ---
   useEffect(() => {
@@ -176,20 +176,20 @@ function AnnotateContent() {
         e.target instanceof HTMLTextAreaElement ||
         e.target instanceof HTMLInputElement
       )
-        return;
-      if (e.key === "1") handleRate("pass");
-      else if (e.key === "2") handleRate("fail");
+        return
+      if (e.key === "1") handleRate("pass")
+      else if (e.key === "2") handleRate("fail")
       else if (e.key === "ArrowLeft" && currentIndex > 0)
-        setCurrentIndex(currentIndex - 1);
+        setCurrentIndex(currentIndex - 1)
       else if (
         e.key === "ArrowRight" &&
         currentIndex < filteredItems.length - 1
       )
-        setCurrentIndex(currentIndex + 1);
+        setCurrentIndex(currentIndex + 1)
     }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleRate, currentIndex, filteredItems.length]);
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [handleRate, currentIndex, filteredItems.length])
 
   // --- Loading states ---
   if (!experiment || !results || !questions) {
@@ -200,7 +200,7 @@ function AnnotateContent() {
           Loading...
         </div>
       </div>
-    );
+    )
   }
 
   return (
@@ -222,7 +222,8 @@ function AnnotateContent() {
               {stats.annotated}/{stats.total} annotated
               {stats.annotated > 0 && (
                 <span className="ml-2">
-                  ({stats.pass + stats.great + stats.good_enough} pass, {stats.fail + stats.bad} fail)
+                  ({stats.pass + stats.great + stats.good_enough} pass,{" "}
+                  {stats.fail + stats.bad} fail)
                 </span>
               )}
             </div>
@@ -232,8 +233,12 @@ function AnnotateContent() {
           <kbd className="px-1.5 py-0.5 rounded border border-border">1</kbd>
           <kbd className="px-1.5 py-0.5 rounded border border-border">2</kbd>
           rate &middot;
-          <kbd className="px-1.5 py-0.5 rounded border border-border">&larr;</kbd>
-          <kbd className="px-1.5 py-0.5 rounded border border-border">&rarr;</kbd>
+          <kbd className="px-1.5 py-0.5 rounded border border-border">
+            &larr;
+          </kbd>
+          <kbd className="px-1.5 py-0.5 rounded border border-border">
+            &rarr;
+          </kbd>
           navigate
         </div>
       </div>
@@ -254,7 +259,7 @@ function AnnotateContent() {
               <div
                 className="h-full bg-purple-400 transition-all duration-500"
                 style={{
-                  width: `${((experiment.processedQuestions ?? 0) / experiment.totalQuestions) * 100}%`,
+                  width: `${((experiment.processedQuestions ?? 0) / experiment.totalQuestions) * 100}%`
                 }}
               />
             </div>
@@ -268,7 +273,7 @@ function AnnotateContent() {
           <div
             className="h-full bg-accent transition-all"
             style={{
-              width: `${(stats.annotated / stats.total) * 100}%`,
+              width: `${(stats.annotated / stats.total) * 100}%`
             }}
           />
         </div>
@@ -319,5 +324,5 @@ function AnnotateContent() {
         />
       </div>
     </div>
-  );
+  )
 }

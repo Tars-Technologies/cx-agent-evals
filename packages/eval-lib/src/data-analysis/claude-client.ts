@@ -1,8 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
-import type {
-  RawMessage,
-  LLMExtractionResult,
-} from "./types.js";
+import Anthropic from "@anthropic-ai/sdk"
+import type { LLMExtractionResult, RawMessage } from "./types.js"
 
 const SYSTEM_PROMPT = `You are analyzing customer support chat transcripts from a telecom company (Vodafone Qatar).
 
@@ -26,7 +23,7 @@ Rules:
 4. Merge adjacent identity_info interactions into one microtopic when they flow naturally (e.g., agent asks for name, then phone, then address)
 5. For identity_info microtopics, include an "extracted" array with structured data (type + value)
 6. When a message is ambiguous, prefer the more specific type over "uncategorized"
-7. A single message from the agent (like a greeting or closing template) can be its own microtopic`;
+7. A single message from the agent (like a greeting or closing template) can be its own microtopic`
 
 const TOOL_SCHEMA = {
   name: "classify_message_types",
@@ -48,8 +45,8 @@ const TOOL_SCHEMA = {
                 "confirmation",
                 "greeting",
                 "closing",
-                "uncategorized",
-              ],
+                "uncategorized"
+              ]
             },
             exchanges: {
               type: "array",
@@ -57,10 +54,10 @@ const TOOL_SCHEMA = {
                 type: "object",
                 properties: {
                   label: { type: "string", enum: ["primary", "follow_up"] },
-                  messageIds: { type: "array", items: { type: "number" } },
+                  messageIds: { type: "array", items: { type: "number" } }
                 },
-                required: ["label", "messageIds"],
-              },
+                required: ["label", "messageIds"]
+              }
             },
             extracted: {
               type: "array",
@@ -68,28 +65,26 @@ const TOOL_SCHEMA = {
                 type: "object",
                 properties: {
                   type: { type: "string" },
-                  value: { type: "string" },
+                  value: { type: "string" }
                 },
-                required: ["type", "value"],
-              },
-            },
+                required: ["type", "value"]
+              }
+            }
           },
-          required: ["type", "exchanges"],
-        },
-      },
+          required: ["type", "exchanges"]
+        }
+      }
     },
-    required: ["messageTypes"],
-  },
-};
+    required: ["messageTypes"]
+  }
+}
 
 export function createClaudeClient(apiKey?: string): Anthropic {
-  const key = apiKey ?? process.env.ANTHROPIC_API_KEY;
+  const key = apiKey ?? process.env.ANTHROPIC_API_KEY
   if (!key) {
-    throw new Error(
-      "ANTHROPIC_API_KEY environment variable is not set."
-    );
+    throw new Error("ANTHROPIC_API_KEY environment variable is not set.")
   }
-  return new Anthropic({ apiKey: key });
+  return new Anthropic({ apiKey: key })
 }
 
 /**
@@ -103,7 +98,7 @@ export async function classifyConversation(
 ): Promise<LLMExtractionResult> {
   const userContent = `Messages:\n${JSON.stringify(
     messages.map((m) => ({ id: m.id, role: m.role, text: m.text }))
-  )}\n\nClassify these messages into message types using the classify_message_types tool.`;
+  )}\n\nClassify these messages into message types using the classify_message_types tool.`
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -113,26 +108,26 @@ export async function classifyConversation(
         system: SYSTEM_PROMPT,
         tools: [TOOL_SCHEMA],
         tool_choice: { type: "tool", name: "classify_message_types" },
-        messages: [{ role: "user", content: userContent }],
-      });
+        messages: [{ role: "user", content: userContent }]
+      })
 
-      const toolBlock = response.content.find((b) => b.type === "tool_use");
+      const toolBlock = response.content.find((b) => b.type === "tool_use")
       if (!toolBlock || toolBlock.type !== "tool_use") {
-        throw new Error("No tool_use block in response");
+        throw new Error("No tool_use block in response")
       }
 
-      const raw = toolBlock.input as { messageTypes: any[] };
-      return { microtopics: raw.messageTypes };
+      const raw = toolBlock.input as { messageTypes: any[] }
+      return { microtopics: raw.messageTypes }
     } catch (err: any) {
       if (attempt < retries && err?.status === 429) {
-        const wait = Math.pow(2, attempt) * 1000;
-        console.error(`[claude] Rate limited, retrying in ${wait}ms...`);
-        await new Promise((r) => setTimeout(r, wait));
-        continue;
+        const wait = 2 ** attempt * 1000
+        console.error(`[claude] Rate limited, retrying in ${wait}ms...`)
+        await new Promise((r) => setTimeout(r, wait))
+        continue
       }
-      throw err;
+      throw err
     }
   }
 
-  throw new Error("Exhausted retries");
+  throw new Error("Exhausted retries")
 }

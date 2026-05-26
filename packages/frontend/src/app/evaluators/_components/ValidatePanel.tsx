@@ -1,36 +1,30 @@
-"use client";
+"use client"
 
-import { useState, useEffect } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id, Doc } from "@convex/_generated/dataModel";
+import type { Doc, Id } from "@convex/_generated/dataModel"
+import { useMutation, useQuery } from "convex/react"
+import { useEffect, useState } from "react"
+import { api } from "@/lib/convex"
 
 interface ValidatePanelProps {
-  config: Doc<"evaluatorConfigs">;
-  experimentId: Id<"experiments">;
+  config: Doc<"evaluatorConfigs">
+  experimentId: Id<"experiments">
 }
 
-function MetricBadge({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
-  const pct = (value * 100).toFixed(1);
+function MetricBadge({ label, value }: { label: string; value: number }) {
+  const pct = (value * 100).toFixed(1)
   const color =
     value >= 0.9
       ? "text-accent"
       : value >= 0.8
         ? "text-yellow-400"
-        : "text-red-400";
+        : "text-red-400"
 
   return (
     <div className="flex items-center gap-2">
       <div className={`text-base font-bold ${color}`}>{pct}%</div>
       <div className="text-[10px] text-text-dim">{label}</div>
     </div>
-  );
+  )
 }
 
 function MetricCard({
@@ -38,20 +32,21 @@ function MetricCard({
   metrics,
   isActive,
   onClick,
-  isEmpty,
+  isEmpty
 }: {
-  title: string;
-  metrics?: { tpr: number; tnr: number; accuracy: number; total: number } | null;
-  isActive: boolean;
-  onClick?: () => void;
-  isEmpty?: boolean;
+  title: string
+  metrics?: { tpr: number; tnr: number; accuracy: number; total: number } | null
+  isActive: boolean
+  onClick?: () => void
+  isEmpty?: boolean
 }) {
   const baseCls =
-    "flex-1 bg-bg-elevated border rounded-lg px-4 py-3 transition-all";
+    "flex-1 bg-bg-elevated border rounded-lg px-4 py-3 transition-all"
   const activeCls = isActive
     ? "border-accent shadow-[0_0_0_1px_rgb(110,231,183,0.3)]"
-    : "border-border";
-  const clickableCls = onClick && !isEmpty ? "cursor-pointer hover:border-accent/50" : "";
+    : "border-border"
+  const clickableCls =
+    onClick && !isEmpty ? "cursor-pointer hover:border-accent/50" : ""
 
   return (
     <div
@@ -62,9 +57,7 @@ function MetricCard({
         <div className="text-xs font-medium text-text-dim uppercase tracking-wide">
           {title}
         </div>
-        {isActive && (
-          <span className="text-[10px] text-accent">VIEWING</span>
-        )}
+        {isActive && <span className="text-[10px] text-accent">VIEWING</span>}
       </div>
       {isEmpty || !metrics ? (
         <div className="text-xs text-text-dim/60">Not run yet</div>
@@ -79,120 +72,118 @@ function MetricCard({
         </div>
       )}
     </div>
-  );
+  )
 }
 
 export function ValidatePanel({ config, experimentId }: ValidatePanelProps) {
-  const startValidation = useMutation(api.evaluator.crud.startValidation);
-  const [runningType, setRunningType] = useState<"dev" | "test" | null>(null);
-  const [viewMode, setViewMode] = useState<"dev" | "test">("dev");
+  const startValidation = useMutation(api.evaluator.crud.startValidation)
+  const [runningType, setRunningType] = useState<"dev" | "test" | null>(null)
+  const [viewMode, setViewMode] = useState<"dev" | "test">("dev")
   const [filter, setFilter] = useState<
     "all" | "disagree" | "false_pass" | "false_fail"
-  >("all");
-  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  >("all")
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null)
 
   // Get runs for this config
   const runs = useQuery(api.evaluator.crud.runsByConfig, {
-    evaluatorConfigId: config._id,
-  });
+    evaluatorConfigId: config._id
+  })
 
   // Get the latest dev and test runs
   const latestDevRun = runs?.find(
-    (r) => r.runType === "dev" && r.status === "completed",
-  );
+    (r) => r.runType === "dev" && r.status === "completed"
+  )
   const latestTestRun = runs?.find(
-    (r) => r.runType === "test" && r.status === "completed",
-  );
+    (r) => r.runType === "test" && r.status === "completed"
+  )
 
   // Auto-switch view mode to whichever just finished
   useEffect(() => {
-    if (latestTestRun && !latestDevRun) setViewMode("test");
+    if (latestTestRun && !latestDevRun) setViewMode("test")
     else if (latestTestRun && config.testMetrics && !config.devMetrics)
-      setViewMode("test");
-  }, [latestTestRun?._id]);
+      setViewMode("test")
+  }, [latestTestRun?._id])
 
   // Check for in-progress runs
   const runningRun = runs?.find(
-    (r) => r.status === "pending" || r.status === "running",
-  );
+    (r) => r.status === "pending" || r.status === "running"
+  )
 
   // Pick which run to display based on viewMode
   const displayRunId =
-    viewMode === "test" ? latestTestRun?._id : latestDevRun?._id;
+    viewMode === "test" ? latestTestRun?._id : latestDevRun?._id
   const results = useQuery(
     api.evaluator.crud.resultsByRun,
-    displayRunId ? { runId: displayRunId } : "skip",
-  );
+    displayRunId ? { runId: displayRunId } : "skip"
+  )
 
   // Reset selected row when view mode changes
   useEffect(() => {
-    setSelectedRowId(null);
-  }, [viewMode]);
+    setSelectedRowId(null)
+  }, [viewMode])
 
   // Load questions for display
   const experiment = useQuery(api.experiments.orchestration.get, {
-    id: experimentId,
-  });
+    id: experimentId
+  })
   const questions = useQuery(
     api.crud.questions.byDataset,
-    experiment?.datasetId ? { datasetId: experiment.datasetId } : "skip",
-  );
-  const questionMap = new Map(
-    (questions ?? []).map((q) => [q._id, q]),
-  );
+    experiment?.datasetId ? { datasetId: experiment.datasetId } : "skip"
+  )
+  const questionMap = new Map((questions ?? []).map((q) => [q._id, q]))
 
   // Load source experiment results to fetch agent answers
   const agentResults = useQuery(api.experiments.agentResults.byExperiment, {
-    experimentId,
-  });
+    experimentId
+  })
   const agentResultByQuestion = new Map(
-    (agentResults ?? []).map((r) => [r.questionId, r]),
-  );
+    (agentResults ?? []).map((r) => [r.questionId, r])
+  )
 
   // Load annotations for the selected row's tags/comment
   const annotations = useQuery(api.annotations.crud.byExperiment, {
-    experimentId,
-  });
+    experimentId
+  })
   const annotationByQuestion = new Map(
-    (annotations ?? []).map((a) => [a.questionId, a]),
-  );
+    (annotations ?? []).map((a) => [a.questionId, a])
+  )
 
   const handleRunValidation = async (type: "dev" | "test") => {
-    setRunningType(type);
+    setRunningType(type)
     try {
       await startValidation({
         evaluatorConfigId: config._id,
-        runType: type,
-      });
-      setViewMode(type);
+        runType: type
+      })
+      setViewMode(type)
     } finally {
-      setRunningType(null);
+      setRunningType(null)
     }
-  };
+  }
 
   // Filter results
   const filteredResults = (results ?? []).filter((r) => {
-    if (filter === "all") return true;
-    if (filter === "disagree") return r.agreesWithHuman === false;
+    if (filter === "all") return true
+    if (filter === "disagree") return r.agreesWithHuman === false
     if (filter === "false_pass")
-      return r.judgeVerdict === "pass" && r.humanLabel === "fail";
+      return r.judgeVerdict === "pass" && r.humanLabel === "fail"
     if (filter === "false_fail")
-      return r.judgeVerdict === "fail" && r.humanLabel === "pass";
-    return true;
-  });
+      return r.judgeVerdict === "fail" && r.humanLabel === "pass"
+    return true
+  })
 
   const selectedResult = selectedRowId
     ? (results ?? []).find((r) => r._id === selectedRowId)
-    : null;
+    : null
   const selectedQuestion = selectedResult
     ? questionMap.get(selectedResult.questionId)
-    : null;
+    : null
   const selectedAgentResult = selectedResult
     ? agentResultByQuestion.get(selectedResult.questionId)
-    : null;
+    : null
   const selectedAnnotation = selectedResult
     ? annotationByQuestion.get(selectedResult.questionId)
-    : null;
+    : null
 
   return (
     <div className="flex-1 flex overflow-hidden min-h-0">
@@ -248,7 +239,7 @@ export function ValidatePanel({ config, experimentId }: ValidatePanelProps) {
                 <div
                   className="h-full bg-accent rounded-full transition-all"
                   style={{
-                    width: `${(runningRun.processedTraces / runningRun.totalTraces) * 100}%`,
+                    width: `${(runningRun.processedTraces / runningRun.totalTraces) * 100}%`
                   }}
                 />
               </div>
@@ -286,7 +277,7 @@ export function ValidatePanel({ config, experimentId }: ValidatePanelProps) {
                   { key: "all", label: "All" },
                   { key: "disagree", label: "Disagreements" },
                   { key: "false_pass", label: "False Passes" },
-                  { key: "false_fail", label: "False Fails" },
+                  { key: "false_fail", label: "False Fails" }
                 ] as const
               ).map((f) => (
                 <button
@@ -328,14 +319,12 @@ export function ValidatePanel({ config, experimentId }: ValidatePanelProps) {
                 </thead>
                 <tbody>
                   {filteredResults.map((r) => {
-                    const q = questionMap.get(r.questionId);
+                    const q = questionMap.get(r.questionId)
                     const isFP =
-                      r.judgeVerdict === "pass" &&
-                      r.humanLabel === "fail";
+                      r.judgeVerdict === "pass" && r.humanLabel === "fail"
                     const isFN =
-                      r.judgeVerdict === "fail" &&
-                      r.humanLabel === "pass";
-                    const isSelected = selectedRowId === r._id;
+                      r.judgeVerdict === "fail" && r.humanLabel === "pass"
+                    const isSelected = selectedRowId === r._id
 
                     const rowBg = isSelected
                       ? "bg-accent/5"
@@ -343,7 +332,7 @@ export function ValidatePanel({ config, experimentId }: ValidatePanelProps) {
                         ? "bg-red-500/5"
                         : isFN
                           ? "bg-orange-500/5"
-                          : "";
+                          : ""
 
                     return (
                       <tr
@@ -388,7 +377,7 @@ export function ValidatePanel({ config, experimentId }: ValidatePanelProps) {
                           )}
                         </td>
                       </tr>
-                    );
+                    )
                   })}
                 </tbody>
               </table>
@@ -547,13 +536,12 @@ export function ValidatePanel({ config, experimentId }: ValidatePanelProps) {
               <div className="text-[10px] text-text-dim/60 pt-2 border-t border-border">
                 {selectedResult.usage.promptTokens} prompt /{" "}
                 {selectedResult.usage.completionTokens} completion tokens
-                {selectedResult.latencyMs &&
-                  ` · ${selectedResult.latencyMs}ms`}
+                {selectedResult.latencyMs && ` · ${selectedResult.latencyMs}ms`}
               </div>
             )}
           </div>
         </div>
       )}
     </div>
-  );
+  )
 }

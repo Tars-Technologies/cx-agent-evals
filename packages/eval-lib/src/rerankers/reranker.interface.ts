@@ -1,4 +1,4 @@
-import type { PositionAwareChunk } from "../types/index.js";
+import type { PositionAwareChunk } from "../types/index.js"
 
 /**
  * Re-scores and re-orders candidate chunks using a cross-encoder or similar model
@@ -7,7 +7,7 @@ import type { PositionAwareChunk } from "../types/index.js";
  */
 export interface Reranker {
   /** Human-readable identifier (e.g., "cohere-rerank-v3"). */
-  readonly name: string;
+  readonly name: string
 
   /**
    * Re-rank candidate chunks by relevance to the query.
@@ -19,6 +19,6 @@ export interface Reranker {
   rerank(
     query: string,
     chunks: readonly PositionAwareChunk[],
-    topK?: number,
-  ): Promise<PositionAwareChunk[]>;
+    topK?: number
+  ): Promise<PositionAwareChunk[]>
 }

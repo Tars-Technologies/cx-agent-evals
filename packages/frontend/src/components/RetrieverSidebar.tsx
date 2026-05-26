@@ -1,33 +1,33 @@
-"use client";
+"use client"
 
-import { useState, useCallback } from "react";
-import { useQuery, useMutation, useAction } from "convex/react";
-import { api } from "@/lib/convex";
-import type { Id } from "@convex/_generated/dataModel";
-import { KBDropdown } from "@/components/KBDropdown";
-import { RetrieverListItem } from "@/components/RetrieverListItem";
-import { RetrieverDetailModal } from "@/components/RetrieverDetailModal";
+import type { Id } from "@convex/_generated/dataModel"
+import { useAction, useMutation, useQuery } from "convex/react"
+import { useCallback, useState } from "react"
+import { KBDropdown } from "@/components/KBDropdown"
+import { RetrieverDetailModal } from "@/components/RetrieverDetailModal"
+import { RetrieverListItem } from "@/components/RetrieverListItem"
+import { api } from "@/lib/convex"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface RetrieverSidebarProps {
-  selectedKbId: Id<"knowledgeBases"> | null;
-  onKbChange: (kbId: Id<"knowledgeBases"> | null) => void;
-  selectedRetrieverId: Id<"retrievers"> | null;
-  onRetrieverSelect: (id: Id<"retrievers"> | null) => void;
-  onNewRetriever: () => void;
+  selectedKbId: Id<"knowledgeBases"> | null
+  onKbChange: (kbId: Id<"knowledgeBases"> | null) => void
+  selectedRetrieverId: Id<"retrievers"> | null
+  onRetrieverSelect: (id: Id<"retrievers"> | null) => void
+  onNewRetriever: () => void
   /** Playground tab multi-select mode */
-  isPlaygroundMode: boolean;
-  selectedRetrieverIds: Set<Id<"retrievers">>;
-  onToggleRetrieverCheck: (id: Id<"retrievers">) => void;
+  isPlaygroundMode: boolean
+  selectedRetrieverIds: Set<Id<"retrievers">>
+  onToggleRetrieverCheck: (id: Id<"retrievers">) => void
 }
 
 interface IndexingProgress {
-  totalDocs: number;
-  processedDocs: number;
-  failedDocs: number;
+  totalDocs: number
+  processedDocs: number
+  failedDocs: number
 }
 
 // ---------------------------------------------------------------------------
@@ -39,48 +39,44 @@ function RetrieverListItemWithProgress({
   ...props
 }: {
   retriever: {
-    _id: Id<"retrievers">;
-    name: string;
-    status: "configuring" | "indexing" | "ready" | "error";
-    retrieverConfig: unknown;
-    defaultK: number;
-    chunkCount?: number;
-    error?: string;
-    indexingJobId?: Id<"indexingJobs">;
-  };
-  isSelected: boolean;
-  isExpanded: boolean;
-  onSelect: () => void;
-  onToggleExpand: () => void;
-  onStartIndexing: () => void;
-  onCancelIndexing: () => void;
-  onViewFullConfig: () => void;
-  isCheckboxMode?: boolean;
-  isChecked?: boolean;
-  onToggleCheck?: () => void;
+    _id: Id<"retrievers">
+    name: string
+    status: "configuring" | "indexing" | "ready" | "error"
+    retrieverConfig: unknown
+    defaultK: number
+    chunkCount?: number
+    error?: string
+    indexingJobId?: Id<"indexingJobs">
+  }
+  isSelected: boolean
+  isExpanded: boolean
+  onSelect: () => void
+  onToggleExpand: () => void
+  onStartIndexing: () => void
+  onCancelIndexing: () => void
+  onViewFullConfig: () => void
+  isCheckboxMode?: boolean
+  isChecked?: boolean
+  onToggleCheck?: () => void
 }) {
   const job = useQuery(
     api.retrieval.indexing.getJob,
     retriever.status === "indexing" && retriever.indexingJobId
       ? { jobId: retriever.indexingJobId }
-      : "skip",
-  );
+      : "skip"
+  )
 
   const progress: IndexingProgress | undefined = job
     ? {
         totalDocs: job.totalDocs,
         processedDocs: job.processedDocs,
-        failedDocs: job.failedDocs,
+        failedDocs: job.failedDocs
       }
-    : undefined;
+    : undefined
 
   return (
-    <RetrieverListItem
-      retriever={retriever}
-      progress={progress}
-      {...props}
-    />
-  );
+    <RetrieverListItem retriever={retriever} progress={progress} {...props} />
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -95,100 +91,101 @@ export function RetrieverSidebar({
   onNewRetriever,
   isPlaygroundMode,
   selectedRetrieverIds,
-  onToggleRetrieverCheck,
+  onToggleRetrieverCheck
 }: RetrieverSidebarProps) {
   // --- Data fetching ---
   const retrievers = useQuery(
     api.crud.retrievers.byKb,
-    selectedKbId ? { kbId: selectedKbId } : "skip",
-  );
+    selectedKbId ? { kbId: selectedKbId } : "skip"
+  )
 
   // --- Actions & Mutations ---
   const startIndexingAction = useAction(
-    api.retrieval.retrieverActions.startIndexing,
-  );
-  const removeRetriever = useMutation(api.crud.retrievers.remove);
-  const deleteIndexMutation = useMutation(api.crud.retrievers.deleteIndex);
+    api.retrieval.retrieverActions.startIndexing
+  )
+  const removeRetriever = useMutation(api.crud.retrievers.remove)
+  const deleteIndexMutation = useMutation(api.crud.retrievers.deleteIndex)
   const resetAfterCancelMutation = useMutation(
-    api.crud.retrievers.resetAfterCancel,
-  );
+    api.crud.retrievers.resetAfterCancel
+  )
   const cancelIndexingMutation = useMutation(
-    api.retrieval.indexing.cancelIndexing,
-  );
+    api.retrieval.indexing.cancelIndexing
+  )
 
   // --- Local UI state ---
-  const [expandedId, setExpandedId] = useState<Id<"retrievers"> | null>(null);
-  const [detailRetrieverId, setDetailRetrieverId] = useState<Id<"retrievers"> | null>(null);
+  const [expandedId, setExpandedId] = useState<Id<"retrievers"> | null>(null)
+  const [detailRetrieverId, setDetailRetrieverId] =
+    useState<Id<"retrievers"> | null>(null)
 
   // --- Action handlers ---
 
   const handleStartIndexing = useCallback(
     async (id: Id<"retrievers">) => {
       try {
-        await startIndexingAction({ retrieverId: id });
+        await startIndexingAction({ retrieverId: id })
       } catch (err) {
-        console.error("Failed to start indexing:", err);
+        console.error("Failed to start indexing:", err)
       }
     },
-    [startIndexingAction],
-  );
+    [startIndexingAction]
+  )
 
   const handleCancelIndexing = useCallback(
     async (id: Id<"retrievers">, jobId?: string) => {
       try {
         if (jobId) {
           await cancelIndexingMutation({
-            jobId: jobId as Id<"indexingJobs">,
-          });
+            jobId: jobId as Id<"indexingJobs">
+          })
         }
-        await resetAfterCancelMutation({ id });
+        await resetAfterCancelMutation({ id })
       } catch (err) {
-        console.error("Failed to cancel indexing:", err);
+        console.error("Failed to cancel indexing:", err)
       }
     },
-    [cancelIndexingMutation, resetAfterCancelMutation],
-  );
+    [cancelIndexingMutation, resetAfterCancelMutation]
+  )
 
   const handleDeleteIndex = useCallback(
     async (id: Id<"retrievers">) => {
       try {
-        await deleteIndexMutation({ id });
+        await deleteIndexMutation({ id })
       } catch (err) {
-        console.error("Failed to delete index:", err);
+        console.error("Failed to delete index:", err)
       }
     },
-    [deleteIndexMutation],
-  );
+    [deleteIndexMutation]
+  )
 
   const handleDelete = useCallback(
     async (id: Id<"retrievers">) => {
       try {
-        await removeRetriever({ id });
+        await removeRetriever({ id })
         // Clear selection if the deleted retriever was selected
         if (selectedRetrieverId === id) {
-          onRetrieverSelect(null);
+          onRetrieverSelect(null)
         }
         if (expandedId === id) {
-          setExpandedId(null);
+          setExpandedId(null)
         }
       } catch (err) {
-        console.error("Failed to delete retriever:", err);
+        console.error("Failed to delete retriever:", err)
       }
     },
-    [removeRetriever, selectedRetrieverId, onRetrieverSelect, expandedId],
-  );
+    [removeRetriever, selectedRetrieverId, onRetrieverSelect, expandedId]
+  )
 
   const handleSelect = useCallback(
     (id: Id<"retrievers">) => {
-      onRetrieverSelect(id);
-      setExpandedId((prev) => (prev === id ? null : id));
+      onRetrieverSelect(id)
+      setExpandedId((prev) => (prev === id ? null : id))
     },
-    [onRetrieverSelect],
-  );
+    [onRetrieverSelect]
+  )
 
   const handleToggleExpand = useCallback((id: Id<"retrievers">) => {
-    setExpandedId((prev) => (prev === id ? null : id));
-  }, []);
+    setExpandedId((prev) => (prev === id ? null : id))
+  }, [])
 
   // --- Render ---
 
@@ -233,7 +230,7 @@ export function RetrieverSidebar({
                 defaultK: r.defaultK,
                 chunkCount: r.chunkCount,
                 error: r.error,
-                indexingJobId: r.indexingJobId,
+                indexingJobId: r.indexingJobId
               }}
               isSelected={selectedRetrieverId === r._id}
               isExpanded={expandedId === r._id}
@@ -243,7 +240,7 @@ export function RetrieverSidebar({
               onCancelIndexing={() =>
                 handleCancelIndexing(
                   r._id,
-                  r.indexingJobId as string | undefined,
+                  r.indexingJobId as string | undefined
                 )
               }
               onViewFullConfig={() => setDetailRetrieverId(r._id)}
@@ -256,39 +253,40 @@ export function RetrieverSidebar({
       </div>
 
       {/* Detail modal */}
-      {detailRetrieverId && (() => {
-        const r = retrievers?.find((ret) => ret._id === detailRetrieverId);
-        if (!r) return null;
-        const sharingRetrievers = (retrievers ?? [])
-          .filter(
-            (other) =>
-              other._id !== r._id &&
-              other.indexConfigHash === r.indexConfigHash,
+      {detailRetrieverId &&
+        (() => {
+          const r = retrievers?.find((ret) => ret._id === detailRetrieverId)
+          if (!r) return null
+          const sharingRetrievers = (retrievers ?? [])
+            .filter(
+              (other) =>
+                other._id !== r._id &&
+                other.indexConfigHash === r.indexConfigHash
+            )
+            .map((other) => ({ name: other.name }))
+          return (
+            <RetrieverDetailModal
+              retriever={{
+                name: r.name,
+                retrieverConfig: r.retrieverConfig,
+                defaultK: r.defaultK,
+                status: r.status,
+                chunkCount: r.chunkCount,
+                createdAt: r._creationTime
+              }}
+              sharingRetrievers={sharingRetrievers}
+              onDeleteIndex={async () => {
+                await handleDeleteIndex(r._id)
+                setDetailRetrieverId(null)
+              }}
+              onDeleteRetriever={async () => {
+                await handleDelete(r._id)
+                setDetailRetrieverId(null)
+              }}
+              onClose={() => setDetailRetrieverId(null)}
+            />
           )
-          .map((other) => ({ name: other.name }));
-        return (
-          <RetrieverDetailModal
-            retriever={{
-              name: r.name,
-              retrieverConfig: r.retrieverConfig,
-              defaultK: r.defaultK,
-              status: r.status,
-              chunkCount: r.chunkCount,
-              createdAt: r._creationTime,
-            }}
-            sharingRetrievers={sharingRetrievers}
-            onDeleteIndex={async () => {
-              await handleDeleteIndex(r._id);
-              setDetailRetrieverId(null);
-            }}
-            onDeleteRetriever={async () => {
-              await handleDelete(r._id);
-              setDetailRetrieverId(null);
-            }}
-            onClose={() => setDetailRetrieverId(null)}
-          />
-        );
-      })()}
+        })()}
     </div>
-  );
+  )
 }

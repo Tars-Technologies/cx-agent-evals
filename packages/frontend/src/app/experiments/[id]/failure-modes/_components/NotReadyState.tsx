@@ -1,19 +1,19 @@
-"use client";
+"use client"
 
-import Link from "next/link";
+import Link from "next/link"
 
 interface NotReadyStateProps {
-  experimentId: string;
-  annotated: number;
-  total: number;
+  experimentId: string
+  annotated: number
+  total: number
 }
 
 export function NotReadyState({
   experimentId,
   annotated,
-  total,
+  total
 }: NotReadyStateProps) {
-  const pct = total > 0 ? Math.round((annotated / total) * 100) : 0;
+  const pct = total > 0 ? Math.round((annotated / total) * 100) : 0
 
   return (
     <div className="flex-1 flex items-center justify-center">
@@ -62,5 +62,5 @@ export function NotReadyState({
         </Link>
       </div>
     </div>
-  );
+  )
 }

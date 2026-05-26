@@ -1,4 +1,4 @@
-import type { ScoredChunk } from "../types.js";
+import type { ScoredChunk } from "../types.js"
 
 /**
  * Filters scored chunks that fall below a minimum similarity score.
@@ -8,7 +8,7 @@ import type { ScoredChunk } from "../types.js";
  */
 export function applyThresholdFilter(
   results: readonly ScoredChunk[],
-  minScore: number,
+  minScore: number
 ): ScoredChunk[] {
-  return results.filter((result) => result.score >= minScore);
+  return results.filter((result) => result.score >= minScore)
 }

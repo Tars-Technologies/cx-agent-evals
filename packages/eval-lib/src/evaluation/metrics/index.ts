@@ -1,12 +1,12 @@
-export type { Metric } from "./base.js";
-export { recall } from "./recall.js";
-export { precision } from "./precision.js";
-export { iou } from "./iou.js";
-export { f1 } from "./f1.js";
+export type { Metric } from "./base.js"
+export { f1 } from "./f1.js"
+export { iou } from "./iou.js"
+export { precision } from "./precision.js"
+export { recall } from "./recall.js"
 export {
-  mergeOverlappingSpans,
   calculateOverlap,
   calculateOverlapPreMerged,
+  mergeOverlappingSpans,
   totalSpanLength,
-  totalSpanLengthPreMerged,
-} from "./utils.js";
+  totalSpanLengthPreMerged
+} from "./utils.js"

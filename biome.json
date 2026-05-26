@@ -21,8 +21,8 @@
       "!**/.planning",
       "!**/_generated",
       "!**/next-env.d.ts",
-      "!**/openspec/**",
-      "!**/data/**"
+      "!**/openspec",
+      "!**/data"
     ]
   },
   "css": {

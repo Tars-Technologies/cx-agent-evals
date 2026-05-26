@@ -1,18 +1,18 @@
-"use client";
+"use client"
 
-import type { LivechatTab } from "./types";
+import type { LivechatTab } from "./types"
 
 const TABS: { key: LivechatTab; label: string }[] = [
   { key: "stats", label: "Stats" },
-  { key: "conversations", label: "Conversations" },
-];
+  { key: "conversations", label: "Conversations" }
+]
 
 export function TabBar({
   activeTab,
-  onTabChange,
+  onTabChange
 }: {
-  activeTab: LivechatTab;
-  onTabChange: (tab: LivechatTab) => void;
+  activeTab: LivechatTab
+  onTabChange: (tab: LivechatTab) => void
 }) {
   return (
     <div className="flex border-b border-border bg-bg-elevated">
@@ -30,5 +30,5 @@ export function TabBar({
         </button>
       ))}
     </div>
-  );
+  )
 }

@@ -1,5 +1,5 @@
-import type { PositionAwareChunk } from "../../../types/index.js";
-import type { ScoredChunk } from "../types.js";
+import type { PositionAwareChunk } from "../../../types/index.js"
+import type { ScoredChunk } from "../types.js"
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -7,41 +7,41 @@ import type { ScoredChunk } from "../types.js";
 
 /** Use String() to convert the branded id into a plain Map key. */
 function chunkKey(chunk: PositionAwareChunk): string {
-  return String(chunk.id);
+  return String(chunk.id)
 }
 
 interface FusionEntry {
-  readonly chunk: PositionAwareChunk;
-  denseScore: number;
-  sparseScore: number;
+  readonly chunk: PositionAwareChunk
+  denseScore: number
+  sparseScore: number
 }
 
 function buildEntryMap(
   denseResults: readonly ScoredChunk[],
-  sparseResults: readonly ScoredChunk[],
+  sparseResults: readonly ScoredChunk[]
 ): Map<string, FusionEntry> {
-  const entries = new Map<string, FusionEntry>();
+  const entries = new Map<string, FusionEntry>()
 
   for (const { chunk, score } of denseResults) {
-    const key = chunkKey(chunk);
-    entries.set(key, { chunk, denseScore: score, sparseScore: 0 });
+    const key = chunkKey(chunk)
+    entries.set(key, { chunk, denseScore: score, sparseScore: 0 })
   }
 
   for (const { chunk, score } of sparseResults) {
-    const key = chunkKey(chunk);
-    const existing = entries.get(key);
+    const key = chunkKey(chunk)
+    const existing = entries.get(key)
     if (existing) {
-      existing.sparseScore = score;
+      existing.sparseScore = score
     } else {
-      entries.set(key, { chunk, denseScore: 0, sparseScore: score });
+      entries.set(key, { chunk, denseScore: 0, sparseScore: score })
     }
   }
 
-  return entries;
+  return entries
 }
 
 function sortDescending(results: ScoredChunk[]): ScoredChunk[] {
-  return results.sort((a, b) => b.score - a.score);
+  return results.sort((a, b) => b.score - a.score)
 }
 
 // ---------------------------------------------------------------------------
@@ -49,10 +49,10 @@ function sortDescending(results: ScoredChunk[]): ScoredChunk[] {
 // ---------------------------------------------------------------------------
 
 export interface WeightedScoreFusionParams {
-  readonly denseResults: readonly ScoredChunk[];
-  readonly sparseResults: readonly ScoredChunk[];
-  readonly denseWeight: number;
-  readonly sparseWeight: number;
+  readonly denseResults: readonly ScoredChunk[]
+  readonly sparseResults: readonly ScoredChunk[]
+  readonly denseWeight: number
+  readonly sparseWeight: number
 }
 
 /**
@@ -65,20 +65,20 @@ export interface WeightedScoreFusionParams {
  * Returns results sorted by fused score descending.
  */
 export function weightedScoreFusion(
-  params: WeightedScoreFusionParams,
+  params: WeightedScoreFusionParams
 ): ScoredChunk[] {
-  const { denseResults, sparseResults, denseWeight, sparseWeight } = params;
-  const entries = buildEntryMap(denseResults, sparseResults);
+  const { denseResults, sparseResults, denseWeight, sparseWeight } = params
+  const entries = buildEntryMap(denseResults, sparseResults)
 
-  const fused: ScoredChunk[] = [];
+  const fused: ScoredChunk[] = []
   for (const entry of entries.values()) {
     fused.push({
       chunk: entry.chunk,
-      score: denseWeight * entry.denseScore + sparseWeight * entry.sparseScore,
-    });
+      score: denseWeight * entry.denseScore + sparseWeight * entry.sparseScore
+    })
   }
 
-  return sortDescending(fused);
+  return sortDescending(fused)
 }
 
 // ---------------------------------------------------------------------------
@@ -86,10 +86,10 @@ export function weightedScoreFusion(
 // ---------------------------------------------------------------------------
 
 export interface ReciprocalRankFusionParams {
-  readonly denseResults: readonly ScoredChunk[];
-  readonly sparseResults: readonly ScoredChunk[];
+  readonly denseResults: readonly ScoredChunk[]
+  readonly sparseResults: readonly ScoredChunk[]
   /** Smoothing constant (default 60). */
-  readonly k?: number;
+  readonly k?: number
 }
 
 /**
@@ -102,37 +102,37 @@ export interface ReciprocalRankFusionParams {
  * Returns results sorted by RRF score descending.
  */
 export function reciprocalRankFusion(
-  params: ReciprocalRankFusionParams,
+  params: ReciprocalRankFusionParams
 ): ScoredChunk[] {
-  const { denseResults, sparseResults, k = 60 } = params;
+  const { denseResults, sparseResults, k = 60 } = params
 
-  const scores = new Map<string, { chunk: PositionAwareChunk; score: number }>();
+  const scores = new Map<string, { chunk: PositionAwareChunk; score: number }>()
 
   const accumulateRanks = (results: readonly ScoredChunk[]): void => {
     for (let i = 0; i < results.length; i++) {
-      const { chunk } = results[i];
-      const key = chunkKey(chunk);
-      const rank = i + 1; // 1-based
-      const rrfContribution = 1 / (k + rank);
+      const { chunk } = results[i]
+      const key = chunkKey(chunk)
+      const rank = i + 1 // 1-based
+      const rrfContribution = 1 / (k + rank)
 
-      const existing = scores.get(key);
+      const existing = scores.get(key)
       if (existing) {
-        existing.score += rrfContribution;
+        existing.score += rrfContribution
       } else {
-        scores.set(key, { chunk, score: rrfContribution });
+        scores.set(key, { chunk, score: rrfContribution })
       }
     }
-  };
-
-  accumulateRanks(denseResults);
-  accumulateRanks(sparseResults);
-
-  const fused: ScoredChunk[] = [];
-  for (const { chunk, score } of scores.values()) {
-    fused.push({ chunk, score });
   }
 
-  return sortDescending(fused);
+  accumulateRanks(denseResults)
+  accumulateRanks(sparseResults)
+
+  const fused: ScoredChunk[] = []
+  for (const { chunk, score } of scores.values()) {
+    fused.push({ chunk, score })
+  }
+
+  return sortDescending(fused)
 }
 
 // ---------------------------------------------------------------------------
@@ -150,32 +150,32 @@ export function reciprocalRankFusion(
  */
 export function rrfFuseMultiple(
   resultLists: readonly (readonly ScoredChunk[])[],
-  k: number = 60,
+  k: number = 60
 ): ScoredChunk[] {
-  if (resultLists.length === 0) return [];
+  if (resultLists.length === 0) return []
 
-  const scores = new Map<string, { chunk: PositionAwareChunk; score: number }>();
+  const scores = new Map<string, { chunk: PositionAwareChunk; score: number }>()
 
   for (const results of resultLists) {
     for (let i = 0; i < results.length; i++) {
-      const { chunk } = results[i];
-      const key = chunkKey(chunk);
-      const rank = i + 1; // 1-based
-      const rrfContribution = 1 / (k + rank);
+      const { chunk } = results[i]
+      const key = chunkKey(chunk)
+      const rank = i + 1 // 1-based
+      const rrfContribution = 1 / (k + rank)
 
-      const existing = scores.get(key);
+      const existing = scores.get(key)
       if (existing) {
-        existing.score += rrfContribution;
+        existing.score += rrfContribution
       } else {
-        scores.set(key, { chunk, score: rrfContribution });
+        scores.set(key, { chunk, score: rrfContribution })
       }
     }
   }
 
-  const fused: ScoredChunk[] = [];
+  const fused: ScoredChunk[] = []
   for (const { chunk, score } of scores.values()) {
-    fused.push({ chunk, score });
+    fused.push({ chunk, score })
   }
 
-  return sortDescending(fused);
+  return sortDescending(fused)
 }

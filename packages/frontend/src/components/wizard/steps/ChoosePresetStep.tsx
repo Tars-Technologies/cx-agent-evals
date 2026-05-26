@@ -1,29 +1,27 @@
-"use client";
+"use client"
 
-import { useState, useMemo } from "react";
-import {
-  PRESET_REGISTRY,
-} from "@tars-inc/eval-lib/registry";
-import type { PresetEntry } from "@tars-inc/eval-lib/registry";
-import { StrategyCard } from "../shared/StrategyCard";
-import { ComplexityBadge } from "../shared/ComplexityBadge";
+import type { PresetEntry } from "@tars-inc/eval-lib/registry"
+import { PRESET_REGISTRY } from "@tars-inc/eval-lib/registry"
+import { useMemo, useState } from "react"
+import { ComplexityBadge } from "../shared/ComplexityBadge"
+import { StrategyCard } from "../shared/StrategyCard"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface ChoosePresetStepProps {
-  selectedPresetId: string | null;
-  onSelectPreset: (id: string | null) => void;
+  selectedPresetId: string | null
+  onSelectPreset: (id: string | null) => void
 }
 
-type Complexity = PresetEntry["complexity"];
+type Complexity = PresetEntry["complexity"]
 
 const ALL_COMPLEXITIES: readonly Complexity[] = [
   "basic",
   "intermediate",
-  "advanced",
-] as const;
+  "advanced"
+] as const
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -31,23 +29,23 @@ const ALL_COMPLEXITIES: readonly Complexity[] = [
 
 /** Build a short stage breadcrumb like "plain > identity > hybrid > rerank" */
 function stageBreadcrumb(stages: PresetEntry["stages"]): string {
-  const parts: string[] = [];
+  const parts: string[] = []
 
   // Extract the first word (strategy name) from each stage summary
-  const indexName = stages.index.split(" ")[0].toLowerCase();
-  const queryName = stages.query.split(" ")[0].toLowerCase();
-  const searchName = stages.search.split(" ")[0].toLowerCase();
+  const indexName = stages.index.split(" ")[0].toLowerCase()
+  const queryName = stages.query.split(" ")[0].toLowerCase()
+  const searchName = stages.search.split(" ")[0].toLowerCase()
   const refineName =
     stages.refinement.toLowerCase() === "none"
       ? null
-      : stages.refinement.split(" ")[0].toLowerCase();
+      : stages.refinement.split(" ")[0].toLowerCase()
 
-  parts.push(indexName, queryName, searchName);
+  parts.push(indexName, queryName, searchName)
   if (refineName) {
-    parts.push(refineName);
+    parts.push(refineName)
   }
 
-  return parts.join(" > ");
+  return parts.join(" > ")
 }
 
 /** Requirement pills for a preset */
@@ -65,7 +63,7 @@ function RequirementPills({ preset }: { preset: PresetEntry }) {
         </span>
       )}
     </>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -74,37 +72,37 @@ function RequirementPills({ preset }: { preset: PresetEntry }) {
 
 export function ChoosePresetStep({
   selectedPresetId,
-  onSelectPreset,
+  onSelectPreset
 }: ChoosePresetStepProps) {
-  const [searchText, setSearchText] = useState("");
+  const [searchText, setSearchText] = useState("")
   const [enabledComplexities, setEnabledComplexities] = useState<
     Set<Complexity>
-  >(new Set(ALL_COMPLEXITIES));
+  >(new Set(ALL_COMPLEXITIES))
 
   const toggleComplexity = (c: Complexity) => {
     setEnabledComplexities((prev) => {
-      const next = new Set(prev);
+      const next = new Set(prev)
       if (next.has(c)) {
-        next.delete(c);
+        next.delete(c)
       } else {
-        next.add(c);
+        next.add(c)
       }
-      return next;
-    });
-  };
+      return next
+    })
+  }
 
   const filtered = useMemo(() => {
-    const lowerSearch = searchText.toLowerCase().trim();
+    const lowerSearch = searchText.toLowerCase().trim()
 
     return PRESET_REGISTRY.filter((p) => {
-      if (!enabledComplexities.has(p.complexity)) return false;
-      if (lowerSearch === "") return true;
+      if (!enabledComplexities.has(p.complexity)) return false
+      if (lowerSearch === "") return true
       return (
         p.name.toLowerCase().includes(lowerSearch) ||
         p.description.toLowerCase().includes(lowerSearch)
-      );
-    });
-  }, [searchText, enabledComplexities]);
+      )
+    })
+  }, [searchText, enabledComplexities])
 
   return (
     <div className="flex flex-col gap-5">
@@ -114,9 +112,10 @@ export function ChoosePresetStep({
         onClick={() => onSelectPreset(null)}
         className={`
           w-full text-center text-sm py-2 rounded-lg border transition-colors cursor-pointer
-          ${selectedPresetId === null
-            ? "border-accent text-accent bg-accent-dim/10"
-            : "border-border text-text-muted bg-bg-surface hover:bg-bg-hover hover:border-border-bright"
+          ${
+            selectedPresetId === null
+              ? "border-accent text-accent bg-accent-dim/10"
+              : "border-border text-text-muted bg-bg-surface hover:bg-bg-hover hover:border-border-bright"
           }
         `}
       >
@@ -135,7 +134,10 @@ export function ChoosePresetStep({
         {/* Complexity checkboxes */}
         <div className="flex items-center gap-4">
           {ALL_COMPLEXITIES.map((c) => (
-            <label key={c} className="inline-flex items-center gap-1.5 cursor-pointer">
+            <label
+              key={c}
+              className="inline-flex items-center gap-1.5 cursor-pointer"
+            >
               <input
                 type="checkbox"
                 checked={enabledComplexities.has(c)}
@@ -192,5 +194,5 @@ export function ChoosePresetStep({
         </p>
       )}
     </div>
-  );
+  )
 }

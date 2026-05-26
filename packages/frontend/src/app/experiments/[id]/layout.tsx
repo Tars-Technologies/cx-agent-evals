@@ -1,11 +1,9 @@
-"use client";
+"use client"
 
 export default function ExperimentDetailLayout({
-  children,
+  children
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
-  return (
-    <div className="flex flex-col h-screen">{children}</div>
-  );
+  return <div className="flex flex-col h-screen">{children}</div>
 }

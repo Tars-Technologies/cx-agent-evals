@@ -1,32 +1,32 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { Id } from "@convex/_generated/dataModel";
-import type { UnifiedWizardConfig } from "@/lib/types";
-import { PriorityDots } from "./PriorityDots";
-import { DocSearchResults } from "./DocSearchResults";
-import { DEFAULT_PRIORITY } from "./GenerationWizard";
+import type { Id } from "@convex/_generated/dataModel"
+import { useState } from "react"
+import type { UnifiedWizardConfig } from "@/lib/types"
+import { DocSearchResults } from "./DocSearchResults"
+import { DEFAULT_PRIORITY } from "./GenerationWizard"
+import { PriorityDots } from "./PriorityDots"
 
 interface CustomizedDoc {
-  _id: Id<"documents">;
-  docId: string;
-  title: string;
-  priority?: number;
+  _id: Id<"documents">
+  docId: string
+  title: string
+  priority?: number
 }
 
 interface WizardStepReviewProps {
-  kbId: Id<"knowledgeBases">;
-  config: UnifiedWizardConfig;
-  totalDocCount: number;
-  customizedDocs: CustomizedDoc[];
-  onTotalQuestionsChange: (n: number) => void;
-  onPriorityChange: (documentId: Id<"documents">, priority: number) => void;
-  onGenerate: () => void;
-  onBack: () => void;
-  onEditStep: (step: number) => void;
-  generating: boolean;
-  disabled: boolean;
-  disabledReason?: string;
+  kbId: Id<"knowledgeBases">
+  config: UnifiedWizardConfig
+  totalDocCount: number
+  customizedDocs: CustomizedDoc[]
+  onTotalQuestionsChange: (n: number) => void
+  onPriorityChange: (documentId: Id<"documents">, priority: number) => void
+  onGenerate: () => void
+  onBack: () => void
+  onEditStep: (step: number) => void
+  generating: boolean
+  disabled: boolean
+  disabledReason?: string
 }
 
 /**
@@ -38,32 +38,36 @@ interface WizardStepReviewProps {
 function calculateAllocations(
   customized: CustomizedDoc[],
   totalDocCount: number,
-  totalQuestions: number,
-): { perDoc: Map<string, number>; defaultBucketAlloc: number; defaultBucketCount: number } {
-  const customizedCount = customized.length;
-  const defaultBucketCount = Math.max(0, totalDocCount - customizedCount);
+  totalQuestions: number
+): {
+  perDoc: Map<string, number>
+  defaultBucketAlloc: number
+  defaultBucketCount: number
+} {
+  const customizedCount = customized.length
+  const defaultBucketCount = Math.max(0, totalDocCount - customizedCount)
 
   const customizedWeight = customized.reduce(
     (s, d) => s + (d.priority ?? DEFAULT_PRIORITY),
-    0,
-  );
-  const defaultBucketWeight = defaultBucketCount * DEFAULT_PRIORITY;
-  const totalWeight = customizedWeight + defaultBucketWeight;
+    0
+  )
+  const defaultBucketWeight = defaultBucketCount * DEFAULT_PRIORITY
+  const totalWeight = customizedWeight + defaultBucketWeight
 
-  const perDoc = new Map<string, number>();
+  const perDoc = new Map<string, number>()
   if (totalWeight === 0 || totalQuestions === 0) {
-    return { perDoc, defaultBucketAlloc: 0, defaultBucketCount };
+    return { perDoc, defaultBucketAlloc: 0, defaultBucketCount }
   }
 
-  let allocated = 0;
+  let allocated = 0
   for (const d of customized) {
-    const p = d.priority ?? DEFAULT_PRIORITY;
-    const q = Math.round((p / totalWeight) * totalQuestions);
-    perDoc.set(d._id, q);
-    allocated += q;
+    const p = d.priority ?? DEFAULT_PRIORITY
+    const q = Math.round((p / totalWeight) * totalQuestions)
+    perDoc.set(d._id, q)
+    allocated += q
   }
-  const defaultBucketAlloc = Math.max(0, totalQuestions - allocated);
-  return { perDoc, defaultBucketAlloc, defaultBucketCount };
+  const defaultBucketAlloc = Math.max(0, totalQuestions - allocated)
+  return { perDoc, defaultBucketAlloc, defaultBucketCount }
 }
 
 export function WizardStepReview({
@@ -78,28 +82,35 @@ export function WizardStepReview({
   onEditStep,
   generating,
   disabled,
-  disabledReason,
+  disabledReason
 }: WizardStepReviewProps) {
-  const { perDoc, defaultBucketAlloc, defaultBucketCount } = calculateAllocations(
-    customizedDocs,
-    totalDocCount,
-    config.totalQuestions,
-  );
+  const { perDoc, defaultBucketAlloc, defaultBucketCount } =
+    calculateAllocations(customizedDocs, totalDocCount, config.totalQuestions)
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <span className="text-xs text-text-dim uppercase tracking-wider">Review &amp; Generate</span>
+      <span className="text-xs text-text-dim uppercase tracking-wider">
+        Review &amp; Generate
+      </span>
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-2">
         <SummaryCard
           label="Real-World Qs"
-          value={config.realWorldQuestions.length > 0 ? `${config.realWorldQuestions.length} provided` : "Skipped"}
+          value={
+            config.realWorldQuestions.length > 0
+              ? `${config.realWorldQuestions.length} provided`
+              : "Skipped"
+          }
           onEdit={() => onEditStep(0)}
         />
         <SummaryCard
           label="Dimensions"
-          value={config.dimensions.length > 0 ? `${config.dimensions.length} configured` : "Skipped"}
+          value={
+            config.dimensions.length > 0
+              ? `${config.dimensions.length} configured`
+              : "Skipped"
+          }
           onEdit={() => onEditStep(1)}
         />
         <SummaryCard
@@ -111,7 +122,9 @@ export function WizardStepReview({
 
       {/* Total questions slider */}
       <div>
-        <label className="text-xs text-text-dim mb-1.5 block">Total Questions</label>
+        <label className="text-xs text-text-dim mb-1.5 block">
+          Total Questions
+        </label>
         <div className="flex items-center gap-3">
           <input
             type="range"
@@ -121,18 +134,22 @@ export function WizardStepReview({
             onChange={(e) => onTotalQuestionsChange(parseInt(e.target.value))}
             className="flex-1"
           />
-          <span className="text-sm font-mono text-accent w-8 text-right">{config.totalQuestions}</span>
+          <span className="text-sm font-mono text-accent w-8 text-right">
+            {config.totalQuestions}
+          </span>
         </div>
       </div>
 
       {/* Document priority section */}
       <div>
         <div className="flex items-baseline justify-between mb-1.5">
-          <label className="text-xs text-text-dim">Document Priority &amp; Allocation</label>
+          <label className="text-xs text-text-dim">
+            Document Priority &amp; Allocation
+          </label>
           <span className="text-[10px] text-text-dim">
-            {totalDocCount.toLocaleString()} doc{totalDocCount !== 1 ? "s" : ""} ·
-            {" "}{customizedDocs.length} customized ·
-            {" "}{defaultBucketCount.toLocaleString()} at default
+            {totalDocCount.toLocaleString()} doc{totalDocCount !== 1 ? "s" : ""}{" "}
+            · {customizedDocs.length} customized ·{" "}
+            {defaultBucketCount.toLocaleString()} at default
           </span>
         </div>
 
@@ -142,22 +159,31 @@ export function WizardStepReview({
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-bg-secondary z-10">
               <tr>
-                <th className="text-left px-3 py-1.5 text-text-dim font-normal">Document</th>
-                <th className="text-center px-3 py-1.5 text-text-dim font-normal w-24">Priority</th>
-                <th className="text-right px-3 py-1.5 text-text-dim font-normal w-16">Alloc.</th>
+                <th className="text-left px-3 py-1.5 text-text-dim font-normal">
+                  Document
+                </th>
+                <th className="text-center px-3 py-1.5 text-text-dim font-normal w-24">
+                  Priority
+                </th>
+                <th className="text-right px-3 py-1.5 text-text-dim font-normal w-16">
+                  Alloc.
+                </th>
               </tr>
             </thead>
             <tbody>
               {customizedDocs.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-3 py-4 text-center text-text-dim">
-                    No customized priorities. All docs allocated equally — use the
-                    search above to bump or lower specific docs.
+                  <td
+                    colSpan={3}
+                    className="px-3 py-4 text-center text-text-dim"
+                  >
+                    No customized priorities. All docs allocated equally — use
+                    the search above to bump or lower specific docs.
                   </td>
                 </tr>
               ) : (
                 customizedDocs.map((doc) => {
-                  const alloc = perDoc.get(doc._id) ?? 0;
+                  const alloc = perDoc.get(doc._id) ?? 0
                   return (
                     <tr key={doc._id} className="border-t border-border">
                       <td className="px-3 py-1.5 text-text truncate max-w-[200px]">
@@ -173,7 +199,7 @@ export function WizardStepReview({
                         {alloc}
                       </td>
                     </tr>
-                  );
+                  )
                 })
               )}
               {defaultBucketCount > 0 && (
@@ -182,7 +208,9 @@ export function WizardStepReview({
                     + {defaultBucketCount.toLocaleString()} more doc
                     {defaultBucketCount !== 1 ? "s" : ""} at default priority
                   </td>
-                  <td className="px-3 py-1.5 text-center text-text-dim">{DEFAULT_PRIORITY}</td>
+                  <td className="px-3 py-1.5 text-center text-text-dim">
+                    {DEFAULT_PRIORITY}
+                  </td>
                   <td className="px-3 py-1.5 text-right font-mono text-text-dim">
                     {defaultBucketAlloc}
                   </td>
@@ -191,7 +219,9 @@ export function WizardStepReview({
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-border-bright">
-                <td className="px-3 py-2 text-text-muted text-xs font-medium">Total</td>
+                <td className="px-3 py-2 text-text-muted text-xs font-medium">
+                  Total
+                </td>
                 <td className="px-3 py-2 text-center"></td>
                 <td className="px-3 py-2 text-right font-mono text-accent text-xs font-medium">
                   {config.totalQuestions}
@@ -204,7 +234,12 @@ export function WizardStepReview({
 
       {/* Actions */}
       <div className="flex justify-between items-center pt-2">
-        <button onClick={onBack} className="px-3 py-1.5 text-xs text-text-dim hover:text-text transition-colors">← Back</button>
+        <button
+          onClick={onBack}
+          className="px-3 py-1.5 text-xs text-text-dim hover:text-text transition-colors"
+        >
+          ← Back
+        </button>
         <button
           onClick={onGenerate}
           disabled={disabled || generating}
@@ -215,17 +250,17 @@ export function WizardStepReview({
         </button>
       </div>
     </div>
-  );
+  )
 }
 
 function DocSearchBar({
   kbId,
-  onPriorityChange,
+  onPriorityChange
 }: {
-  kbId: Id<"knowledgeBases">;
-  onPriorityChange: (documentId: Id<"documents">, priority: number) => void;
+  kbId: Id<"knowledgeBases">
+  onPriorityChange: (documentId: Id<"documents">, priority: number) => void
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState("")
   return (
     <div className="relative">
       <input
@@ -253,17 +288,30 @@ function DocSearchBar({
         )}
       />
     </div>
-  );
+  )
 }
 
-function SummaryCard({ label, value, onEdit }: { label: string; value: string; onEdit: () => void }) {
+function SummaryCard({
+  label,
+  value,
+  onEdit
+}: {
+  label: string
+  value: string
+  onEdit: () => void
+}) {
   return (
     <div className="p-2 border border-border rounded">
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-text-dim uppercase">{label}</span>
-        <button onClick={onEdit} className="text-[10px] text-accent hover:text-accent-bright">Edit</button>
+        <button
+          onClick={onEdit}
+          className="text-[10px] text-accent hover:text-accent-bright"
+        >
+          Edit
+        </button>
       </div>
       <div className="text-xs text-text mt-0.5 truncate">{value}</div>
     </div>
-  );
+  )
 }

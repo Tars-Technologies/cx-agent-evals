@@ -1,5 +1,5 @@
-import type { ScoredChunk } from "../types.js";
-import { contentOverlapRatio } from "./overlap-ratio.js";
+import type { ScoredChunk } from "../types.js"
+import { contentOverlapRatio } from "./overlap-ratio.js"
 
 /**
  * Maximal Marginal Relevance: iteratively selects results that balance
@@ -17,36 +17,36 @@ import { contentOverlapRatio } from "./overlap-ratio.js";
 export function applyMmr(
   results: readonly ScoredChunk[],
   k: number,
-  lambda: number,
+  lambda: number
 ): ScoredChunk[] {
-  if (results.length === 0) return [];
+  if (results.length === 0) return []
 
-  const candidates = [...results];
-  const selected: ScoredChunk[] = [];
+  const candidates = [...results]
+  const selected: ScoredChunk[] = []
 
   while (selected.length < k && candidates.length > 0) {
-    let bestIdx = 0;
-    let bestScore = -Infinity;
+    let bestIdx = 0
+    let bestScore = -Infinity
 
     for (let i = 0; i < candidates.length; i++) {
-      const c = candidates[i]!;
-      const relevance = c.score;
+      const c = candidates[i]!
+      const relevance = c.score
 
-      let maxSimilarity = 0;
+      let maxSimilarity = 0
       for (const s of selected) {
-        const sim = contentOverlapRatio(s.chunk, c.chunk);
-        if (sim > maxSimilarity) maxSimilarity = sim;
+        const sim = contentOverlapRatio(s.chunk, c.chunk)
+        if (sim > maxSimilarity) maxSimilarity = sim
       }
 
-      const mmrScore = lambda * relevance - (1 - lambda) * maxSimilarity;
+      const mmrScore = lambda * relevance - (1 - lambda) * maxSimilarity
       if (mmrScore > bestScore) {
-        bestScore = mmrScore;
-        bestIdx = i;
+        bestScore = mmrScore
+        bestIdx = i
       }
     }
 
-    selected.push(candidates.splice(bestIdx, 1)[0]!);
+    selected.push(candidates.splice(bestIdx, 1)[0]!)
   }
 
-  return selected;
+  return selected
 }

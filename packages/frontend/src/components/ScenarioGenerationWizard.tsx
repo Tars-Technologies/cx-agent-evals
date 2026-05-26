@@ -1,30 +1,30 @@
-"use client";
+"use client"
 
-import { useState, useRef, useEffect } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation, useQuery } from "convex/react"
+import { useEffect, useRef, useState } from "react"
+import { api } from "@/lib/convex"
 
 // ─── Constants ───────────────────────────────────────────────────────
 
-const STEPS = ["Transcripts", "Configure", "Preferences", "Review"] as const;
+const STEPS = ["Transcripts", "Configure", "Preferences", "Review"] as const
 
 const MODEL_OPTIONS = [
   "claude-sonnet-4-20250514",
   "claude-haiku-4-5-20251001",
-  "gpt-4o",
-] as const;
+  "gpt-4o"
+] as const
 
 // ─── Summary Card ────────────────────────────────────────────────────
 
 function SummaryCard({
   label,
   value,
-  onEdit,
+  onEdit
 }: {
-  label: string;
-  value: string;
-  onEdit: () => void;
+  label: string
+  value: string
+  onEdit: () => void
 }) {
   return (
     <div className="bg-bg-surface border border-border rounded p-2">
@@ -41,7 +41,7 @@ function SummaryCard({
       </div>
       <span className="text-xs text-text">{value}</span>
     </div>
-  );
+  )
 }
 
 // ─── Main Wizard ─────────────────────────────────────────────────────
@@ -50,144 +50,135 @@ export function ScenarioGenerationWizard({
   kbId,
   onGenerated,
   onError,
-  onCancel,
+  onCancel
 }: {
-  kbId: Id<"knowledgeBases">;
-  onGenerated: (datasetId: Id<"datasets">) => void;
-  onError: (error: string) => void;
-  onCancel: () => void;
+  kbId: Id<"knowledgeBases">
+  onGenerated: (datasetId: Id<"datasets">) => void
+  onError: (error: string) => void
+  onCancel: () => void
 }) {
-  const createSimDataset = useMutation(api.crud.datasets.createSimDataset);
+  const createSimDataset = useMutation(api.crud.datasets.createSimDataset)
   const startGeneration = useMutation(
-    api.conversationSim.generation.startGeneration,
-  );
+    api.conversationSim.generation.startGeneration
+  )
 
   // ── Wizard step ──
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(0)
 
   // ── Step 1: Transcripts ──
-  const [selectedUploadId, setSelectedUploadId] = useState<
-    Id<"livechatUploads"> | null
-  >(null);
-  const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(
-    new Set(),
-  );
+  const [selectedUploadId, setSelectedUploadId] =
+    useState<Id<"livechatUploads"> | null>(null)
+  const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(new Set())
 
   // ── Step 2: Configure ──
-  const [count, setCount] = useState(10);
-  const [distribution, setDistribution] = useState(80);
-  const [fidelity, setFidelity] = useState(100);
-  const [lowPct, setLowPct] = useState(30);
-  const [medPct, setMedPct] = useState(50);
-  const [highPct, setHighPct] = useState(20);
+  const [count, setCount] = useState(10)
+  const [distribution, setDistribution] = useState(80)
+  const [fidelity, setFidelity] = useState(100)
+  const [lowPct, setLowPct] = useState(30)
+  const [medPct, setMedPct] = useState(50)
+  const [highPct, setHighPct] = useState(20)
 
   // ── Step 3: Preferences ──
-  const [model, setModel] = useState<string>("claude-sonnet-4-20250514");
-  const [name, setName] = useState("");
+  const [model, setModel] = useState<string>("claude-sonnet-4-20250514")
+  const [name, setName] = useState("")
 
   // ── Step 4: Generate ──
-  const [generating, setGenerating] = useState(false);
+  const [generating, setGenerating] = useState(false)
 
   // ── Queries ──
-  const uploads = useQuery(api.livechat.orchestration.list);
+  const uploads = useQuery(api.livechat.orchestration.list)
   const conversations = useQuery(
     api.livechat.orchestration.listConversationsSummary,
-    selectedUploadId
-      ? { uploadIds: [selectedUploadId] }
-      : "skip",
-  );
+    selectedUploadId ? { uploadIds: [selectedUploadId] } : "skip"
+  )
 
   // ── Derived values ──
-  const hasTranscripts = selectedUploadId !== null && selectedConvIds.size > 0;
-  const groundedCount = Math.round((count * distribution) / 100);
-  const syntheticCount = count - groundedCount;
+  const hasTranscripts = selectedUploadId !== null && selectedConvIds.size > 0
+  const groundedCount = Math.round((count * distribution) / 100)
+  const syntheticCount = count - groundedCount
 
   // ── Helpers ──
 
   function selectUpload(id: Id<"livechatUploads"> | null) {
-    setSelectedUploadId(id);
+    setSelectedUploadId(id)
     // Clear conversation selection when upload changes
-    setSelectedConvIds(new Set());
+    setSelectedConvIds(new Set())
   }
 
   function toggleConversation(id: string) {
     setSelectedConvIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   function toggleAllConversations() {
-    if (!conversations) return;
-    const allIds = conversations.map((c) => c._id);
-    const allSelected = allIds.every((id) => selectedConvIds.has(id));
+    if (!conversations) return
+    const allIds = conversations.map((c) => c._id)
+    const allSelected = allIds.every((id) => selectedConvIds.has(id))
     if (allSelected) {
-      setSelectedConvIds(new Set());
+      setSelectedConvIds(new Set())
     } else {
-      setSelectedConvIds(new Set(allIds));
+      setSelectedConvIds(new Set(allIds))
     }
   }
 
   function adjustDistribution(
     changed: "low" | "medium" | "high",
-    value: number,
+    value: number
   ) {
-    const clamped = Math.max(0, Math.min(100, value));
+    const clamped = Math.max(0, Math.min(100, value))
     if (changed === "low") {
-      setLowPct(clamped);
-      const remaining = 100 - clamped;
-      const ratio =
-        medPct + highPct > 0 ? medPct / (medPct + highPct) : 0.5;
-      setMedPct(Math.round(remaining * ratio));
-      setHighPct(remaining - Math.round(remaining * ratio));
+      setLowPct(clamped)
+      const remaining = 100 - clamped
+      const ratio = medPct + highPct > 0 ? medPct / (medPct + highPct) : 0.5
+      setMedPct(Math.round(remaining * ratio))
+      setHighPct(remaining - Math.round(remaining * ratio))
     } else if (changed === "medium") {
-      setMedPct(clamped);
-      const remaining = 100 - clamped;
-      const ratio =
-        lowPct + highPct > 0 ? lowPct / (lowPct + highPct) : 0.5;
-      setLowPct(Math.round(remaining * ratio));
-      setHighPct(remaining - Math.round(remaining * ratio));
+      setMedPct(clamped)
+      const remaining = 100 - clamped
+      const ratio = lowPct + highPct > 0 ? lowPct / (lowPct + highPct) : 0.5
+      setLowPct(Math.round(remaining * ratio))
+      setHighPct(remaining - Math.round(remaining * ratio))
     } else {
-      setHighPct(clamped);
-      const remaining = 100 - clamped;
-      const ratio =
-        lowPct + medPct > 0 ? lowPct / (lowPct + medPct) : 0.5;
-      setLowPct(Math.round(remaining * ratio));
-      setMedPct(remaining - Math.round(remaining * ratio));
+      setHighPct(clamped)
+      const remaining = 100 - clamped
+      const ratio = lowPct + medPct > 0 ? lowPct / (lowPct + medPct) : 0.5
+      setLowPct(Math.round(remaining * ratio))
+      setMedPct(remaining - Math.round(remaining * ratio))
     }
   }
 
   async function handleGenerate() {
-    if (!name.trim()) return;
-    setGenerating(true);
+    if (!name.trim()) return
+    setGenerating(true)
     try {
-      const datasetId = await createSimDataset({ kbId, name: name.trim() });
+      const datasetId = await createSimDataset({ kbId, name: name.trim() })
       await startGeneration({
         datasetId,
         count,
         complexityDistribution: {
           low: lowPct / 100,
           medium: medPct / 100,
-          high: highPct / 100,
+          high: highPct / 100
         },
         model,
-        transcriptUploadIds:
-          selectedUploadId ? [selectedUploadId] : undefined,
+        transcriptUploadIds: selectedUploadId ? [selectedUploadId] : undefined,
         transcriptConversationIds:
           selectedConvIds.size > 0
             ? ([...selectedConvIds] as Id<"livechatConversations">[])
             : undefined,
         distribution: selectedConvIds.size > 0 ? distribution : 0,
         fidelity: selectedConvIds.size > 0 ? fidelity : 100,
-        kbId,
-      });
-      onGenerated(datasetId);
+        kbId
+      })
+      onGenerated(datasetId)
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Generation failed");
+      onError(err instanceof Error ? err.message : "Generation failed")
     } finally {
-      setGenerating(false);
+      setGenerating(false)
     }
   }
 
@@ -205,8 +196,7 @@ export function ScenarioGenerationWizard({
       {/* Stepper */}
       <div className="flex items-stretch gap-2 mb-6">
         {STEPS.map((label, i) => {
-          const state =
-            i === step ? "active" : i < step ? "done" : "pending";
+          const state = i === step ? "active" : i < step ? "done" : "pending"
           return (
             <button
               key={label}
@@ -232,7 +222,7 @@ export function ScenarioGenerationWizard({
                 {label}
               </span>
             </button>
-          );
+          )
         })}
       </div>
 
@@ -318,9 +308,9 @@ export function ScenarioGenerationWizard({
           {step === 0 && (
             <button
               onClick={() => {
-                setSelectedUploadId(null);
-                setSelectedConvIds(new Set());
-                setStep(1);
+                setSelectedUploadId(null)
+                setSelectedConvIds(new Set())
+                setStep(1)
               }}
               className="text-xs text-text-dim hover:text-text transition-colors"
             >
@@ -347,7 +337,7 @@ export function ScenarioGenerationWizard({
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 // ─── Step 1: Transcript Selection ────────────────────────────────────
@@ -359,66 +349,69 @@ function StepTranscripts({
   selectedConvIds,
   onSelectUpload,
   onToggleConversation,
-  onToggleAll,
+  onToggleAll
 }: {
   uploads:
     | Array<{
-        _id: Id<"livechatUploads">;
-        filename: string;
-        conversationCount?: number;
-        status: string;
+        _id: Id<"livechatUploads">
+        filename: string
+        conversationCount?: number
+        status: string
       }>
-    | undefined;
+    | undefined
   conversations:
     | Array<{
-        _id: Id<"livechatConversations">;
-        conversationId: string;
-        visitorName: string;
-        labels: string[];
-        messageCount: number;
+        _id: Id<"livechatConversations">
+        conversationId: string
+        visitorName: string
+        labels: string[]
+        messageCount: number
       }>
-    | undefined;
-  selectedUploadId: Id<"livechatUploads"> | null;
-  selectedConvIds: Set<string>;
-  onSelectUpload: (id: Id<"livechatUploads"> | null) => void;
-  onToggleConversation: (id: string) => void;
-  onToggleAll: () => void;
+    | undefined
+  selectedUploadId: Id<"livechatUploads"> | null
+  selectedConvIds: Set<string>
+  onSelectUpload: (id: Id<"livechatUploads"> | null) => void
+  onToggleConversation: (id: string) => void
+  onToggleAll: () => void
 }) {
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
+        setDropdownOpen(false)
       }
     }
     if (dropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside)
+      return () => document.removeEventListener("mousedown", handleClickOutside)
     }
-  }, [dropdownOpen]);
+  }, [dropdownOpen])
 
   if (!uploads || uploads.length === 0) {
     return (
       <div className="text-xs text-text-dim py-8 text-center">
-        No conversation transcripts available. You can upload transcripts in
-        the Knowledge Base section, or skip to generate synthetic scenarios.
+        No conversation transcripts available. You can upload transcripts in the
+        Knowledge Base section, or skip to generate synthetic scenarios.
       </div>
-    );
+    )
   }
 
-  const readyUploads = uploads.filter((u) => u.status === "ready");
-  const selectedUpload = readyUploads.find((u) => u._id === selectedUploadId);
+  const readyUploads = uploads.filter((u) => u.status === "ready")
+  const selectedUpload = readyUploads.find((u) => u._id === selectedUploadId)
 
   // Conversation checkbox states
-  const totalConvs = conversations?.length ?? 0;
+  const totalConvs = conversations?.length ?? 0
   const selectedCount = conversations
     ? conversations.filter((c) => selectedConvIds.has(c._id)).length
-    : 0;
-  const allSelected = totalConvs > 0 && selectedCount === totalConvs;
-  const someSelected = selectedCount > 0 && selectedCount < totalConvs;
+    : 0
+  const allSelected = totalConvs > 0 && selectedCount === totalConvs
+  const someSelected = selectedCount > 0 && selectedCount < totalConvs
 
   return (
     <div className="space-y-4">
@@ -453,9 +446,16 @@ function StepTranscripts({
             )}
             <svg
               className={`w-3.5 h-3.5 text-text-dim shrink-0 ml-2 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
-              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="m19.5 8.25-7.5 7.5-7.5-7.5"
+              />
             </svg>
           </button>
 
@@ -466,8 +466,8 @@ function StepTranscripts({
               {selectedUploadId && (
                 <button
                   onClick={() => {
-                    onSelectUpload(null);
-                    setDropdownOpen(false);
+                    onSelectUpload(null)
+                    setDropdownOpen(false)
                   }}
                   className="w-full text-left px-3 py-2 text-xs text-text-dim hover:bg-bg-surface border-b border-border transition-colors"
                 >
@@ -475,18 +475,16 @@ function StepTranscripts({
                 </button>
               )}
               {readyUploads.map((upload) => {
-                const isSelected = upload._id === selectedUploadId;
+                const isSelected = upload._id === selectedUploadId
                 return (
                   <button
                     key={upload._id}
                     onClick={() => {
-                      onSelectUpload(upload._id);
-                      setDropdownOpen(false);
+                      onSelectUpload(upload._id)
+                      setDropdownOpen(false)
                     }}
                     className={`w-full text-left px-3 py-2.5 transition-colors border-b border-border last:border-0 ${
-                      isSelected
-                        ? "bg-accent/10"
-                        : "hover:bg-bg-surface"
+                      isSelected ? "bg-accent/10" : "hover:bg-bg-surface"
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -494,8 +492,18 @@ function StepTranscripts({
                         {upload.filename}
                       </div>
                       {isSelected && (
-                        <svg className="w-3.5 h-3.5 text-accent shrink-0 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                        <svg
+                          className="w-3.5 h-3.5 text-accent shrink-0 ml-2"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="m4.5 12.75 6 6 9-13.5"
+                          />
                         </svg>
                       )}
                     </div>
@@ -503,7 +511,7 @@ function StepTranscripts({
                       {upload.conversationCount ?? "?"} conversations
                     </div>
                   </button>
-                );
+                )
               })}
             </div>
           )}
@@ -563,7 +571,10 @@ function StepTranscripts({
                       className="border-b border-border last:border-0 hover:bg-bg-surface/50 cursor-pointer"
                       onClick={() => onToggleConversation(conv._id)}
                     >
-                      <td className="p-1.5" onClick={(e) => e.stopPropagation()}>
+                      <td
+                        className="p-1.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <input
                           type="checkbox"
                           checked={selectedConvIds.has(conv._id)}
@@ -606,7 +617,7 @@ function StepTranscripts({
         </div>
       )}
     </div>
-  );
+  )
 }
 
 // ─── Tri-State Checkbox ──────────────────────────────────────────────
@@ -614,18 +625,18 @@ function StepTranscripts({
 function TriStateCheckbox({
   checked,
   indeterminate,
-  onChange,
+  onChange
 }: {
-  checked: boolean;
-  indeterminate: boolean;
-  onChange: () => void;
+  checked: boolean
+  indeterminate: boolean
+  onChange: () => void
 }) {
-  const ref = useRef<HTMLInputElement>(null);
+  const ref = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (ref.current) {
-      ref.current.indeterminate = indeterminate;
+      ref.current.indeterminate = indeterminate
     }
-  }, [indeterminate]);
+  }, [indeterminate])
   return (
     <input
       ref={ref}
@@ -634,7 +645,7 @@ function TriStateCheckbox({
       onChange={onChange}
       className="accent-accent"
     />
-  );
+  )
 }
 
 // ─── Step 2: Configure ───────────────────────────────────────────────
@@ -652,21 +663,24 @@ function StepConfigure({
   lowPct,
   medPct,
   highPct,
-  onAdjustDistribution,
+  onAdjustDistribution
 }: {
-  count: number;
-  onCountChange: (v: number) => void;
-  distribution: number;
-  onDistributionChange: (v: number) => void;
-  fidelity: number;
-  onFidelityChange: (v: number) => void;
-  hasTranscripts: boolean;
-  groundedCount: number;
-  syntheticCount: number;
-  lowPct: number;
-  medPct: number;
-  highPct: number;
-  onAdjustDistribution: (changed: "low" | "medium" | "high", value: number) => void;
+  count: number
+  onCountChange: (v: number) => void
+  distribution: number
+  onDistributionChange: (v: number) => void
+  fidelity: number
+  onFidelityChange: (v: number) => void
+  hasTranscripts: boolean
+  groundedCount: number
+  syntheticCount: number
+  lowPct: number
+  medPct: number
+  highPct: number
+  onAdjustDistribution: (
+    changed: "low" | "medium" | "high",
+    value: number
+  ) => void
 }) {
   return (
     <div className="space-y-5">
@@ -706,9 +720,7 @@ function StepConfigure({
                 min={0}
                 max={100}
                 value={distribution}
-                onChange={(e) =>
-                  onDistributionChange(Number(e.target.value))
-                }
+                onChange={(e) => onDistributionChange(Number(e.target.value))}
                 className="flex-1 accent-[#6ee7b7]"
               />
               <span className="text-xs text-text w-32 text-right">
@@ -814,7 +826,7 @@ function StepConfigure({
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 // ─── Step 3: Preferences ─────────────────────────────────────────────
@@ -824,13 +836,13 @@ function StepPreferences({
   model,
   onModelChange,
   name,
-  onNameChange,
+  onNameChange
 }: {
-  kbId: Id<"knowledgeBases">;
-  model: string;
-  onModelChange: (v: string) => void;
-  name: string;
-  onNameChange: (v: string) => void;
+  kbId: Id<"knowledgeBases">
+  model: string
+  onModelChange: (v: string) => void
+  name: string
+  onNameChange: (v: string) => void
 }) {
   return (
     <div className="space-y-5">
@@ -880,7 +892,7 @@ function StepPreferences({
         )}
       </div>
     </div>
-  );
+  )
 }
 
 // ─── Step 4: Review ──────────────────────────────────────────────────
@@ -899,22 +911,22 @@ function StepReview({
   name,
   onEdit,
   onGenerate,
-  generating,
+  generating
 }: {
-  selectedConvCount: number;
-  hasTranscripts: boolean;
-  count: number;
-  groundedCount: number;
-  syntheticCount: number;
-  lowPct: number;
-  medPct: number;
-  highPct: number;
-  fidelity: number;
-  model: string;
-  name: string;
-  onEdit: (step: number) => void;
-  onGenerate: () => void;
-  generating: boolean;
+  selectedConvCount: number
+  hasTranscripts: boolean
+  count: number
+  groundedCount: number
+  syntheticCount: number
+  lowPct: number
+  medPct: number
+  highPct: number
+  fidelity: number
+  model: string
+  name: string
+  onEdit: (step: number) => void
+  onGenerate: () => void
+  generating: boolean
 }) {
   return (
     <div className="space-y-4">
@@ -963,12 +975,8 @@ function StepReview({
           value={hasTranscripts && groundedCount > 0 ? `${fidelity}%` : "N/A"}
           onEdit={() => onEdit(1)}
         />
-        <SummaryCard
-          label="Model"
-          value={model}
-          onEdit={() => onEdit(2)}
-        />
+        <SummaryCard label="Model" value={model} onEdit={() => onEdit(2)} />
       </div>
     </div>
-  );
+  )
 }

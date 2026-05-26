@@ -1,69 +1,72 @@
-"use client";
+"use client"
 
-import { useState, useCallback } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
-import Link from "next/link";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation } from "convex/react"
+import Link from "next/link"
+import { useCallback, useState } from "react"
+import { api } from "@/lib/convex"
 
 interface FailureMode {
-  _id: Id<"failureModes">;
-  name: string;
-  description: string;
+  _id: Id<"failureModes">
+  name: string
+  description: string
 }
 
 interface MappedQuestion {
-  questionId: Id<"questions">;
-  queryText: string;
-  rating?: string;
-  tags?: string[];
+  questionId: Id<"questions">
+  queryText: string
+  rating?: string
+  tags?: string[]
 }
 
 interface FailureModeDetailProps {
-  failureMode: FailureMode;
-  mappedQuestions: MappedQuestion[];
-  experimentId: string;
-  onUnassign: (questionId: Id<"questions">) => void;
+  failureMode: FailureMode
+  mappedQuestions: MappedQuestion[]
+  experimentId: string
+  onUnassign: (questionId: Id<"questions">) => void
 }
 
 export function FailureModeDetail({
   failureMode,
   mappedQuestions,
   experimentId,
-  onUnassign,
+  onUnassign
 }: FailureModeDetailProps) {
-  const updateMutation = useMutation(api.failureModes.crud.update);
-  const [editingName, setEditingName] = useState(false);
-  const [editingDesc, setEditingDesc] = useState(false);
-  const [name, setName] = useState(failureMode.name);
-  const [description, setDescription] = useState(failureMode.description);
+  const updateMutation = useMutation(api.failureModes.crud.update)
+  const [editingName, setEditingName] = useState(false)
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [name, setName] = useState(failureMode.name)
+  const [description, setDescription] = useState(failureMode.description)
 
   // Reset local state when failure mode changes
-  if (name !== failureMode.name && !editingName) setName(failureMode.name);
+  if (name !== failureMode.name && !editingName) setName(failureMode.name)
   if (description !== failureMode.description && !editingDesc)
-    setDescription(failureMode.description);
+    setDescription(failureMode.description)
 
   const saveName = useCallback(async () => {
-    setEditingName(false);
+    setEditingName(false)
     if (name.trim() && name !== failureMode.name) {
-      await updateMutation({ failureModeId: failureMode._id, name: name.trim() });
+      await updateMutation({
+        failureModeId: failureMode._id,
+        name: name.trim()
+      })
     } else {
-      setName(failureMode.name);
+      setName(failureMode.name)
     }
-  }, [name, failureMode, updateMutation]);
+  }, [name, failureMode, updateMutation])
 
   const saveDescription = useCallback(async () => {
-    setEditingDesc(false);
+    setEditingDesc(false)
     if (description !== failureMode.description) {
       await updateMutation({
         failureModeId: failureMode._id,
-        description: description.trim(),
-      });
+        description: description.trim()
+      })
     }
-  }, [description, failureMode, updateMutation]);
+  }, [description, failureMode, updateMutation])
 
   const isPass = (rating?: string) =>
-    rating === "pass" || rating === "great" || rating === "good_enough";
+    rating === "pass" || rating === "great" || rating === "good_enough"
 
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -209,5 +212,5 @@ export function FailureModeDetail({
         )}
       </div>
     </div>
-  );
+  )
 }

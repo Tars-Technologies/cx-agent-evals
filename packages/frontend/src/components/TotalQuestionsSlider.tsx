@@ -1,28 +1,31 @@
-"use client";
+"use client"
 
-import type { StrategyType } from "@/lib/types";
+import type { StrategyType } from "@/lib/types"
 
-const HELPER_TEXT: Record<StrategyType, (numDocs: number, total: number) => string> = {
+const HELPER_TEXT: Record<
+  StrategyType,
+  (numDocs: number, total: number) => string
+> = {
   simple: (numDocs, total) => {
-    const perDoc = Math.ceil(total / numDocs);
-    return `Distributed equally across ${numDocs} document${numDocs !== 1 ? "s" : ""} (~${perDoc}/doc)`;
+    const perDoc = Math.ceil(total / numDocs)
+    return `Distributed equally across ${numDocs} document${numDocs !== 1 ? "s" : ""} (~${perDoc}/doc)`
   },
   "dimension-driven": () =>
     "Distributed via stratified sampling across dimension combos",
   "real-world-grounded": () =>
-    "Direct matches + synthetic generation to fill remaining",
-};
+    "Direct matches + synthetic generation to fill remaining"
+}
 
 export function TotalQuestionsSlider({
   value,
   onChange,
   strategy,
-  numDocs,
+  numDocs
 }: {
-  value: number;
-  onChange: (n: number) => void;
-  strategy: StrategyType;
-  numDocs: number;
+  value: number
+  onChange: (n: number) => void
+  strategy: StrategyType
+  numDocs: number
 }) {
   return (
     <div>
@@ -55,5 +58,5 @@ export function TotalQuestionsSlider({
         {HELPER_TEXT[strategy](numDocs, value)}
       </p>
     </div>
-  );
+  )
 }

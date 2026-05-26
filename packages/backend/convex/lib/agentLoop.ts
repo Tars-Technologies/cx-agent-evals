@@ -1,44 +1,44 @@
-"use node";
+"use node"
 
-import type { ActionCtx } from "../_generated/server";
-import { generateText, tool, type LanguageModel } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { openai } from "@ai-sdk/openai";
-import { z } from "zod";
-import { vectorSearchWithFilter } from "./vectorSearch";
+import { anthropic } from "@ai-sdk/anthropic"
+import { openai } from "@ai-sdk/openai"
+import { generateText, type LanguageModel, tool } from "ai"
+import { z } from "zod"
+import type { ActionCtx } from "../_generated/server"
+import { vectorSearchWithFilter } from "./vectorSearch"
 
 // === Shared types ===
 
 export interface RetrieverInfo {
-  id: string;
-  name: string;
-  kbName: string;
-  kbId: string;
-  indexConfigHash: string;
-  indexStrategy: string;
-  embeddingModel: string;
-  defaultK: number;
+  id: string
+  name: string
+  kbName: string
+  kbId: string
+  indexConfigHash: string
+  indexStrategy: string
+  embeddingModel: string
+  defaultK: number
 }
 
 export interface AgentLoopConfig {
-  modelId: string;
-  systemPrompt: string;
-  retrieverInfos: RetrieverInfo[];
+  modelId: string
+  systemPrompt: string
+  retrieverInfos: RetrieverInfo[]
 }
 
 export interface ToolCallRecord {
-  toolName: string;
-  args: Record<string, unknown>;
-  result: string;
-  retrieverId?: string;
+  toolName: string
+  args: Record<string, unknown>
+  result: string
+  retrieverId?: string
 }
 
 export interface AgentLoopResult {
-  text: string;
-  toolCalls: ToolCallRecord[];
-  usage: { promptTokens: number; completionTokens: number };
-  done: boolean;
-  error?: string;
+  text: string
+  toolCalls: ToolCallRecord[]
+  usage: { promptTokens: number; completionTokens: number }
+  done: boolean
+  error?: string
 }
 
 // === Shared helpers ===
@@ -50,9 +50,9 @@ export function resolveModel(modelId: string): LanguageModel {
     modelId.startsWith("o3") ||
     modelId.startsWith("o4")
   ) {
-    return openai(modelId);
+    return openai(modelId)
   }
-  return anthropic(modelId);
+  return anthropic(modelId)
 }
 
 export function slugify(name: string): string {
@@ -60,7 +60,7 @@ export function slugify(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "")
-    .slice(0, 64);
+    .slice(0, 64)
 }
 
 // === Agent loop ===
@@ -68,14 +68,14 @@ export function slugify(name: string): string {
 export async function runAgentLoop(
   ctx: ActionCtx,
   config: AgentLoopConfig,
-  messages: Array<{ role: "user" | "assistant"; content: string }>,
+  messages: Array<{ role: "user" | "assistant"; content: string }>
 ): Promise<AgentLoopResult> {
-  const collectedToolCalls: ToolCallRecord[] = [];
+  const collectedToolCalls: ToolCallRecord[] = []
 
   // Build tools from retriever infos (same pattern as agents/actions.ts)
-  const tools: Record<string, any> = {};
+  const tools: Record<string, any> = {}
   for (const info of config.retrieverInfos) {
-    const toolName = slugify(info.name);
+    const toolName = slugify(info.name)
     tools[toolName] = tool({
       description: `Search ${info.kbName} using ${info.name}`,
       parameters: z.object({
@@ -87,81 +87,81 @@ export async function runAgentLoop(
           .max(25)
           .optional()
           .describe(
-            "Number of chunks to return. Prefer 5–10; higher values dilute relevance with noise.",
-          ),
+            "Number of chunks to return. Prefer 5–10; higher values dilute relevance with noise."
+          )
       }),
       execute: async ({ query, k }) => {
-        const { createEmbedder } = await import("@tars-inc/eval-lib/llm");
-        const embedder = createEmbedder(info.embeddingModel);
-        const queryEmbedding = await embedder.embedQuery(query);
+        const { createEmbedder } = await import("@tars-inc/eval-lib/llm")
+        const embedder = createEmbedder(info.embeddingModel)
+        const queryEmbedding = await embedder.embedQuery(query)
 
         const { chunks } = await vectorSearchWithFilter(ctx, {
           queryEmbedding,
           kbId: info.kbId as any,
           indexConfigHash: info.indexConfigHash,
           topK: k ?? info.defaultK,
-          indexStrategy: info.indexStrategy,
-        });
+          indexStrategy: info.indexStrategy
+        })
 
         const result = chunks.map((c: any) => ({
           content: c.content,
           documentId: c.documentId,
           start: c.start,
-          end: c.end,
-        }));
+          end: c.end
+        }))
 
         collectedToolCalls.push({
           toolName,
           args: { query, k },
           result: JSON.stringify(result),
-          retrieverId: info.id,
-        });
+          retrieverId: info.id
+        })
 
-        return result;
-      },
-    });
+        return result
+      }
+    })
   }
 
   try {
-    const hasTools = Object.keys(tools).length > 0;
+    const hasTools = Object.keys(tools).length > 0
     const result = await generateText({
       model: resolveModel(config.modelId),
       system: config.systemPrompt,
       messages,
       tools: hasTools ? tools : undefined,
-      maxSteps: 12,
-    });
+      maxSteps: 12
+    })
 
-    let finalText = result.text;
-    let promptTokens = result.usage?.promptTokens ?? 0;
-    let completionTokens = result.usage?.completionTokens ?? 0;
+    let finalText = result.text
+    let promptTokens = result.usage?.promptTokens ?? 0
+    let completionTokens = result.usage?.completionTokens ?? 0
 
     // Recovery: if the step budget was exhausted on tool calls without producing
     // a final text response, force one more text-only call so the user-sim has
     // something to react to. Without this, the conversation silently truncates.
-    const noText = !finalText || finalText.trim().length === 0;
+    const noText = !finalText || finalText.trim().length === 0
     if (noText && hasTools && collectedToolCalls.length > 0) {
       const followupMessages = result.response?.messages
         ? [
             ...messages,
             ...(result.response.messages as Array<{
-              role: "user" | "assistant";
-              content: any;
-            }>),
+              role: "user" | "assistant"
+              content: any
+            }>)
           ]
-        : messages;
+        : messages
 
       const recovery = await generateText({
         model: resolveModel(config.modelId),
         system:
           config.systemPrompt +
           "\n\nYou have already gathered information using tools. Provide your best response to the user based on what you found. Do not call any more tools.",
-        messages: followupMessages as any,
-      });
+        messages: followupMessages as any
+      })
 
-      finalText = recovery.text;
-      promptTokens += recovery.usage?.promptTokens ?? 0;
-      completionTokens += recovery.usage?.completionTokens ?? 0;
+      finalText = recovery.text
+      promptTokens += recovery.usage?.promptTokens ?? 0
+      completionTokens += recovery.usage?.completionTokens ?? 0
     }
 
     return {
@@ -171,15 +171,15 @@ export async function runAgentLoop(
       // Only flag done when we genuinely have nothing to say (recovery also
       // failed). A normal "agent finished its turn with text" must NOT mark
       // the conversation as done — the user-sim drives termination.
-      done: !finalText || finalText.trim().length === 0,
-    };
+      done: !finalText || finalText.trim().length === 0
+    }
   } catch (err: any) {
     return {
       text: "",
       toolCalls: collectedToolCalls,
       usage: { promptTokens: 0, completionTokens: 0 },
       done: false,
-      error: err.message ?? String(err),
-    };
+      error: err.message ?? String(err)
+    }
   }
 }

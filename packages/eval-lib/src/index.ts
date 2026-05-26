@@ -1,188 +1,193 @@
 // Types and type factories (DocumentId etc. are both type and value)
-export {
-  DocumentId,
-  QueryId,
-  QueryText,
-  PositionAwareChunkId,
-} from "./types/index.js";
-export type {
-  Brand,
-  Document,
-  Corpus,
-  CharacterSpan,
-  SpanRange,
-  PositionAwareChunk,
-  Query,
-  GroundTruth,
-  DatasetExample,
-  EvaluationResult,
-  RunOutput,
-} from "./types/index.js";
-
-// Type utilities
-export {
-  DocumentSchema,
-  CorpusSchema,
-  createDocument,
-  createCorpus,
-  createCorpusFromDocuments,
-  getDocument,
-  CharacterSpanSchema,
-  createCharacterSpan,
-  positionAwareChunkToSpan,
-  DatasetExampleSchema,
-} from "./types/index.js";
 
 // Chunkers
-export type { Chunker, PositionAwareChunker, RecursiveCharacterChunkerOptions, SentenceChunkerOptions, TokenChunkerOptions, MarkdownChunkerOptions } from "./chunkers/index.js";
-export { isPositionAwareChunker, RecursiveCharacterChunker, SentenceChunker, TokenChunker, MarkdownChunker } from "./chunkers/index.js";
-
 // Async chunkers
-export type { AsyncPositionAwareChunker, SemanticChunkerOptions, ClusterSemanticChunkerOptions, LLMSemanticChunkerOptions } from "./chunkers/index.js";
-export { isAsyncPositionAwareChunker, SemanticChunker, ClusterSemanticChunker, LLMSemanticChunker } from "./chunkers/index.js";
-
+export type {
+  AsyncPositionAwareChunker,
+  Chunker,
+  ClusterSemanticChunkerOptions,
+  LLMSemanticChunkerOptions,
+  MarkdownChunkerOptions,
+  PositionAwareChunker,
+  RecursiveCharacterChunkerOptions,
+  SemanticChunkerOptions,
+  SentenceChunkerOptions,
+  TokenChunkerOptions
+} from "./chunkers/index.js"
+export {
+  ClusterSemanticChunker,
+  isAsyncPositionAwareChunker,
+  isPositionAwareChunker,
+  LLMSemanticChunker,
+  MarkdownChunker,
+  RecursiveCharacterChunker,
+  SemanticChunker,
+  SentenceChunker,
+  TokenChunker
+} from "./chunkers/index.js"
 // Embedder
-export type { Embedder } from "./embedders/index.js";
-export { OpenAIEmbedder } from "./embedders/index.js";
+export type { Embedder } from "./embedders/index.js"
+export { OpenAIEmbedder } from "./embedders/index.js"
+export type {
+  Brand,
+  CharacterSpan,
+  Corpus,
+  DatasetExample,
+  Document,
+  EvaluationResult,
+  GroundTruth,
+  PositionAwareChunk,
+  Query,
+  RunOutput,
+  SpanRange
+} from "./types/index.js"
+export {
+  CharacterSpanSchema,
+  CorpusSchema,
+  createCharacterSpan,
+  createCorpus,
+  createCorpusFromDocuments,
+  createDocument,
+  DatasetExampleSchema,
+  DocumentId,
+  DocumentSchema,
+  getDocument,
+  PositionAwareChunkId,
+  positionAwareChunkToSpan,
+  QueryId,
+  QueryText
+} from "./types/index.js"
 
 // Vector Store
-export type { VectorStore, VectorSearchResult } from "./vector-stores/index.js";
+export type { VectorSearchResult, VectorStore } from "./vector-stores/index.js"
+
 // InMemoryVectorStore moved to "@tars-inc/eval-lib/pipeline/internals"
 
-// Reranker
-export type { Reranker } from "./rerankers/index.js";
-
 // Evaluation
-export type { Metric } from "./evaluation/index.js";
-export { computeMetrics } from "./evaluation/index.js";
-export type { ComputeMetricsOptions } from "./evaluation/index.js";
-
+export type { ComputeMetricsOptions, Metric } from "./evaluation/index.js"
+export { computeMetrics } from "./evaluation/index.js"
 // Metrics
-export { recall, precision, iou, f1 } from "./evaluation/metrics/index.js";
+export { f1, iou, precision, recall } from "./evaluation/metrics/index.js"
+// Reranker
+export type { Reranker } from "./rerankers/index.js"
+
 // mergeOverlappingSpans, calculateOverlap, totalSpanLength moved to "@tars-inc/eval-lib/utils"
 
-// Retrievers (canonical location: src/retrievers/)
-/** @deprecated Use `createBaselineVectorRagRetriever()` from `experiments/presets` instead */
-export { VectorRAGRetriever } from "./retrievers/index.js";
-export { CallbackRetriever } from "./retrievers/index.js";
 export type {
-  Retriever,
-  VectorRAGRetrieverConfig,
-  CallbackRetrieverConfig,
-} from "./retrievers/index.js";
-
-// Pipeline Retriever
-export {
-  PipelineRetriever,
-  computeIndexConfigHash,
-  computeRetrieverConfigHash,
-  // DEFAULT_INDEX_CONFIG, DEFAULT_QUERY_CONFIG, DEFAULT_SEARCH_CONFIG moved to "@tars-inc/eval-lib/pipeline/internals"
-  // BM25SearchIndex, weightedScoreFusion, reciprocalRankFusion, applyThresholdFilter moved to "@tars-inc/eval-lib/pipeline/internals"
-} from "./retrievers/index.js";
-export type {
-  PipelineRetrieverDeps,
-  PipelineConfig,
-  IndexConfig,
-  PlainIndexConfig,
-  ContextualIndexConfig,
-  SummaryIndexConfig,
-  ParentChildIndexConfig,
-  QueryConfig,
-  IdentityQueryConfig,
-  HydeQueryConfig,
-  MultiQueryConfig,
-  StepBackQueryConfig,
-  RewriteQueryConfig,
-  SearchConfig,
-  DenseSearchConfig,
-  BM25SearchConfig,
-  HybridSearchConfig,
-  RefinementStepConfig,
-  RerankRefinementStep,
-  ThresholdRefinementStep,
-  DedupRefinementStep,
-  MmrRefinementStep,
-  ExpandContextRefinementStep,
-  ScoredChunk,
-  PipelineLLM,
-} from "./retrievers/index.js";
-
-// Experiment Presets
-export {
-  createPresetRetriever,
-  createBaselineVectorRagRetriever,
-  BASELINE_VECTOR_RAG_CONFIG,
-  createBM25Retriever,
-  BM25_CONFIG,
-  createHybridRetriever,
-  HYBRID_CONFIG,
-  createHybridRerankedRetriever,
-  HYBRID_RERANKED_CONFIG,
-} from "./experiments/index.js";
-export type {
-  PresetName,
-  PipelinePresetDeps,
   BaselineVectorRagPresetDeps,
   BM25PresetDeps,
   HybridPresetDeps,
   HybridRerankedPresetDeps,
-} from "./experiments/index.js";
+  PipelinePresetDeps,
+  PresetName
+} from "./experiments/index.js"
+// Experiment Presets
+export {
+  BASELINE_VECTOR_RAG_CONFIG,
+  BM25_CONFIG,
+  createBaselineVectorRagRetriever,
+  createBM25Retriever,
+  createHybridRerankedRetriever,
+  createHybridRetriever,
+  createPresetRetriever,
+  HYBRID_CONFIG,
+  HYBRID_RERANKED_CONFIG
+} from "./experiments/index.js"
+export type {
+  BM25SearchConfig,
+  CallbackRetrieverConfig,
+  ContextualIndexConfig,
+  DedupRefinementStep,
+  DenseSearchConfig,
+  ExpandContextRefinementStep,
+  HybridSearchConfig,
+  HydeQueryConfig,
+  IdentityQueryConfig,
+  IndexConfig,
+  MmrRefinementStep,
+  MultiQueryConfig,
+  ParentChildIndexConfig,
+  PipelineConfig,
+  PipelineLLM,
+  PipelineRetrieverDeps,
+  PlainIndexConfig,
+  QueryConfig,
+  RefinementStepConfig,
+  RerankRefinementStep,
+  Retriever,
+  RewriteQueryConfig,
+  ScoredChunk,
+  SearchConfig,
+  StepBackQueryConfig,
+  SummaryIndexConfig,
+  ThresholdRefinementStep,
+  VectorRAGRetrieverConfig
+} from "./retrievers/index.js"
+// Retrievers (canonical location: src/retrievers/)
+/** @deprecated Use `createBaselineVectorRagRetriever()` from `experiments/presets` instead */
+// Pipeline Retriever
+export {
+  CallbackRetriever,
+  computeIndexConfigHash,
+  computeRetrieverConfigHash,
+  PipelineRetriever,
+  VectorRAGRetriever
+} from "./retrievers/index.js"
 
 // Synthetic Data Generation
-export type { LLMClient } from "./synthetic-datagen/base.js";
-export { openAIClientAdapter } from "./synthetic-datagen/base.js";
-export { generate } from "./synthetic-datagen/index.js";
-export type { GenerateOptions } from "./synthetic-datagen/index.js";
-export { SimpleStrategy } from "./synthetic-datagen/strategies/simple/generator.js";
-export { DimensionDrivenStrategy } from "./synthetic-datagen/strategies/dimension-driven/generator.js";
-export { RealWorldGroundedStrategy } from "./synthetic-datagen/strategies/real-world-grounded/generator.js";
-// discoverDimensions moved to "@tars-inc/eval-lib/pipeline/internals"
-// loadDimensions, loadDimensionsFromFile moved to "@tars-inc/eval-lib/pipeline/internals"
-export {
-  parseDimensions,
-} from "./synthetic-datagen/strategies/dimension-driven/dimensions.js";
-export { GroundTruthAssigner } from "./synthetic-datagen/ground-truth/token-level.js";
+export type { LLMClient } from "./synthetic-datagen/base.js"
+export { openAIClientAdapter } from "./synthetic-datagen/base.js"
+export { GroundTruthAssigner } from "./synthetic-datagen/ground-truth/token-level.js"
 export type {
   Assigner,
-  GroundTruthAssignerInterface,
   GroundTruthAssignerContext,
-} from "./synthetic-datagen/ground-truth/types.js";
+  GroundTruthAssignerInterface
+} from "./synthetic-datagen/ground-truth/types.js"
+export type { GenerateOptions } from "./synthetic-datagen/index.js"
+export { generate } from "./synthetic-datagen/index.js"
+// discoverDimensions moved to "@tars-inc/eval-lib/pipeline/internals"
+// loadDimensions, loadDimensionsFromFile moved to "@tars-inc/eval-lib/pipeline/internals"
+export { parseDimensions } from "./synthetic-datagen/strategies/dimension-driven/dimensions.js"
+export { DimensionDrivenStrategy } from "./synthetic-datagen/strategies/dimension-driven/generator.js"
+export { RealWorldGroundedStrategy } from "./synthetic-datagen/strategies/real-world-grounded/generator.js"
+export { SimpleStrategy } from "./synthetic-datagen/strategies/simple/generator.js"
 export type {
-  QuestionStrategy,
-  GeneratedQuery,
-  StrategyContext,
-  SimpleStrategyOptions,
-  DimensionDrivenStrategyOptions,
-  RealWorldGroundedStrategyOptions,
-  MatchedQuestion,
   Dimension,
   DimensionCombo,
+  DimensionDrivenStrategyOptions,
+  GeneratedQuery,
+  MatchedQuestion,
   ProgressCallback,
   ProgressEvent,
-} from "./synthetic-datagen/strategies/types.js";
-
-// Unified question generation pipeline
-export { UnifiedQuestionGenerator } from "./synthetic-datagen/unified/index.js";
-export { calculateQuotas } from "./synthetic-datagen/unified/index.js";
-export { matchRealWorldQuestions } from "./synthetic-datagen/unified/index.js";
-export type { MatchingResult } from "./synthetic-datagen/unified/index.js";
-export { findCitationSpan } from "./synthetic-datagen/unified/index.js";
-export type { CitationSpan } from "./synthetic-datagen/unified/index.js";
-export { generateForDocument } from "./synthetic-datagen/unified/index.js";
-export { filterCombinations } from "./synthetic-datagen/unified/index.js";
+  QuestionStrategy,
+  RealWorldGroundedStrategyOptions,
+  SimpleStrategyOptions,
+  StrategyContext
+} from "./synthetic-datagen/strategies/types.js"
 export type {
-  UnifiedGenerationConfig,
-  PromptPreferences,
-  DocQuota,
-  MatchedRealWorldQuestion,
-  GenerationPlan,
-  UnifiedQuestion,
-  ValidatedQuestion,
+  CitationSpan,
   DocGenerationResult,
+  DocQuota,
+  GenerationPlan,
   GenerationScenario,
+  MatchedRealWorldQuestion,
+  MatchingResult,
+  PromptPreferences,
+  UnifiedGenerationConfig,
   UnifiedGeneratorContext,
-} from "./synthetic-datagen/unified/index.js";
+  UnifiedQuestion,
+  ValidatedQuestion
+} from "./synthetic-datagen/unified/index.js"
+// Unified question generation pipeline
+export {
+  calculateQuotas,
+  filterCombinations,
+  findCitationSpan,
+  generateForDocument,
+  matchRealWorldQuestions,
+  UnifiedQuestionGenerator
+} from "./synthetic-datagen/unified/index.js"
 
 // Utils
-export { generatePaChunkId } from "./utils/hashing.js";
-export { spanOverlaps, spanOverlapChars, spanLength } from "./utils/span.js";
+export { generatePaChunkId } from "./utils/hashing.js"
+export { spanLength, spanOverlapChars, spanOverlaps } from "./utils/span.js"

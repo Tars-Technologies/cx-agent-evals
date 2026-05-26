@@ -1,44 +1,53 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useQuery } from "convex/react";
-import type { Id } from "@convex/_generated/dataModel";
-import { api } from "@/lib/convex";
-import { SimulationsSidebar } from "./SimulationsSidebar";
-import { SimScenarioList } from "./SimScenarioList";
-import { SimRunDetail } from "./SimRunDetail";
-import { ResizablePanel } from "@/components/ResizablePanel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useQuery } from "convex/react"
+import { useState } from "react"
+import { ResizablePanel } from "@/components/ResizablePanel"
+import { api } from "@/lib/convex"
+import { SimRunDetail } from "./SimRunDetail"
+import { SimScenarioList } from "./SimScenarioList"
+import { SimulationsSidebar } from "./SimulationsSidebar"
 
 export function SimulationModeLayout({
   agentId,
   showCreateModal,
-  onCloseCreateModal,
+  onCloseCreateModal
 }: {
-  agentId: Id<"agents">;
-  showCreateModal: boolean;
-  onCloseCreateModal: () => void;
+  agentId: Id<"agents">
+  showCreateModal: boolean
+  onCloseCreateModal: () => void
 }) {
-  const [selectedSimId, setSelectedSimId] = useState<Id<"conversationSimulations"> | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<Id<"conversationSimRuns"> | null>(null);
-  const [phase, setPhase] = useState<"conversations" | "evaluation">("conversations");
+  const [selectedSimId, setSelectedSimId] =
+    useState<Id<"conversationSimulations"> | null>(null)
+  const [selectedRunId, setSelectedRunId] =
+    useState<Id<"conversationSimRuns"> | null>(null)
+  const [phase, setPhase] = useState<"conversations" | "evaluation">(
+    "conversations"
+  )
 
   const simulation = useQuery(
     api.conversationSim.orchestration.get,
-    selectedSimId ? { id: selectedSimId } : "skip",
-  );
+    selectedSimId ? { id: selectedSimId } : "skip"
+  )
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* Left: Simulations sidebar */}
-      <ResizablePanel storageKey="sim-sidebar" defaultWidth={220} minWidth={160} maxWidth={350}>
+      <ResizablePanel
+        storageKey="sim-sidebar"
+        defaultWidth={220}
+        minWidth={160}
+        maxWidth={350}
+      >
         <div className="h-full border-r border-border bg-bg">
           <SimulationsSidebar
             agentId={agentId}
             selectedId={selectedSimId}
             onSelect={(id) => {
-              setSelectedSimId(id);
-              setSelectedRunId(null);
-              setPhase("conversations");
+              setSelectedSimId(id)
+              setSelectedRunId(null)
+              setPhase("conversations")
             }}
           />
         </div>
@@ -46,7 +55,12 @@ export function SimulationModeLayout({
 
       {/* Middle: Scenario/Run list */}
       {selectedSimId ? (
-        <ResizablePanel storageKey="sim-scenarios" defaultWidth={280} minWidth={200} maxWidth={450}>
+        <ResizablePanel
+          storageKey="sim-scenarios"
+          defaultWidth={280}
+          minWidth={200}
+          maxWidth={450}
+        >
           <div className="h-full border-r border-border bg-bg">
             <SimScenarioList
               simulationId={selectedSimId}
@@ -75,5 +89,5 @@ export function SimulationModeLayout({
         )}
       </div>
     </div>
-  );
+  )
 }

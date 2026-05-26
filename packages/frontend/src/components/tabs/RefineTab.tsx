@@ -1,12 +1,16 @@
-"use client";
+"use client"
 
-import { useState, useCallback } from "react";
-import { useAction } from "convex/react";
-import { api } from "@/lib/convex";
-import { ChunkCard } from "@/components/ChunkCard";
-import { resolveConfig } from "@/lib/pipeline-types";
-import type { PipelineConfig, RefinementStepConfig, ThresholdRefinementStep } from "@/lib/pipeline-types";
-import type { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useAction } from "convex/react"
+import { useCallback, useState } from "react"
+import { ChunkCard } from "@/components/ChunkCard"
+import { api } from "@/lib/convex"
+import type {
+  PipelineConfig,
+  RefinementStepConfig,
+  ThresholdRefinementStep
+} from "@/lib/pipeline-types"
+import { resolveConfig } from "@/lib/pipeline-types"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -14,50 +18,50 @@ import type { Id } from "@convex/_generated/dataModel";
 
 interface RefineTabProps {
   retriever: {
-    _id: Id<"retrievers">;
-    retrieverConfig: any;
-    defaultK: number;
-    status: string;
-  };
-  query: string;
-  onQueryChange: (query: string) => void;
+    _id: Id<"retrievers">
+    retrieverConfig: any
+    defaultK: number
+    status: string
+  }
+  query: string
+  onQueryChange: (query: string) => void
 }
 
 interface ChunkResult {
-  readonly chunkId: string;
-  readonly content: string;
-  readonly docId: string;
-  readonly start: number;
-  readonly end: number;
-  readonly score: number;
-  readonly metadata: Record<string, unknown>;
+  readonly chunkId: string
+  readonly content: string
+  readonly docId: string
+  readonly start: number
+  readonly end: number
+  readonly score: number
+  readonly metadata: Record<string, unknown>
 }
 
 interface StageInfo {
-  readonly name: string;
-  readonly config: Record<string, unknown>;
-  readonly inputCount: number;
-  readonly outputCount: number;
-  readonly outputChunks: ChunkResult[];
-  readonly latencyMs: number;
+  readonly name: string
+  readonly config: Record<string, unknown>
+  readonly inputCount: number
+  readonly outputCount: number
+  readonly outputChunks: ChunkResult[]
+  readonly latencyMs: number
 }
 
 interface PipelineResult {
   search: {
-    fusedResults: ChunkResult[];
-    searchConfig: Record<string, unknown>;
-    latencyMs: number;
-  };
+    fusedResults: ChunkResult[]
+    searchConfig: Record<string, unknown>
+    latencyMs: number
+  }
   refinement: {
-    stages: StageInfo[];
-    finalChunks: ChunkResult[];
-  };
+    stages: StageInfo[]
+    finalChunks: ChunkResult[]
+  }
 }
 
 /** A node in the stage pipeline stepper. */
 interface StageNode {
-  readonly label: string;
-  readonly count: number;
+  readonly label: string
+  readonly count: number
 }
 
 // ---------------------------------------------------------------------------
@@ -69,7 +73,7 @@ function Spinner({ className }: { className?: string }) {
     <div
       className={`w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin ${className ?? ""}`}
     />
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -77,16 +81,16 @@ function Spinner({ className }: { className?: string }) {
 // ---------------------------------------------------------------------------
 
 function StaticRefinementConfig({
-  steps,
+  steps
 }: {
-  steps: readonly RefinementStepConfig[];
+  steps: readonly RefinementStepConfig[]
 }) {
   if (steps.length === 0) {
     return (
       <div className="bg-bg-surface border border-border rounded-lg p-2 text-[11px] text-text-dim">
         No refinement stages configured. Search results are the final output.
       </div>
-    );
+    )
   }
 
   return (
@@ -98,19 +102,25 @@ function StaticRefinementConfig({
         {steps.map((step, i) => (
           <div key={i} className="flex items-center gap-1">
             {i > 0 && (
-              <span className="text-text-dim text-xs select-none">{"\u2192"}</span>
+              <span className="text-text-dim text-xs select-none">
+                {"\u2192"}
+              </span>
             )}
             <span className="px-2.5 py-1 rounded-full text-xs bg-bg-elevated text-text-muted border border-border">
               {step.type}
               {step.type === "threshold" && "minScore" in step && (
-                <span className="text-text-dim"> &middot; min={String((step as ThresholdRefinementStep).minScore)}</span>
+                <span className="text-text-dim">
+                  {" "}
+                  &middot; min=
+                  {String((step as ThresholdRefinementStep).minScore)}
+                </span>
               )}
             </span>
           </div>
         ))}
       </div>
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -120,17 +130,21 @@ function StaticRefinementConfig({
 function StagePipelineStepper({
   stages,
   selectedIndex,
-  onSelect,
+  onSelect
 }: {
-  stages: StageNode[];
-  selectedIndex: number;
-  onSelect: (index: number) => void;
+  stages: StageNode[]
+  selectedIndex: number
+  onSelect: (index: number) => void
 }) {
   return (
     <div className="flex items-center gap-1 flex-wrap">
       {stages.map((stage, i) => (
         <div key={i} className="flex items-center gap-1">
-          {i > 0 && <span className="text-text-dim text-xs select-none">{"\u2192"}</span>}
+          {i > 0 && (
+            <span className="text-text-dim text-xs select-none">
+              {"\u2192"}
+            </span>
+          )}
           <button
             type="button"
             onClick={() => onSelect(i)}
@@ -145,7 +159,7 @@ function StagePipelineStepper({
         </div>
       ))}
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -154,8 +168,8 @@ function StagePipelineStepper({
 
 function StageInfoBanner({ stage }: { stage: StageInfo }) {
   const configEntries = Object.entries(stage.config).filter(
-    ([key]) => key !== "type",
-  );
+    ([key]) => key !== "type"
+  )
 
   return (
     <div className="bg-bg-surface border border-border rounded-lg p-2 text-[11px] text-text-dim">
@@ -169,14 +183,16 @@ function StageInfoBanner({ stage }: { stage: StageInfo }) {
           </span>
         ))}
         <span>
-          {stage.inputCount}{"\u2192"}{stage.outputCount}
+          {stage.inputCount}
+          {"\u2192"}
+          {stage.outputCount}
         </span>
         <span>
           Latency: <span className="text-text-muted">{stage.latencyMs}ms</span>
         </span>
       </div>
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -186,36 +202,36 @@ function StageInfoBanner({ stage }: { stage: StageInfo }) {
 function StageDetail({
   stageNodes,
   selectedIndex,
-  pipelineResult,
+  pipelineResult
 }: {
-  stageNodes: StageNode[];
-  selectedIndex: number;
-  pipelineResult: PipelineResult;
+  stageNodes: StageNode[]
+  selectedIndex: number
+  pipelineResult: PipelineResult
 }) {
-  const { search, refinement } = pipelineResult;
-  const isSearchStage = selectedIndex === 0;
+  const { search, refinement } = pipelineResult
+  const isSearchStage = selectedIndex === 0
   const isFinalStage =
     refinement.stages.length > 0 &&
-    selectedIndex === refinement.stages.length + 1;
-  const isRefinementStage = !isSearchStage && !isFinalStage;
+    selectedIndex === refinement.stages.length + 1
+  const isRefinementStage = !isSearchStage && !isFinalStage
 
   // Determine which chunks to show
-  let displayChunks: ChunkResult[];
+  let displayChunks: ChunkResult[]
   if (isSearchStage) {
-    displayChunks = search.fusedResults;
+    displayChunks = search.fusedResults
   } else if (isFinalStage) {
-    displayChunks = refinement.finalChunks;
+    displayChunks = refinement.finalChunks
   } else {
-    displayChunks = refinement.stages[selectedIndex - 1]?.outputChunks ?? [];
+    displayChunks = refinement.stages[selectedIndex - 1]?.outputChunks ?? []
   }
 
-  const stageLabel = stageNodes[selectedIndex]?.label ?? "Unknown";
-  const chunkCount = displayChunks.length;
+  const stageLabel = stageNodes[selectedIndex]?.label ?? "Unknown"
+  const chunkCount = displayChunks.length
 
   // Get the refinement stage info (only for actual refinement stages, not search or final)
   const refinementStage = isRefinementStage
-    ? refinement.stages[selectedIndex - 1] ?? null
-    : null;
+    ? (refinement.stages[selectedIndex - 1] ?? null)
+    : null
 
   return (
     <div className="space-y-3">
@@ -276,67 +292,61 @@ function StageDetail({
         </div>
       )}
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function RefineTab({
-  retriever,
-  query,
-  onQueryChange,
-}: RefineTabProps) {
+export function RefineTab({ retriever, query, onQueryChange }: RefineTabProps) {
   const [pipelineResult, setPipelineResult] = useState<PipelineResult | null>(
-    null,
-  );
-  const [selectedStageIndex, setSelectedStageIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+    null
+  )
+  const [selectedStageIndex, setSelectedStageIndex] = useState(0)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const rewriteAction = useAction(
-    api.retrieval.pipelineActions.rewriteQuery,
-  );
+  const rewriteAction = useAction(api.retrieval.pipelineActions.rewriteQuery)
   const searchAction = useAction(
-    api.retrieval.pipelineActions.searchWithQueries,
-  );
-  const refineAction = useAction(api.retrieval.pipelineActions.refine);
+    api.retrieval.pipelineActions.searchWithQueries
+  )
+  const refineAction = useAction(api.retrieval.pipelineActions.refine)
 
-  const resolved = resolveConfig(retriever.retrieverConfig as PipelineConfig);
+  const resolved = resolveConfig(retriever.retrieverConfig as PipelineConfig)
 
   const handleRun = useCallback(async () => {
-    if (!query.trim()) return;
+    if (!query.trim()) return
 
-    setIsLoading(true);
-    setError(null);
+    setIsLoading(true)
+    setError(null)
 
     try {
       const rewrite = await rewriteAction({
         retrieverId: retriever._id,
-        query: query.trim(),
-      });
+        query: query.trim()
+      })
 
       const search = (await searchAction({
         retrieverId: retriever._id,
         queries: (rewrite as any).rewrittenQueries,
-        k: retriever.defaultK,
-      })) as PipelineResult["search"];
+        k: retriever.defaultK
+      })) as PipelineResult["search"]
 
       // refine takes the fused search results as input
       const refinement = (await refineAction({
         retrieverId: retriever._id,
         query: query.trim(),
         chunks: search.fusedResults,
-        k: retriever.defaultK,
-      })) as PipelineResult["refinement"];
+        k: retriever.defaultK
+      })) as PipelineResult["refinement"]
 
-      setPipelineResult({ search, refinement });
-      setSelectedStageIndex(0);
+      setPipelineResult({ search, refinement })
+      setSelectedStageIndex(0)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Pipeline failed");
+      setError(err instanceof Error ? err.message : "Pipeline failed")
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
   }, [
     query,
@@ -344,11 +354,11 @@ export function RefineTab({
     retriever.defaultK,
     rewriteAction,
     searchAction,
-    refineAction,
-  ]);
+    refineAction
+  ])
 
   // Build stage nodes from the pipeline result
-  const stageNodes: StageNode[] = buildStageNodes(pipelineResult);
+  const stageNodes: StageNode[] = buildStageNodes(pipelineResult)
 
   return (
     <div className="flex flex-col h-full">
@@ -359,7 +369,7 @@ export function RefineTab({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") handleRun();
+            if (e.key === "Enter") handleRun()
           }}
           placeholder="Enter a query to test the refinement pipeline..."
           className="flex-1 bg-bg-surface border border-border rounded px-3 py-2 text-sm text-text placeholder:text-text-dim focus:border-accent/50 focus:outline-none"
@@ -441,7 +451,7 @@ export function RefineTab({
         )}
       </div>
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -458,39 +468,39 @@ export function RefineTab({
  * When there are no refinement stages, we show a single "Search Input" node.
  */
 function buildStageNodes(result: PipelineResult | null): StageNode[] {
-  if (!result) return [];
+  if (!result) return []
 
-  const nodes: StageNode[] = [];
+  const nodes: StageNode[] = []
 
   // Search input node
   nodes.push({
     label: "Search Input",
-    count: result.search.fusedResults.length,
-  });
+    count: result.search.fusedResults.length
+  })
 
   // Refinement stage nodes
   for (const stage of result.refinement.stages) {
     nodes.push({
       label: capitalize(stage.name),
-      count: stage.outputCount,
-    });
+      count: stage.outputCount
+    })
   }
 
   // "Final" node (only add if there is at least one refinement stage,
   // and it differs from the last stage — which it always does conceptually)
   if (result.refinement.stages.length > 0) {
     const lastStage =
-      result.refinement.stages[result.refinement.stages.length - 1];
+      result.refinement.stages[result.refinement.stages.length - 1]
     nodes.push({
       label: "Final",
-      count: lastStage.outputCount,
-    });
+      count: lastStage.outputCount
+    })
   }
 
-  return nodes;
+  return nodes
 }
 
 function capitalize(str: string): string {
-  if (str.length === 0) return str;
-  return str.charAt(0).toUpperCase() + str.slice(1);
+  if (str.length === 0) return str
+  return str.charAt(0).toUpperCase() + str.slice(1)
 }

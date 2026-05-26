@@ -1,62 +1,62 @@
-"use client";
+"use client"
 
-import { useState, useEffect } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation } from "convex/react"
+import { useEffect, useState } from "react"
+import { api } from "@/lib/convex"
 
 interface ScenarioData {
-  _id: Id<"conversationScenarios">;
+  _id: Id<"conversationScenarios">
   persona: {
-    type: string;
-    traits: string[];
-    communicationStyle: string;
-    patienceLevel: "low" | "medium" | "high";
-  };
-  topic: string;
-  intent: string;
-  complexity: "low" | "medium" | "high";
-  reasonForContact: string;
-  knownInfo: string;
-  unknownInfo: string;
-  instruction: string;
+    type: string
+    traits: string[]
+    communicationStyle: string
+    patienceLevel: "low" | "medium" | "high"
+  }
+  topic: string
+  intent: string
+  complexity: "low" | "medium" | "high"
+  reasonForContact: string
+  knownInfo: string
+  unknownInfo: string
+  instruction: string
   referenceMessages?: Array<{
-    role: "user";
-    content: string;
-    turnIndex: number;
-  }>;
-  behaviorAnchors?: string[];
+    role: "user"
+    content: string
+    turnIndex: number
+  }>
+  behaviorAnchors?: string[]
   // Provenance metadata (read-only, set during generation)
-  sourceType?: "transcript_grounded" | "synthetic";
-  sourceTranscriptId?: string;
-  languages?: string[];
+  sourceType?: "transcript_grounded" | "synthetic"
+  sourceTranscriptId?: string
+  languages?: string[]
 }
 
 export function EditScenarioModal({
   scenario,
-  onClose,
+  onClose
 }: {
-  scenario: ScenarioData;
-  onClose: () => void;
+  scenario: ScenarioData
+  onClose: () => void
 }) {
-  const updateScenario = useMutation(api.conversationSim.scenarios.update);
+  const updateScenario = useMutation(api.conversationSim.scenarios.update)
 
   // Editable state
-  const [persona, setPersona] = useState(scenario.persona);
-  const [topic, setTopic] = useState(scenario.topic);
-  const [intent, setIntent] = useState(scenario.intent);
-  const [complexity, setComplexity] = useState(scenario.complexity);
+  const [persona, setPersona] = useState(scenario.persona)
+  const [topic, setTopic] = useState(scenario.topic)
+  const [intent, setIntent] = useState(scenario.intent)
+  const [complexity, setComplexity] = useState(scenario.complexity)
   const [reasonForContact, setReasonForContact] = useState(
-    scenario.reasonForContact,
-  );
-  const [knownInfo, setKnownInfo] = useState(scenario.knownInfo);
-  const [unknownInfo, setUnknownInfo] = useState(scenario.unknownInfo);
-  const [instruction, setInstruction] = useState(scenario.instruction);
+    scenario.reasonForContact
+  )
+  const [knownInfo, setKnownInfo] = useState(scenario.knownInfo)
+  const [unknownInfo, setUnknownInfo] = useState(scenario.unknownInfo)
+  const [instruction, setInstruction] = useState(scenario.instruction)
   const [behaviorAnchors, setBehaviorAnchors] = useState<string[]>(
-    scenario.behaviorAnchors ?? [],
-  );
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+    scenario.behaviorAnchors ?? []
+  )
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   // Track unsaved changes
   const hasChanges =
@@ -68,20 +68,21 @@ export function EditScenarioModal({
     unknownInfo !== scenario.unknownInfo ||
     instruction !== scenario.instruction ||
     JSON.stringify(persona) !== JSON.stringify(scenario.persona) ||
-    JSON.stringify(behaviorAnchors) !== JSON.stringify(scenario.behaviorAnchors ?? []);
+    JSON.stringify(behaviorAnchors) !==
+      JSON.stringify(scenario.behaviorAnchors ?? [])
 
   // Close on Escape
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onClose()
     }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [onClose])
 
   async function handleSave() {
-    setSaving(true);
-    setError(null);
+    setSaving(true)
+    setError(null)
     try {
       await updateScenario({
         id: scenario._id,
@@ -93,13 +94,13 @@ export function EditScenarioModal({
         knownInfo,
         unknownInfo,
         instruction,
-        behaviorAnchors,
-      });
-      onClose();
+        behaviorAnchors
+      })
+      onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
+      setError(err instanceof Error ? err.message : "Failed to save")
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
   }
 
@@ -125,15 +126,22 @@ export function EditScenarioModal({
           </div>
           {scenario.sourceType && (
             <div className="flex items-center gap-2 mt-1">
-              <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
-                scenario.sourceType === "transcript_grounded"
-                  ? "bg-green-500/15 text-green-400"
-                  : "bg-purple-500/15 text-purple-400"
-              }`}>
-                {scenario.sourceType === "transcript_grounded" ? "grounded" : "synthetic"}
+              <span
+                className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                  scenario.sourceType === "transcript_grounded"
+                    ? "bg-green-500/15 text-green-400"
+                    : "bg-purple-500/15 text-purple-400"
+                }`}
+              >
+                {scenario.sourceType === "transcript_grounded"
+                  ? "grounded"
+                  : "synthetic"}
               </span>
               {scenario.languages?.map((lang, i) => (
-                <span key={i} className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400">
+                <span
+                  key={i}
+                  className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400"
+                >
                   {lang}
                 </span>
               ))}
@@ -146,9 +154,7 @@ export function EditScenarioModal({
                 Unsaved changes
               </span>
             )}
-            {error && (
-              <span className="text-[10px] text-red-400">{error}</span>
-            )}
+            {error && <span className="text-[10px] text-red-400">{error}</span>}
             <button
               onClick={onClose}
               className="px-3 py-1.5 text-xs text-text-muted border border-border rounded hover:bg-bg-hover transition-colors cursor-pointer"
@@ -232,7 +238,7 @@ export function EditScenarioModal({
                       traits: e.target.value
                         .split(",")
                         .map((t) => t.trim())
-                        .filter(Boolean),
+                        .filter(Boolean)
                     })
                   }
                   className="w-full bg-bg border border-border rounded px-3 py-1.5 text-xs text-text focus:border-accent outline-none"
@@ -245,7 +251,7 @@ export function EditScenarioModal({
                   onChange={(e) =>
                     setPersona({
                       ...persona,
-                      communicationStyle: e.target.value,
+                      communicationStyle: e.target.value
                     })
                   }
                   className="w-full bg-bg border border-border rounded px-3 py-1.5 text-xs text-text focus:border-accent outline-none"
@@ -302,9 +308,9 @@ export function EditScenarioModal({
                         maxLength={120}
                         value={a}
                         onChange={(e) => {
-                          const next = [...behaviorAnchors];
-                          next[i] = e.target.value;
-                          setBehaviorAnchors(next);
+                          const next = [...behaviorAnchors]
+                          next[i] = e.target.value
+                          setBehaviorAnchors(next)
                         }}
                         placeholder="e.g. Answers questions with a single word"
                         className="flex-1 bg-bg border border-border rounded px-3 py-1.5 text-xs text-text focus:border-accent outline-none"
@@ -312,7 +318,9 @@ export function EditScenarioModal({
                       <button
                         type="button"
                         onClick={() =>
-                          setBehaviorAnchors(behaviorAnchors.filter((_, j) => j !== i))
+                          setBehaviorAnchors(
+                            behaviorAnchors.filter((_, j) => j !== i)
+                          )
                         }
                         className="px-2 py-1 text-xs text-text-dim border border-border rounded hover:text-text hover:bg-bg-hover transition-colors cursor-pointer"
                       >
@@ -323,7 +331,9 @@ export function EditScenarioModal({
                   {behaviorAnchors.length < 6 && (
                     <button
                       type="button"
-                      onClick={() => setBehaviorAnchors([...behaviorAnchors, ""])}
+                      onClick={() =>
+                        setBehaviorAnchors([...behaviorAnchors, ""])
+                      }
                       className="px-3 py-1.5 text-xs text-accent border border-accent/30 rounded hover:bg-accent/10 transition-colors cursor-pointer"
                     >
                       + Add anchor
@@ -331,7 +341,9 @@ export function EditScenarioModal({
                   )}
                   {behaviorAnchors.length === 0 && scenario.instruction && (
                     <div className="mt-2 p-2 bg-bg border border-border rounded text-[10px] text-text-dim leading-relaxed">
-                      <strong className="text-text-dim">Legacy instruction:</strong>{" "}
+                      <strong className="text-text-dim">
+                        Legacy instruction:
+                      </strong>{" "}
                       <span className="font-mono">{scenario.instruction}</span>
                     </div>
                   )}
@@ -352,15 +364,15 @@ export function EditScenarioModal({
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 function Field({
   label,
-  children,
+  children
 }: {
-  label: string;
-  children: React.ReactNode;
+  label: string
+  children: React.ReactNode
 }) {
   return (
     <div>
@@ -369,5 +381,5 @@ function Field({
       </label>
       {children}
     </div>
-  );
+  )
 }
