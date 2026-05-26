@@ -46,18 +46,33 @@ const messageValidator = v.object({
 });
 
 const referenceTranscriptValidator = v.optional(v.array(messageValidator));
-const referenceExemplarsValidator = v.optional(v.array(v.object({
-  sourceTranscriptId: v.id("livechatConversations"),
-  messages: v.array(messageValidator),
-})));
-const userMessageLengthStatsValidator = v.optional(v.object({
-  median: v.number(),
-  p90: v.number(),
-}));
+const referenceExemplarsValidator = v.optional(
+  v.array(
+    v.object({
+      sourceTranscriptId: v.id("livechatConversations"),
+      messages: v.array(messageValidator),
+    }),
+  ),
+);
+const userMessageLengthStatsValidator = v.optional(
+  v.object({
+    median: v.number(),
+    p90: v.number(),
+  }),
+);
 const behaviorAnchorsValidator = v.optional(v.array(v.string()));
+const languagesValidator = v.optional(v.array(v.string()));
 
-const scenarioFields = {
-  datasetId: v.id("datasets"),
+const sourceValidator = v.union(
+  v.object({ kind: v.literal("synthetic"), kbId: v.id("knowledgeBases") }),
+  v.object({
+    kind: v.literal("grounded"),
+    transcriptUploadId: v.id("livechatUploads"),
+  }),
+  v.object({ kind: v.literal("manual") }),
+);
+
+const contentFields = {
   persona: personaValidator,
   topic: v.string(),
   intent: v.string(),
@@ -67,23 +82,14 @@ const scenarioFields = {
   unknownInfo: v.string(),
   instruction: v.string(),
   referenceMessages: referenceMessagesValidator,
+  languages: languagesValidator,
+  referenceTranscript: referenceTranscriptValidator,
+  referenceExemplars: referenceExemplarsValidator,
+  userMessageLengthStats: userMessageLengthStatsValidator,
+  behaviorAnchors: behaviorAnchorsValidator,
 };
 
 // ─── Queries ───
-
-export const byDataset = query({
-  args: { datasetId: v.id("datasets") },
-  handler: async (ctx, { datasetId }) => {
-    const { orgId } = await getAuthContext(ctx);
-    const dataset = await ctx.db.get(datasetId);
-    if (!dataset || dataset.orgId !== orgId)
-      throw new Error("Dataset not found");
-    return ctx.db
-      .query("conversationScenarios")
-      .withIndex("by_dataset", (q) => q.eq("datasetId", datasetId))
-      .collect();
-  },
-});
 
 export const get = query({
   args: { id: v.id("conversationScenarios") },
@@ -110,13 +116,67 @@ export const getMaybe = query({
   },
 });
 
+export const byAgent = query({
+  args: { agentId: v.id("agents") },
+  handler: async (ctx, { agentId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const agent = await ctx.db.get(agentId);
+    if (!agent || agent.orgId !== orgId) throw new Error("Agent not found");
+    return await ctx.db
+      .query("conversationScenarios")
+      .withIndex("by_agent", (q) => q.eq("agentId", agentId))
+      .collect();
+  },
+});
+
+// Impact analysis: which scenarios depend on a given KB?
+export const byKb = query({
+  args: { kbId: v.id("knowledgeBases") },
+  handler: async (ctx, { kbId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const kb = await ctx.db.get(kbId);
+    if (!kb || kb.orgId !== orgId) throw new Error("Knowledge base not found");
+    return await ctx.db
+      .query("conversationScenarios")
+      .withIndex("by_kb", (q) => q.eq("source.kbId", kbId))
+      .collect();
+  },
+});
+
+// Impact analysis: which scenarios depend on a given transcript upload?
+export const byTranscriptUpload = query({
+  args: { transcriptUploadId: v.id("livechatUploads") },
+  handler: async (ctx, { transcriptUploadId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const upload = await ctx.db.get(transcriptUploadId);
+    if (!upload || upload.orgId !== orgId)
+      throw new Error("Transcript upload not found");
+    return await ctx.db
+      .query("conversationScenarios")
+      .withIndex("by_transcript_upload", (q) =>
+        q.eq("source.transcriptUploadId", transcriptUploadId),
+      )
+      .collect();
+  },
+});
+
 // ─── Mutations ───
 
 export const create = mutation({
-  args: scenarioFields,
+  args: {
+    agentId: v.id("agents"),
+    source: sourceValidator,
+    ...contentFields,
+  },
   handler: async (ctx, args) => {
     const { orgId } = await getAuthContext(ctx);
-    return await ctx.db.insert("conversationScenarios", { orgId, ...args });
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent || agent.orgId !== orgId) throw new Error("Agent not found");
+    return await ctx.db.insert("conversationScenarios", {
+      orgId,
+      ...args,
+      createdAt: Date.now(),
+    });
   },
 });
 
@@ -132,6 +192,7 @@ export const update = mutation({
     unknownInfo: v.optional(v.string()),
     instruction: v.optional(v.string()),
     referenceMessages: v.optional(referenceMessagesArrayValidator),
+    languages: languagesValidator,
     referenceTranscript: referenceTranscriptValidator,
     referenceExemplars: referenceExemplarsValidator,
     userMessageLengthStats: userMessageLengthStatsValidator,
@@ -173,17 +234,15 @@ export const getInternal = internalQuery({
 
 export const createInternal = internalMutation({
   args: {
-    ...scenarioFields,
     orgId: v.string(),
-    sourceType: v.optional(v.union(v.literal("transcript_grounded"), v.literal("synthetic"))),
-    sourceTranscriptId: v.optional(v.id("livechatConversations")),
-    languages: v.optional(v.array(v.string())),
-    referenceTranscript: referenceTranscriptValidator,
-    referenceExemplars: referenceExemplarsValidator,
-    userMessageLengthStats: userMessageLengthStatsValidator,
-    behaviorAnchors: behaviorAnchorsValidator,
+    agentId: v.id("agents"),
+    source: sourceValidator,
+    ...contentFields,
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("conversationScenarios", args);
+    return await ctx.db.insert("conversationScenarios", {
+      ...args,
+      createdAt: Date.now(),
+    });
   },
 });
