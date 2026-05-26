@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
 
@@ -16,12 +16,7 @@ export function CreateSimulationModal({
 }) {
   const startSimulation = useMutation(api.conversationSim.orchestration.start);
 
-  // Load conversation_sim datasets (org-wide)
-  const datasets = useQuery(api.crud.datasets.list) ?? [];
-  const simDatasets = datasets.filter(d => d.type === "conversation_sim");
-
   // Form state
-  const [datasetId, setDatasetId] = useState<Id<"datasets"> | "">("");
   const [k, setK] = useState(1);
   const [concurrency, setConcurrency] = useState(2);
   const [maxTurns, setMaxTurns] = useState(5);
@@ -29,19 +24,12 @@ export function CreateSimulationModal({
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Compute total runs
-  const selectedDataset = simDatasets.find(d => d._id === datasetId);
-  const scenarioCount = selectedDataset?.scenarioCount ?? 0;
-  const totalRuns = scenarioCount * k;
-
   async function handleStart() {
-    if (!datasetId) return;
     setStarting(true);
     setError(null);
     try {
       const simId = await startSimulation({
         agentId,
-        datasetId: datasetId as Id<"datasets">,
         k,
         concurrency,
         maxTurns,
@@ -64,22 +52,6 @@ export function CreateSimulationModal({
         </div>
 
         <div className="px-6 py-4 space-y-4">
-          {/* Dataset */}
-          <Field label="Scenario Dataset">
-            <select
-              value={datasetId}
-              onChange={e => setDatasetId(e.target.value as Id<"datasets">)}
-              className="w-full bg-bg border border-border rounded px-3 py-1.5 text-xs text-text focus:border-accent outline-none"
-            >
-              <option value="">Select dataset...</option>
-              {simDatasets.map(ds => (
-                <option key={ds._id} value={ds._id}>
-                  {ds.name} ({ds.scenarioCount ?? 0} scenarios)
-                </option>
-              ))}
-            </select>
-          </Field>
-
           {/* k (passes per scenario) */}
           <Field label={`Passes per Scenario (k=${k})`}>
             <input
@@ -114,17 +86,6 @@ export function CreateSimulationModal({
             </Field>
           </div>
 
-          {/* Total runs display */}
-          {datasetId && (
-            <div className="bg-bg border border-border rounded-md p-3 text-xs">
-              <div className="flex justify-between text-text-dim">
-                <span>Scenarios: {scenarioCount}</span>
-                <span>x {k} passes</span>
-                <span>= <span className="text-accent font-medium">{totalRuns} total runs</span></span>
-              </div>
-            </div>
-          )}
-
           {error && (
             <p className="text-xs text-red-400">{error}</p>
           )}
@@ -139,10 +100,10 @@ export function CreateSimulationModal({
           </button>
           <button
             onClick={handleStart}
-            disabled={!datasetId || starting}
+            disabled={starting}
             className="px-4 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {starting ? "Starting..." : `Start Simulation (${totalRuns} runs)`}
+            {starting ? "Starting..." : "Start Simulation"}
           </button>
         </div>
       </div>

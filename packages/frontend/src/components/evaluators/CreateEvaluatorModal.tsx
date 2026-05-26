@@ -460,7 +460,7 @@ export function CreateEvaluatorModal({
   agentId,
   onClose,
   onCreated,
-}: CreateEvaluatorModalProps): JSX.Element {
+}: CreateEvaluatorModalProps) {
   const [path, setPath] = useState<PathChoice>(null);
 
   return (

@@ -473,7 +473,7 @@ export function CalibrationFlow({
   evaluatorId,
   agentId,
   onClose,
-}: CalibrationFlowProps): JSX.Element {
+}: CalibrationFlowProps) {
   const [stage, setStage] = useState<Stage>("select_source");
   const [sourceSelection, setSourceSelection] = useState<SourceSelection>({
     kinds: new Set(),

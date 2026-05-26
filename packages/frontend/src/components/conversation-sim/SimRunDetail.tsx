@@ -7,7 +7,6 @@ import type { Id } from "@convex/_generated/dataModel";
 import { groupMessagesWithToolCalls } from "@/lib/messageDisplay";
 import { ToolCallGroup } from "@/components/conversation-sim/ToolCallGroup";
 import { ScenarioSummaryBand } from "@/components/conversation-sim/ScenarioSummaryBand";
-import { SourceTranscriptPanel } from "@/components/livechat/SourceTranscriptPanel";
 import { ChatBubble } from "@/components/livechat/ChatBubble";
 
 export function SimRunDetail({
@@ -39,7 +38,8 @@ export function SimRunDetail({
   }
 
   const hasSnapshot = !!scenario?.referenceTranscript && scenario.referenceTranscript.length > 0;
-  const hasFetchableSource = !!scenario?.sourceTranscriptId;
+  // sourceTranscriptId was removed — grounded scenarios now reference transcriptUploadId via source discriminant
+  const hasFetchableSource = false;
   const hasExemplars = !!scenario?.referenceExemplars && scenario.referenceExemplars.length > 0;
   const hasSource = hasSnapshot || hasFetchableSource || hasExemplars;
 
@@ -185,10 +185,9 @@ export function SimRunDetail({
                   ))}
                 </div>
               </div>
-            ) : hasFetchableSource && scenario?.sourceTranscriptId ? (
-              <SourceTranscriptPanel
-                sourceTranscriptId={scenario.sourceTranscriptId as Id<"livechatConversations">}
-              />
+            ) : hasFetchableSource ? (
+              /* sourceTranscriptId removed — this branch is unreachable */
+              null
             ) : hasExemplars ? (
               <div className="flex flex-col h-full">
                 <div className="px-4 py-2.5 border-b border-border bg-bg-elevated/50 flex-shrink-0">

@@ -279,7 +279,7 @@ export function AnnotationEditor({
   allTags,
   onUpsert,
   disabled = false,
-}: AnnotationEditorProps): JSX.Element {
+}: AnnotationEditorProps) {
   const [rating, setRating] = useState<RatingValue | null>(
     existingAnnotation?.rating ?? null
   );

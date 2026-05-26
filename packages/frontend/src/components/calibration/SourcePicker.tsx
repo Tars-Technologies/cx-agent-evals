@@ -22,7 +22,7 @@ export function SourcePicker({
   agentId,
   value,
   onChange,
-}: SourcePickerProps): JSX.Element {
+}: SourcePickerProps) {
   const realCount = useQuery(api.crud.conversations.countByAgentAndSource, {
     agentId,
     source: "playground",

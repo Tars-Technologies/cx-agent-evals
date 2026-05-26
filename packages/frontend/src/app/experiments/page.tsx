@@ -97,7 +97,6 @@ function ExperimentsPageContent() {
 
   // --- Experiment execution ---
   const startExperiment = useMutation(api.experiments.orchestration.start);
-  const startAgentExperiment = useMutation(api.experiments.orchestration.startAgentExperiment);
   const [runningExperimentIds, setRunningExperimentIds] = useState<Set<Id<"experiments">>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
@@ -147,28 +146,7 @@ function ExperimentsPageContent() {
     }
   }
 
-  async function handleRunAgentExperiment() {
-    if (!selectedDatasetId || !selectedAgentId) return;
-    setError(null);
-
-    const agent = kbAgents.find((a) => a._id === selectedAgentId);
-    const datasetName = selectedDataset?.name ?? "dataset";
-    const name = `${agent?.name ?? "Agent"}-${datasetName}`;
-
-    try {
-      const result = await startAgentExperiment({
-        datasetId: selectedDatasetId,
-        agentId: selectedAgentId,
-        name,
-      });
-      setRunningExperimentIds((prev) => new Set([...prev, result.experimentId]));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start agent experiment");
-    }
-  }
-
   const canRunRetriever = !!selectedDatasetId && selectedRetrieverIds.size > 0;
-  const canRunAgent = !!selectedDatasetId && !!selectedAgentId;
 
   return (
     <div className="flex flex-col h-screen">
@@ -276,65 +254,7 @@ function ExperimentsPageContent() {
               </div>
             )}
 
-            {/* Agent Selector — when agent mode */}
-            {selectedKbId && selectedDatasetId && experimentMode === "agent" && (
-              <div className="border border-border rounded-lg bg-bg">
-                <div className="px-4 py-2 border-b border-border text-xs text-text-dim uppercase tracking-wider">
-                  Agent
-                </div>
-                <div className="p-4 space-y-4">
-                  {orgAgents === undefined ? (
-                    <div className="flex items-center gap-2 text-text-dim text-sm">
-                      <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-                      Loading agents...
-                    </div>
-                  ) : kbAgents.length === 0 ? (
-                    <div className="text-sm text-text-dim">
-                      No ready agents for this KB.{" "}
-                      <Link
-                        href="/agents"
-                        className="text-accent hover:text-accent/80 transition-colors"
-                      >
-                        Create one
-                      </Link>
-                    </div>
-                  ) : (
-                    <select
-                      value={selectedAgentId ?? ""}
-                      onChange={(e) =>
-                        setSelectedAgentId(
-                          e.target.value ? (e.target.value as Id<"agents">) : null,
-                        )
-                      }
-                      className="w-full bg-bg-elevated border border-border rounded px-3 py-2 text-sm text-text focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none"
-                    >
-                      <option value="">Select an agent...</option>
-                      {kbAgents.map((agent) => (
-                        <option key={agent._id} value={agent._id}>
-                          {agent.name} ({agent.model})
-                        </option>
-                      ))}
-                    </select>
-                  )}
-
-                  <button
-                    onClick={handleRunAgentExperiment}
-                    disabled={!canRunAgent}
-                    className={`w-full py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors ${
-                      canRunAgent
-                        ? "bg-purple-500 hover:bg-purple-500/90 text-white cursor-pointer"
-                        : "bg-border text-text-dim cursor-not-allowed"
-                    }`}
-                  >
-                    Run Agent Experiment
-                  </button>
-
-                  {error && experimentMode === "agent" && (
-                    <div className="text-xs text-red-400">{error}</div>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* Agent experiment mode removed — startAgentExperiment API no longer exists */}
 
             {/* Retriever Selector — when retriever mode */}
             {selectedKbId && selectedDatasetId && experimentMode === "retriever" && (
