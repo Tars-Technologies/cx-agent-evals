@@ -9,9 +9,9 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 
 import { ExperimentNavSidebar } from "../_components/ExperimentNavSidebar";
-import { NotReadyState } from "./_components/NotReadyState";
-import { ReadyState } from "./_components/ReadyState";
-import { ReviewLayout } from "./_components/ReviewLayout";
+import { NotReadyState } from "@/components/failure-modes/NotReadyState";
+import { ReadyState } from "@/components/failure-modes/ReadyState";
+import { ReviewLayout } from "@/components/failure-modes/ReviewLayout";
 
 export default function FailureModesPage() {
   return (
