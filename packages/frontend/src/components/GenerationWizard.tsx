@@ -237,7 +237,7 @@ export function GenerationWizard({
                 setConfig((prev) => ({ ...prev, dimensions: dims }))
               }
               onNext={() => setStep(2)}
-              onSkip={() => setStep(2)}
+              onSkip={() => { setConfig((prev) => ({ ...prev, dimensions: [] })); setStep(2); }}
               onBack={() => setStep(0)}
             />
           )}
