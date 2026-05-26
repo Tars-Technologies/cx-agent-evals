@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
+import { CalibrationFlow } from "@/components/calibration/CalibrationFlow";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -282,13 +283,20 @@ function ComingSoonModal({ title, onClose }: { title: string; onClose: () => voi
 
 // ─── Labels tab ───────────────────────────────────────────────────────────────
 
-function LabelsTab({ evaluatorId }: { evaluatorId: Id<"evaluators"> }) {
+function LabelsTab({
+  evaluatorId,
+  agentId,
+}: {
+  evaluatorId: Id<"evaluators">;
+  agentId: Id<"agents">;
+}) {
   const labels = useQuery(api.evaluator.labels.byEvaluator, { evaluatorId });
   const counts = useQuery(api.evaluator.labels.counts, { evaluatorId });
   const removeLabel = useMutation(api.evaluator.labels.remove);
 
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [comingSoonModal, setComingSoonModal] = useState<string | null>(null);
+  const [showCalibrationFlow, setShowCalibrationFlow] = useState(false);
 
   function shortId(id: string) {
     return id.slice(-6);
@@ -346,7 +354,11 @@ function LabelsTab({ evaluatorId }: { evaluatorId: Id<"evaluators"> }) {
                 className="w-full text-left px-3 py-2 text-xs text-text hover:bg-bg-surface transition-colors"
                 onClick={() => {
                   setAddMenuOpen(false);
-                  setComingSoonModal(item);
+                  if (item === "Calibrate fresh sample") {
+                    setShowCalibrationFlow(true);
+                  } else {
+                    setComingSoonModal(item);
+                  }
                 }}
               >
                 {item}
@@ -441,6 +453,14 @@ function LabelsTab({ evaluatorId }: { evaluatorId: Id<"evaluators"> }) {
           onClose={() => setComingSoonModal(null)}
         />
       )}
+
+      {showCalibrationFlow && (
+        <CalibrationFlow
+          evaluatorId={evaluatorId}
+          agentId={agentId}
+          onClose={() => setShowCalibrationFlow(false)}
+        />
+      )}
     </div>
   );
 }
@@ -450,6 +470,7 @@ function LabelsTab({ evaluatorId }: { evaluatorId: Id<"evaluators"> }) {
 export default function EvaluatorDetailPage() {
   const params = useParams<{ id: string; evalId: string }>();
   const evalId = params.evalId as Id<"evaluators">;
+  const agentId = params.id as Id<"agents">;
   const searchParams = useSearchParams();
   const tab = searchParams.get("tab");
 
@@ -466,7 +487,7 @@ export default function EvaluatorDetailPage() {
   }
 
   if (tab === "labels") {
-    return <LabelsTab evaluatorId={evalId} />;
+    return <LabelsTab evaluatorId={evalId} agentId={agentId} />;
   }
 
   return <ConfigureTab evaluator={evaluator} />;
