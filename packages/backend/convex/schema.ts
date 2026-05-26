@@ -793,7 +793,6 @@ export default defineSchema({
   conversationSimulations: defineTable({
     orgId: v.string(),
     userId: v.id("users"),
-    datasetId: v.id("datasets"),
     agentId: v.id("agents"),
     k: v.number(),
     passThreshold: v.optional(v.number()),
@@ -816,8 +815,7 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
   })
     .index("by_org", ["orgId"])
-    .index("by_agent", ["agentId"])
-    .index("by_dataset", ["datasetId"]),
+    .index("by_agent", ["agentId"]),
 
   conversationSimRuns: defineTable({
     simulationId: v.id("conversationSimulations"),
