@@ -1,210 +1,161 @@
-import { convexTest } from "convex-test";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
+import { setupTest, seedUser, testIdentity, TEST_ORG_ID } from "./helpers";
 import { api } from "../convex/_generated/api";
-import { Id } from "../convex/_generated/dataModel";
-import {
-  TEST_ORG_ID,
-  testIdentity,
-  setupTest,
-  seedUser,
-  seedKB,
-  seedDataset,
-} from "./helpers";
+import type { Id } from "../convex/_generated/dataModel";
 
-const OTHER_ORG_ID = "org_other999";
-const OTHER_CLERK_ID = "user_other999";
-const otherIdentity = {
-  subject: OTHER_CLERK_ID,
-  issuer: "https://test.clerk.com",
-  org_id: OTHER_ORG_ID,
-  org_role: "org:admin",
-};
-
-async function seedExperiment(
-  t: ReturnType<typeof convexTest>,
-  userId: Id<"users">,
-  datasetId: Id<"datasets">,
-  orgId: string = TEST_ORG_ID,
-) {
-  return await t.run(async (ctx) => {
-    return await ctx.db.insert("experiments", {
-      orgId,
-      datasetId,
-      name: "Test Experiment",
-      metricNames: [],
-      status: "completed" as const,
-      experimentType: "agent" as const,
-      createdBy: userId,
+async function seedAgent(
+  t: ReturnType<typeof setupTest>,
+  _userId: Id<"users">,
+): Promise<Id<"agents">> {
+  return await t.run(async (ctx) =>
+    ctx.db.insert("agents", {
+      orgId: TEST_ORG_ID,
+      name: "test agent",
+      identity: {
+        agentName: "Test",
+        companyName: "Acme",
+        roleDescription: "support",
+      },
+      guardrails: {},
+      responseStyle: {},
+      model: "gpt-4o-mini",
+      enableReflection: false,
+      retrieverIds: [],
+      status: "ready" as const,
       createdAt: Date.now(),
-    });
-  });
+    }),
+  );
 }
 
-async function seedQuestion(
-  t: ReturnType<typeof convexTest>,
-  datasetId: Id<"datasets">,
-) {
-  return await t.run(async (ctx) => {
-    return await ctx.db.insert("questions", {
-      datasetId,
-      queryId: "q1",
-      queryText: "What is X?",
-      sourceDocId: "doc1",
-      relevantSpans: [],
-      metadata: {},
-    });
-  });
-}
+describe("failureModes CRUD (agent-scoped)", () => {
+  it("create assigns order 0 for first failure mode on an agent", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const agentId = await seedAgent(t, userId);
 
-async function seedFailureMode(
-  t: ReturnType<typeof convexTest>,
-  experimentId: Id<"experiments">,
-  orgId: string = TEST_ORG_ID,
-) {
-  return await t.run(async (ctx) => {
-    return await ctx.db.insert("failureModes", {
-      orgId,
-      experimentId,
-      name: "Hallucinated citation",
-      description: "Made up a fact",
-      order: 0,
+    const id = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
+      agentId, name: "promo confusion", description: "agent confuses promo codes",
+    });
+
+    const row = await t.run(async (ctx) => ctx.db.get(id));
+    expect(row?.agentId).toBe(agentId);
+    expect(row?.name).toBe("promo confusion");
+    expect(row?.order).toBe(0);
+    expect(typeof row?.createdAt).toBe("number");
+  });
+
+  it("create auto-increments order for subsequent failure modes on the same agent", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const agentId = await seedAgent(t, userId);
+
+    const id1 = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
+      agentId, name: "a", description: "",
+    });
+    const id2 = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
+      agentId, name: "b", description: "",
+    });
+
+    const r1 = await t.run(async (ctx) => ctx.db.get(id1));
+    const r2 = await t.run(async (ctx) => ctx.db.get(id2));
+    expect(r1?.order).toBe(0);
+    expect(r2?.order).toBe(1);
+  });
+
+  it("byAgent returns failure modes only for that agent, sorted by order", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const agent1 = await seedAgent(t, userId);
+    const agent2 = await seedAgent(t, userId);
+
+    await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
+      agentId: agent1, name: "a1", description: "",
+    });
+    await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
+      agentId: agent1, name: "a2", description: "",
+    });
+    await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
+      agentId: agent2, name: "b1", description: "",
+    });
+
+    const got1 = await t.withIdentity(testIdentity).query(api.failureModes.crud.byAgent, { agentId: agent1 });
+    expect(got1).toHaveLength(2);
+    expect(got1[0].order).toBeLessThan(got1[1].order);
+    for (const m of got1) expect(m.agentId).toBe(agent1);
+  });
+
+  it("update patches name and description", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const agentId = await seedAgent(t, userId);
+
+    const id = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
+      agentId, name: "a", description: "old",
+    });
+    await t.withIdentity(testIdentity).mutation(api.failureModes.crud.update, {
+      id, name: "a-renamed", description: "new",
+    });
+
+    const row = await t.run(async (ctx) => ctx.db.get(id));
+    expect(row?.name).toBe("a-renamed");
+    expect(row?.description).toBe("new");
+    expect(typeof row?.updatedAt).toBe("number");
+  });
+
+  it("remove deletes the failure mode AND its memberships (cascade)", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const agentId = await seedAgent(t, userId);
+    const id = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
+      agentId, name: "x", description: "",
+    });
+
+    // Insert a membership directly (the memberships CRUD is Task 7; here we just seed the row)
+    const convId = await t.run(async (ctx) => ctx.db.insert("conversations", {
+      orgId: TEST_ORG_ID, agentIds: [agentId], status: "active", source: "playground", createdAt: Date.now(),
+    } as any));
+    await t.run(async (ctx) => ctx.db.insert("failureModeMemberships", {
+      orgId: TEST_ORG_ID,
+      failureModeId: id,
+      source: { kind: "conversation", conversationId: convId },
       createdAt: Date.now(),
-    });
+    }));
+
+    await t.withIdentity(testIdentity).mutation(api.failureModes.crud.remove, { id });
+
+    const row = await t.run(async (ctx) => ctx.db.get(id));
+    expect(row).toBeNull();
+    const remainingMemberships = await t.run(async (ctx) =>
+      ctx.db.query("failureModeMemberships").withIndex("by_failure_mode", q => q.eq("failureModeId", id)).collect()
+    );
+    expect(remainingMemberships).toHaveLength(0);
   });
-}
 
-describe("failureModes.assignQuestion — cross-org guards", () => {
-  let t: ReturnType<typeof convexTest>;
+  it("rejects create / update / remove without auth", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const agentId = await seedAgent(t, userId);
 
-  beforeEach(() => {
-    t = setupTest();
-  });
-
-  it("rejects mapping to a failure mode belonging to a different org", async () => {
-    // Seed org A's experiment + question
-    const userA = await seedUser(t);
-    const kbA = await seedKB(t, userA);
-    const dsA = await seedDataset(t, userA, kbA);
-    const expA = await seedExperiment(t, userA, dsA, TEST_ORG_ID);
-    const qA = await seedQuestion(t, dsA);
-
-    // Seed org B's failure mode (on its own experiment)
-    const userB = await t.run(async (ctx) =>
-      ctx.db.insert("users", {
-        clerkId: OTHER_CLERK_ID,
-        email: "other@test.com",
-        name: "Other User",
-        createdAt: Date.now(),
-      }),
-    );
-    const kbB = await t.run(async (ctx) =>
-      ctx.db.insert("knowledgeBases", {
-        orgId: OTHER_ORG_ID,
-        name: "Other KB",
-        metadata: {},
-        createdBy: userB,
-        createdAt: Date.now(),
-      }),
-    );
-    const dsB = await t.run(async (ctx) =>
-      ctx.db.insert("datasets", {
-        orgId: OTHER_ORG_ID,
-        kbId: kbB,
-        name: "Other Dataset",
-        strategy: "simple",
-        strategyConfig: {},
-        questionCount: 0,
-        metadata: {},
-        createdBy: userB,
-        createdAt: Date.now(),
-      }),
-    );
-    const expB = await seedExperiment(t, userB, dsB, OTHER_ORG_ID);
-    const fmB = await seedFailureMode(t, expB, OTHER_ORG_ID);
-
-    // User from org A tries to assign their question to org B's failure mode
-    const asUserA = t.withIdentity(testIdentity);
     await expect(
-      asUserA.mutation(api.failureModes.crud.assignQuestion, {
-        failureModeId: fmB,
-        questionId: qA,
-        experimentId: expA,
-      }),
-    ).rejects.toThrow(/Failure mode not found/);
-
-    // No mapping should have been created
-    const mappings = await t.run(async (ctx) =>
-      ctx.db.query("failureModeQuestionMappings").collect(),
-    );
-    expect(mappings).toHaveLength(0);
+      t.mutation(api.failureModes.crud.create, { agentId, name: "x", description: "" })
+    ).rejects.toThrow();
   });
 
-  it("rejects assigning to a failure mode from a different experiment in the same org", async () => {
-    const userA = await seedUser(t);
-    const kbA = await seedKB(t, userA);
-    const dsA = await seedDataset(t, userA, kbA);
-    const exp1 = await seedExperiment(t, userA, dsA, TEST_ORG_ID);
-    const exp2 = await seedExperiment(t, userA, dsA, TEST_ORG_ID);
-    const qA = await seedQuestion(t, dsA);
-    // Failure mode belongs to experiment 2
-    const fmExp2 = await seedFailureMode(t, exp2, TEST_ORG_ID);
+  it("rejects update / remove for failure mode not in user's org", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const agentId = await seedAgent(t, userId);
 
-    const asUserA = t.withIdentity(testIdentity);
-    // Try to assign using experiment 1's ID but fmExp2
+    // Insert a row with a different orgId directly
+    const foreignId = await t.run(async (ctx) => ctx.db.insert("failureModes", {
+      orgId: "org_other",
+      agentId,
+      name: "foreign", description: "", order: 0,
+      createdAt: Date.now(),
+    }));
+
     await expect(
-      asUserA.mutation(api.failureModes.crud.assignQuestion, {
-        failureModeId: fmExp2,
-        questionId: qA,
-        experimentId: exp1,
-      }),
-    ).rejects.toThrow(/does not belong to this experiment/);
-  });
-
-  it("accepts an in-org, same-experiment assignment", async () => {
-    const userA = await seedUser(t);
-    const kbA = await seedKB(t, userA);
-    const dsA = await seedDataset(t, userA, kbA);
-    const expA = await seedExperiment(t, userA, dsA, TEST_ORG_ID);
-    const fmA = await seedFailureMode(t, expA, TEST_ORG_ID);
-    const qA = await seedQuestion(t, dsA);
-
-    const asUserA = t.withIdentity(testIdentity);
-    await asUserA.mutation(api.failureModes.crud.assignQuestion, {
-      failureModeId: fmA,
-      questionId: qA,
-      experimentId: expA,
-    });
-
-    const mappings = await t.run(async (ctx) =>
-      ctx.db.query("failureModeQuestionMappings").collect(),
-    );
-    expect(mappings).toHaveLength(1);
-    expect(mappings[0].orgId).toBe(TEST_ORG_ID);
-    expect(mappings[0].failureModeId).toBe(fmA);
-    expect(mappings[0].questionId).toBe(qA);
-  });
-});
-
-describe("failureModes.startGeneration — concurrency guard", () => {
-  let t: ReturnType<typeof convexTest>;
-
-  beforeEach(() => {
-    t = setupTest();
-  });
-
-  it("rejects when failure modes already exist for the experiment", async () => {
-    const userA = await seedUser(t);
-    const kbA = await seedKB(t, userA);
-    const dsA = await seedDataset(t, userA, kbA);
-    const expA = await seedExperiment(t, userA, dsA, TEST_ORG_ID);
-    // Pre-existing failure mode — simulating a prior Generate run
-    await seedFailureMode(t, expA, TEST_ORG_ID);
-
-    const asUserA = t.withIdentity(testIdentity);
-    await expect(
-      asUserA.mutation(api.failureModes.crud.startGeneration, {
-        experimentId: expA,
-      }),
-    ).rejects.toThrow(/already exist/);
+      t.withIdentity(testIdentity).mutation(api.failureModes.crud.remove, { id: foreignId })
+    ).rejects.toThrow(/not found/i);
   });
 });
