@@ -1,16 +1,19 @@
-import { EntityStubPage } from "@/components/shell/EntityStubPage";
-import { agentSidebar } from "@/components/shell/sidebars";
+"use client";
+import { useParams } from "next/navigation";
+import type { Id } from "@convex/_generated/dataModel";
+import AgentConfigPanel from "@/components/AgentConfigPanel";
+import AgentPlayground from "@/components/AgentPlayground";
 
-export default async function AgentConfigurePage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default function ConfigurePage() {
+  const params = useParams<{ id: string }>();
+  const agentId = params.id as Id<"agents">;
+
   return (
-    <EntityStubPage
-      sidebarTitle="Agent"
-      sidebar={agentSidebar(id)}
-      title="Configure"
-      legacyHref="/agents"
-      legacyLabel="Open legacy /agents"
-      note="Agent config + playground. Moves here in the Agents section PR."
-    />
+    <div className="flex-1 grid grid-cols-[380px_1fr] min-h-0 min-w-0 overflow-hidden">
+      <div className="border-r border-border overflow-y-auto">
+        <AgentConfigPanel agentId={agentId} />
+      </div>
+      <AgentPlayground agentId={agentId} />
+    </div>
   );
 }
