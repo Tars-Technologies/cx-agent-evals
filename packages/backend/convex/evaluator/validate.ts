@@ -9,7 +9,16 @@ const TNR_THRESHOLD = 0.85;
 
 export const run = action({
   args: { evaluatorId: v.id("evaluators") },
-  handler: async (ctx, { evaluatorId }) => {
+  handler: async (
+    ctx,
+    { evaluatorId },
+  ): Promise<{
+    tpr: number;
+    tnr: number;
+    agreement: number;
+    status: "ready" | "validated";
+    skipped: number;
+  }> => {
     const { orgId } = await getAuthContext(ctx);
     const evaluator = await ctx.runQuery(
       internal.evaluator.crud.getInternal,

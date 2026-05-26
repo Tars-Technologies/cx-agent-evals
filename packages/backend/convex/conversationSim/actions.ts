@@ -110,7 +110,9 @@ export const runConversationSim = internalAction({
         // 2. Legacy: referenceMessages[0].content (un-backfilled scenarios).
         // 3. None: simulator generates turn 0.
         if (scenario.referenceTranscript) {
-          const firstUser = scenario.referenceTranscript.find((m) => m.role === "user");
+          const firstUser = scenario.referenceTranscript.find(
+            (m: { role: string; text: string }) => m.role === "user",
+          );
           if (firstUser) return firstUser.text;
         }
         if (scenario.referenceMessages?.[0]) {
