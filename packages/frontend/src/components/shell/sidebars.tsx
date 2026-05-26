@@ -30,12 +30,12 @@ export function kbSidebar(kbId: string): SidebarItem[] {
   const base = `/kb/${kbId}`;
   return [
     { label: "Configure", href: `${base}/configure`, icon: ICONS.configure },
+    { label: "Retrievers", href: `${base}/retrievers`, icon: ICONS.retrievers },
     {
       label: "Evaluate",
       href: `${base}/evaluate`,
       children: [
         { label: "Datasets", href: `${base}/evaluate/datasets`, icon: ICONS.datasets },
-        { label: "Retrievers", href: `${base}/evaluate/retrievers`, icon: ICONS.retrievers },
         { label: "Experiments", href: `${base}/evaluate/experiments`, icon: ICONS.experiments },
       ],
     },

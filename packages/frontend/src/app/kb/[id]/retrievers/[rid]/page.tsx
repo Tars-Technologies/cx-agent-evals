@@ -72,7 +72,7 @@ export default function KbRetrieverDetailPage({
           )}
         </div>
         <button
-          onClick={() => router.push(`/kb/${kbId}/evaluate/retrievers`)}
+          onClick={() => router.push(`/kb/${kbId}/retrievers`)}
           className="text-[11px] text-text-dim hover:text-text transition-colors"
         >
           ← All retrievers

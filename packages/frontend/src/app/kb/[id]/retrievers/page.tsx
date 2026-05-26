@@ -60,7 +60,7 @@ export default function KbRetrieversPage({
           {retrievers.map((r) => (
             <Link
               key={r._id}
-              href={`/kb/${kbId}/evaluate/retrievers/${r._id}`}
+              href={`/kb/${kbId}/retrievers/${r._id}`}
               className="block border border-border rounded-lg p-4 bg-bg-elevated hover:border-accent/50 transition-colors"
             >
               <div className="flex items-start justify-between gap-2 mb-2">
@@ -112,7 +112,7 @@ export default function KbRetrieversPage({
                     retrieverConfig: pConfig,
                   });
                   setShowWizard(false);
-                  router.push(`/kb/${kbId}/evaluate/retrievers/${result.retrieverId}`);
+                  router.push(`/kb/${kbId}/retrievers/${result.retrieverId}`);
                 } catch (err) {
                   console.error("Failed to create retriever:", err);
                 }
