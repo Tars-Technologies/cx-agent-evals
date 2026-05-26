@@ -13,4 +13,14 @@ crons.interval(
   internal.langsmith.syncRetry.retryFailed,
 );
 
+/**
+ * Idempotent seed of built-in evaluator templates.
+ * Runs daily; skips templates that already exist by name.
+ */
+crons.daily(
+  "seed evaluator templates",
+  { hourUTC: 0, minuteUTC: 0 },
+  internal.evaluator.templates.seedAll,
+);
+
 export default crons;
