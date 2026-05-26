@@ -37,7 +37,7 @@ function scoreCode(ev: any, messages: any[]): Verdict {
     case "regex_match": {
       const pattern: string = params.pattern ?? "";
       const expectMatch: boolean = params.expectMatch ?? true;
-      const re = new RegExp(pattern);
+      const re = params.flags ? new RegExp(pattern, params.flags) : new RegExp(pattern);
       const haystack = messages.map((m: any) => m.content).join("\n");
       const matched = re.test(haystack);
       const passed = matched === expectMatch;

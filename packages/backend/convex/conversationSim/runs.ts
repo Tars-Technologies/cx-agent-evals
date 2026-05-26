@@ -117,7 +117,6 @@ export const updateRun = internalMutation({
     toolCallCount: v.optional(v.number()),
     totalTokens: v.optional(v.number()),
     latencyMs: v.optional(v.number()),
-    annotations: v.optional(v.string()),
   },
   handler: async (ctx, { runId, ...patch }) => {
     const updates: Record<string, unknown> = {};

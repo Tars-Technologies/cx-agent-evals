@@ -90,9 +90,11 @@ describe("evaluator.validate", () => {
       });
     }
 
-    const result = await t.action(api.evaluator.validate.run, {
-      evaluatorId: evalId,
-    });
+    const result = await t
+      .withIdentity(testIdentity)
+      .action(api.evaluator.validate.run, {
+        evaluatorId: evalId,
+      });
     expect(result.tpr).toBeCloseTo(1.0, 5);
     expect(result.tnr).toBeCloseTo(1.0, 5);
     expect(result.agreement).toBeCloseTo(1.0, 5);
@@ -133,9 +135,11 @@ describe("evaluator.validate", () => {
       });
     }
 
-    const result = await t.action(api.evaluator.validate.run, {
-      evaluatorId: evalId,
-    });
+    const result = await t
+      .withIdentity(testIdentity)
+      .action(api.evaluator.validate.run, {
+        evaluatorId: evalId,
+      });
     expect(result.tpr).toBe(0);
 
     const row = await t.run(async (ctx) => ctx.db.get(evalId));
@@ -162,7 +166,9 @@ describe("evaluator.validate", () => {
       });
 
     await expect(
-      t.action(api.evaluator.validate.run, { evaluatorId: evalId }),
+      t
+        .withIdentity(testIdentity)
+        .action(api.evaluator.validate.run, { evaluatorId: evalId }),
     ).rejects.toThrow(/dev labels|calibrate/i);
   });
 
@@ -184,6 +190,7 @@ describe("evaluator.validate", () => {
         source: { kind: "manual" },
         tags: [],
       });
+    // One conversation-sourced label (will be scored)
     const convId = await seedConvWithAssistantMessage(t, agentId, "x");
     await t.withIdentity(testIdentity).mutation(api.evaluator.labels.upsert, {
       evaluatorId: evalId,
@@ -193,8 +200,109 @@ describe("evaluator.validate", () => {
       origin: { kind: "calibration_pass" },
     });
 
+    // One transcript-sourced label (should be skipped)
+    const csvStorageId = await t.run(async (ctx) =>
+      ctx.storage.store(new Blob(["csv"], { type: "text/csv" })),
+    );
+    const transcriptId = await t.run(async (ctx) => {
+      const userRow = await ctx.db
+        .query("users")
+        .withIndex("by_clerk_id", (q) => q.eq("clerkId", "user_test456"))
+        .unique();
+      const uploadId = await ctx.db.insert("livechatUploads", {
+        orgId: TEST_ORG_ID,
+        createdBy: userRow!._id,
+        filename: "t.csv",
+        csvStorageId,
+        status: "ready" as const,
+        createdAt: Date.now(),
+      });
+      return ctx.db.insert("livechatConversations", {
+        uploadId,
+        orgId: TEST_ORG_ID,
+        conversationId: "c1",
+        visitorId: "v1",
+        visitorName: "",
+        visitorPhone: "",
+        visitorEmail: "",
+        agentId: "",
+        agentName: "",
+        agentEmail: "",
+        inbox: "",
+        labels: [],
+        status: "",
+        messages: [],
+        metadata: {},
+        classificationStatus: "none" as const,
+        translationStatus: "none" as const,
+      });
+    });
+    await t.withIdentity(testIdentity).mutation(api.evaluator.labels.upsert, {
+      evaluatorId: evalId,
+      source: { kind: "transcript", transcriptId },
+      humanLabel: "pass",
+      splitAssignment: "dev",
+      origin: { kind: "calibration_pass" },
+    });
+
+    const result = await t
+      .withIdentity(testIdentity)
+      .action(api.evaluator.validate.run, {
+        evaluatorId: evalId,
+      });
+    expect(result).toBeDefined();
+    expect(result.skipped).toBe(1);
+  });
+
+  it("rejects validate for evaluator in a different org", async () => {
+    const t = setupTest();
+    await seedUser(t);
+    const agentId = await seedAgent(t);
+    const foreignId = await t.run(async (ctx) =>
+      ctx.db.insert("evaluators", {
+        orgId: "org_other",
+        agentId,
+        name: "f",
+        description: "",
+        type: "code",
+        codeJudgeConfig: {
+          checkType: "string_contains",
+          params: { needle: "x" },
+        },
+        source: { kind: "manual" },
+        status: "draft",
+        tags: [],
+        createdAt: Date.now(),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any),
+    );
+    await expect(
+      t
+        .withIdentity(testIdentity)
+        .action(api.evaluator.validate.run, { evaluatorId: foreignId }),
+    ).rejects.toThrow(/not found/i);
+  });
+
+  it("rejects validate without auth", async () => {
+    const t = setupTest();
+    await seedUser(t);
+    const agentId = await seedAgent(t);
+    const evalId = await t
+      .withIdentity(testIdentity)
+      .mutation(api.evaluator.crud.create, {
+        agentId,
+        name: "x",
+        description: "",
+        type: "code",
+        codeJudgeConfig: {
+          checkType: "string_contains",
+          params: { needle: "x" },
+        },
+        source: { kind: "manual" },
+        tags: [],
+      });
     await expect(
       t.action(api.evaluator.validate.run, { evaluatorId: evalId }),
-    ).resolves.toBeDefined();
+    ).rejects.toThrow();
   });
 });

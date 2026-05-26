@@ -103,7 +103,7 @@ export const TEMPLATES: ReadonlyArray<Template> = [
     type: "code",
     prefilledConfig: {
       checkType: "tool_call_match",
-      params: { toolName: "escalate_to_human", requiredWhen: "user_says_cancel" },
+      params: { toolName: "escalate_to_human", expectCalled: true },
     },
   },
   {
@@ -146,23 +146,13 @@ export const TEMPLATES: ReadonlyArray<Template> = [
 
   // ─── Format ───
   {
-    name: "Response not too long",
-    description: "Detect responses exceeding 500 characters (deterministic).",
-    category: "format",
-    type: "code",
-    prefilledConfig: {
-      checkType: "string_contains",
-      params: { maxLength: 500 },
-    },
-  },
-  {
     name: "No markdown in response",
     description: "Detect if assistant used markdown formatting (headers, bold, bullets) when plain text is expected.",
     category: "format",
     type: "code",
     prefilledConfig: {
       checkType: "regex_match",
-      params: { pattern: "^(?!.*(?:#{1,6} |\\*\\*|__|- \\[|\\|---|```)).*$", flags: "m", shouldMatch: false },
+      params: { pattern: "(?:^|\\n)#{1,6} |\\*\\*|__|(?:^|\\n)- \\[|\\|---|```", flags: "m", expectMatch: false },
     },
   },
 ];

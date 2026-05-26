@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { setupTest, testIdentity } from "./helpers";
 import { api, internal } from "../convex/_generated/api";
+import { scoreOne } from "../convex/evaluator/scoreOne";
 
 describe("evaluatorTemplates", () => {
   it("seedAll inserts the built-in template library", async () => {
@@ -34,6 +35,31 @@ describe("evaluatorTemplates", () => {
     const types = new Set(all.map(t => t.type));
     expect(types.has("code")).toBe(true);
     expect(types.has("llm_judge")).toBe(true);
+  });
+
+  it("every template's prefilledConfig is shaped correctly for scoreOne", async () => {
+    const t = setupTest();
+    await t.mutation(internal.evaluator.templates.seedAll, {});
+    const all = await t
+      .withIdentity(testIdentity)
+      .query(api.evaluator.templates.listAll, {});
+    for (const tpl of all) {
+      const stubEval = {
+        type: tpl.type,
+        codeJudgeConfig: tpl.type === "code" ? tpl.prefilledConfig : undefined,
+        llmJudgeConfig:
+          tpl.type === "llm_judge" ? tpl.prefilledConfig : undefined,
+      };
+      const messages = [
+        { role: "user", content: "hi" },
+        { role: "assistant", content: '{"ok": true}' },
+      ];
+      const v = scoreOne(stubEval, messages);
+      expect(typeof v.passed).toBe("boolean");
+      expect(typeof v.justification).toBe("string");
+      expect(v.justification.length).toBeGreaterThan(0);
+      expect(v.justification).not.toMatch(/Unknown checkType/);
+    }
   });
 
   it("rejects unauthenticated query", async () => {
