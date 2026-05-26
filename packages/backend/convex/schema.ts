@@ -823,7 +823,7 @@ export default defineSchema({
     agentId: v.id("agents"),
     kIndex: v.number(),
     seed: v.number(),
-    conversationId: v.id("conversations"),
+    conversationId: v.optional(v.id("conversations")),
     status: v.union(
       v.literal("pending"), v.literal("running"),
       v.literal("completed"), v.literal("failed"),

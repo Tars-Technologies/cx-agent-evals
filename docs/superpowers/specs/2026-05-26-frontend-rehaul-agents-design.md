@@ -239,7 +239,7 @@ Kept as the unified "agent run" tables. Two surgical changes:
 
 - Drop `conversationSimulations.evaluatorSetId`. Replace with "all `ready` evaluators for this agent run inline."
 - Drop `conversationSimRuns.annotations: v.optional(v.string())` free-form string field. All annotations now live in the `annotations` table with polymorphic source.
-- Make `conversationSimRuns.conversationId` **required** (every sim run produces a `conversations` row with `source: "simulation"` — simulation and playground share the same conversation/messages storage).
+- `conversationSimRuns.conversationId` remains `v.optional(...)`. A sim run row is inserted as `pending` before the conversation exists; the conversation row is created when the run actually starts, and the sim run is patched with the conversationId at that point. A completed sim run always has a conversationId; a pending one may not.
 
 ### DROP
 
