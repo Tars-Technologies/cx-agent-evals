@@ -239,7 +239,7 @@ export function WizardStepDimensions({
           </button>
           <button
             onClick={onNext}
-            disabled={dimensions.some(d => !d.name.trim() || !d.description.trim() || d.values.length < 2 || d.values.some(v => !v.trim()))}
+            disabled={dimensions.some(d => !(d.name ?? "").trim() || !(d.description ?? "").trim() || d.values.length < 2 || d.values.some(v => !(v ?? "").trim()))}
             className="px-3 py-1.5 text-xs rounded bg-accent-dim text-accent-bright hover:bg-accent/20 transition-colors disabled:opacity-40"
           >
             Next →
