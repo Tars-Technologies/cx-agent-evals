@@ -65,6 +65,5 @@ export function agentRunSidebar(agentId: string, runId: string): SidebarItem[] {
     { label: "Run detail", href: base, icon: ICONS.experiments, match: (p) => p === base },
     { label: "Open coding", href: `${base}/open-coding`, icon: ICONS["open-coding"] },
     { label: "Axial coding", href: `${base}/axial-coding`, icon: ICONS["axial-coding"] },
-    { label: "Evaluators", href: `${base}/evaluators`, icon: ICONS.evaluators },
   ];
 }
