@@ -54,7 +54,6 @@ export const start = mutation({
 
     const totalRuns = scenarios.length * k;
 
-    // TODO(Task 11): auto-apply ready evaluators when sim runs complete
     // Create simulation record
     const simulationId = await ctx.db.insert("conversationSimulations", {
       orgId,
@@ -154,6 +153,16 @@ export const onRunComplete = internalMutation({
         completedRuns,
         failedRuns,
       });
+    }
+
+    // Auto-apply ready evaluators to the just-completed run (success only)
+    if (result.kind === "success") {
+      const runId = context.runId as Id<"conversationSimRuns">;
+      await ctx.scheduler.runAfter(
+        0,
+        internal.evaluator.autoApply.applyReadyEvaluatorsToSimRun,
+        { simRunId: runId },
+      );
     }
   },
 });
