@@ -72,7 +72,7 @@ export const createInternal = internalMutation({
     agentIds: v.array(v.id("agents")),
     title: v.optional(v.string()),
     source: v.optional(v.union(
-      v.literal("playground"), v.literal("simulation"), v.literal("experiment"),
+      v.literal("playground"), v.literal("simulation"),
     )),
   },
   handler: async (ctx, args) => {
