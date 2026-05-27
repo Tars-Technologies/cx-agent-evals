@@ -19,6 +19,7 @@ const pool = new Workpool(components.conversationSimPool, {
 export const start = mutation({
   args: {
     agentId: v.id("agents"),
+    scenarioSetId: v.id("scenarioSets"),
     k: v.optional(v.number()),
     passThreshold: v.optional(v.number()),
     concurrency: v.optional(v.number()),
@@ -35,6 +36,12 @@ export const start = mutation({
     if (!agent || agent.orgId !== orgId) throw new Error("Agent not found");
     if (agent.status !== "ready") throw new Error("Agent is not ready");
 
+    // Validate scenario set ownership
+    const set = await ctx.db.get(args.scenarioSetId);
+    if (!set || set.orgId !== orgId || set.agentId !== args.agentId) {
+      throw new Error("Scenario set not found");
+    }
+
     // Lookup user for userId field
     const user = await lookupUser(ctx, userId);
 
@@ -44,13 +51,13 @@ export const start = mutation({
     const concurrency = args.concurrency ?? 2;
     const userSimModel = args.userSimModel ?? "claude-sonnet-4-20250514";
 
-    // Load all scenarios for agent
+    // Load scenarios for the specified set (not all agent scenarios)
     const scenarios = await ctx.db
       .query("conversationScenarios")
-      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .withIndex("by_set", (q) => q.eq("scenarioSetId", args.scenarioSetId))
       .collect();
 
-    if (scenarios.length === 0) throw new Error("Agent has no scenarios");
+    if (scenarios.length === 0) throw new Error("Scenario set has no scenarios");
 
     const totalRuns = scenarios.length * k;
 
@@ -59,6 +66,7 @@ export const start = mutation({
       orgId,
       userId: user._id,
       agentId: args.agentId,
+      scenarioSetId: args.scenarioSetId,
       k,
       concurrency,
       maxTurns,
