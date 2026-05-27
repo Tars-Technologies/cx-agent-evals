@@ -13,10 +13,14 @@ type Set = NonNullable<
 
 function SetCard({
   set,
+  generating,
+  generatingProgress,
   onClick,
   onDelete,
 }: {
   set: Set;
+  generating?: boolean;
+  generatingProgress?: { generated: number; target: number };
   onClick: () => void;
   onDelete: () => void;
 }) {
@@ -45,7 +49,17 @@ function SetCard({
         </span>
       </div>
       <div className="text-xs text-text-dim space-y-1">
-        <div>{set.scenarioCount} scenarios</div>
+        {generating && generatingProgress ? (
+          <div className="flex items-center gap-2 text-accent">
+            <div className="w-1.5 h-1.5 bg-accent rounded-full animate-pulse" />
+            <span>
+              Generating {generatingProgress.generated} /{" "}
+              {generatingProgress.target}
+            </span>
+          </div>
+        ) : (
+          <div>{set.scenarioCount} scenarios</div>
+        )}
         <div>Created {createdDate}</div>
       </div>
       <button
@@ -67,7 +81,15 @@ export default function ScenariosPage() {
   const router = useRouter();
 
   const sets = useQuery(api.conversationSim.scenarioSets.byAgent, { agentId });
+  const activeJob = useQuery(
+    api.conversationSim.generation.getActiveJob,
+    { agentId },
+  );
   const removeSet = useMutation(api.conversationSim.scenarioSets.remove);
+
+  const activeSet = activeJob?.scenarioSetId
+    ? (sets ?? []).find((s) => s._id === activeJob.scenarioSetId) ?? null
+    : null;
 
   const [showWizard, setShowWizard] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +121,37 @@ export default function ScenariosPage() {
         </div>
       )}
 
+      {activeJob && (
+        <div className="mx-6 mt-4 bg-accent/10 border border-accent/30 rounded-lg px-4 py-3 shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
+              <span className="text-[11px] uppercase tracking-wider text-accent font-medium">
+                Generating
+              </span>
+              {activeSet && (
+                <span className="text-xs text-text">{activeSet.name}</span>
+              )}
+            </div>
+            <span className="text-xs text-text-dim">
+              {activeJob.generatedCount} / {activeJob.targetCount}
+            </span>
+          </div>
+          <div className="h-1 bg-border rounded-full overflow-hidden">
+            <div
+              className="h-full bg-accent rounded-full transition-all"
+              style={{
+                width: `${
+                  activeJob.targetCount > 0
+                    ? (activeJob.generatedCount / activeJob.targetCount) * 100
+                    : 0
+                }%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {sets === undefined ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -118,18 +171,30 @@ export default function ScenariosPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {sets.map((set) => (
-              <SetCard
-                key={set._id}
-                set={set}
-                onClick={() =>
-                  router.push(
-                    `/agents/${agentId}/evaluate/scenarios/${set._id}`,
-                  )
-                }
-                onDelete={() => handleDelete(set._id)}
-              />
-            ))}
+            {sets.map((set) => {
+              const isGenerating = activeJob?.scenarioSetId === set._id;
+              return (
+                <SetCard
+                  key={set._id}
+                  set={set}
+                  generating={isGenerating}
+                  generatingProgress={
+                    isGenerating && activeJob
+                      ? {
+                          generated: activeJob.generatedCount,
+                          target: activeJob.targetCount,
+                        }
+                      : undefined
+                  }
+                  onClick={() =>
+                    router.push(
+                      `/agents/${agentId}/evaluate/scenarios/${set._id}`,
+                    )
+                  }
+                  onDelete={() => handleDelete(set._id)}
+                />
+              );
+            })}
           </div>
         )}
       </div>
