@@ -26,9 +26,17 @@ function SetCard({
     year: "numeric",
   });
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className="text-left bg-bg-elevated border border-border rounded-lg p-4 hover:border-accent transition-colors"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className="text-left bg-bg-elevated border border-border rounded-lg p-4 hover:border-accent transition-colors cursor-pointer"
     >
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-medium text-text truncate">{set.name}</h3>
@@ -49,7 +57,7 @@ function SetCard({
       >
         Delete
       </button>
-    </button>
+    </div>
   );
 }
 
