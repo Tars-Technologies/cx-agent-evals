@@ -1,6 +1,5 @@
 import {
   query,
-  mutation,
   internalQuery,
   internalMutation,
 } from "../_generated/server";
@@ -159,67 +158,16 @@ export const byTranscriptUpload = query({
   },
 });
 
-// ─── Mutations ───
-
-export const create = mutation({
-  args: {
-    agentId: v.id("agents"),
-    source: sourceValidator,
-    ...contentFields,
-  },
-  handler: async (ctx, args) => {
+export const bySet = query({
+  args: { scenarioSetId: v.id("scenarioSets") },
+  handler: async (ctx, { scenarioSetId }) => {
     const { orgId } = await getAuthContext(ctx);
-    const agent = await ctx.db.get(args.agentId);
-    if (!agent || agent.orgId !== orgId) throw new Error("Agent not found");
-    // @ts-expect-error scenarioSetId missing — public `create` pending removal in Task 7
-    return await ctx.db.insert("conversationScenarios", {
-      orgId,
-      ...args,
-      createdAt: Date.now(),
-    });
-  },
-});
-
-export const update = mutation({
-  args: {
-    id: v.id("conversationScenarios"),
-    persona: v.optional(personaValidator),
-    topic: v.optional(v.string()),
-    intent: v.optional(v.string()),
-    complexity: v.optional(complexityValidator),
-    reasonForContact: v.optional(v.string()),
-    knownInfo: v.optional(v.string()),
-    unknownInfo: v.optional(v.string()),
-    instruction: v.optional(v.string()),
-    referenceMessages: v.optional(referenceMessagesArrayValidator),
-    languages: languagesValidator,
-    referenceTranscript: referenceTranscriptValidator,
-    referenceExemplars: referenceExemplarsValidator,
-    userMessageLengthStats: userMessageLengthStatsValidator,
-    behaviorAnchors: behaviorAnchorsValidator,
-  },
-  handler: async (ctx, { id, ...updates }) => {
-    const { orgId } = await getAuthContext(ctx);
-    const existing = await ctx.db.get(id);
-    if (!existing || existing.orgId !== orgId) {
-      throw new Error("Scenario not found");
-    }
-    const filtered = Object.fromEntries(
-      Object.entries(updates).filter(([_, v]) => v !== undefined),
-    );
-    await ctx.db.patch(id, filtered);
-  },
-});
-
-export const remove = mutation({
-  args: { id: v.id("conversationScenarios") },
-  handler: async (ctx, { id }) => {
-    const { orgId } = await getAuthContext(ctx);
-    const existing = await ctx.db.get(id);
-    if (!existing || existing.orgId !== orgId) {
-      throw new Error("Scenario not found");
-    }
-    await ctx.db.delete(id);
+    const set = await ctx.db.get(scenarioSetId);
+    if (!set || set.orgId !== orgId) throw new Error("Set not found");
+    return ctx.db
+      .query("conversationScenarios")
+      .withIndex("by_set", (q) => q.eq("scenarioSetId", scenarioSetId))
+      .collect();
   },
 });
 
