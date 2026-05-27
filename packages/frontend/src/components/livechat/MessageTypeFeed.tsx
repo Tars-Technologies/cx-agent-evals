@@ -1,6 +1,6 @@
-"use client";
+"use client"
 
-import type { MessageTypeItem } from "./types";
+import type { MessageTypeItem } from "./types"
 
 export function MessageTypeFeed({ items }: { items: MessageTypeItem[] }) {
   return (
@@ -8,13 +8,12 @@ export function MessageTypeFeed({ items }: { items: MessageTypeItem[] }) {
       {items.map((item, i) => {
         const primaryExchange = item.messageType.exchanges.find(
           (e) => e.label === "primary"
-        );
-        const userMsgs = primaryExchange?.messages.filter(
-          (m) => m.role === "user"
-        ) ?? [];
-        const agentMsgs = primaryExchange?.messages.filter(
-          (m) => m.role === "human_agent"
-        ) ?? [];
+        )
+        const userMsgs =
+          primaryExchange?.messages.filter((m) => m.role === "user") ?? []
+        const agentMsgs =
+          primaryExchange?.messages.filter((m) => m.role === "human_agent") ??
+          []
 
         return (
           <div
@@ -22,7 +21,8 @@ export function MessageTypeFeed({ items }: { items: MessageTypeItem[] }) {
             className="bg-bg-surface rounded-md border border-border border-l-[3px] border-l-accent mb-2 p-2.5"
           >
             <div className="text-text-dim text-[10px] mb-1">
-              {item.visitorName || "Unknown"} · #{item.conversationId} · {item.agentName}
+              {item.visitorName || "Unknown"} · #{item.conversationId} ·{" "}
+              {item.agentName}
             </div>
             {userMsgs.map((msg) => (
               <div key={msg.id} className="text-accent-bright text-xs mb-1">
@@ -39,7 +39,7 @@ export function MessageTypeFeed({ items }: { items: MessageTypeItem[] }) {
               </div>
             )}
           </div>
-        );
+        )
       })}
       {items.length === 0 && (
         <div className="text-text-dim text-xs text-center p-4">
@@ -47,5 +47,5 @@ export function MessageTypeFeed({ items }: { items: MessageTypeItem[] }) {
         </div>
       )}
     </div>
-  );
+  )
 }

@@ -1,57 +1,61 @@
-"use client";
+"use client"
 
-import { useState, useEffect } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation } from "convex/react"
+import { useEffect, useState } from "react"
 import {
-  INDUSTRIES,
   ENTITY_TYPES,
+  INDUSTRIES,
   loadKBCreateConfig,
-  saveKBCreateConfig,
-} from "@/lib/constants";
+  saveKBCreateConfig
+} from "@/lib/constants"
+import { api } from "@/lib/convex"
 
 interface CreateKBModalProps {
-  open: boolean;
-  onClose: () => void;
-  onCreated: (kbId: Id<"knowledgeBases">) => void;
+  open: boolean
+  onClose: () => void
+  onCreated: (kbId: Id<"knowledgeBases">) => void
 }
 
-export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) {
-  const createKb = useMutation(api.crud.knowledgeBases.create);
-  const [name, setName] = useState("");
-  const [industry, setIndustry] = useState<string>("other");
-  const [customIndustry, setCustomIndustry] = useState("");
-  const [entityType, setEntityType] = useState<string>("company");
-  const [company, setCompany] = useState("");
-  const [companyUrl, setCompanyUrl] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [showPreviousHint, setShowPreviousHint] = useState(false);
+export function CreateKBModal({
+  open,
+  onClose,
+  onCreated
+}: CreateKBModalProps) {
+  const createKb = useMutation(api.crud.knowledgeBases.create)
+  const [name, setName] = useState("")
+  const [industry, setIndustry] = useState<string>("other")
+  const [customIndustry, setCustomIndustry] = useState("")
+  const [entityType, setEntityType] = useState<string>("company")
+  const [company, setCompany] = useState("")
+  const [companyUrl, setCompanyUrl] = useState("")
+  const [creating, setCreating] = useState(false)
+  const [showPreviousHint, setShowPreviousHint] = useState(false)
 
   // Pre-populate from localStorage when modal opens
   useEffect(() => {
-    if (!open) return;
-    const saved = loadKBCreateConfig();
+    if (!open) return
+    const saved = loadKBCreateConfig()
     if (saved) {
-      setCompany(saved.company);
-      setCompanyUrl(saved.companyUrl);
-      setIndustry(saved.industry || "other");
-      setCustomIndustry(saved.customIndustry);
-      setEntityType(saved.entityType || "company");
-      setShowPreviousHint(true);
+      setCompany(saved.company)
+      setCompanyUrl(saved.companyUrl)
+      setIndustry(saved.industry || "other")
+      setCustomIndustry(saved.customIndustry)
+      setEntityType(saved.entityType || "company")
+      setShowPreviousHint(true)
     } else {
-      setIndustry("other");
-      setEntityType("company");
-      setShowPreviousHint(false);
+      setIndustry("other")
+      setEntityType("company")
+      setShowPreviousHint(false)
     }
-    setName("");
-    setCreating(false);
-  }, [open]);
+    setName("")
+    setCreating(false)
+  }, [open])
 
-  if (!open) return null;
+  if (!open) return null
 
   function handleFieldChange() {
-    setShowPreviousHint(false);
+    setShowPreviousHint(false)
   }
 
   const resolvedIndustry =
@@ -59,29 +63,29 @@ export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) 
       ? customIndustry.trim()
       : industry === "other"
         ? undefined
-        : industry;
+        : industry
 
   async function handleCreate() {
-    if (!name.trim() || creating) return;
-    setCreating(true);
+    if (!name.trim() || creating) return
+    setCreating(true)
     try {
       const id = await createKb({
         name: name.trim(),
         ...(resolvedIndustry && { industry: resolvedIndustry }),
         ...(entityType && { entityType }),
         ...(company.trim() && { company: company.trim() }),
-        ...(companyUrl.trim() && { sourceUrl: companyUrl.trim() }),
-      });
+        ...(companyUrl.trim() && { sourceUrl: companyUrl.trim() })
+      })
       saveKBCreateConfig({
         company: company.trim(),
         companyUrl: companyUrl.trim(),
         industry,
         customIndustry: customIndustry.trim(),
-        entityType,
-      });
-      onCreated(id);
+        entityType
+      })
+      onCreated(id)
     } finally {
-      setCreating(false);
+      setCreating(false)
     }
   }
 
@@ -90,7 +94,9 @@ export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) 
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-bg-elevated border border-border rounded-lg shadow-xl w-full max-w-lg p-6 space-y-4 animate-fade-in">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-medium text-text">Create Knowledge Base</h2>
+          <h2 className="text-lg font-medium text-text">
+            Create Knowledge Base
+          </h2>
           <button
             onClick={onClose}
             className="text-text-dim hover:text-text transition-colors text-xl leading-none"
@@ -100,13 +106,17 @@ export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) 
         </div>
 
         {showPreviousHint && (
-          <p className="text-[10px] text-text-dim -mt-2">Previously used values</p>
+          <p className="text-[10px] text-text-dim -mt-2">
+            Previously used values
+          </p>
         )}
 
         <div className="border-t border-border" />
 
         <div className="space-y-1">
-          <label className="text-xs text-text-muted uppercase tracking-wide">Name *</label>
+          <label className="text-xs text-text-muted uppercase tracking-wide">
+            Name *
+          </label>
           <input
             type="text"
             value={name}
@@ -120,12 +130,14 @@ export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) 
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <label className="text-xs text-text-muted uppercase tracking-wide">Industry</label>
+            <label className="text-xs text-text-muted uppercase tracking-wide">
+              Industry
+            </label>
             <select
               value={industry}
               onChange={(e) => {
-                setIndustry(e.target.value);
-                handleFieldChange();
+                setIndustry(e.target.value)
+                handleFieldChange()
               }}
               className="w-full bg-bg border border-border rounded px-3 py-2 text-sm text-text-dim focus:border-accent outline-none"
             >
@@ -140,8 +152,8 @@ export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) 
                 type="text"
                 value={customIndustry}
                 onChange={(e) => {
-                  setCustomIndustry(e.target.value);
-                  handleFieldChange();
+                  setCustomIndustry(e.target.value)
+                  handleFieldChange()
                 }}
                 placeholder="Enter custom industry..."
                 className="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm text-text focus:border-accent outline-none mt-1"
@@ -149,12 +161,14 @@ export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) 
             )}
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-text-muted uppercase tracking-wide">Entity Type</label>
+            <label className="text-xs text-text-muted uppercase tracking-wide">
+              Entity Type
+            </label>
             <select
               value={entityType}
               onChange={(e) => {
-                setEntityType(e.target.value);
-                handleFieldChange();
+                setEntityType(e.target.value)
+                handleFieldChange()
               }}
               className="w-full bg-bg border border-border rounded px-3 py-2 text-sm text-text-dim focus:border-accent outline-none"
             >
@@ -168,13 +182,15 @@ export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) 
         </div>
 
         <div className="space-y-1">
-          <label className="text-xs text-text-muted uppercase tracking-wide">Company</label>
+          <label className="text-xs text-text-muted uppercase tracking-wide">
+            Company
+          </label>
           <input
             type="text"
             value={company}
             onChange={(e) => {
-              setCompany(e.target.value);
-              handleFieldChange();
+              setCompany(e.target.value)
+              handleFieldChange()
             }}
             placeholder="e.g. Acme Inc"
             className="w-full bg-bg border border-border rounded px-3 py-2 text-sm text-text focus:border-accent outline-none"
@@ -182,13 +198,15 @@ export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) 
         </div>
 
         <div className="space-y-1">
-          <label className="text-xs text-text-muted uppercase tracking-wide">Company URL</label>
+          <label className="text-xs text-text-muted uppercase tracking-wide">
+            Company URL
+          </label>
           <input
             type="text"
             value={companyUrl}
             onChange={(e) => {
-              setCompanyUrl(e.target.value);
-              handleFieldChange();
+              setCompanyUrl(e.target.value)
+              handleFieldChange()
             }}
             placeholder="https://acme.com"
             className="w-full bg-bg border border-border rounded px-3 py-2 text-sm text-text focus:border-accent outline-none"
@@ -214,5 +232,5 @@ export function CreateKBModal({ open, onClose, onCreated }: CreateKBModalProps) 
         </div>
       </div>
     </div>
-  );
+  )
 }

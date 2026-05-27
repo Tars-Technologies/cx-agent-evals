@@ -1,4 +1,4 @@
-import type { PresetEntry } from "./types.js";
+import type { PresetEntry } from "./types.js"
 
 // ---------------------------------------------------------------------------
 // Adding new "coming-soon" presets
@@ -64,15 +64,15 @@ const baselineVectorRag: PresetEntry = {
   config: {
     name: "baseline-vector-rag",
     index: { strategy: "plain" },
-    search: { strategy: "dense" },
+    search: { strategy: "dense" }
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Identity (passthrough)",
     search: "Dense vector search",
-    refinement: "None",
-  },
-};
+    refinement: "None"
+  }
+}
 
 const bm25: PresetEntry = {
   id: "bm25",
@@ -88,15 +88,15 @@ const bm25: PresetEntry = {
   config: {
     name: "bm25",
     index: { strategy: "plain" },
-    search: { strategy: "bm25" },
+    search: { strategy: "bm25" }
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Identity (passthrough)",
     search: "BM25 keyword search",
-    refinement: "None",
-  },
-};
+    refinement: "None"
+  }
+}
 
 const denseReranked: PresetEntry = {
   id: "dense-reranked",
@@ -113,15 +113,15 @@ const denseReranked: PresetEntry = {
     name: "dense-reranked",
     index: { strategy: "plain" },
     search: { strategy: "dense" },
-    refinement: [{ type: "rerank" }],
+    refinement: [{ type: "rerank" }]
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Identity (passthrough)",
     search: "Dense vector search",
-    refinement: "Rerank",
-  },
-};
+    refinement: "Rerank"
+  }
+}
 
 const bm25Reranked: PresetEntry = {
   id: "bm25-reranked",
@@ -138,15 +138,15 @@ const bm25Reranked: PresetEntry = {
     name: "bm25-reranked",
     index: { strategy: "plain" },
     search: { strategy: "bm25" },
-    refinement: [{ type: "rerank" }],
+    refinement: [{ type: "rerank" }]
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Identity (passthrough)",
     search: "BM25 keyword search",
-    refinement: "Rerank",
-  },
-};
+    refinement: "Rerank"
+  }
+}
 
 const hybrid: PresetEntry = {
   id: "hybrid",
@@ -167,16 +167,16 @@ const hybrid: PresetEntry = {
       denseWeight: 0.7,
       sparseWeight: 0.3,
       fusionMethod: "weighted",
-      candidateMultiplier: 4,
-    },
+      candidateMultiplier: 4
+    }
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Identity (passthrough)",
     search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "None",
-  },
-};
+    refinement: "None"
+  }
+}
 
 const hybridReranked: PresetEntry = {
   id: "hybrid-reranked",
@@ -197,17 +197,17 @@ const hybridReranked: PresetEntry = {
       denseWeight: 0.7,
       sparseWeight: 0.3,
       fusionMethod: "weighted",
-      candidateMultiplier: 4,
+      candidateMultiplier: 4
     },
-    refinement: [{ type: "rerank" }],
+    refinement: [{ type: "rerank" }]
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Identity (passthrough)",
     search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "Rerank",
-  },
-};
+    refinement: "Rerank"
+  }
+}
 
 const hybridRrf: PresetEntry = {
   id: "hybrid-rrf",
@@ -226,16 +226,16 @@ const hybridRrf: PresetEntry = {
     search: {
       strategy: "hybrid",
       fusionMethod: "rrf",
-      candidateMultiplier: 4,
-    },
+      candidateMultiplier: 4
+    }
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Identity (passthrough)",
     search: "Hybrid (RRF fusion)",
-    refinement: "None",
-  },
-};
+    refinement: "None"
+  }
+}
 
 const hybridRrfReranked: PresetEntry = {
   id: "hybrid-rrf-reranked",
@@ -254,17 +254,17 @@ const hybridRrfReranked: PresetEntry = {
     search: {
       strategy: "hybrid",
       fusionMethod: "rrf",
-      candidateMultiplier: 4,
+      candidateMultiplier: 4
     },
-    refinement: [{ type: "rerank" }],
+    refinement: [{ type: "rerank" }]
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Identity (passthrough)",
     search: "Hybrid (RRF fusion)",
-    refinement: "Rerank",
-  },
-};
+    refinement: "Rerank"
+  }
+}
 
 const hydeDense: PresetEntry = {
   id: "hyde-dense",
@@ -281,15 +281,15 @@ const hydeDense: PresetEntry = {
     name: "hyde-dense",
     index: { strategy: "plain" },
     query: { strategy: "hyde" },
-    search: { strategy: "dense" },
+    search: { strategy: "dense" }
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "HyDE (hypothetical document)",
     search: "Dense vector search",
-    refinement: "None",
-  },
-};
+    refinement: "None"
+  }
+}
 
 const hydeHybrid: PresetEntry = {
   id: "hyde-hybrid",
@@ -310,16 +310,16 @@ const hydeHybrid: PresetEntry = {
       strategy: "hybrid",
       denseWeight: 0.7,
       sparseWeight: 0.3,
-      candidateMultiplier: 4,
-    },
+      candidateMultiplier: 4
+    }
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "HyDE (hypothetical document)",
     search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "None",
-  },
-};
+    refinement: "None"
+  }
+}
 
 const rewriteHybrid: PresetEntry = {
   id: "rewrite-hybrid",
@@ -340,16 +340,16 @@ const rewriteHybrid: PresetEntry = {
       strategy: "hybrid",
       denseWeight: 0.7,
       sparseWeight: 0.3,
-      candidateMultiplier: 4,
-    },
+      candidateMultiplier: 4
+    }
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Rewrite (LLM-refined query)",
     search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "None",
-  },
-};
+    refinement: "None"
+  }
+}
 
 const openclawStyle: PresetEntry = {
   id: "openclaw-style",
@@ -370,17 +370,17 @@ const openclawStyle: PresetEntry = {
       denseWeight: 0.7,
       sparseWeight: 0.3,
       fusionMethod: "weighted",
-      candidateMultiplier: 4,
+      candidateMultiplier: 4
     },
-    refinement: [{ type: "threshold", minScore: 0.35 }],
+    refinement: [{ type: "threshold", minScore: 0.35 }]
   },
   stages: {
     index: "Plain (400 chars, 80 overlap)",
     query: "Identity (passthrough)",
     search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "Threshold (0.35)",
-  },
-};
+    refinement: "Threshold (0.35)"
+  }
+}
 
 const contextualDense: PresetEntry = {
   id: "contextual-dense",
@@ -396,15 +396,15 @@ const contextualDense: PresetEntry = {
   config: {
     name: "contextual-dense",
     index: { strategy: "contextual" },
-    search: { strategy: "dense" },
+    search: { strategy: "dense" }
   },
   stages: {
     index: "Contextual (LLM-enhanced chunks)",
     query: "Identity (passthrough)",
     search: "Dense vector search",
-    refinement: "None",
-  },
-};
+    refinement: "None"
+  }
+}
 
 const contextualHybrid: PresetEntry = {
   id: "contextual-hybrid",
@@ -424,16 +424,16 @@ const contextualHybrid: PresetEntry = {
       strategy: "hybrid",
       denseWeight: 0.7,
       sparseWeight: 0.3,
-      candidateMultiplier: 4,
-    },
+      candidateMultiplier: 4
+    }
   },
   stages: {
     index: "Contextual (LLM-enhanced chunks)",
     query: "Identity (passthrough)",
     search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "None",
-  },
-};
+    refinement: "None"
+  }
+}
 
 const parentChildDense: PresetEntry = {
   id: "parent-child-dense",
@@ -451,17 +451,17 @@ const parentChildDense: PresetEntry = {
     index: {
       strategy: "parent-child",
       childChunkSize: 200,
-      parentChunkSize: 1000,
+      parentChunkSize: 1000
     },
-    search: { strategy: "dense" },
+    search: { strategy: "dense" }
   },
   stages: {
     index: "Parent-child (200/1000 chunks)",
     query: "Identity (passthrough)",
     search: "Dense vector search",
-    refinement: "None",
-  },
-};
+    refinement: "None"
+  }
+}
 
 const summaryDense: PresetEntry = {
   id: "summary-dense",
@@ -477,15 +477,15 @@ const summaryDense: PresetEntry = {
   config: {
     name: "summary-dense",
     index: { strategy: "summary" },
-    search: { strategy: "dense" },
+    search: { strategy: "dense" }
   },
   stages: {
     index: "Summary (LLM-generated summaries)",
     query: "Identity (passthrough)",
     search: "Dense vector search",
-    refinement: "None",
-  },
-};
+    refinement: "None"
+  }
+}
 
 const hydeHybridReranked: PresetEntry = {
   id: "hyde-hybrid-reranked",
@@ -506,17 +506,17 @@ const hydeHybridReranked: PresetEntry = {
       strategy: "hybrid",
       denseWeight: 0.7,
       sparseWeight: 0.3,
-      candidateMultiplier: 4,
+      candidateMultiplier: 4
     },
-    refinement: [{ type: "rerank" }],
+    refinement: [{ type: "rerank" }]
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "HyDE (hypothetical document)",
     search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "Rerank",
-  },
-};
+    refinement: "Rerank"
+  }
+}
 
 const rewriteHybridReranked: PresetEntry = {
   id: "rewrite-hybrid-reranked",
@@ -537,17 +537,17 @@ const rewriteHybridReranked: PresetEntry = {
       strategy: "hybrid",
       denseWeight: 0.7,
       sparseWeight: 0.3,
-      candidateMultiplier: 4,
+      candidateMultiplier: 4
     },
-    refinement: [{ type: "rerank" }],
+    refinement: [{ type: "rerank" }]
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Rewrite (LLM-refined query)",
     search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "Rerank",
-  },
-};
+    refinement: "Rerank"
+  }
+}
 
 const anthropicBest: PresetEntry = {
   id: "anthropic-best",
@@ -567,17 +567,17 @@ const anthropicBest: PresetEntry = {
       strategy: "hybrid",
       denseWeight: 0.7,
       sparseWeight: 0.3,
-      candidateMultiplier: 4,
+      candidateMultiplier: 4
     },
-    refinement: [{ type: "rerank" }],
+    refinement: [{ type: "rerank" }]
   },
   stages: {
     index: "Contextual (LLM-enhanced chunks)",
     query: "Identity (passthrough)",
     search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "Rerank",
-  },
-};
+    refinement: "Rerank"
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Presets using multi-query/step-back + dedup/mmr (now available after Slice 5)
@@ -599,15 +599,15 @@ const multiQueryDense: PresetEntry = {
     index: { strategy: "plain" },
     query: { strategy: "multi-query", numQueries: 3 },
     search: { strategy: "dense" },
-    refinement: [{ type: "dedup" }],
+    refinement: [{ type: "dedup" }]
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Multi-query (3 queries)",
     search: "Dense vector search",
-    refinement: "Dedup",
-  },
-};
+    refinement: "Dedup"
+  }
+}
 
 const diverseHybrid: PresetEntry = {
   id: "diverse-hybrid",
@@ -627,17 +627,17 @@ const diverseHybrid: PresetEntry = {
       strategy: "hybrid",
       denseWeight: 0.7,
       sparseWeight: 0.3,
-      candidateMultiplier: 4,
+      candidateMultiplier: 4
     },
-    refinement: [{ type: "mmr", lambda: 0.5 }],
+    refinement: [{ type: "mmr", lambda: 0.5 }]
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Identity (passthrough)",
     search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "MMR (lambda=0.5)",
-  },
-};
+    refinement: "MMR (lambda=0.5)"
+  }
+}
 
 const multiQueryHybrid: PresetEntry = {
   id: "multi-query-hybrid",
@@ -658,17 +658,17 @@ const multiQueryHybrid: PresetEntry = {
       strategy: "hybrid",
       denseWeight: 0.7,
       sparseWeight: 0.3,
-      candidateMultiplier: 4,
+      candidateMultiplier: 4
     },
-    refinement: [{ type: "dedup" }, { type: "rerank" }],
+    refinement: [{ type: "dedup" }, { type: "rerank" }]
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Multi-query (3 queries)",
     search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "Dedup \u2192 Rerank",
-  },
-};
+    refinement: "Dedup \u2192 Rerank"
+  }
+}
 
 const stepBackHybrid: PresetEntry = {
   id: "step-back-hybrid",
@@ -689,17 +689,17 @@ const stepBackHybrid: PresetEntry = {
       strategy: "hybrid",
       denseWeight: 0.7,
       sparseWeight: 0.3,
-      candidateMultiplier: 4,
+      candidateMultiplier: 4
     },
-    refinement: [{ type: "dedup" }, { type: "rerank" }],
+    refinement: [{ type: "dedup" }, { type: "rerank" }]
   },
   stages: {
     index: "Plain (1000 chars, 200 overlap)",
     query: "Step-back (with original)",
     search: "Hybrid (weighted, 0.7/0.3)",
-    refinement: "Dedup \u2192 Rerank",
-  },
-};
+    refinement: "Dedup \u2192 Rerank"
+  }
+}
 
 const premium: PresetEntry = {
   id: "premium",
@@ -720,16 +720,16 @@ const premium: PresetEntry = {
     refinement: [
       { type: "dedup" },
       { type: "rerank" },
-      { type: "threshold", minScore: 0.3 },
-    ],
+      { type: "threshold", minScore: 0.3 }
+    ]
   },
   stages: {
     index: "Contextual (LLM-enhanced chunks)",
     query: "Multi-query (3 queries)",
     search: "Hybrid (candidate 5x)",
-    refinement: "Dedup \u2192 Rerank \u2192 Threshold (0.3)",
-  },
-};
+    refinement: "Dedup \u2192 Rerank \u2192 Threshold (0.3)"
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Registry — all 24 presets available
@@ -763,5 +763,5 @@ export const PRESET_REGISTRY: readonly PresetEntry[] = [
   diverseHybrid,
   multiQueryHybrid,
   stepBackHybrid,
-  premium,
-] as const;
+  premium
+] as const

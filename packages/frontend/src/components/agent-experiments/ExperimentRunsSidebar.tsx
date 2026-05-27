@@ -1,40 +1,40 @@
-"use client";
+"use client"
 
-import type { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
 
 interface ExperimentRunsSidebarProps {
   experiments: Array<{
-    _id: Id<"experiments">;
-    name: string;
-    datasetId: Id<"datasets">;
-    agentId?: Id<"agents">;
-    status: string;
-    totalQuestions?: number;
-    processedQuestions?: number;
-    createdAt: number;
-  }>;
-  selectedRunId: Id<"experiments"> | null;
-  onSelect: (id: Id<"experiments">) => void;
-  collapsed: boolean;
-  onToggleCollapse: () => void;
+    _id: Id<"experiments">
+    name: string
+    datasetId: Id<"datasets">
+    agentId?: Id<"agents">
+    status: string
+    totalQuestions?: number
+    processedQuestions?: number
+    createdAt: number
+  }>
+  selectedRunId: Id<"experiments"> | null
+  onSelect: (id: Id<"experiments">) => void
+  collapsed: boolean
+  onToggleCollapse: () => void
 }
 
 const statusStyles: Record<string, string> = {
   completed: "bg-green-500/20 text-green-400",
   running: "bg-yellow-500/20 text-yellow-400",
   pending: "bg-purple-500/20 text-purple-400",
-  failed: "bg-red-500/20 text-red-400",
-};
+  failed: "bg-red-500/20 text-red-400"
+}
 
 export function ExperimentRunsSidebar({
   experiments,
   selectedRunId,
   onSelect,
   collapsed,
-  onToggleCollapse,
+  onToggleCollapse
 }: ExperimentRunsSidebarProps) {
   if (collapsed) {
-    return <div />;
+    return <div />
   }
 
   return (
@@ -61,9 +61,9 @@ export function ExperimentRunsSidebar({
       {/* Run list */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {experiments.map((experiment) => {
-          const isSelected = experiment._id === selectedRunId;
+          const isSelected = experiment._id === selectedRunId
           const statusStyle =
-            statusStyles[experiment.status] ?? "bg-gray-500/20 text-gray-400";
+            statusStyles[experiment.status] ?? "bg-gray-500/20 text-gray-400"
 
           return (
             <button
@@ -73,7 +73,7 @@ export function ExperimentRunsSidebar({
                 "w-full text-left px-3 py-2 border-l-2 transition-colors",
                 isSelected
                   ? "bg-accent/10 border-l-accent"
-                  : "hover:bg-bg-elevated border-l-transparent",
+                  : "hover:bg-bg-elevated border-l-transparent"
               ].join(" ")}
             >
               {/* Experiment name */}
@@ -100,16 +100,16 @@ export function ExperimentRunsSidebar({
                 <span
                   className={[
                     "rounded px-1 py-0.5 font-medium",
-                    statusStyle,
+                    statusStyle
                   ].join(" ")}
                 >
                   {experiment.status}
                 </span>
               </div>
             </button>
-          );
+          )
         })}
       </div>
     </div>
-  );
+  )
 }

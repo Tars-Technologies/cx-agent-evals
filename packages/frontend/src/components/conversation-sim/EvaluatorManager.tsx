@@ -1,22 +1,20 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/lib/convex";
+import { useMutation, useQuery } from "convex/react"
+import { useState } from "react"
+import { api } from "@/lib/convex"
 
-export function EvaluatorManager({
-  onClose,
-}: {
-  onClose?: () => void;
-}) {
-  const evaluators = useQuery(api.conversationSim.evaluators.byOrg) ?? [];
-  const evaluatorSets = useQuery(api.conversationSim.evaluatorSets.byOrg) ?? [];
-  const createEvaluator = useMutation(api.conversationSim.evaluators.create);
-  const removeEvaluator = useMutation(api.conversationSim.evaluators.remove);
-  const seedTemplates = useMutation(api.conversationSim.evaluators.seedTemplates);
+export function EvaluatorManager({ onClose }: { onClose?: () => void }) {
+  const evaluators = useQuery(api.conversationSim.evaluators.byOrg) ?? []
+  const evaluatorSets = useQuery(api.conversationSim.evaluatorSets.byOrg) ?? []
+  const createEvaluator = useMutation(api.conversationSim.evaluators.create)
+  const removeEvaluator = useMutation(api.conversationSim.evaluators.remove)
+  const seedTemplates = useMutation(
+    api.conversationSim.evaluators.seedTemplates
+  )
 
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [tab, setTab] = useState<"evaluators" | "sets">("evaluators");
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [tab, setTab] = useState<"evaluators" | "sets">("evaluators")
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -156,8 +154,8 @@ export function EvaluatorManager({
               {showCreateForm && (
                 <CreateEvaluatorForm
                   onCreate={async (data) => {
-                    await createEvaluator(data);
-                    setShowCreateForm(false);
+                    await createEvaluator(data)
+                    setShowCreateForm(false)
                   }}
                   onCancel={() => setShowCreateForm(false)}
                 />
@@ -190,77 +188,74 @@ export function EvaluatorManager({
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 function CreateEvaluatorForm({
   onCreate,
-  onCancel,
+  onCancel
 }: {
   onCreate: (data: {
-    name: string;
-    description: string;
-    type: "code";
-    scope: "session" | "turn";
+    name: string
+    description: string
+    type: "code"
+    scope: "session" | "turn"
     codeConfig: {
       checkType:
         | "tool_call_match"
         | "string_contains"
         | "regex_match"
-        | "response_format";
-      params: Record<string, unknown>;
-    };
-    createdFrom: "manual";
-    tags: string[];
-  }) => Promise<void>;
-  onCancel: () => void;
+        | "response_format"
+      params: Record<string, unknown>
+    }
+    createdFrom: "manual"
+    tags: string[]
+  }) => Promise<void>
+  onCancel: () => void
 }) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [scope, setScope] = useState<"session" | "turn">("session");
+  const [name, setName] = useState("")
+  const [description, setDescription] = useState("")
+  const [scope, setScope] = useState<"session" | "turn">("session")
   const [checkType, setCheckType] = useState<
     "tool_call_match" | "string_contains" | "regex_match" | "response_format"
-  >("tool_call_match");
-  const [saving, setSaving] = useState(false);
+  >("tool_call_match")
+  const [saving, setSaving] = useState(false)
 
-  function defaultParams(
-    ct: typeof checkType,
-  ): Record<string, unknown> {
+  function defaultParams(ct: typeof checkType): Record<string, unknown> {
     switch (ct) {
       case "tool_call_match":
-        return { minCalls: 1 };
+        return { minCalls: 1 }
       case "string_contains":
-        return { target: "", caseSensitive: false, searchIn: "agent_messages" };
+        return { target: "", caseSensitive: false, searchIn: "agent_messages" }
       case "regex_match":
         return {
           pattern: "",
           searchIn: "agent_messages",
-          shouldMatch: true,
-        };
+          shouldMatch: true
+        }
       case "response_format":
-        return { requireNonEmpty: true };
+        return { requireNonEmpty: true }
     }
   }
 
   async function handleSubmit() {
-    if (!name.trim()) return;
-    setSaving(true);
+    if (!name.trim()) return
+    setSaving(true)
     try {
       await onCreate({
         name: name.trim(),
-        description:
-          description.trim() || `Code evaluator: ${checkType}`,
+        description: description.trim() || `Code evaluator: ${checkType}`,
         type: "code" as const,
         scope,
         codeConfig: {
           checkType,
-          params: defaultParams(checkType),
+          params: defaultParams(checkType)
         },
         createdFrom: "manual" as const,
-        tags: [],
-      });
+        tags: []
+      })
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
   }
 
@@ -317,5 +312,5 @@ function CreateEvaluatorForm({
         </button>
       </div>
     </div>
-  );
+  )
 }

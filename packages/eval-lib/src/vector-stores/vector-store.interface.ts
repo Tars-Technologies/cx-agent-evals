@@ -1,10 +1,10 @@
-import type { PositionAwareChunk } from "../types/index.js";
+import type { PositionAwareChunk } from "../types/index.js"
 
 /** A chunk paired with its cosine-similarity score from vector search. */
 export interface VectorSearchResult {
-  readonly chunk: PositionAwareChunk;
+  readonly chunk: PositionAwareChunk
   /** Similarity score in [0, 1] where higher means more similar. */
-  readonly score: number;
+  readonly score: number
 }
 
 /**
@@ -14,14 +14,17 @@ export interface VectorSearchResult {
  */
 export interface VectorStore {
   /** Human-readable identifier (e.g., "in-memory", "chroma"). */
-  readonly name: string;
+  readonly name: string
 
   /**
    * Insert chunks and their corresponding embedding vectors into the store.
    * @param chunks - Chunks to index; must be the same length as `embeddings`.
    * @param embeddings - One vector per chunk, aligned by index.
    */
-  add(chunks: readonly PositionAwareChunk[], embeddings: readonly number[][]): Promise<void>;
+  add(
+    chunks: readonly PositionAwareChunk[],
+    embeddings: readonly number[][]
+  ): Promise<void>
 
   /**
    * Find the `k` nearest chunks to the given query embedding.
@@ -29,8 +32,11 @@ export interface VectorStore {
    * @param k - Maximum number of results to return (default is implementation-specific).
    * @returns Results sorted by descending similarity score.
    */
-  search(queryEmbedding: readonly number[], k?: number): Promise<VectorSearchResult[]>;
+  search(
+    queryEmbedding: readonly number[],
+    k?: number
+  ): Promise<VectorSearchResult[]>
 
   /** Remove all stored chunks and embeddings. */
-  clear(): Promise<void>;
+  clear(): Promise<void>
 }

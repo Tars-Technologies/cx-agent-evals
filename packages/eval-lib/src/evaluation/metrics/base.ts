@@ -1,4 +1,4 @@
-import type { CharacterSpan, SpanRange } from "../../types/chunks.js";
+import type { CharacterSpan, SpanRange } from "../../types/chunks.js"
 
 /**
  * A single evaluation metric that scores retrieval quality by comparing
@@ -7,7 +7,7 @@ import type { CharacterSpan, SpanRange } from "../../types/chunks.js";
  */
 export interface Metric {
   /** Metric identifier used as the key in result score maps (e.g., "recall", "f1"). */
-  readonly name: string;
+  readonly name: string
 
   /**
    * Compute the metric from raw retrieved and ground-truth spans.
@@ -16,8 +16,8 @@ export interface Metric {
    */
   readonly calculate: (
     retrieved: readonly CharacterSpan[],
-    groundTruth: readonly CharacterSpan[],
-  ) => number;
+    groundTruth: readonly CharacterSpan[]
+  ) => number
 
   /**
    * Optional optimized variant that accepts pre-merged, non-overlapping spans.
@@ -26,6 +26,6 @@ export interface Metric {
    */
   readonly calculatePreMerged?: (
     mergedRetrieved: readonly SpanRange[],
-    mergedGroundTruth: readonly SpanRange[],
-  ) => number;
+    mergedGroundTruth: readonly SpanRange[]
+  ) => number
 }

@@ -1,39 +1,39 @@
-import { query, internalMutation, internalQuery } from "../_generated/server";
-import { v } from "convex/values";
-import { getAuthContext } from "../lib/auth";
+import { v } from "convex/values"
+import { internalMutation, internalQuery, query } from "../_generated/server"
+import { getAuthContext } from "../lib/auth"
 
 const chunkValidator = v.object({
   content: v.string(),
   docId: v.string(),
   start: v.number(),
-  end: v.number(),
-});
+  end: v.number()
+})
 
 const toolCallValidator = v.object({
   toolName: v.string(),
   query: v.string(),
   retrieverId: v.optional(v.string()),
-  chunks: v.array(chunkValidator),
-});
+  chunks: v.array(chunkValidator)
+})
 
 export const byExperiment = query({
   args: { experimentId: v.id("experiments") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
+    const { orgId } = await getAuthContext(ctx)
 
-    const exp = await ctx.db.get(args.experimentId);
+    const exp = await ctx.db.get(args.experimentId)
     if (!exp || exp.orgId !== orgId) {
-      throw new Error("Experiment not found");
+      throw new Error("Experiment not found")
     }
 
     return await ctx.db
       .query("agentExperimentResults")
       .withIndex("by_experiment", (q) =>
-        q.eq("experimentId", args.experimentId),
+        q.eq("experimentId", args.experimentId)
       )
-      .collect();
-  },
-});
+      .collect()
+  }
+})
 
 export const byExperimentInternal = internalQuery({
   args: { experimentId: v.id("experiments") },
@@ -41,11 +41,11 @@ export const byExperimentInternal = internalQuery({
     return await ctx.db
       .query("agentExperimentResults")
       .withIndex("by_experiment", (q) =>
-        q.eq("experimentId", args.experimentId),
+        q.eq("experimentId", args.experimentId)
       )
-      .collect();
-  },
-});
+      .collect()
+  }
+})
 
 export const insert = internalMutation({
   args: {
@@ -58,17 +58,17 @@ export const insert = internalMutation({
     usage: v.optional(
       v.object({
         promptTokens: v.number(),
-        completionTokens: v.number(),
-      }),
+        completionTokens: v.number()
+      })
     ),
     latencyMs: v.number(),
     status: v.union(v.literal("complete"), v.literal("error")),
-    error: v.optional(v.string()),
+    error: v.optional(v.string())
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("agentExperimentResults", {
       ...args,
-      createdAt: Date.now(),
-    });
-  },
-});
+      createdAt: Date.now()
+    })
+  }
+})

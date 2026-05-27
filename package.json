@@ -10,13 +10,16 @@
     "test": "pnpm -C packages/eval-lib test",
     "test:watch": "pnpm -C packages/eval-lib test:watch",
     "typecheck": "pnpm -C packages/eval-lib typecheck",
-    "typecheck:backend": "pnpm -C packages/backend typecheck"
+    "typecheck:backend": "pnpm -C packages/backend typecheck",
+    "lint": "biome check .",
+    "format": "biome format --write ."
   },
   "dependencies": {
     "@clerk/themes": "^2.4.52",
     "next": "16.1.6"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.4.10",
     "@changesets/cli": "^2.31.0"
   }
 }

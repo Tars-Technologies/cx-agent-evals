@@ -1,31 +1,31 @@
-"use client";
+"use client"
 
-import { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: "Draft", color: "text-text-dim" },
   validating: { label: "Awaiting Test", color: "text-yellow-400" },
   validated: { label: "Validated", color: "text-blue-400" },
-  ready: { label: "Ready", color: "text-accent" },
-};
+  ready: { label: "Ready", color: "text-accent" }
+}
 
 interface ConfigWithMeta {
-  _id: Id<"evaluatorConfigs">;
-  name: string;
-  status: string;
-  experimentName: string;
-  failureModeName: string;
-  failureModeDescription: string;
-  devMetrics?: { tpr: number; tnr: number } | null;
-  testMetrics?: { tpr: number; tnr: number } | null;
+  _id: Id<"evaluatorConfigs">
+  name: string
+  status: string
+  experimentName: string
+  failureModeName: string
+  failureModeDescription: string
+  devMetrics?: { tpr: number; tnr: number } | null
+  testMetrics?: { tpr: number; tnr: number } | null
 }
 
 interface EvaluatorSidebarProps {
-  configs: ConfigWithMeta[];
-  selectedConfigId: Id<"evaluatorConfigs"> | null;
-  onSelectConfig: (id: Id<"evaluatorConfigs">) => void;
-  onNewEvaluator: () => void;
-  loading: boolean;
+  configs: ConfigWithMeta[]
+  selectedConfigId: Id<"evaluatorConfigs"> | null
+  onSelectConfig: (id: Id<"evaluatorConfigs">) => void
+  onNewEvaluator: () => void
+  loading: boolean
 }
 
 export function EvaluatorSidebar({
@@ -33,14 +33,14 @@ export function EvaluatorSidebar({
   selectedConfigId,
   onSelectConfig,
   onNewEvaluator,
-  loading,
+  loading
 }: EvaluatorSidebarProps) {
   // Group by experiment name
-  const byExperiment = new Map<string, ConfigWithMeta[]>();
+  const byExperiment = new Map<string, ConfigWithMeta[]>()
   for (const c of configs) {
-    const list = byExperiment.get(c.experimentName) ?? [];
-    list.push(c);
-    byExperiment.set(c.experimentName, list);
+    const list = byExperiment.get(c.experimentName) ?? []
+    list.push(c)
+    byExperiment.set(c.experimentName, list)
   }
 
   return (
@@ -73,9 +73,9 @@ export function EvaluatorSidebar({
                 {expName}
               </div>
               {expConfigs.map((c) => {
-                const isSelected = c._id === selectedConfigId;
-                const status = STATUS_LABELS[c.status] ?? STATUS_LABELS.draft;
-                const metrics = c.testMetrics ?? c.devMetrics;
+                const isSelected = c._id === selectedConfigId
+                const status = STATUS_LABELS[c.status] ?? STATUS_LABELS.draft
+                const metrics = c.testMetrics ?? c.devMetrics
 
                 return (
                   <button
@@ -96,17 +96,18 @@ export function EvaluatorSidebar({
                       </span>
                       {metrics && (
                         <span className="text-xs text-text-dim">
-                          {(metrics.tpr * 100).toFixed(0)}% / {(metrics.tnr * 100).toFixed(0)}%
+                          {(metrics.tpr * 100).toFixed(0)}% /{" "}
+                          {(metrics.tnr * 100).toFixed(0)}%
                         </span>
                       )}
                     </div>
                   </button>
-                );
+                )
               })}
             </div>
           ))
         )}
       </div>
     </div>
-  );
+  )
 }

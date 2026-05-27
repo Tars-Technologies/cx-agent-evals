@@ -1,34 +1,34 @@
-"use client";
+"use client"
 
-import { Suspense, useState, useCallback } from "react";
-import { useQuery, useAction } from "convex/react";
-import { api } from "@/lib/convex";
-import type { Id } from "@convex/_generated/dataModel";
-import { Header } from "@/components/Header";
-import { useKbFromUrl } from "@/lib/useKbFromUrl";
-import { RetrieverWizard } from "@/components/wizard/RetrieverWizard";
-import { KBDropdown } from "@/components/KBDropdown";
-import { IndexTab } from "@/components/tabs/IndexTab";
-import { QuerySearchTab } from "@/components/tabs/QuerySearchTab";
-import { RefineTab } from "@/components/tabs/RefineTab";
-import { PlaygroundTab } from "@/components/tabs/PlaygroundTab";
-import { CreateExperimentModal } from "@/components/experiments/CreateExperimentModal";
-import { ExperimentSidebar } from "@/components/experiments/ExperimentSidebar";
-import { ExperimentResults } from "@/components/experiments/ExperimentResults";
-import type { PipelineConfig } from "@/lib/pipeline-types";
+import type { Id } from "@convex/_generated/dataModel"
+import { useAction, useQuery } from "convex/react"
+import { Suspense, useCallback, useState } from "react"
+import { CreateExperimentModal } from "@/components/experiments/CreateExperimentModal"
+import { ExperimentResults } from "@/components/experiments/ExperimentResults"
+import { ExperimentSidebar } from "@/components/experiments/ExperimentSidebar"
+import { Header } from "@/components/Header"
+import { KBDropdown } from "@/components/KBDropdown"
+import { IndexTab } from "@/components/tabs/IndexTab"
+import { PlaygroundTab } from "@/components/tabs/PlaygroundTab"
+import { QuerySearchTab } from "@/components/tabs/QuerySearchTab"
+import { RefineTab } from "@/components/tabs/RefineTab"
+import { RetrieverWizard } from "@/components/wizard/RetrieverWizard"
+import { api } from "@/lib/convex"
+import type { PipelineConfig } from "@/lib/pipeline-types"
+import { useKbFromUrl } from "@/lib/useKbFromUrl"
 
 // ---------------------------------------------------------------------------
 // Tab definitions
 // ---------------------------------------------------------------------------
 
-type TabId = "index" | "query-search" | "refine" | "playground";
+type TabId = "index" | "query-search" | "refine" | "playground"
 
 const TABS: readonly { id: TabId; label: string }[] = [
   { id: "index", label: "Index" },
   { id: "query-search", label: "Query + Search" },
   { id: "refine", label: "Refine" },
-  { id: "playground", label: "Playground" },
-];
+  { id: "playground", label: "Playground" }
+]
 
 // ---------------------------------------------------------------------------
 // TabBar
@@ -36,10 +36,10 @@ const TABS: readonly { id: TabId; label: string }[] = [
 
 function TabBar({
   activeTab,
-  onTabChange,
+  onTabChange
 }: {
-  activeTab: TabId;
-  onTabChange: (tab: TabId) => void;
+  activeTab: TabId
+  onTabChange: (tab: TabId) => void
 }) {
   return (
     <div className="flex gap-0 border-b border-border bg-bg-elevated px-4">
@@ -57,7 +57,7 @@ function TabBar({
         </button>
       ))}
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -79,7 +79,7 @@ function EmptyState({ onNewRetriever }: { onNewRetriever: () => void }) {
         </button>
       </div>
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -97,7 +97,7 @@ export default function RetrieversPage() {
     >
       <RetrieversPageContent />
     </Suspense>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -106,75 +106,72 @@ export default function RetrieversPage() {
 
 function RetrieversPageContent() {
   // --- KB selection (persisted in URL) ---
-  const [selectedKbId, setSelectedKbId] = useKbFromUrl();
+  const [selectedKbId, setSelectedKbId] = useKbFromUrl()
 
   // --- Page mode ---
-  const [pageMode, setPageMode] = useState<"create" | "experiment">("create");
+  const [pageMode, setPageMode] = useState<"create" | "experiment">("create")
 
   // --- Retriever selection ---
   const [selectedRetrieverId, setSelectedRetrieverId] =
-    useState<Id<"retrievers"> | null>(null);
+    useState<Id<"retrievers"> | null>(null)
 
   // --- Fetch selected retriever ---
   const selectedRetriever = useQuery(
     api.crud.retrievers.get,
-    selectedRetrieverId ? { id: selectedRetrieverId } : "skip",
-  );
+    selectedRetrieverId ? { id: selectedRetrieverId } : "skip"
+  )
 
   // --- All retrievers for playground ---
   const allRetrievers = useQuery(
     api.crud.retrievers.byKb,
-    selectedKbId ? { kbId: selectedKbId } : "skip",
-  );
+    selectedKbId ? { kbId: selectedKbId } : "skip"
+  )
 
   // --- Tab state ---
-  const [activeTab, setActiveTab] = useState<TabId>("index");
+  const [activeTab, setActiveTab] = useState<TabId>("index")
 
   // --- Shared query state (persists across query-search and refine tabs) ---
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState("")
 
   // --- Wizard modal ---
-  const [showWizard, setShowWizard] = useState(false);
+  const [showWizard, setShowWizard] = useState(false)
 
   // --- Experiment state ---
-  const [showExperimentModal, setShowExperimentModal] = useState(false);
+  const [showExperimentModal, setShowExperimentModal] = useState(false)
   const [selectedRunId, setSelectedRunId] =
-    useState<Id<"experimentRuns"> | null>(null);
+    useState<Id<"experimentRuns"> | null>(null)
 
   // --- Actions & mutations ---
-  const createRetriever = useAction(api.retrieval.retrieverActions.create);
+  const createRetriever = useAction(api.retrieval.retrieverActions.create)
   const startIndexingAction = useAction(
-    api.retrieval.retrieverActions.startIndexing,
-  );
+    api.retrieval.retrieverActions.startIndexing
+  )
 
   const handleStartIndexing = useCallback(
     async (id: Id<"retrievers">) => {
       try {
-        await startIndexingAction({ retrieverId: id });
+        await startIndexingAction({ retrieverId: id })
       } catch (err) {
-        console.error("Failed to start indexing:", err);
+        console.error("Failed to start indexing:", err)
       }
     },
-    [startIndexingAction],
-  );
+    [startIndexingAction]
+  )
 
   // --- Handlers ---
 
-  const handleRetrieverSelect = useCallback(
-    (id: Id<"retrievers"> | null) => {
-      setSelectedRetrieverId(id);
-    },
-    [],
-  );
+  const handleRetrieverSelect = useCallback((id: Id<"retrievers"> | null) => {
+    setSelectedRetrieverId(id)
+  }, [])
 
   const handleKbChange = useCallback(
     (kbId: Id<"knowledgeBases"> | null) => {
-      setSelectedKbId(kbId);
-      setSelectedRetrieverId(null);
-      setSelectedRunId(null);
+      setSelectedKbId(kbId)
+      setSelectedRetrieverId(null)
+      setSelectedRunId(null)
     },
-    [setSelectedKbId],
-  );
+    [setSelectedKbId]
+  )
 
   return (
     <div className="flex flex-col h-screen">
@@ -219,9 +216,7 @@ function RetrieversPageContent() {
             value={selectedRetrieverId ?? ""}
             onChange={(e) =>
               handleRetrieverSelect(
-                e.target.value
-                  ? (e.target.value as Id<"retrievers">)
-                  : null,
+                e.target.value ? (e.target.value as Id<"retrievers">) : null
               )
             }
             className="w-56 bg-bg-elevated border border-border rounded px-3 py-2 text-sm text-text focus:border-accent outline-none truncate"
@@ -295,9 +290,7 @@ function RetrieversPageContent() {
                           ? new Set([selectedRetrieverId])
                           : new Set()
                       }
-                      retrievers={
-                        selectedRetriever ? [selectedRetriever] : []
-                      }
+                      retrievers={selectedRetriever ? [selectedRetriever] : []}
                     />
                   )}
                 </div>
@@ -344,34 +337,32 @@ function RetrieversPageContent() {
           <div className="w-[720px] h-[85vh] bg-bg-elevated border border-border rounded-lg shadow-2xl overflow-hidden flex flex-col">
             <RetrieverWizard
               onCreate={async (config, name) => {
-                if (!selectedKbId) return;
+                if (!selectedKbId) return
                 try {
                   const pConfig: PipelineConfig = {
                     name,
                     index: {
                       strategy: (config.index?.strategy ?? "plain") as "plain",
-                      chunkSize: config.index?.chunkSize as
-                        | number
-                        | undefined,
+                      chunkSize: config.index?.chunkSize as number | undefined,
                       chunkOverlap: config.index?.chunkOverlap as
                         | number
-                        | undefined,
+                        | undefined
                     },
                     search: config.search as PipelineConfig["search"],
                     query: config.query as PipelineConfig["query"],
                     refinement:
                       config.refinement as PipelineConfig["refinement"],
-                    k: config.k,
-                  };
+                    k: config.k
+                  }
                   const result = await createRetriever({
                     kbId: selectedKbId,
-                    retrieverConfig: pConfig,
-                  });
+                    retrieverConfig: pConfig
+                  })
                   // Select the newly created (or existing duplicate) retriever
-                  setSelectedRetrieverId(result.retrieverId);
-                  setShowWizard(false);
+                  setSelectedRetrieverId(result.retrieverId)
+                  setShowWizard(false)
                 } catch (err) {
-                  console.error("Failed to create retriever:", err);
+                  console.error("Failed to create retriever:", err)
                 }
               }}
               onClose={() => setShowWizard(false)}
@@ -387,11 +378,11 @@ function RetrieversPageContent() {
           onClose={() => setShowExperimentModal(false)}
           kbId={selectedKbId}
           onCreated={(runId) => {
-            setSelectedRunId(runId);
-            setShowExperimentModal(false);
+            setSelectedRunId(runId)
+            setShowExperimentModal(false)
           }}
         />
       )}
     </div>
-  );
+  )
 }

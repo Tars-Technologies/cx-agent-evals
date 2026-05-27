@@ -1,1 +1,1 @@
-export { filterCombinations } from "../strategies/dimension-driven/filtering.js";
+export { filterCombinations } from "../strategies/dimension-driven/filtering.js"

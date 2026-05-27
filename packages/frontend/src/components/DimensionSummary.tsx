@@ -1,17 +1,17 @@
-"use client";
+"use client"
 
-import { Dimension } from "@/lib/types";
+import type { Dimension } from "@/lib/types"
 
 export function DimensionSummary({
   dimensions,
   totalQuestions,
-  onEdit,
+  onEdit
 }: {
-  dimensions: Dimension[];
-  totalQuestions: number;
-  onEdit: () => void;
+  dimensions: Dimension[]
+  totalQuestions: number
+  onEdit: () => void
 }) {
-  const totalValues = dimensions.reduce((sum, d) => sum + d.values.length, 0);
+  const totalValues = dimensions.reduce((sum, d) => sum + d.values.length, 0)
 
   return (
     <div className="animate-fade-in">
@@ -45,5 +45,5 @@ export function DimensionSummary({
         <span className="text-sm text-text">{totalQuestions}</span>
       </div>
     </div>
-  );
+  )
 }

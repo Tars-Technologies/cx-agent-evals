@@ -1,28 +1,31 @@
-"use client";
+"use client"
 
-import { useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import { ChatBubble } from "@/components/livechat/ChatBubble";
-import type { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useQuery } from "convex/react"
+import { ChatBubble } from "@/components/livechat/ChatBubble"
+import { api } from "@/lib/convex"
 
 export function SourceTranscriptPanel({
-  sourceTranscriptId,
+  sourceTranscriptId
 }: {
-  sourceTranscriptId: Id<"livechatConversations">;
+  sourceTranscriptId: Id<"livechatConversations">
 }) {
   const conversation = useQuery(api.livechat.orchestration.getConversation, {
-    id: sourceTranscriptId,
-  });
+    id: sourceTranscriptId
+  })
 
   // Loading
   if (conversation === undefined) {
     return (
       <div className="p-4 space-y-2">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="bg-bg-elevated/50 rounded-md h-12 animate-pulse" />
+          <div
+            key={i}
+            className="bg-bg-elevated/50 rounded-md h-12 animate-pulse"
+          />
         ))}
       </div>
-    );
+    )
   }
 
   // Not found / cross-org / deleted
@@ -31,7 +34,7 @@ export function SourceTranscriptPanel({
       <div className="p-6 text-center text-text-dim text-xs">
         Source transcript no longer available.
       </div>
-    );
+    )
   }
 
   return (
@@ -41,7 +44,9 @@ export function SourceTranscriptPanel({
           {conversation.conversationId}
         </div>
         <div className="text-[10px] text-text-dim mt-0.5">
-          {conversation.agentName ? `Agent: ${conversation.agentName}` : "No agent"}
+          {conversation.agentName
+            ? `Agent: ${conversation.agentName}`
+            : "No agent"}
           {" · "}
           {conversation.messages.length} message
           {conversation.messages.length !== 1 ? "s" : ""}
@@ -65,5 +70,5 @@ export function SourceTranscriptPanel({
         )}
       </div>
     </div>
-  );
+  )
 }

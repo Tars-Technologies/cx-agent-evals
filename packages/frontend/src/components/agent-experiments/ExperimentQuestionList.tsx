@@ -1,52 +1,54 @@
-"use client";
+"use client"
 
-import { useMemo, useRef, useEffect, useState } from "react";
-import type { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useEffect, useMemo, useRef, useState } from "react"
 
-type Rating = "great" | "good_enough" | "bad";
-type FilterType = "all" | "unrated" | Rating;
+type Rating = "great" | "good_enough" | "bad"
+type FilterType = "all" | "unrated" | Rating
 
 interface QuestionItem {
-  questionId: Id<"questions">;
-  queryText: string;
-  resultId: Id<"agentExperimentResults"> | null;
-  rating: Rating | null;
-  hasComment: boolean;
+  questionId: Id<"questions">
+  queryText: string
+  resultId: Id<"agentExperimentResults"> | null
+  rating: Rating | null
+  hasComment: boolean
 }
 
 interface ExperimentQuestionListProps {
-  items: QuestionItem[];
-  selectedQuestionId: Id<"questions"> | null;
-  onSelectQuestion: (questionId: Id<"questions">) => void;
+  items: QuestionItem[]
+  selectedQuestionId: Id<"questions"> | null
+  onSelectQuestion: (questionId: Id<"questions">) => void
   stats: {
-    total: number;
-    annotated: number;
-    great: number;
-    good_enough: number;
-    bad: number;
-  } | null;
-  isLive: boolean;
-  pendingCount: number;
+    total: number
+    annotated: number
+    great: number
+    good_enough: number
+    bad: number
+  } | null
+  isLive: boolean
+  pendingCount: number
 }
 
 function StatusDot({ rating }: { rating: Rating | null }) {
   if (rating === null) {
-    return <span className="mt-1 w-2 h-2 rounded-full border border-border shrink-0" />;
+    return (
+      <span className="mt-1 w-2 h-2 rounded-full border border-border shrink-0" />
+    )
   }
   const colors: Record<Rating, string> = {
     great: "bg-green-500",
     good_enough: "bg-yellow-500",
-    bad: "bg-red-500",
-  };
+    bad: "bg-red-500"
+  }
   return (
     <span className={`mt-1 w-2 h-2 rounded-full shrink-0 ${colors[rating]}`} />
-  );
+  )
 }
 
 function PendingDot() {
   return (
     <span className="mt-1 w-2 h-2 rounded-full border-2 border-purple-400/40 shrink-0 animate-pulse" />
-  );
+  )
 }
 
 export function ExperimentQuestionList({
@@ -55,44 +57,45 @@ export function ExperimentQuestionList({
   onSelectQuestion,
   stats,
   isLive,
-  pendingCount,
+  pendingCount
 }: ExperimentQuestionListProps) {
-  const [filter, setFilter] = useState<FilterType>("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const selectedRef = useRef<HTMLButtonElement>(null);
+  const [filter, setFilter] = useState<FilterType>("all")
+  const [searchQuery, setSearchQuery] = useState("")
+  const selectedRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
-    selectedRef.current?.scrollIntoView({ block: "nearest" });
-  }, [selectedQuestionId]);
+    selectedRef.current?.scrollIntoView({ block: "nearest" })
+  }, [selectedQuestionId])
 
   const filteredItems = useMemo(() => {
-    let result = items;
+    let result = items
 
     if (filter !== "all") {
       if (filter === "unrated") {
-        result = result.filter((item) => item.rating === null && item.resultId !== null);
+        result = result.filter(
+          (item) => item.rating === null && item.resultId !== null
+        )
       } else {
-        result = result.filter((item) => item.rating === filter);
+        result = result.filter((item) => item.rating === filter)
       }
     }
 
     if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
-      result = result.filter((item) =>
-        item.queryText.toLowerCase().includes(q)
-      );
+      const q = searchQuery.trim().toLowerCase()
+      result = result.filter((item) => item.queryText.toLowerCase().includes(q))
     }
 
-    return result;
-  }, [items, filter, searchQuery]);
+    return result
+  }, [items, filter, searchQuery])
 
-  const totalItems = items.length;
-  const annotatedCount = stats?.annotated ?? 0;
-  const totalCount = stats?.total ?? totalItems;
+  const totalItems = items.length
+  const annotatedCount = stats?.annotated ?? 0
+  const totalCount = stats?.total ?? totalItems
 
-  const greatPct = totalCount > 0 ? ((stats?.great ?? 0) / totalCount) * 100 : 0;
-  const goodPct = totalCount > 0 ? ((stats?.good_enough ?? 0) / totalCount) * 100 : 0;
-  const badPct = totalCount > 0 ? ((stats?.bad ?? 0) / totalCount) * 100 : 0;
+  const greatPct = totalCount > 0 ? ((stats?.great ?? 0) / totalCount) * 100 : 0
+  const goodPct =
+    totalCount > 0 ? ((stats?.good_enough ?? 0) / totalCount) * 100 : 0
+  const badPct = totalCount > 0 ? ((stats?.bad ?? 0) / totalCount) * 100 : 0
 
   return (
     <div className="flex flex-col h-full">
@@ -100,8 +103,8 @@ export function ExperimentQuestionList({
       <div className="px-3 py-2 border-b border-border flex items-center justify-between">
         <span className="text-xs font-medium text-text">Questions</span>
         <span className="text-xs text-text-dim">
-          <span className="text-accent font-medium">{annotatedCount}</span>
-          /{totalCount} annotated
+          <span className="text-accent font-medium">{annotatedCount}</span>/
+          {totalCount} annotated
         </span>
       </div>
 
@@ -159,8 +162,8 @@ export function ExperimentQuestionList({
           </div>
         ) : (
           filteredItems.map((item, i) => {
-            const isSelected = item.questionId === selectedQuestionId;
-            const isPending = item.resultId === null;
+            const isSelected = item.questionId === selectedQuestionId
+            const isPending = item.resultId === null
 
             return (
               <button
@@ -204,7 +207,7 @@ export function ExperimentQuestionList({
                   </div>
                 </div>
               </button>
-            );
+            )
           })
         )}
 
@@ -216,5 +219,5 @@ export function ExperimentQuestionList({
         )}
       </div>
     </div>
-  );
+  )
 }

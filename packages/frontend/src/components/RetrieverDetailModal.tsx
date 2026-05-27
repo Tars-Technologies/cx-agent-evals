@@ -1,38 +1,38 @@
-"use client";
+"use client"
 
-import { useState } from "react";
 import {
-  INDEX_STRATEGY_REGISTRY,
-  QUERY_STRATEGY_REGISTRY,
-  SEARCH_STRATEGY_REGISTRY,
-  REFINEMENT_STEP_REGISTRY,
   CHUNKER_REGISTRY,
   EMBEDDER_REGISTRY,
+  INDEX_STRATEGY_REGISTRY,
+  QUERY_STRATEGY_REGISTRY,
+  REFINEMENT_STEP_REGISTRY,
   RERANKER_REGISTRY,
-} from "@tars-inc/eval-lib/registry";
-import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
+  SEARCH_STRATEGY_REGISTRY
+} from "@tars-inc/eval-lib/registry"
+import { useState } from "react"
+import { ConfirmDeleteModal } from "./ConfirmDeleteModal"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface SharingRetriever {
-  name: string;
+  name: string
 }
 
 interface RetrieverDetailModalProps {
   retriever: {
-    name: string;
-    retrieverConfig: unknown;
-    defaultK: number;
-    status: string;
-    chunkCount?: number;
-    createdAt: number;
-  };
-  sharingRetrievers: SharingRetriever[];
-  onDeleteIndex: () => void;
-  onDeleteRetriever: () => void;
-  onClose: () => void;
+    name: string
+    retrieverConfig: unknown
+    defaultK: number
+    status: string
+    chunkCount?: number
+    createdAt: number
+  }
+  sharingRetrievers: SharingRetriever[]
+  onDeleteIndex: () => void
+  onDeleteRetriever: () => void
+  onClose: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -40,26 +40,26 @@ interface RetrieverDetailModalProps {
 // ---------------------------------------------------------------------------
 
 interface ParsedConfig {
-  name?: string;
+  name?: string
   index?: {
-    strategy?: string;
-    chunkSize?: number;
-    chunkOverlap?: number;
-    embeddingModel?: string;
-    chunkerType?: string;
-    childChunkSize?: number;
-    parentChunkSize?: number;
-    childOverlap?: number;
-    parentOverlap?: number;
-    contextPrompt?: string;
-    summaryPrompt?: string;
-    concurrency?: number;
-    [key: string]: unknown;
-  };
-  query?: { strategy: string; [key: string]: unknown };
-  search?: { strategy: string; [key: string]: unknown };
-  refinement?: Array<{ type: string; [key: string]: unknown }>;
-  k?: number;
+    strategy?: string
+    chunkSize?: number
+    chunkOverlap?: number
+    embeddingModel?: string
+    chunkerType?: string
+    childChunkSize?: number
+    parentChunkSize?: number
+    childOverlap?: number
+    parentOverlap?: number
+    contextPrompt?: string
+    summaryPrompt?: string
+    concurrency?: number
+    [key: string]: unknown
+  }
+  query?: { strategy: string; [key: string]: unknown }
+  search?: { strategy: string; [key: string]: unknown }
+  refinement?: Array<{ type: string; [key: string]: unknown }>
+  k?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -68,32 +68,29 @@ interface ParsedConfig {
 
 function lookupName(
   registry: readonly { id: string; name: string }[],
-  id: string,
+  id: string
 ): string {
-  return registry.find((e) => e.id === id)?.name ?? id;
+  return registry.find((e) => e.id === id)?.name ?? id
 }
 
 /** Format a value for display. Booleans become Yes/No, arrays join with commas. */
 function formatValue(value: unknown): string {
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (Array.isArray(value)) return value.join(", ");
-  return String(value);
+  if (typeof value === "boolean") return value ? "Yes" : "No"
+  if (Array.isArray(value)) return value.join(", ")
+  return String(value)
 }
 
 /** Format options record as key-value pairs, skipping empty/undefined values and known keys. */
 function formatExtraOptions(
   opts: Record<string, unknown>,
-  skipKeys: readonly string[],
+  skipKeys: readonly string[]
 ): Array<{ label: string; value: string }> {
   return Object.entries(opts)
     .filter(
       ([k, v]) =>
-        !skipKeys.includes(k) &&
-        v !== "" &&
-        v !== undefined &&
-        v !== null,
+        !skipKeys.includes(k) && v !== "" && v !== undefined && v !== null
     )
-    .map(([k, v]) => ({ label: k, value: formatValue(v) }));
+    .map(([k, v]) => ({ label: k, value: formatValue(v) }))
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +103,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
       <span className="text-xs text-text-dim w-28 shrink-0">{label}</span>
       <span className="text-xs text-text">{value}</span>
     </div>
-  );
+  )
 }
 
 function SectionHeader({ title }: { title: string }) {
@@ -114,24 +111,35 @@ function SectionHeader({ title }: { title: string }) {
     <h4 className="text-xs font-medium text-text uppercase tracking-wider mb-2">
       {title}
     </h4>
-  );
+  )
 }
 
-const STATUS_STYLES: Record<string, { dot: string; label: string; text: string }> = {
-  configuring: { dot: "bg-text-dim", label: "Configuring", text: "text-text-dim" },
-  indexing: { dot: "bg-accent animate-pulse", label: "Indexing", text: "text-accent" },
+const STATUS_STYLES: Record<
+  string,
+  { dot: string; label: string; text: string }
+> = {
+  configuring: {
+    dot: "bg-text-dim",
+    label: "Configuring",
+    text: "text-text-dim"
+  },
+  indexing: {
+    dot: "bg-accent animate-pulse",
+    label: "Indexing",
+    text: "text-accent"
+  },
   ready: { dot: "bg-accent", label: "Ready", text: "text-accent" },
-  error: { dot: "bg-red-500", label: "Error", text: "text-red-400" },
-};
+  error: { dot: "bg-red-500", label: "Error", text: "text-red-400" }
+}
 
 // ---------------------------------------------------------------------------
 // Section renderers
 // ---------------------------------------------------------------------------
 
 function IndexSection({ config }: { config: ParsedConfig }) {
-  const index = config.index;
-  const strategy = index?.strategy ?? "plain";
-  const isParentChild = strategy === "parent-child";
+  const index = config.index
+  const strategy = index?.strategy ?? "plain"
+  const isParentChild = strategy === "parent-child"
 
   const extraKeys = [
     "strategy",
@@ -142,9 +150,9 @@ function IndexSection({ config }: { config: ParsedConfig }) {
     "childChunkSize",
     "parentChunkSize",
     "childOverlap",
-    "parentOverlap",
-  ];
-  const extras = index ? formatExtraOptions(index, extraKeys) : [];
+    "parentOverlap"
+  ]
+  const extras = index ? formatExtraOptions(index, extraKeys) : []
 
   return (
     <section className="border border-border rounded-lg p-3 bg-bg-surface">
@@ -193,14 +201,14 @@ function IndexSection({ config }: { config: ParsedConfig }) {
         ))}
       </div>
     </section>
-  );
+  )
 }
 
 function QuerySection({ config }: { config: ParsedConfig }) {
-  const query = config.query;
-  const strategy = query?.strategy ?? "identity";
-  const extraKeys = ["strategy"];
-  const extras = query ? formatExtraOptions(query, extraKeys) : [];
+  const query = config.query
+  const strategy = query?.strategy ?? "identity"
+  const extraKeys = ["strategy"]
+  const extras = query ? formatExtraOptions(query, extraKeys) : []
 
   return (
     <section className="border border-border rounded-lg p-3 bg-bg-surface">
@@ -215,15 +223,15 @@ function QuerySection({ config }: { config: ParsedConfig }) {
         ))}
       </div>
     </section>
-  );
+  )
 }
 
 function SearchSection({ config }: { config: ParsedConfig }) {
-  const search = config.search;
-  const strategy = search?.strategy ?? "dense";
-  const k = config.k;
-  const extraKeys = ["strategy"];
-  const extras = search ? formatExtraOptions(search, extraKeys) : [];
+  const search = config.search
+  const strategy = search?.strategy ?? "dense"
+  const k = config.k
+  const extraKeys = ["strategy"]
+  const extras = search ? formatExtraOptions(search, extraKeys) : []
 
   return (
     <section className="border border-border rounded-lg p-3 bg-bg-surface">
@@ -239,11 +247,11 @@ function SearchSection({ config }: { config: ParsedConfig }) {
         {k != null && <SummaryRow label="Top K" value={String(k)} />}
       </div>
     </section>
-  );
+  )
 }
 
 function RefinementSection({ config }: { config: ParsedConfig }) {
-  const steps = config.refinement;
+  const steps = config.refinement
 
   return (
     <section className="border border-border rounded-lg p-3 bg-bg-surface">
@@ -253,8 +261,8 @@ function RefinementSection({ config }: { config: ParsedConfig }) {
       ) : (
         <div className="flex flex-col gap-1.5">
           {steps.map((step, i) => {
-            const extraKeys = ["type"];
-            const extras = formatExtraOptions(step, extraKeys);
+            const extraKeys = ["type"]
+            const extras = formatExtraOptions(step, extraKeys)
             return (
               <div key={`${step.type}-${i}`}>
                 <SummaryRow
@@ -265,12 +273,12 @@ function RefinementSection({ config }: { config: ParsedConfig }) {
                   <SummaryRow key={label} label={`  ${label}`} value={value} />
                 ))}
               </div>
-            );
+            )
           })}
         </div>
       )}
     </section>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -282,18 +290,18 @@ function DangerZone({
   status,
   sharingRetrievers,
   onDeleteIndex,
-  onDeleteRetriever,
+  onDeleteRetriever
 }: {
-  retrieverName: string;
-  status: string;
-  sharingRetrievers: SharingRetriever[];
-  onDeleteIndex: () => void;
-  onDeleteRetriever: () => void;
+  retrieverName: string
+  status: string
+  sharingRetrievers: SharingRetriever[]
+  onDeleteIndex: () => void
+  onDeleteRetriever: () => void
 }) {
   const [confirmAction, setConfirmAction] = useState<
     null | "retriever" | "index"
-  >(null);
-  const hasIndex = status === "ready" || status === "error";
+  >(null)
+  const hasIndex = status === "ready" || status === "error"
 
   return (
     <>
@@ -343,17 +351,17 @@ function DangerZone({
           hasIndex={hasIndex}
           onConfirm={() => {
             if (confirmAction === "index") {
-              onDeleteIndex();
+              onDeleteIndex()
             } else {
-              onDeleteRetriever();
+              onDeleteRetriever()
             }
-            setConfirmAction(null);
+            setConfirmAction(null)
           }}
           onClose={() => setConfirmAction(null)}
         />
       )}
     </>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -365,11 +373,10 @@ export function RetrieverDetailModal({
   sharingRetrievers,
   onDeleteIndex,
   onDeleteRetriever,
-  onClose,
+  onClose
 }: RetrieverDetailModalProps) {
-  const config = (retriever.retrieverConfig ?? {}) as ParsedConfig;
-  const status =
-    STATUS_STYLES[retriever.status] ?? STATUS_STYLES.configuring;
+  const config = (retriever.retrieverConfig ?? {}) as ParsedConfig
+  const status = STATUS_STYLES[retriever.status] ?? STATUS_STYLES.configuring
 
   return (
     <div
@@ -404,9 +411,7 @@ export function RetrieverDetailModal({
               <span
                 className={`inline-flex items-center gap-1 text-[10px] font-medium ${status.text}`}
               >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${status.dot}`}
-                />
+                <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
                 {status.label}
               </span>
             </div>
@@ -419,7 +424,7 @@ export function RetrieverDetailModal({
                 {new Date(retriever.createdAt).toLocaleDateString(undefined, {
                   year: "numeric",
                   month: "short",
-                  day: "numeric",
+                  day: "numeric"
                 })}
               </span>
             </div>
@@ -442,5 +447,5 @@ export function RetrieverDetailModal({
         </div>
       </div>
     </div>
-  );
+  )
 }

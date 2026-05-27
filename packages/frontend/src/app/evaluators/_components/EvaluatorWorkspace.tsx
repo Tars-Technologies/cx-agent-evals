@@ -1,46 +1,46 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useQuery } from "convex/react"
+import { useState } from "react"
+import { api } from "@/lib/convex"
 
-import { ConfigurePanel } from "./ConfigurePanel";
-import { ValidatePanel } from "./ValidatePanel";
-import { RunPanel } from "./RunPanel";
+import { ConfigurePanel } from "./ConfigurePanel"
+import { RunPanel } from "./RunPanel"
+import { ValidatePanel } from "./ValidatePanel"
 
-type Tab = "configure" | "validate" | "run";
+type Tab = "configure" | "validate" | "run"
 
 interface EvaluatorWorkspaceProps {
-  configId: Id<"evaluatorConfigs"> | null;
-  kbId: Id<"knowledgeBases">;
+  configId: Id<"evaluatorConfigs"> | null
+  kbId: Id<"knowledgeBases">
 }
 
 export function EvaluatorWorkspace({
   configId,
-  kbId,
+  kbId
 }: EvaluatorWorkspaceProps) {
-  const [activeTab, setActiveTab] = useState<Tab>("configure");
+  const [activeTab, setActiveTab] = useState<Tab>("configure")
 
   const config = useQuery(
     api.evaluator.crud.getConfig,
-    configId ? { id: configId } : "skip",
-  );
+    configId ? { id: configId } : "skip"
+  )
 
   // Resolve experiment for context
   const experiment = useQuery(
     api.experiments.orchestration.get,
-    config?.experimentId ? { id: config.experimentId } : "skip",
-  );
+    config?.experimentId ? { id: config.experimentId } : "skip"
+  )
 
   // Resolve failure mode for header
   const failureModes = useQuery(
     api.failureModes.crud.byExperiment,
-    config?.experimentId ? { experimentId: config.experimentId } : "skip",
-  );
+    config?.experimentId ? { experimentId: config.experimentId } : "skip"
+  )
   const failureMode = failureModes?.find(
-    (fm) => fm._id === config?.failureModeId,
-  );
+    (fm) => fm._id === config?.failureModeId
+  )
 
   if (!configId) {
     return (
@@ -56,7 +56,7 @@ export function EvaluatorWorkspace({
           </p>
         </div>
       </div>
-    );
+    )
   }
 
   if (!config || !experiment) {
@@ -64,7 +64,7 @@ export function EvaluatorWorkspace({
       <div className="flex-1 flex items-center justify-center text-text-dim text-sm">
         Loading...
       </div>
-    );
+    )
   }
 
   const tabs: { key: Tab; label: string; disabled: boolean }[] = [
@@ -72,14 +72,14 @@ export function EvaluatorWorkspace({
     {
       key: "validate",
       label: "Validate",
-      disabled: false,
+      disabled: false
     },
     {
       key: "run",
       label: "Run",
-      disabled: !config.testMetrics,
-    },
-  ];
+      disabled: !config.testMetrics
+    }
+  ]
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -134,5 +134,5 @@ export function EvaluatorWorkspace({
         )}
       </div>
     </div>
-  );
+  )
 }

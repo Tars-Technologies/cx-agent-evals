@@ -1,63 +1,63 @@
-"use node";
+"use node"
 
-import { internalAction } from "../_generated/server";
-import { v } from "convex/values";
-import { internal } from "../_generated/api";
-import OpenAI from "openai";
+import { v } from "convex/values"
+import OpenAI from "openai"
+import { internal } from "../_generated/api"
+import { internalAction } from "../_generated/server"
 
 export const generate = internalAction({
   args: { experimentId: v.id("experiments") },
   handler: async (ctx, args) => {
     const experiment = await ctx.runQuery(
       internal.experiments.orchestration.getInternal,
-      { id: args.experimentId },
-    );
-    if (!experiment) throw new Error("Experiment not found");
+      { id: args.experimentId }
+    )
+    if (!experiment) throw new Error("Experiment not found")
 
     const annotations = await ctx.runQuery(
       internal.annotations.crud.byExperimentInternal,
-      { experimentId: args.experimentId },
-    );
+      { experimentId: args.experimentId }
+    )
 
     const agentResults = await ctx.runQuery(
       internal.experiments.agentResults.byExperimentInternal,
-      { experimentId: args.experimentId },
-    );
+      { experimentId: args.experimentId }
+    )
 
     const questions = await ctx.runQuery(
       internal.crud.questions.byDatasetInternal,
-      { datasetId: experiment.datasetId },
-    );
+      { datasetId: experiment.datasetId }
+    )
 
     // Build lookup maps
-    const questionMap = new Map(questions.map((q: any) => [q._id, q]));
-    const resultMap = new Map(agentResults.map((r: any) => [r._id, r]));
+    const questionMap = new Map(questions.map((q: any) => [q._id, q]))
+    const resultMap = new Map(agentResults.map((r: any) => [r._id, r]))
 
     // Collect failing annotations with context
     const failingItems: Array<{
-      questionId: string;
-      questionText: string;
-      answerText: string;
-      tags: string[];
-      comment: string;
-    }> = [];
+      questionId: string
+      questionText: string
+      answerText: string
+      tags: string[]
+      comment: string
+    }> = []
 
     for (const annotation of annotations) {
       const isFailing =
-        annotation.rating === "fail" || annotation.rating === "bad";
-      if (!isFailing) continue;
+        annotation.rating === "fail" || annotation.rating === "bad"
+      if (!isFailing) continue
 
-      const question = questionMap.get(annotation.questionId);
-      const result = resultMap.get(annotation.resultId);
-      if (!question || !result) continue;
+      const question = questionMap.get(annotation.questionId)
+      const result = resultMap.get(annotation.resultId)
+      if (!question || !result) continue
 
       failingItems.push({
         questionId: annotation.questionId,
         questionText: question.queryText,
         answerText: result.answerText,
         tags: annotation.tags ?? [],
-        comment: annotation.comment ?? "",
-      });
+        comment: annotation.comment ?? ""
+      })
     }
 
     if (failingItems.length === 0) {
@@ -68,20 +68,20 @@ export const generate = internalAction({
         name: "No failures detected",
         description:
           "All annotated results were rated as passing. No failure patterns to analyze.",
-        order: 0,
-      });
-      return;
+        order: 0
+      })
+      return
     }
 
     // Build prompt for LLM
     const itemDescriptions = failingItems
       .map(
         (item, i) =>
-          `[${i + 1}] Question: ${item.questionText}\nAnswer: ${item.answerText.slice(0, 500)}${item.answerText.length > 500 ? "..." : ""}\nTags: ${item.tags.length > 0 ? item.tags.join(", ") : "none"}\nComment: ${item.comment || "none"}`,
+          `[${i + 1}] Question: ${item.questionText}\nAnswer: ${item.answerText.slice(0, 500)}${item.answerText.length > 500 ? "..." : ""}\nTags: ${item.tags.length > 0 ? item.tags.join(", ") : "none"}\nComment: ${item.comment || "none"}`
       )
-      .join("\n\n");
+      .join("\n\n")
 
-    const openai = new OpenAI();
+    const openai = new OpenAI()
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       temperature: 0.3,
@@ -108,29 +108,29 @@ Guidelines:
 - A question can belong to multiple failure modes if applicable
 - Names should be concise (2-5 words)
 - Descriptions should be 1-3 sentences explaining the pattern
-- Use the tags and comments as signals for grouping`,
+- Use the tags and comments as signals for grouping`
         },
         {
           role: "user",
-          content: `Analyze these ${failingItems.length} failing results and identify failure modes:\n\n${itemDescriptions}`,
-        },
-      ],
-    });
+          content: `Analyze these ${failingItems.length} failing results and identify failure modes:\n\n${itemDescriptions}`
+        }
+      ]
+    })
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) throw new Error("No response from LLM");
+    const content = response.choices[0]?.message?.content
+    if (!content) throw new Error("No response from LLM")
 
     const parsed = JSON.parse(content) as {
       failureModes: Array<{
-        name: string;
-        description: string;
-        itemIndices: number[];
-      }>;
-    };
+        name: string
+        description: string
+        itemIndices: number[]
+      }>
+    }
 
     // Create failure modes and mappings one by one (enables real-time UI updates)
     for (let i = 0; i < parsed.failureModes.length; i++) {
-      const fm = parsed.failureModes[i];
+      const fm = parsed.failureModes[i]
 
       const failureModeId = await ctx.runMutation(
         internal.failureModes.crud.createInternal,
@@ -139,14 +139,14 @@ Guidelines:
           experimentId: args.experimentId,
           name: fm.name,
           description: fm.description,
-          order: i,
-        },
-      );
+          order: i
+        }
+      )
 
       // Map questions to this failure mode
       for (const idx of fm.itemIndices) {
-        const item = failingItems[idx - 1]; // 1-based index
-        if (!item) continue;
+        const item = failingItems[idx - 1] // 1-based index
+        if (!item) continue
 
         await ctx.runMutation(
           internal.failureModes.crud.createMappingInternal,
@@ -154,10 +154,10 @@ Guidelines:
             orgId: experiment.orgId,
             failureModeId,
             questionId: item.questionId as any,
-            experimentId: args.experimentId,
-          },
-        );
+            experimentId: args.experimentId
+          }
+        )
       }
     }
-  },
-});
+  }
+})

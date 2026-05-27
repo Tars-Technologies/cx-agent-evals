@@ -1,18 +1,18 @@
 // packages/frontend/src/components/GenerationBanner.tsx
-"use client";
+"use client"
 
-import { useState } from "react";
+import { useState } from "react"
 
 interface GenerationBannerProps {
-  strategy: string;
-  kbName: string;
-  phase: string;
-  processedItems: number;
-  totalItems: number;
-  questionsGenerated: number;
-  itemLabel?: string;
-  onView: () => void;
-  onCancel?: () => void;
+  strategy: string
+  kbName: string
+  phase: string
+  processedItems: number
+  totalItems: number
+  questionsGenerated: number
+  itemLabel?: string
+  onView: () => void
+  onCancel?: () => void
 }
 
 export function GenerationBanner({
@@ -24,12 +24,12 @@ export function GenerationBanner({
   questionsGenerated,
   itemLabel,
   onView,
-  onCancel,
+  onCancel
 }: GenerationBannerProps) {
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const isPreparing = phase === "preparing";
-  const progress = totalItems > 0 ? (processedItems / totalItems) * 100 : 0;
-  const label = itemLabel ?? "Questions";
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const isPreparing = phase === "preparing"
+  const progress = totalItems > 0 ? (processedItems / totalItems) * 100 : 0
+  const label = itemLabel ?? "Questions"
 
   return (
     <>
@@ -39,19 +39,31 @@ export function GenerationBanner({
             <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-dot flex-shrink-0" />
             <div className="min-w-0">
               <div className="text-xs text-text font-medium truncate">
-                Generating: <span className="text-accent">{strategy}</span> on &ldquo;{kbName}&rdquo;
+                Generating: <span className="text-accent">{strategy}</span> on
+                &ldquo;{kbName}&rdquo;
               </div>
               <div className="flex items-center gap-0 mt-1">
                 <span className="text-[10px] text-text-dim">Phase:</span>
-                <span className="text-[10px] text-accent-bright ml-1">{isPreparing ? "Preparing" : "Generating"}</span>
+                <span className="text-[10px] text-accent-bright ml-1">
+                  {isPreparing ? "Preparing" : "Generating"}
+                </span>
                 <span className="text-[10px] text-border mx-2.5">│</span>
                 <span className="text-[10px] text-text-dim">Docs:</span>
                 <span className="text-[10px] text-text ml-1">
-                  {isPreparing ? "—" : <>{processedItems} <span className="text-text-dim">of</span> {totalItems}</>}
+                  {isPreparing ? (
+                    "—"
+                  ) : (
+                    <>
+                      {processedItems} <span className="text-text-dim">of</span>{" "}
+                      {totalItems}
+                    </>
+                  )}
                 </span>
                 <span className="text-[10px] text-border mx-2.5">│</span>
                 <span className="text-[10px] text-text-dim">{label}:</span>
-                <span className="text-[10px] text-accent ml-1">{isPreparing ? "—" : questionsGenerated}</span>
+                <span className="text-[10px] text-accent ml-1">
+                  {isPreparing ? "—" : questionsGenerated}
+                </span>
               </div>
               {!isPreparing && (
                 <div className="mt-1.5 h-[2px] w-[280px] bg-border rounded-sm overflow-hidden">
@@ -93,9 +105,12 @@ export function GenerationBanner({
             className="bg-bg-elevated border border-border rounded-lg shadow-xl w-full max-w-sm p-6"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-sm font-medium text-text mb-2">Cancel Simulation</h3>
+            <h3 className="text-sm font-medium text-text mb-2">
+              Cancel Simulation
+            </h3>
             <p className="text-xs text-text-dim mb-4">
-              In-progress conversations will finish, but pending ones will be stopped.
+              In-progress conversations will finish, but pending ones will be
+              stopped.
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -106,8 +121,8 @@ export function GenerationBanner({
               </button>
               <button
                 onClick={() => {
-                  setShowCancelConfirm(false);
-                  onCancel?.();
+                  setShowCancelConfirm(false)
+                  onCancel?.()
                 }}
                 className="px-4 py-1.5 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
               >
@@ -118,5 +133,5 @@ export function GenerationBanner({
         </div>
       )}
     </>
-  );
+  )
 }

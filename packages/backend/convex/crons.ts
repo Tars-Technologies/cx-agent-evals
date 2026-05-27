@@ -1,7 +1,7 @@
-import { cronJobs } from "convex/server";
-import { internal } from "./_generated/api";
+import { cronJobs } from "convex/server"
+import { internal } from "./_generated/api"
 
-const crons = cronJobs();
+const crons = cronJobs()
 
 /**
  * Retry failed LangSmith syncs every hour.
@@ -10,7 +10,7 @@ const crons = cronJobs();
 crons.interval(
   "retry failed langsmith syncs",
   { hours: 1 },
-  internal.langsmith.syncRetry.retryFailed,
-);
+  internal.langsmith.syncRetry.retryFailed
+)
 
-export default crons;
+export default crons

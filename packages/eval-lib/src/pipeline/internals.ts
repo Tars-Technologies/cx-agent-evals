@@ -7,33 +7,32 @@
 
 // Config defaults
 export {
-  DEFAULT_INDEX_CONFIG,
-  DEFAULT_QUERY_CONFIG,
-  DEFAULT_SEARCH_CONFIG,
+  applyDedup,
+  applyExpandContext,
+  applyMmr,
+  applyThresholdFilter,
+  assignRankScores,
   BM25SearchIndex,
-  weightedScoreFusion,
+  DEFAULT_HYDE_PROMPT,
+  DEFAULT_INDEX_CONFIG,
+  DEFAULT_MULTI_QUERY_PROMPT,
+  DEFAULT_QUERY_CONFIG,
+  DEFAULT_REWRITE_PROMPT,
+  DEFAULT_SEARCH_CONFIG,
+  DEFAULT_STEP_BACK_PROMPT,
   reciprocalRankFusion,
   rrfFuseMultiple,
-  assignRankScores,
-  applyThresholdFilter,
-  applyDedup,
-  applyMmr,
-  applyExpandContext,
-  DEFAULT_HYDE_PROMPT,
-  DEFAULT_MULTI_QUERY_PROMPT,
-  DEFAULT_STEP_BACK_PROMPT,
-  DEFAULT_REWRITE_PROMPT,
-} from "../retrievers/pipeline/index.js";
+  weightedScoreFusion
+} from "../retrievers/pipeline/index.js"
 
 // Query utilities
-export { parseVariants } from "../retrievers/pipeline/query/index.js";
-
-// InMemoryVectorStore (not used by backend, but kept accessible)
-export { InMemoryVectorStore } from "../vector-stores/index.js";
-
-// Dimension discovery utilities
-export { discoverDimensions } from "../synthetic-datagen/strategies/dimension-driven/discovery.js";
+export { parseVariants } from "../retrievers/pipeline/query/index.js"
 export {
   loadDimensions,
-  loadDimensionsFromFile,
-} from "../synthetic-datagen/strategies/dimension-driven/dimensions.js";
+  loadDimensionsFromFile
+} from "../synthetic-datagen/strategies/dimension-driven/dimensions.js"
+
+// Dimension discovery utilities
+export { discoverDimensions } from "../synthetic-datagen/strategies/dimension-driven/discovery.js"
+// InMemoryVectorStore (not used by backend, but kept accessible)
+export { InMemoryVectorStore } from "../vector-stores/index.js"

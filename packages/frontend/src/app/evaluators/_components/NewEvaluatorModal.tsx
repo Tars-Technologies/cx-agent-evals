@@ -1,62 +1,61 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation, useQuery } from "convex/react"
+import { useState } from "react"
+import { api } from "@/lib/convex"
 
 interface NewEvaluatorModalProps {
-  kbId: Id<"knowledgeBases">;
-  onClose: () => void;
-  onCreated: (configId: Id<"evaluatorConfigs">) => void;
+  kbId: Id<"knowledgeBases">
+  onClose: () => void
+  onCreated: (configId: Id<"evaluatorConfigs">) => void
 }
 
 export function NewEvaluatorModal({
   kbId,
   onClose,
-  onCreated,
+  onCreated
 }: NewEvaluatorModalProps) {
-  const [name, setName] = useState("");
-  const [selectedExpId, setSelectedExpId] = useState<Id<"experiments"> | "">(
-    "",
-  );
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState("")
+  const [selectedExpId, setSelectedExpId] = useState<Id<"experiments"> | "">("")
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const createConfig = useMutation(api.evaluator.crud.createConfig);
+  const createConfig = useMutation(api.evaluator.crud.createConfig)
 
   // Load all experiments for this KB
-  const experiments = useQuery(api.experiments.orchestration.byKb, { kbId });
+  const experiments = useQuery(api.experiments.orchestration.byKb, { kbId })
   const agentExperiments = (experiments ?? []).filter(
-    (e) => e.experimentType === "agent",
-  );
+    (e) => e.experimentType === "agent"
+  )
 
   // Validate failure modes exist for selected experiment
   const failureModes = useQuery(
     api.failureModes.crud.byExperiment,
     selectedExpId
       ? { experimentId: selectedExpId as Id<"experiments"> }
-      : "skip",
-  );
+      : "skip"
+  )
 
-  const noFailureModes = selectedExpId && failureModes && failureModes.length === 0;
+  const noFailureModes =
+    selectedExpId && failureModes && failureModes.length === 0
 
   const handleCreate = async () => {
-    if (!selectedExpId || !name.trim()) return;
-    setCreating(true);
-    setError(null);
+    if (!selectedExpId || !name.trim()) return
+    setCreating(true)
+    setError(null)
     try {
       const configId = await createConfig({
         experimentId: selectedExpId as Id<"experiments">,
-        name: name.trim(),
-      });
-      onCreated(configId);
+        name: name.trim()
+      })
+      onCreated(configId)
     } catch (e: any) {
-      setError(e.message ?? "Failed to create evaluator");
+      setError(e.message ?? "Failed to create evaluator")
     } finally {
-      setCreating(false);
+      setCreating(false)
     }
-  };
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
@@ -99,7 +98,8 @@ export function NewEvaluatorModal({
               ))}
             </select>
             <p className="mt-1 text-xs text-text-dim">
-              The experiment whose annotations &amp; failure modes will train this judge.
+              The experiment whose annotations &amp; failure modes will train
+              this judge.
             </p>
           </div>
 
@@ -132,5 +132,5 @@ export function NewEvaluatorModal({
         </div>
       </div>
     </div>
-  );
+  )
 }

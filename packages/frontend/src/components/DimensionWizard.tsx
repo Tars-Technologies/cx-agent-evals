@@ -1,16 +1,16 @@
-"use client";
+"use client"
 
-import { useState, useCallback } from "react";
-import { useAction } from "convex/react";
-import { api } from "@/lib/convex";
-import { Dimension } from "@/lib/types";
+import { useAction } from "convex/react"
+import { useCallback, useState } from "react"
+import { api } from "@/lib/convex"
+import type { Dimension } from "@/lib/types"
 
 interface DimensionWizardProps {
-  initialDimensions?: Dimension[];
-  initialTotalQuestions?: number;
-  initialStep?: number;
-  onSave: (dimensions: Dimension[], totalQuestions: number) => void;
-  onClose: () => void;
+  initialDimensions?: Dimension[]
+  initialTotalQuestions?: number
+  initialStep?: number
+  onSave: (dimensions: Dimension[], totalQuestions: number) => void
+  onClose: () => void
 }
 
 export function DimensionWizard({
@@ -18,90 +18,88 @@ export function DimensionWizard({
   initialTotalQuestions = 50,
   initialStep = 1,
   onSave,
-  onClose,
+  onClose
 }: DimensionWizardProps) {
-  const [step, setStep] = useState(initialStep);
+  const [step, setStep] = useState(initialStep)
   const [dimensions, setDimensions] = useState<Dimension[]>(
-    initialDimensions ?? [],
-  );
-  const [totalQuestions, setTotalQuestions] = useState(initialTotalQuestions);
+    initialDimensions ?? []
+  )
+  const [totalQuestions, setTotalQuestions] = useState(initialTotalQuestions)
   const [url, setUrl] = useState(() => {
     try {
-      return localStorage.getItem("rag-eval:dimension-discover-url") ?? "";
+      return localStorage.getItem("rag-eval:dimension-discover-url") ?? ""
     } catch {
-      return "";
+      return ""
     }
-  });
-  const [discovering, setDiscovering] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  })
+  const [discovering, setDiscovering] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<Set<number>>(
-    new Set(),
-  );
+    new Set()
+  )
 
-  const discoverAction = useAction(api.generation.actions.discoverDimensions);
+  const discoverAction = useAction(api.generation.actions.discoverDimensions)
 
   const handleDiscover = useCallback(async () => {
-    if (!url.trim()) return;
-    setDiscovering(true);
-    setError(null);
+    if (!url.trim()) return
+    setDiscovering(true)
+    setError(null)
 
     try {
-      const dimensions = await discoverAction({ url: url.trim() });
-      setDimensions(dimensions as Dimension[]);
+      const dimensions = await discoverAction({ url: url.trim() })
+      setDimensions(dimensions as Dimension[])
       try {
-        localStorage.setItem("rag-eval:dimension-discover-url", url);
+        localStorage.setItem("rag-eval:dimension-discover-url", url)
       } catch {
         // localStorage full or unavailable
       }
-      setStep(2);
+      setStep(2)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Discovery failed");
+      setError(e instanceof Error ? e.message : "Discovery failed")
     } finally {
-      setDiscovering(false);
+      setDiscovering(false)
     }
-  }, [url, discoverAction]);
+  }, [url, discoverAction])
 
   function handleSkip() {
-    setDimensions([
-      { name: "", description: "", values: [] },
-    ]);
-    setStep(2);
+    setDimensions([{ name: "", description: "", values: [] }])
+    setStep(2)
   }
 
   function validateAndAdvance() {
-    const errors = new Set<number>();
+    const errors = new Set<number>()
     dimensions.forEach((dim, i) => {
       if (!dim.name.trim() || dim.values.length < 2) {
-        errors.add(i);
+        errors.add(i)
       }
-    });
-    setValidationErrors(errors);
+    })
+    setValidationErrors(errors)
     if (errors.size === 0) {
-      setStep(3);
+      setStep(3)
     }
   }
 
   function updateDimension(index: number, updates: Partial<Dimension>) {
     setDimensions((prev) =>
-      prev.map((d, i) => (i === index ? { ...d, ...updates } : d)),
-    );
+      prev.map((d, i) => (i === index ? { ...d, ...updates } : d))
+    )
     setValidationErrors((prev) => {
-      const next = new Set(prev);
-      next.delete(index);
-      return next;
-    });
+      const next = new Set(prev)
+      next.delete(index)
+      return next
+    })
   }
 
   function addValue(dimIndex: number, value: string) {
-    const trimmed = value.trim();
-    if (!trimmed) return;
+    const trimmed = value.trim()
+    if (!trimmed) return
     setDimensions((prev) =>
       prev.map((d, i) =>
         i === dimIndex && !d.values.includes(trimmed)
           ? { ...d, values: [...d.values, trimmed] }
-          : d,
-      ),
-    );
+          : d
+      )
+    )
   }
 
   function removeValue(dimIndex: number, valIndex: number) {
@@ -109,28 +107,28 @@ export function DimensionWizard({
       prev.map((d, i) =>
         i === dimIndex
           ? { ...d, values: d.values.filter((_, vi) => vi !== valIndex) }
-          : d,
-      ),
-    );
+          : d
+      )
+    )
   }
 
   function addDimension() {
     setDimensions((prev) => [
       ...prev,
-      { name: "", description: "", values: [] },
-    ]);
+      { name: "", description: "", values: [] }
+    ])
   }
 
   function removeDimension(index: number) {
-    setDimensions((prev) => prev.filter((_, i) => i !== index));
+    setDimensions((prev) => prev.filter((_, i) => i !== index))
   }
 
   function handleSave() {
     const filtered = dimensions.filter(
-      (d) => d.name.trim() && d.values.length >= 2,
-    );
-    if (filtered.length === 0) return;
-    onSave(filtered, totalQuestions);
+      (d) => d.name.trim() && d.values.length >= 2
+    )
+    if (filtered.length === 0) return
+    onSave(filtered, totalQuestions)
   }
 
   return (
@@ -146,14 +144,12 @@ export function DimensionWizard({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
-            <h2 className="text-sm font-semibold text-text">
-              Dimension Setup
-            </h2>
+            <h2 className="text-sm font-semibold text-text">Dimension Setup</h2>
             <div className="flex items-center gap-3 mt-2">
               {[1, 2, 3].map((s) => {
-                const isCompleted = s < step;
-                const isCurrent = s === step;
-                const canClick = isCompleted; // Can only click completed steps
+                const isCompleted = s < step
+                const isCurrent = s === step
+                const canClick = isCompleted // Can only click completed steps
 
                 return (
                   <div
@@ -174,16 +170,16 @@ export function DimensionWizard({
                     </span>
                     <span
                       className={`text-[10px] uppercase tracking-wider ${
-                        isCurrent || isCompleted ? "text-accent" : "text-text-dim"
+                        isCurrent || isCompleted
+                          ? "text-accent"
+                          : "text-text-dim"
                       }`}
                     >
                       {s === 1 ? "Discover" : s === 2 ? "Edit" : "Configure"}
                     </span>
-                    {s < 3 && (
-                      <span className="w-4 h-px bg-border mx-1" />
-                    )}
+                    {s < 3 && <span className="w-4 h-px bg-border mx-1" />}
                   </div>
-                );
+                )
               })}
             </div>
           </div>
@@ -286,7 +282,7 @@ export function DimensionWizard({
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 /* ─── Step 1: Discovery ─── */
@@ -297,14 +293,14 @@ function Step1({
   onDiscover,
   onSkip,
   discovering,
-  error,
+  error
 }: {
-  url: string;
-  onUrlChange: (url: string) => void;
-  onDiscover: () => void;
-  onSkip: () => void;
-  discovering: boolean;
-  error: string | null;
+  url: string
+  onUrlChange: (url: string) => void
+  onDiscover: () => void
+  onSkip: () => void
+  discovering: boolean
+  error: string | null
 }) {
   return (
     <div className="space-y-4 animate-fade-in">
@@ -322,7 +318,7 @@ function Step1({
           value={url}
           onChange={(e) => onUrlChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && url.trim() && !discovering) onDiscover();
+            if (e.key === "Enter" && url.trim() && !discovering) onDiscover()
           }}
           disabled={discovering}
           className="w-full bg-bg-surface border border-border rounded px-3 py-2 text-sm text-text
@@ -355,7 +351,7 @@ function Step1({
         </button>
       </div>
     </div>
-  );
+  )
 }
 
 /* ─── Step 2: Review & Edit ─── */
@@ -367,15 +363,15 @@ function Step2({
   onAddValue,
   onRemoveValue,
   onAdd,
-  onRemove,
+  onRemove
 }: {
-  dimensions: Dimension[];
-  validationErrors: Set<number>;
-  onUpdate: (index: number, updates: Partial<Dimension>) => void;
-  onAddValue: (dimIndex: number, value: string) => void;
-  onRemoveValue: (dimIndex: number, valIndex: number) => void;
-  onAdd: () => void;
-  onRemove: (index: number) => void;
+  dimensions: Dimension[]
+  validationErrors: Set<number>
+  onUpdate: (index: number, updates: Partial<Dimension>) => void
+  onAddValue: (dimIndex: number, value: string) => void
+  onRemoveValue: (dimIndex: number, valIndex: number) => void
+  onAdd: () => void
+  onRemove: (index: number) => void
 }) {
   return (
     <div className="space-y-3 animate-fade-in">
@@ -405,7 +401,7 @@ function Step2({
         + Add Dimension
       </button>
     </div>
-  );
+  )
 }
 
 function DimensionCard({
@@ -415,31 +411,29 @@ function DimensionCard({
   onUpdate,
   onAddValue,
   onRemoveValue,
-  onRemove,
+  onRemove
 }: {
-  dimension: Dimension;
-  index: number;
-  hasError: boolean;
-  onUpdate: (updates: Partial<Dimension>) => void;
-  onAddValue: (value: string) => void;
-  onRemoveValue: (valIndex: number) => void;
-  onRemove: () => void;
+  dimension: Dimension
+  index: number
+  hasError: boolean
+  onUpdate: (updates: Partial<Dimension>) => void
+  onAddValue: (value: string) => void
+  onRemoveValue: (valIndex: number) => void
+  onRemove: () => void
 }) {
-  const [newValue, setNewValue] = useState("");
+  const [newValue, setNewValue] = useState("")
 
   function handleAddValue() {
     if (newValue.trim()) {
-      onAddValue(newValue);
-      setNewValue("");
+      onAddValue(newValue)
+      setNewValue("")
     }
   }
 
   return (
     <div
       className={`p-3 rounded-lg border transition-colors ${
-        hasError
-          ? "border-error/40 bg-error/3"
-          : "border-border bg-bg-surface"
+        hasError ? "border-error/40 bg-error/3" : "border-border bg-bg-surface"
       }`}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -497,8 +491,8 @@ function DimensionCard({
           onChange={(e) => setNewValue(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
-              e.preventDefault();
-              handleAddValue();
+              e.preventDefault()
+              handleAddValue()
             }
           }}
           className="flex-1 bg-bg/50 border border-border/50 rounded px-2 py-1 text-[11px] text-text
@@ -524,7 +518,7 @@ function DimensionCard({
         </p>
       )}
     </div>
-  );
+  )
 }
 
 /* ─── Step 3: Configure & Save ─── */
@@ -532,16 +526,16 @@ function DimensionCard({
 function Step3({
   dimensions,
   totalQuestions,
-  onTotalChange,
+  onTotalChange
 }: {
-  dimensions: Dimension[];
-  totalQuestions: number;
-  onTotalChange: (n: number) => void;
+  dimensions: Dimension[]
+  totalQuestions: number
+  onTotalChange: (n: number) => void
 }) {
-  const totalValues = dimensions.reduce((sum, d) => sum + d.values.length, 0);
+  const totalValues = dimensions.reduce((sum, d) => sum + d.values.length, 0)
   const validDimensions = dimensions.filter(
-    (d) => d.name.trim() && d.values.length >= 2,
-  );
+    (d) => d.name.trim() && d.values.length >= 2
+  )
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -596,5 +590,5 @@ function Step3({
         </p>
       </div>
     </div>
-  );
+  )
 }

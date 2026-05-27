@@ -1,17 +1,17 @@
-"use client";
+"use client"
 
-import { useState } from "react";
+import { useState } from "react"
 
 export function CollapsibleSection({
   title,
   children,
-  defaultOpen = false,
+  defaultOpen = false
 }: {
-  title: string;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
+  title: string
+  children: React.ReactNode
+  defaultOpen?: boolean
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(defaultOpen)
   return (
     <div className="border border-border rounded-lg bg-bg-elevated">
       <button
@@ -23,5 +23,5 @@ export function CollapsibleSection({
       </button>
       {open && <div className="px-5 pb-4">{children}</div>}
     </div>
-  );
+  )
 }

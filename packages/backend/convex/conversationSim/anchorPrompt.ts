@@ -11,4 +11,4 @@ export const BEHAVIOR_ANCHORS_INSTRUCTION = `Produce 3-6 short bullet phrases ca
   - "Splits questions across multiple short messages"
   - "Doesn't volunteer information until asked"
 
-Extract observable patterns from the transcript or exemplars provided, not generic persona traits. Output only a JSON array of strings: ["bullet 1", "bullet 2", ...]. No prose, no markdown.`;
+Extract observable patterns from the transcript or exemplars provided, not generic persona traits. Output only a JSON array of strings: ["bullet 1", "bullet 2", ...]. No prose, no markdown.`

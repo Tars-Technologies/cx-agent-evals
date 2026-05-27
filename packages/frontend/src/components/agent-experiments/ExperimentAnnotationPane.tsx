@@ -1,96 +1,99 @@
-"use client";
+"use client"
 
-import { useState, useRef, useEffect, useCallback } from "react";
-import type { Id } from "@convex/_generated/dataModel";
-import { MarkdownViewer } from "@/components/MarkdownViewer";
+import type { Id } from "@convex/_generated/dataModel"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { MarkdownViewer } from "@/components/MarkdownViewer"
 
-type Rating = "great" | "good_enough" | "bad";
+type Rating = "great" | "good_enough" | "bad"
 
 interface ExperimentAnnotationPaneProps {
-  question: { _id: Id<"questions">; queryText: string } | null;
+  question: { _id: Id<"questions">; queryText: string } | null
   result: {
-    _id: Id<"agentExperimentResults">;
-    answerText: string;
-    usage?: { promptTokens: number; completionTokens: number };
-    latencyMs: number;
-    status: "complete" | "error";
-    error?: string;
-  } | null;
+    _id: Id<"agentExperimentResults">
+    answerText: string
+    usage?: { promptTokens: number; completionTokens: number }
+    latencyMs: number
+    status: "complete" | "error"
+    error?: string
+  } | null
   annotation: {
-    rating: Rating;
-    comment?: string;
-    tags?: string[];
-  } | null;
-  allTags: string[];
-  isPending: boolean;
-  comment: string;
-  onRate: (rating: Rating) => void;
-  onCommentChange: (comment: string) => void;
-  onTagsChange: (tags: string[]) => void;
+    rating: Rating
+    comment?: string
+    tags?: string[]
+  } | null
+  allTags: string[]
+  isPending: boolean
+  comment: string
+  onRate: (rating: Rating) => void
+  onCommentChange: (comment: string) => void
+  onTagsChange: (tags: string[]) => void
 }
 
 function TagsSection({
   currentTags,
   allTags,
-  onTagsChange,
+  onTagsChange
 }: {
-  currentTags: string[];
-  allTags: string[];
-  onTagsChange: (tags: string[]) => void;
+  currentTags: string[]
+  allTags: string[]
+  onTagsChange: (tags: string[]) => void
 }) {
-  const [input, setInput] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [selectedSuggestion, setSelectedSuggestion] = useState(-1);
+  const [input, setInput] = useState("")
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [selectedSuggestion, setSelectedSuggestion] = useState(-1)
 
   const suggestions = allTags.filter(
     (t) =>
-      t.toLowerCase().includes(input.toLowerCase()) &&
-      !currentTags.includes(t)
-  );
+      t.toLowerCase().includes(input.toLowerCase()) && !currentTags.includes(t)
+  )
 
   const addTag = useCallback(
     (tag: string) => {
-      const trimmed = tag.trim();
+      const trimmed = tag.trim()
       if (trimmed && !currentTags.includes(trimmed)) {
-        onTagsChange([...currentTags, trimmed]);
+        onTagsChange([...currentTags, trimmed])
       }
-      setInput("");
-      setShowSuggestions(false);
-      setSelectedSuggestion(-1);
+      setInput("")
+      setShowSuggestions(false)
+      setSelectedSuggestion(-1)
     },
     [currentTags, onTagsChange]
-  );
+  )
 
   const removeTag = useCallback(
     (tag: string) => {
-      onTagsChange(currentTags.filter((t) => t !== tag));
+      onTagsChange(currentTags.filter((t) => t !== tag))
     },
     [currentTags, onTagsChange]
-  );
+  )
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
-      e.preventDefault();
+      e.preventDefault()
       if (selectedSuggestion >= 0 && suggestions[selectedSuggestion]) {
-        addTag(suggestions[selectedSuggestion]);
+        addTag(suggestions[selectedSuggestion])
       } else if (input.trim()) {
-        addTag(input);
+        addTag(input)
       }
-    } else if (e.key === "Backspace" && input === "" && currentTags.length > 0) {
-      removeTag(currentTags[currentTags.length - 1]);
+    } else if (
+      e.key === "Backspace" &&
+      input === "" &&
+      currentTags.length > 0
+    ) {
+      removeTag(currentTags[currentTags.length - 1])
     } else if (e.key === "ArrowDown") {
-      e.preventDefault();
+      e.preventDefault()
       setSelectedSuggestion((prev) =>
         prev < suggestions.length - 1 ? prev + 1 : prev
-      );
+      )
     } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelectedSuggestion((prev) => (prev > 0 ? prev - 1 : -1));
+      e.preventDefault()
+      setSelectedSuggestion((prev) => (prev > 0 ? prev - 1 : -1))
     } else if (e.key === "Escape") {
-      setShowSuggestions(false);
-      setSelectedSuggestion(-1);
+      setShowSuggestions(false)
+      setSelectedSuggestion(-1)
     }
-  };
+  }
 
   return (
     <div>
@@ -117,9 +120,9 @@ function TagsSection({
           type="text"
           value={input}
           onChange={(e) => {
-            setInput(e.target.value);
-            setShowSuggestions(true);
-            setSelectedSuggestion(-1);
+            setInput(e.target.value)
+            setShowSuggestions(true)
+            setSelectedSuggestion(-1)
           }}
           onFocus={() => setShowSuggestions(true)}
           onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
@@ -133,8 +136,8 @@ function TagsSection({
               <button
                 key={s}
                 onMouseDown={(e) => {
-                  e.preventDefault();
-                  addTag(s);
+                  e.preventDefault()
+                  addTag(s)
                 }}
                 className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${
                   i === selectedSuggestion
@@ -149,7 +152,7 @@ function TagsSection({
         )}
       </div>
     </div>
-  );
+  )
 }
 
 export function ExperimentAnnotationPane({
@@ -161,9 +164,9 @@ export function ExperimentAnnotationPane({
   comment,
   onRate,
   onCommentChange,
-  onTagsChange,
+  onTagsChange
 }: ExperimentAnnotationPaneProps) {
-  const currentTags = annotation?.tags ?? [];
+  const currentTags = annotation?.tags ?? []
 
   // Empty state
   if (question === null) {
@@ -171,7 +174,7 @@ export function ExperimentAnnotationPane({
       <div className="flex-1 flex items-center justify-center text-text-dim text-sm">
         Select a question to annotate
       </div>
-    );
+    )
   }
 
   // Pending state
@@ -197,7 +200,7 @@ export function ExperimentAnnotationPane({
           </div>
         </div>
       </div>
-    );
+    )
   }
 
   // Active state — scrollable question+answer on top, sticky controls at bottom
@@ -229,10 +232,7 @@ export function ExperimentAnnotationPane({
             </div>
           ) : result ? (
             <div className="bg-bg-elevated rounded-md overflow-hidden">
-              <MarkdownViewer
-                content={result.answerText}
-                showToggle={true}
-              />
+              <MarkdownViewer content={result.answerText} showToggle={true} />
             </div>
           ) : null}
 
@@ -259,8 +259,7 @@ export function ExperimentAnnotationPane({
                 : "border-border text-text-dim hover:border-accent/30 hover:text-accent"
             }`}
           >
-            Great{" "}
-            <span className="text-[10px] opacity-50 ml-1">[1]</span>
+            Great <span className="text-[10px] opacity-50 ml-1">[1]</span>
           </button>
           <button
             onClick={() => onRate("good_enough")}
@@ -270,8 +269,7 @@ export function ExperimentAnnotationPane({
                 : "border-border text-text-dim hover:border-yellow-500/30 hover:text-yellow-400"
             }`}
           >
-            Good Enough{" "}
-            <span className="text-[10px] opacity-50 ml-1">[2]</span>
+            Good Enough <span className="text-[10px] opacity-50 ml-1">[2]</span>
           </button>
           <button
             onClick={() => onRate("bad")}
@@ -281,8 +279,7 @@ export function ExperimentAnnotationPane({
                 : "border-border text-text-dim hover:border-red-500/30 hover:text-red-400"
             }`}
           >
-            Bad{" "}
-            <span className="text-[10px] opacity-50 ml-1">[3]</span>
+            Bad <span className="text-[10px] opacity-50 ml-1">[3]</span>
           </button>
         </div>
 
@@ -305,5 +302,5 @@ export function ExperimentAnnotationPane({
         />
       </div>
     </div>
-  );
+  )
 }

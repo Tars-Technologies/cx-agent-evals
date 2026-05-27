@@ -1,16 +1,16 @@
-"use client";
+"use client"
 
-import { useState, useEffect } from "react";
-import { useConvexAuth, useMutation } from "convex/react";
-import { api } from "@/lib/convex";
 import {
+  OrganizationList,
   SignInButton,
   SignUpButton,
-  OrganizationList,
   useAuth,
   useOrganization,
-  useOrganizationList,
-} from "@clerk/nextjs";
+  useOrganizationList
+} from "@clerk/nextjs"
+import { useConvexAuth, useMutation } from "convex/react"
+import { useEffect, useState } from "react"
+import { api } from "@/lib/convex"
 
 function BrandedSpinner() {
   return (
@@ -28,21 +28,21 @@ function BrandedSpinner() {
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useConvexAuth();
+  const { isAuthenticated, isLoading } = useConvexAuth()
 
   if (isLoading) {
-    return <BrandedSpinner />;
+    return <BrandedSpinner />
   }
 
   if (!isAuthenticated) {
-    return <LandingPage />;
+    return <LandingPage />
   }
 
-  return <OrgGate>{children}</OrgGate>;
+  return <OrgGate>{children}</OrgGate>
 }
 
 function LandingPage() {
@@ -85,35 +85,45 @@ function LandingPage() {
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 function OrgGate({ children }: { children: React.ReactNode }) {
-  const { organization, isLoaded: orgLoaded } = useOrganization();
-  const { orgId: clerkAuthOrgId } = useAuth();
-  const { isLoaded: listLoaded, setActive, userMemberships } =
-    useOrganizationList({ userMemberships: { infinite: true } });
-  const { isLoading: convexLoading } = useConvexAuth();
-  const [activating, setActivating] = useState(false);
-  const [userSynced, setUserSynced] = useState(false);
-  const getOrCreateUser = useMutation(api.crud.users.getOrCreate);
+  const { organization, isLoaded: orgLoaded } = useOrganization()
+  const { orgId: clerkAuthOrgId } = useAuth()
+  const {
+    isLoaded: listLoaded,
+    setActive,
+    userMemberships
+  } = useOrganizationList({ userMemberships: { infinite: true } })
+  const { isLoading: convexLoading } = useConvexAuth()
+  const [activating, setActivating] = useState(false)
+  const [userSynced, setUserSynced] = useState(false)
+  const getOrCreateUser = useMutation(api.crud.users.getOrCreate)
 
   // Auto-select first org if user has orgs but none is active
   useEffect(() => {
-    if (!orgLoaded || !listLoaded || organization || activating) return;
+    if (!orgLoaded || !listLoaded || organization || activating) return
 
-    const memberships = userMemberships?.data;
+    const memberships = userMemberships?.data
     if (memberships && memberships.length > 0 && setActive) {
-      setActivating(true);
+      setActivating(true)
       setActive({ organization: memberships[0].organization.id }).finally(() =>
-        setActivating(false),
-      );
+        setActivating(false)
+      )
     }
-  }, [orgLoaded, listLoaded, organization, activating, userMemberships?.data, setActive]);
+  }, [
+    orgLoaded,
+    listLoaded,
+    organization,
+    activating,
+    userMemberships?.data,
+    setActive
+  ])
 
   // Still loading org state or auto-activating
   if (!orgLoaded || !listLoaded || activating) {
-    return <BrandedSpinner />;
+    return <BrandedSpinner />
   }
 
   // User truly has no orgs — show setup screen
@@ -140,14 +150,14 @@ function OrgGate({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </div>
-    );
+    )
   }
 
   // Org is set locally in Clerk, but wait until:
   // 1. Clerk's auth session JWT includes the org_id (clerkAuthOrgId matches)
   // 2. Convex has finished syncing the new token (!convexLoading)
   if (clerkAuthOrgId !== organization.id || convexLoading) {
-    return <BrandedSpinner />;
+    return <BrandedSpinner />
   }
 
   // Ensure the user has a record in the users table before rendering children.
@@ -155,13 +165,13 @@ function OrgGate({ children }: { children: React.ReactNode }) {
   // creates the record only if missing.
   useEffect(() => {
     if (!userSynced) {
-      getOrCreateUser().then(() => setUserSynced(true));
+      getOrCreateUser().then(() => setUserSynced(true))
     }
-  }, [userSynced, getOrCreateUser]);
+  }, [userSynced, getOrCreateUser])
 
   if (!userSynced) {
-    return <BrandedSpinner />;
+    return <BrandedSpinner />
   }
 
-  return <>{children}</>;
+  return <>{children}</>
 }

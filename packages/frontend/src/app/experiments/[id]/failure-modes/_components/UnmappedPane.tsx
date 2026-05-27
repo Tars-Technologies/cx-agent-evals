@@ -1,48 +1,48 @@
-"use client";
+"use client"
 
-import { useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation } from "convex/react"
+import { api } from "@/lib/convex"
 
 interface UnmappedQuestion {
-  questionId: Id<"questions">;
-  queryText: string;
-  rating?: string;
-  tags?: string[];
+  questionId: Id<"questions">
+  queryText: string
+  rating?: string
+  tags?: string[]
 }
 
 interface FailureMode {
-  _id: Id<"failureModes">;
-  name: string;
+  _id: Id<"failureModes">
+  name: string
 }
 
 interface UnmappedPaneProps {
-  unmappedQuestions: UnmappedQuestion[];
-  failureModes: FailureMode[];
-  experimentId: Id<"experiments">;
+  unmappedQuestions: UnmappedQuestion[]
+  failureModes: FailureMode[]
+  experimentId: Id<"experiments">
 }
 
 export function UnmappedPane({
   unmappedQuestions,
   failureModes,
-  experimentId,
+  experimentId
 }: UnmappedPaneProps) {
-  const assignQuestion = useMutation(api.failureModes.crud.assignQuestion);
+  const assignQuestion = useMutation(api.failureModes.crud.assignQuestion)
 
   const handleAssign = async (
     questionId: Id<"questions">,
-    failureModeId: string,
+    failureModeId: string
   ) => {
-    if (!failureModeId) return;
+    if (!failureModeId) return
     await assignQuestion({
       failureModeId: failureModeId as Id<"failureModes">,
       questionId,
-      experimentId,
-    });
-  };
+      experimentId
+    })
+  }
 
   const isPass = (rating?: string) =>
-    rating === "pass" || rating === "great" || rating === "good_enough";
+    rating === "pass" || rating === "great" || rating === "good_enough"
 
   return (
     <div className="w-96 border-l border-border shrink-0 flex flex-col h-full bg-bg">
@@ -116,5 +116,5 @@ export function UnmappedPane({
         )}
       </div>
     </div>
-  );
+  )
 }

@@ -1,10 +1,10 @@
+import { safeParseLLMResponse } from "../../../utils/json.js"
 import type {
-  QuestionStrategy,
-  StrategyContext,
   GeneratedQuery,
+  QuestionStrategy,
   SimpleStrategyOptions,
-} from "../types.js";
-import { safeParseLLMResponse } from "../../../utils/json.js";
+  StrategyContext
+} from "../types.js"
 
 const SYSTEM_PROMPT = `You are an expert at generating evaluation questions for RAG (Retrieval-Augmented Generation) systems.
 
@@ -42,51 +42,53 @@ EXAMPLES OF BAD QUESTIONS:
 Output JSON format:
 {
   "questions": ["question 1", "question 2", ...]
-}`;
+}`
 
 export class SimpleStrategy implements QuestionStrategy {
-  readonly name = "simple";
-  private _options: SimpleStrategyOptions;
+  readonly name = "simple"
+  private _options: SimpleStrategyOptions
 
   constructor(options: SimpleStrategyOptions) {
-    this._options = options;
+    this._options = options
   }
 
   async generate(context: StrategyContext): Promise<GeneratedQuery[]> {
-    const results: GeneratedQuery[] = [];
-    const maxChars = this._options.maxDocumentChars ?? 8000;
-    const numDocs = context.corpus.documents.length;
-    const perDoc = Math.ceil(this._options.totalQuestions / numDocs);
+    const results: GeneratedQuery[] = []
+    const maxChars = this._options.maxDocumentChars ?? 8000
+    const numDocs = context.corpus.documents.length
+    const perDoc = Math.ceil(this._options.totalQuestions / numDocs)
 
     for (const doc of context.corpus.documents) {
       if (doc.content.length > maxChars) {
-        console.warn(`Document "${String(doc.id)}" truncated from ${doc.content.length} to ${maxChars} chars`);
+        console.warn(
+          `Document "${String(doc.id)}" truncated from ${doc.content.length} to ${maxChars} chars`
+        )
       }
-      const docContent = doc.content.substring(0, maxChars);
-      const prompt = `Document:\n${docContent}\n\nGenerate ${perDoc} diverse questions following the requirements above.`;
+      const docContent = doc.content.substring(0, maxChars)
+      const prompt = `Document:\n${docContent}\n\nGenerate ${perDoc} diverse questions following the requirements above.`
 
       const response = await context.llmClient.complete({
         model: context.model,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: prompt },
+          { role: "user", content: prompt }
         ],
-        responseFormat: "json",
-      });
+        responseFormat: "json"
+      })
 
-      const data = safeParseLLMResponse(response, { questions: [] as string[] });
-      const questions: string[] = data.questions ?? [];
+      const data = safeParseLLMResponse(response, { questions: [] as string[] })
+      const questions: string[] = data.questions ?? []
 
       for (const question of questions) {
         results.push({
           query: question,
           targetDocId: String(doc.id),
-          metadata: { strategy: "simple" },
-        });
+          metadata: { strategy: "simple" }
+        })
       }
     }
 
     // Trim to exactly totalQuestions if over-generated due to ceil rounding
-    return results.slice(0, this._options.totalQuestions);
+    return results.slice(0, this._options.totalQuestions)
   }
 }

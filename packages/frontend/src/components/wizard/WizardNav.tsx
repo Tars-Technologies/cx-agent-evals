@@ -1,31 +1,45 @@
-"use client";
+"use client"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface WizardNavProps {
-  currentStep: number;
-  totalSteps: number; // always 6
-  onStepClick: (step: number) => void;
+  currentStep: number
+  totalSteps: number // always 6
+  onStepClick: (step: number) => void
 }
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const STEP_LABELS = ["Preset", "Index", "Query", "Search", "Refinement", "Review"];
+const STEP_LABELS = [
+  "Preset",
+  "Index",
+  "Query",
+  "Search",
+  "Refinement",
+  "Review"
+]
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function WizardNav({ currentStep, totalSteps, onStepClick }: WizardNavProps) {
+export function WizardNav({
+  currentStep,
+  totalSteps,
+  onStepClick
+}: WizardNavProps) {
   return (
-    <nav className="flex items-center gap-0 px-4 py-3" aria-label="Wizard steps">
+    <nav
+      className="flex items-center gap-0 px-4 py-3"
+      aria-label="Wizard steps"
+    >
       {Array.from({ length: totalSteps }, (_, i) => {
-        const isCompleted = i < currentStep;
-        const isCurrent = i === currentStep;
+        const isCompleted = i < currentStep
+        const isCurrent = i === currentStep
 
         return (
           <div key={i} className="flex items-center flex-1 last:flex-initial">
@@ -63,8 +77,8 @@ export function WizardNav({ currentStep, totalSteps, onStepClick }: WizardNavPro
               <div className="h-px bg-border flex-1 mx-1 self-start mt-3.5" />
             )}
           </div>
-        );
+        )
       })}
     </nav>
-  );
+  )
 }

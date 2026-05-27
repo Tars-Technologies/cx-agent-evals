@@ -1,48 +1,58 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation, useQuery } from "convex/react"
+import { useState } from "react"
+import { api } from "@/lib/convex"
 
 interface CreateExperimentModalProps {
-  open: boolean;
-  onClose: () => void;
-  kbId: Id<"knowledgeBases">;
-  onCreated: (runId: Id<"experimentRuns">) => void;
+  open: boolean
+  onClose: () => void
+  kbId: Id<"knowledgeBases">
+  onCreated: (runId: Id<"experimentRuns">) => void
 }
 
 export function CreateExperimentModal({
   open,
   onClose,
   kbId,
-  onCreated,
+  onCreated
 }: CreateExperimentModalProps) {
-  const [name, setName] = useState("");
-  const [selectedDatasetId, setSelectedDatasetId] = useState<Id<"datasets"> | null>(null);
-  const [selectedRetrieverIds, setSelectedRetrieverIds] = useState<Set<Id<"retrievers">>>(new Set());
-  const [metrics, setMetrics] = useState({ recall: true, precision: true, f1: false, iou: false });
-  const [recallWeight, setRecallWeight] = useState(0.7);
-  const [precisionWeight, setPrecisionWeight] = useState(0.3);
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState("")
+  const [selectedDatasetId, setSelectedDatasetId] =
+    useState<Id<"datasets"> | null>(null)
+  const [selectedRetrieverIds, setSelectedRetrieverIds] = useState<
+    Set<Id<"retrievers">>
+  >(new Set())
+  const [metrics, setMetrics] = useState({
+    recall: true,
+    precision: true,
+    f1: false,
+    iou: false
+  })
+  const [recallWeight, setRecallWeight] = useState(0.7)
+  const [precisionWeight, setPrecisionWeight] = useState(0.3)
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const allDatasets = useQuery(api.crud.datasets.byKb, { kbId });
-  const datasets = (allDatasets ?? []).filter(d => !d.type || d.type === "questions");
-  const retrievers = useQuery(api.crud.retrievers.byKb, { kbId });
-  const readyRetrievers = (retrievers ?? []).filter((r) => r.status === "ready");
-  const createRun = useMutation(api.experimentRuns.orchestration.create);
+  const allDatasets = useQuery(api.crud.datasets.byKb, { kbId })
+  const datasets = (allDatasets ?? []).filter(
+    (d) => !d.type || d.type === "questions"
+  )
+  const retrievers = useQuery(api.crud.retrievers.byKb, { kbId })
+  const readyRetrievers = (retrievers ?? []).filter((r) => r.status === "ready")
+  const createRun = useMutation(api.experimentRuns.orchestration.create)
 
-  if (!open) return null;
+  if (!open) return null
 
   const toggleRetriever = (id: Id<"retrievers">) => {
     setSelectedRetrieverIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   const canSubmit =
     name.trim() &&
@@ -50,16 +60,16 @@ export function CreateExperimentModal({
     selectedRetrieverIds.size > 0 &&
     (metrics.recall || metrics.precision) &&
     Math.abs(recallWeight + precisionWeight - 1.0) < 0.01 &&
-    !creating;
+    !creating
 
   async function handleCreate() {
-    if (!canSubmit || !selectedDatasetId) return;
-    setError(null);
-    setCreating(true);
+    if (!canSubmit || !selectedDatasetId) return
+    setError(null)
+    setCreating(true)
     try {
       const metricNames = Object.entries(metrics)
         .filter(([, v]) => v)
-        .map(([k]) => k);
+        .map(([k]) => k)
 
       const result = await createRun({
         name: name.trim(),
@@ -67,25 +77,35 @@ export function CreateExperimentModal({
         datasetId: selectedDatasetId,
         retrieverIds: Array.from(selectedRetrieverIds),
         metricNames,
-        scoringWeights: { recall: recallWeight, precision: precisionWeight },
-      });
-      onCreated(result.runId);
-      onClose();
+        scoringWeights: { recall: recallWeight, precision: precisionWeight }
+      })
+      onCreated(result.runId)
+      onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create experiment");
+      setError(
+        err instanceof Error ? err.message : "Failed to create experiment"
+      )
     } finally {
-      setCreating(false);
+      setCreating(false)
     }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
       <div className="relative bg-bg-elevated border border-border rounded-xl shadow-2xl w-[560px] max-h-[85vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-text">Create Experiment</h2>
-          <button onClick={onClose} className="text-text-dim hover:text-text text-lg px-2">&times;</button>
+          <button
+            onClick={onClose}
+            className="text-text-dim hover:text-text text-lg px-2"
+          >
+            &times;
+          </button>
         </div>
 
         {/* Body */}
@@ -111,7 +131,11 @@ export function CreateExperimentModal({
             </label>
             <select
               value={selectedDatasetId ?? ""}
-              onChange={(e) => setSelectedDatasetId(e.target.value ? (e.target.value as Id<"datasets">) : null)}
+              onChange={(e) =>
+                setSelectedDatasetId(
+                  e.target.value ? (e.target.value as Id<"datasets">) : null
+                )
+              }
               className="w-full bg-bg border border-border rounded-md px-3 py-2 text-sm text-text focus:border-accent outline-none appearance-none"
             >
               <option value="">Select a dataset...</option>
@@ -130,7 +154,9 @@ export function CreateExperimentModal({
             </label>
             <div className="border border-border rounded-md max-h-44 overflow-y-auto p-1.5 space-y-1">
               {readyRetrievers.length === 0 ? (
-                <div className="text-xs text-text-dim p-2">No ready retrievers for this KB.</div>
+                <div className="text-xs text-text-dim p-2">
+                  No ready retrievers for this KB.
+                </div>
               ) : (
                 readyRetrievers.map((r) => (
                   <label
@@ -169,14 +195,23 @@ export function CreateExperimentModal({
             </label>
             <div className="flex gap-4">
               {(["recall", "precision", "f1", "iou"] as const).map((m) => (
-                <label key={m} className="flex items-center gap-1.5 cursor-pointer text-xs text-text-muted">
+                <label
+                  key={m}
+                  className="flex items-center gap-1.5 cursor-pointer text-xs text-text-muted"
+                >
                   <input
                     type="checkbox"
                     checked={metrics[m]}
-                    onChange={(e) => setMetrics({ ...metrics, [m]: e.target.checked })}
+                    onChange={(e) =>
+                      setMetrics({ ...metrics, [m]: e.target.checked })
+                    }
                     className="w-3.5 h-3.5 rounded accent-accent"
                   />
-                  {m === "iou" ? "IoU" : m === "f1" ? "F1" : m.charAt(0).toUpperCase() + m.slice(1)}
+                  {m === "iou"
+                    ? "IoU"
+                    : m === "f1"
+                      ? "F1"
+                      : m.charAt(0).toUpperCase() + m.slice(1)}
                 </label>
               ))}
             </div>
@@ -192,9 +227,9 @@ export function CreateExperimentModal({
                 type="number"
                 value={recallWeight}
                 onChange={(e) => {
-                  const val = parseFloat(e.target.value) || 0;
-                  setRecallWeight(val);
-                  setPrecisionWeight(Math.round((1.0 - val) * 100) / 100);
+                  const val = parseFloat(e.target.value) || 0
+                  setRecallWeight(val)
+                  setPrecisionWeight(Math.round((1.0 - val) * 100) / 100)
                 }}
                 min={0}
                 max={1}
@@ -206,9 +241,9 @@ export function CreateExperimentModal({
                 type="number"
                 value={precisionWeight}
                 onChange={(e) => {
-                  const val = parseFloat(e.target.value) || 0;
-                  setPrecisionWeight(val);
-                  setRecallWeight(Math.round((1.0 - val) * 100) / 100);
+                  const val = parseFloat(e.target.value) || 0
+                  setPrecisionWeight(val)
+                  setRecallWeight(Math.round((1.0 - val) * 100) / 100)
                 }}
                 min={0}
                 max={1}
@@ -244,5 +279,5 @@ export function CreateExperimentModal({
         </div>
       </div>
     </div>
-  );
+  )
 }

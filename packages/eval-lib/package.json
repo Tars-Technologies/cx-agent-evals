@@ -113,9 +113,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src tests",
-    "lint:fix": "eslint src tests --fix",
-    "format": "prettier --write src tests",
+    "lint": "biome check .",
+    "format": "biome format --write .",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "pnpm build"
   },
@@ -140,11 +139,8 @@
     "@types/node": "^25.1.0",
     "@types/turndown": "^5.0.6",
     "@vitest/coverage-v8": "^1.6",
-    "eslint": "^9.0",
-    "prettier": "^3.2",
     "tsup": "^8.0",
     "typescript": "^5.4",
-    "typescript-eslint": "^8.0",
     "vitest": "^1.6"
   }
 }

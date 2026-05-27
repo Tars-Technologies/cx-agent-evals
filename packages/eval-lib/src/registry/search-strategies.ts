@@ -1,4 +1,4 @@
-import type { RegistryEntry } from "./types.js";
+import type { RegistryEntry } from "./types.js"
 
 export const SEARCH_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
   {
@@ -9,7 +9,7 @@ export const SEARCH_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
     status: "available",
     tags: ["semantic"],
     options: [],
-    defaults: {},
+    defaults: {}
   },
   {
     id: "bm25",
@@ -26,7 +26,7 @@ export const SEARCH_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
           "Term frequency saturation parameter. Higher values increase the impact of term frequency on scoring.",
         type: "number",
         default: 1.2,
-        constraints: { min: 0, max: 3, step: 0.1 },
+        constraints: { min: 0, max: 3, step: 0.1 }
       },
       {
         key: "b",
@@ -35,10 +35,10 @@ export const SEARCH_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
           "Document length normalization factor. 0 disables length normalization; 1 fully normalizes by document length.",
         type: "number",
         default: 0.75,
-        constraints: { min: 0, max: 1, step: 0.05 },
-      },
+        constraints: { min: 0, max: 1, step: 0.05 }
+      }
     ],
-    defaults: { k1: 1.2, b: 0.75 },
+    defaults: { k1: 1.2, b: 0.75 }
   },
   {
     id: "hybrid",
@@ -55,7 +55,7 @@ export const SEARCH_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
           "Weight given to the dense (vector) search results in the fusion. Higher values favor semantic matching.",
         type: "number",
         default: 0.7,
-        constraints: { min: 0, max: 1, step: 0.1 },
+        constraints: { min: 0, max: 1, step: 0.1 }
       },
       {
         key: "sparseWeight",
@@ -64,7 +64,7 @@ export const SEARCH_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
           "Weight given to the sparse (BM25) search results in the fusion. Higher values favor keyword matching.",
         type: "number",
         default: 0.3,
-        constraints: { min: 0, max: 1, step: 0.1 },
+        constraints: { min: 0, max: 1, step: 0.1 }
       },
       {
         key: "fusionMethod",
@@ -76,16 +76,16 @@ export const SEARCH_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
           {
             value: "weighted",
             label: "Weighted",
-            description: "Weighted average of normalized scores",
+            description: "Weighted average of normalized scores"
           },
           {
             value: "rrf",
             label: "RRF",
             description:
-              "Reciprocal Rank Fusion -- rank-based, no score calibration needed",
-          },
+              "Reciprocal Rank Fusion -- rank-based, no score calibration needed"
+          }
         ],
-        default: "weighted",
+        default: "weighted"
       },
       {
         key: "candidateMultiplier",
@@ -94,7 +94,7 @@ export const SEARCH_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
           "Multiplier for the number of candidates to retrieve from each source before fusion. Higher values improve fusion quality at the cost of speed.",
         type: "number",
         default: 4,
-        constraints: { min: 1, max: 10, step: 1 },
+        constraints: { min: 1, max: 10, step: 1 }
       },
       {
         key: "k1",
@@ -104,7 +104,7 @@ export const SEARCH_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
         type: "number",
         default: 1.2,
         constraints: { min: 0, max: 3, step: 0.1 },
-        advanced: true,
+        advanced: true
       },
       {
         key: "b",
@@ -114,8 +114,8 @@ export const SEARCH_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
         type: "number",
         default: 0.75,
         constraints: { min: 0, max: 1, step: 0.05 },
-        advanced: true,
-      },
+        advanced: true
+      }
     ],
     defaults: {
       denseWeight: 0.7,
@@ -123,7 +123,7 @@ export const SEARCH_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
       fusionMethod: "weighted",
       candidateMultiplier: 4,
       k1: 1.2,
-      b: 0.75,
-    },
-  },
-] as const;
+      b: 0.75
+    }
+  }
+] as const

@@ -1,201 +1,229 @@
-"use client";
+"use client"
 
-import { Suspense, useState, useEffect, useMemo, useRef } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
-import { Header } from "@/components/Header";
-import { useKbFromUrl } from "@/lib/useKbFromUrl";
-import { KBDropdown } from "@/components/KBDropdown";
-import { QuestionList } from "@/components/QuestionList";
-import { DocumentViewer } from "@/components/DocumentViewer";
-import { GenerationWizard } from "@/components/GenerationWizard";
-import { DeleteDatasetModal } from "@/components/DeleteDatasetModal";
-import { EditQuestionModal } from "@/components/EditQuestionModal";
-import { GenerationBanner } from "@/components/GenerationBanner";
-import { ResizablePanel } from "@/components/ResizablePanel";
-import { DocumentInfo, GeneratedQuestion } from "@/lib/types";
-import { ScenarioList } from "@/components/ScenarioList";
-import { ScenarioDetail } from "@/components/ScenarioDetail";
-import { EditScenarioModal } from "@/components/EditScenarioModal";
-import { ScenarioGenerationWizard } from "@/components/ScenarioGenerationWizard";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation, useQuery } from "convex/react"
+import { Suspense, useEffect, useMemo, useRef, useState } from "react"
+import { DeleteDatasetModal } from "@/components/DeleteDatasetModal"
+import { DocumentViewer } from "@/components/DocumentViewer"
+import { EditQuestionModal } from "@/components/EditQuestionModal"
+import { EditScenarioModal } from "@/components/EditScenarioModal"
+import { GenerationBanner } from "@/components/GenerationBanner"
+import { GenerationWizard } from "@/components/GenerationWizard"
+import { Header } from "@/components/Header"
+import { KBDropdown } from "@/components/KBDropdown"
+import { QuestionList } from "@/components/QuestionList"
+import { ResizablePanel } from "@/components/ResizablePanel"
+import { ScenarioDetail } from "@/components/ScenarioDetail"
+import { ScenarioGenerationWizard } from "@/components/ScenarioGenerationWizard"
+import { ScenarioList } from "@/components/ScenarioList"
+import { api } from "@/lib/convex"
+import type { DocumentInfo, GeneratedQuestion } from "@/lib/types"
+import { useKbFromUrl } from "@/lib/useKbFromUrl"
 
 export default function GeneratePage() {
   return (
-    <Suspense fallback={<div className="flex flex-col h-screen"><Header mode="dataset" /></div>}>
+    <Suspense
+      fallback={
+        <div className="flex flex-col h-screen">
+          <Header mode="dataset" />
+        </div>
+      }
+    >
       <GeneratePageContent />
     </Suspense>
-  );
+  )
 }
 
 function GeneratePageContent() {
   // KB selection
-  const [selectedKbId, setSelectedKbId] = useKbFromUrl();
+  const [selectedKbId, setSelectedKbId] = useKbFromUrl()
 
   // Dataset type toggle
-  const [datasetType, setDatasetType] = useState<"questions" | "conversation_sim">("questions");
+  const [datasetType, setDatasetType] = useState<
+    "questions" | "conversation_sim"
+  >("questions")
 
   // Generation tracking
-  const [datasetId, setDatasetId] = useState<Id<"datasets"> | null>(null);
-  const [jobId, setJobId] = useState<Id<"generationJobs"> | null>(null);
+  const [datasetId, setDatasetId] = useState<Id<"datasets"> | null>(null)
+  const [jobId, setJobId] = useState<Id<"generationJobs"> | null>(null)
 
   // Questions from Convex (reactive)
   const questionsData = useQuery(
     api.crud.questions.byDataset,
-    datasetId ? { datasetId } : "skip",
-  );
+    datasetId ? { datasetId } : "skip"
+  )
 
   // KB metadata for emptiness check (replaces loading the full doc list)
   const selectedKb = useQuery(
     api.crud.knowledgeBases.get,
-    selectedKbId ? { id: selectedKbId } : "skip",
-  );
+    selectedKbId ? { id: selectedKbId } : "skip"
+  )
 
   // Job status (reactive — updates as generation progresses)
-  const job = useQuery(api.generation.orchestration.getJob, jobId ? { jobId } : "skip");
+  const job = useQuery(
+    api.generation.orchestration.getJob,
+    jobId ? { jobId } : "skip"
+  )
 
-  const deleteDataset = useMutation(api.crud.datasets.deleteDataset);
+  const deleteDataset = useMutation(api.crud.datasets.deleteDataset)
 
   // Datasets for selected KB
   const kbDatasets = useQuery(
     api.crud.datasets.byKb,
-    selectedKbId ? { kbId: selectedKbId } : "skip",
-  );
+    selectedKbId ? { kbId: selectedKbId } : "skip"
+  )
 
   // Filter datasets by type
-  const filteredDatasets = (kbDatasets ?? []).filter(ds => {
-    if (datasetType === "questions") return !ds.type || ds.type === "questions";
-    return ds.type === "conversation_sim";
-  });
-  const firstFilteredId = filteredDatasets[0]?._id ?? null;
+  const filteredDatasets = (kbDatasets ?? []).filter((ds) => {
+    if (datasetType === "questions") return !ds.type || ds.type === "questions"
+    return ds.type === "conversation_sim"
+  })
+  const firstFilteredId = filteredDatasets[0]?._id ?? null
 
   // Active job detection (org-wide, no kbId filter — we want to know about any active job)
-  const activeJob = useQuery(api.generation.orchestration.getActiveJob, {});
+  const activeJob = useQuery(api.generation.orchestration.getActiveJob, {})
 
   // Look up KB name for the active job's banner
   const activeJobKb = useQuery(
     api.crud.knowledgeBases.get,
-    activeJob ? { id: activeJob.kbId } : "skip",
-  );
+    activeJob ? { id: activeJob.kbId } : "skip"
+  )
 
   // Active scenario generation job detection (org-wide)
-  const activeScenarioJob = useQuery(api.conversationSim.generation.getActiveJob, {});
+  const activeScenarioJob = useQuery(
+    api.conversationSim.generation.getActiveJob,
+    {}
+  )
   const activeScenarioJobKb = useQuery(
     api.crud.knowledgeBases.get,
-    activeScenarioJob ? { id: activeScenarioJob.kbId } : "skip",
-  );
+    activeScenarioJob ? { id: activeScenarioJob.kbId } : "skip"
+  )
 
   // Mode: "browse" (viewing existing datasets) or "generate" (creating new)
-  type PageMode = "browse" | "generate";
-  const [mode, setMode] = useState<PageMode>("browse");
+  type PageMode = "browse" | "generate"
+  const [mode, setMode] = useState<PageMode>("browse")
 
   // Selected dataset for browsing
-  const [browseDatasetId, setBrowseDatasetId] = useState<Id<"datasets"> | null>(null);
+  const [browseDatasetId, setBrowseDatasetId] = useState<Id<"datasets"> | null>(
+    null
+  )
 
   // Questions for browsed dataset
   const browseQuestions = useQuery(
     api.crud.questions.byDataset,
-    browseDatasetId ? { datasetId: browseDatasetId } : "skip",
-  );
+    browseDatasetId ? { datasetId: browseDatasetId } : "skip"
+  )
 
   // Scenarios for browsed dataset (conversation_sim mode)
   const scenarios = useQuery(
     api.conversationSim.scenarios.byDataset,
-    browseDatasetId && datasetType === "conversation_sim" ? { datasetId: browseDatasetId } : "skip",
-  );
-  const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
-  const [editingScenario, setEditingScenario] = useState<any | null>(null);
-  const selectedScenario = scenarios?.find(s => s._id === selectedScenarioId) ?? null;
+    browseDatasetId && datasetType === "conversation_sim"
+      ? { datasetId: browseDatasetId }
+      : "skip"
+  )
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(
+    null
+  )
+  const [editingScenario, setEditingScenario] = useState<any | null>(null)
+  const selectedScenario =
+    scenarios?.find((s) => s._id === selectedScenarioId) ?? null
 
   // Wizard modal state
-  const [showWizardModal, setShowWizardModal] = useState(false);
+  const [showWizardModal, setShowWizardModal] = useState(false)
 
   // Ref to prevent effects from overriding explicit user choices
-  const hasRestoredJob = useRef(false);
+  const hasRestoredJob = useRef(false)
 
   // Reset browse selection and job tracking when KB changes
   useEffect(() => {
-    setBrowseDatasetId(null);
-    hasRestoredJob.current = false;
-  }, [selectedKbId]);
+    setBrowseDatasetId(null)
+    hasRestoredJob.current = false
+  }, [selectedKbId])
 
   // Reset selections when dataset type changes
   useEffect(() => {
-    setBrowseDatasetId(null);
-    setSelectedQuestion(null);
-    setSelectedDocId(null);
-  }, [datasetType]);
+    setBrowseDatasetId(null)
+    setSelectedQuestion(null)
+    setSelectedDocId(null)
+  }, [datasetType])
 
   // Auto-select first filtered dataset when type/KB changes
   useEffect(() => {
     if (firstFilteredId && !browseDatasetId) {
-      setBrowseDatasetId(firstFilteredId);
+      setBrowseDatasetId(firstFilteredId)
     }
-  }, [firstFilteredId, browseDatasetId]);
+  }, [firstFilteredId, browseDatasetId])
 
   // Close wizard modal on Escape
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape" && showWizardModal) {
-        setShowWizardModal(false);
+        setShowWizardModal(false)
       }
     }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [showWizardModal]);
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [showWizardModal])
 
   // Auto-restore active job state once when returning to the page
   useEffect(() => {
     if (activeJob && !jobId && !hasRestoredJob.current) {
-      hasRestoredJob.current = true;
-      setJobId(activeJob._id);
-      setDatasetId(activeJob.datasetId);
-      setBrowseDatasetId(activeJob.datasetId);
-      setMode("browse");
+      hasRestoredJob.current = true
+      setJobId(activeJob._id)
+      setDatasetId(activeJob.datasetId)
+      setBrowseDatasetId(activeJob.datasetId)
+      setMode("browse")
     }
-  }, [activeJob, jobId]);
+  }, [activeJob, jobId])
 
   // UI state
-  const [selectedQuestion, setSelectedQuestion] = useState<number | null>(null);
-  const [genError, setGenError] = useState<string | null>(null);
+  const [selectedQuestion, setSelectedQuestion] = useState<number | null>(null)
+  const [genError, setGenError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{
-    id: Id<"datasets">;
-    name: string;
-    questionCount: number;
-    strategy: string;
-  } | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+    id: Id<"datasets">
+    name: string
+    questionCount: number
+    strategy: string
+  } | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   // Selected document for viewing
-  const [selectedDocId, setSelectedDocId] = useState<Id<"documents"> | null>(null);
-  const [editingQuestionIndex, setEditingQuestionIndex] = useState<number | null>(null);
+  const [selectedDocId, setSelectedDocId] = useState<Id<"documents"> | null>(
+    null
+  )
+  const [editingQuestionIndex, setEditingQuestionIndex] = useState<
+    number | null
+  >(null)
   const selectedDocData = useQuery(
     api.crud.documents.get,
-    selectedDocId ? { id: selectedDocId } : "skip",
-  );
+    selectedDocId ? { id: selectedDocId } : "skip"
+  )
 
   // Derive generating state: either from local job or org-wide active job
-  const generating = job?.status === "pending" || job?.status === "running" || !!activeJob;
+  const generating =
+    job?.status === "pending" || job?.status === "running" || !!activeJob
 
   // Convert Convex questions to component format
   const questions: GeneratedQuestion[] = (questionsData ?? []).map((q) => ({
     docId: q.sourceDocId,
     query: q.queryText,
     relevantSpans: q.relevantSpans,
-    source: q.source,
-  }));
+    source: q.source
+  }))
 
   async function handleDeleteDataset() {
-    if (!deleteTarget) return;
+    if (!deleteTarget) return
     try {
-      await deleteDataset({ id: deleteTarget.id });
-      setDeleteTarget(null);
-      setDeleteError(null);
+      await deleteDataset({ id: deleteTarget.id })
+      setDeleteTarget(null)
+      setDeleteError(null)
       // Clear browse selection if deleted dataset was selected
       if (browseDatasetId === deleteTarget.id) {
-        setBrowseDatasetId(null);
+        setBrowseDatasetId(null)
       }
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Failed to delete dataset");
+      setDeleteError(
+        err instanceof Error ? err.message : "Failed to delete dataset"
+      )
     }
   }
 
@@ -204,10 +232,11 @@ function GeneratePageContent() {
     ? job.phase === "preparing"
       ? "Phase: Preparing │ Docs: — │ Questions: —"
       : `Phase: Generating │ ${job.processedItems} of ${job.totalItems} docs │ ${job.questionsGenerated ?? 0} questions`
-    : null;
-  const totalDone = job?.status === "completed" || job?.status === "completed_with_errors"
-    ? (questions.length || null)
-    : null;
+    : null
+  const totalDone =
+    job?.status === "completed" || job?.status === "completed_with_errors"
+      ? questions.length || null
+      : null
 
   // Resolve which questions + state to display based on mode
   const displayQuestions: GeneratedQuestion[] =
@@ -216,88 +245,91 @@ function GeneratePageContent() {
           docId: q.sourceDocId,
           query: q.queryText,
           relevantSpans: q.relevantSpans,
-          source: q.source,
+          source: q.source
         }))
-      : questions;
+      : questions
 
   // Show generating state in center pane when browsing the actively generating dataset
-  const browsingActiveDataset = mode === "browse" && activeJob && browseDatasetId === activeJob.datasetId;
-  const displayGenerating = (mode === "generate" && generating) || !!browsingActiveDataset;
-  const displayTotalDone = mode === "browse"
-    ? browseQuestions?.length ?? null
-    : totalDone;
-  const displayPhaseStatus = mode === "generate"
-    ? phaseStatus
-    : browsingActiveDataset
-      ? activeJob.phase === "preparing"
-        ? "Phase: Preparing │ Docs: — │ Questions: —"
-        : `Phase: Generating │ ${activeJob.processedItems} of ${activeJob.totalItems} docs │ ${activeJob.questionsGenerated ?? 0} questions`
-      : null;
+  const browsingActiveDataset =
+    mode === "browse" && activeJob && browseDatasetId === activeJob.datasetId
+  const displayGenerating =
+    (mode === "generate" && generating) || !!browsingActiveDataset
+  const displayTotalDone =
+    mode === "browse" ? (browseQuestions?.length ?? null) : totalDone
+  const displayPhaseStatus =
+    mode === "generate"
+      ? phaseStatus
+      : browsingActiveDataset
+        ? activeJob.phase === "preparing"
+          ? "Phase: Preparing │ Docs: — │ Questions: —"
+          : `Phase: Generating │ ${activeJob.processedItems} of ${activeJob.totalItems} docs │ ${activeJob.questionsGenerated ?? 0} questions`
+        : null
 
   // When a question is selected, load its source document.
-  const selectedQ = selectedQuestion !== null ? displayQuestions[selectedQuestion] : null;
+  const selectedQ =
+    selectedQuestion !== null ? displayQuestions[selectedQuestion] : null
 
   // Resolve the small set of docIds referenced by the selected question
   // (source + span docs) via point lookup — never via a full KB list.
   const selectedQDocIdList = useMemo(() => {
-    if (!selectedQ) return [];
-    const set = new Set<string>([selectedQ.docId]);
+    if (!selectedQ) return []
+    const set = new Set<string>([selectedQ.docId])
     if (selectedQ.relevantSpans) {
-      for (const s of selectedQ.relevantSpans) set.add(s.docId);
+      for (const s of selectedQ.relevantSpans) set.add(s.docId)
     }
-    return [...set];
-  }, [selectedQ]);
+    return [...set]
+  }, [selectedQ])
 
   const resolvedDocs = useQuery(
     api.crud.documents.getDocsByDocIds,
     selectedKbId && selectedQDocIdList.length > 0
       ? { kbId: selectedKbId, docIds: selectedQDocIdList }
-      : "skip",
-  );
+      : "skip"
+  )
 
   const docIdToConvexId = useMemo(() => {
-    const map = new Map<string, Id<"documents">>();
-    for (const d of resolvedDocs ?? []) map.set(d.docId, d._id);
-    return map;
-  }, [resolvedDocs]);
+    const map = new Map<string, Id<"documents">>()
+    for (const d of resolvedDocs ?? []) map.set(d.docId, d._id)
+    return map
+  }, [resolvedDocs])
 
-  const prevSelectedQuestion = useRef<number | null>(null);
+  const prevSelectedQuestion = useRef<number | null>(null)
   useEffect(() => {
     // Only auto-navigate to source doc when the selected question *changes*,
     // not on every render — otherwise it fights manual doc navigation.
-    if (selectedQuestion === prevSelectedQuestion.current) return;
-    if (!selectedQ) return;
-    const sourceId = docIdToConvexId.get(selectedQ.docId);
-    if (!sourceId) return; // wait for resolvedDocs to load
-    prevSelectedQuestion.current = selectedQuestion;
-    setSelectedDocId(sourceId);
-  }, [selectedQuestion, selectedQ, docIdToConvexId]);
+    if (selectedQuestion === prevSelectedQuestion.current) return
+    if (!selectedQ) return
+    const sourceId = docIdToConvexId.get(selectedQ.docId)
+    if (!sourceId) return // wait for resolvedDocs to load
+    prevSelectedQuestion.current = selectedQuestion
+    setSelectedDocId(sourceId)
+  }, [selectedQuestion, selectedQ, docIdToConvexId])
 
   // Build doc info for DocumentViewer
   const selectedDoc: DocumentInfo | null = selectedDocData
     ? {
         id: selectedDocData.docId,
         content: selectedDocData.content,
-        contentLength: selectedDocData.contentLength,
+        contentLength: selectedDocData.contentLength
       }
-    : null;
+    : null
 
   // Collect all unique doc IDs for the selected question (source + span docs)
   const selectedQDocIds = (() => {
-    if (!selectedQ) return undefined;
-    const ids = new Set<string>();
-    ids.add(selectedQ.docId); // source doc always first
+    if (!selectedQ) return undefined
+    const ids = new Set<string>()
+    ids.add(selectedQ.docId) // source doc always first
     if (selectedQ.relevantSpans) {
       for (const s of selectedQ.relevantSpans) {
-        ids.add(s.docId);
+        ids.add(s.docId)
       }
     }
-    return ids.size > 1 ? [...ids] : undefined;
-  })();
+    return ids.size > 1 ? [...ids] : undefined
+  })()
 
   function handleNavigateDoc(docId: string) {
-    const id = docIdToConvexId.get(docId);
-    if (id) setSelectedDocId(id);
+    const id = docIdToConvexId.get(docId)
+    if (id) setSelectedDocId(id)
     // If not yet resolved, the useQuery above will re-fetch on next render
     // since docId is part of the question's referenced set.
   }
@@ -309,63 +341,62 @@ function GeneratePageContent() {
       datasetId &&
       (job?.status === "completed" || job?.status === "completed_with_errors")
     ) {
-      setMode("browse");
-      setBrowseDatasetId(datasetId);
+      setMode("browse")
+      setBrowseDatasetId(datasetId)
     }
-  }, [job?.status, datasetId, mode]);
+  }, [job?.status, datasetId, mode])
 
   // undefined while selectedKb is still loading so callers can distinguish
   // "still loading" from "KB has zero docs" — prevents the empty-state UI
   // (e.g. disabled "New Generation" with "Upload documents" tooltip) from
   // flashing during the initial query window.
-  const hasDocuments: boolean | undefined = selectedKb === undefined
-    ? undefined
-    : (selectedKb?.documentCount ?? 0) > 0;
+  const hasDocuments: boolean | undefined =
+    selectedKb === undefined ? undefined : (selectedKb?.documentCount ?? 0) > 0
 
   return (
     <div className="flex flex-col h-screen">
       <Header mode="dataset" kbId={selectedKbId} />
 
-        {/* Question Generation Banner — shown when any question gen job is active */}
-        {activeJob && (
-          <GenerationBanner
-            strategy={activeJob.strategy}
-            kbName={activeJobKb?.name ?? "..."}
-            phase={activeJob.phase}
-            processedItems={activeJob.processedItems}
-            totalItems={activeJob.totalItems}
-            questionsGenerated={activeJob.questionsGenerated ?? 0}
-            onView={() => {
-              // Switch to the KB and dataset of the active job
-              if (activeJob.kbId !== selectedKbId) {
-                setSelectedKbId(activeJob.kbId);
-              }
-              setBrowseDatasetId(activeJob.datasetId);
-              setDatasetId(activeJob.datasetId);
-              setJobId(activeJob._id);
-              setDatasetType("questions");
-            }}
-          />
-        )}
+      {/* Question Generation Banner — shown when any question gen job is active */}
+      {activeJob && (
+        <GenerationBanner
+          strategy={activeJob.strategy}
+          kbName={activeJobKb?.name ?? "..."}
+          phase={activeJob.phase}
+          processedItems={activeJob.processedItems}
+          totalItems={activeJob.totalItems}
+          questionsGenerated={activeJob.questionsGenerated ?? 0}
+          onView={() => {
+            // Switch to the KB and dataset of the active job
+            if (activeJob.kbId !== selectedKbId) {
+              setSelectedKbId(activeJob.kbId)
+            }
+            setBrowseDatasetId(activeJob.datasetId)
+            setDatasetId(activeJob.datasetId)
+            setJobId(activeJob._id)
+            setDatasetType("questions")
+          }}
+        />
+      )}
 
-        {/* Scenario Generation Banner — shown when scenario gen is active */}
-        {activeScenarioJob && (
-          <GenerationBanner
-            strategy="Scenario Generation"
-            kbName={activeScenarioJobKb?.name ?? "..."}
-            phase="generating"
-            processedItems={activeScenarioJob.generatedCount}
-            totalItems={activeScenarioJob.targetCount}
-            questionsGenerated={activeScenarioJob.generatedCount}
-            onView={() => {
-              if (activeScenarioJob.kbId !== selectedKbId) {
-                setSelectedKbId(activeScenarioJob.kbId);
-              }
-              setBrowseDatasetId(activeScenarioJob.datasetId);
-              setDatasetType("conversation_sim");
-            }}
-          />
-        )}
+      {/* Scenario Generation Banner — shown when scenario gen is active */}
+      {activeScenarioJob && (
+        <GenerationBanner
+          strategy="Scenario Generation"
+          kbName={activeScenarioJobKb?.name ?? "..."}
+          phase="generating"
+          processedItems={activeScenarioJob.generatedCount}
+          totalItems={activeScenarioJob.targetCount}
+          questionsGenerated={activeScenarioJob.generatedCount}
+          onView={() => {
+            if (activeScenarioJob.kbId !== selectedKbId) {
+              setSelectedKbId(activeScenarioJob.kbId)
+            }
+            setBrowseDatasetId(activeScenarioJob.datasetId)
+            setDatasetType("conversation_sim")
+          }}
+        />
+      )}
 
       {/* ── Controls Bar ── */}
       <div className="border-b border-border bg-bg-elevated px-6 py-3">
@@ -399,7 +430,10 @@ function GeneratePageContent() {
             <label className="text-xs text-text-muted uppercase tracking-wide whitespace-nowrap">
               KB
             </label>
-            <KBDropdown selectedKbId={selectedKbId} onSelect={setSelectedKbId} />
+            <KBDropdown
+              selectedKbId={selectedKbId}
+              onSelect={setSelectedKbId}
+            />
           </div>
 
           {/* Dataset dropdown */}
@@ -412,11 +446,11 @@ function GeneratePageContent() {
                 value={browseDatasetId ?? ""}
                 onChange={(e) => {
                   if (e.target.value) {
-                    const id = e.target.value as Id<"datasets">;
-                    setBrowseDatasetId(id);
-                    setSelectedQuestion(null);
-                    setSelectedDocId(null);
-                    setMode("browse");
+                    const id = e.target.value as Id<"datasets">
+                    setBrowseDatasetId(id)
+                    setSelectedQuestion(null)
+                    setSelectedDocId(null)
+                    setMode("browse")
                   }
                 }}
                 className="max-w-xs bg-bg border border-border rounded px-3 py-1.5 text-sm text-text focus:border-accent outline-none"
@@ -424,7 +458,8 @@ function GeneratePageContent() {
                 <option value="">Select a dataset...</option>
                 {filteredDatasets.map((ds) => (
                   <option key={ds._id} value={ds._id}>
-                    {ds.name} ({datasetType === "conversation_sim"
+                    {ds.name} (
+                    {datasetType === "conversation_sim"
                       ? `${ds.scenarioCount ?? 0} scenarios`
                       : `${ds.questionCount} Qs`}
                     {activeJob?.datasetId === ds._id ? " — generating" : ""})
@@ -434,22 +469,34 @@ function GeneratePageContent() {
               {browseDatasetId && (
                 <button
                   onClick={() => {
-                    const ds = filteredDatasets?.find((d) => d._id === browseDatasetId);
+                    const ds = filteredDatasets?.find(
+                      (d) => d._id === browseDatasetId
+                    )
                     if (ds) {
                       setDeleteTarget({
                         id: ds._id,
                         name: ds.name,
                         questionCount: ds.questionCount,
-                        strategy: ds.strategy,
-                      });
-                      setDeleteError(null);
+                        strategy: ds.strategy
+                      })
+                      setDeleteError(null)
                     }
                   }}
                   className="p-1.5 text-text-dim hover:text-red-400 transition-colors"
                   title="Delete dataset"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                    />
                   </svg>
                 </button>
               )}
@@ -473,13 +520,17 @@ function GeneratePageContent() {
                   ? "Loading…"
                   : hasDocuments === false
                     ? "Upload documents before generating"
-                    : (datasetType === "questions" && activeJob) || (datasetType === "conversation_sim" && activeScenarioJob)
+                    : (datasetType === "questions" && activeJob) ||
+                        (datasetType === "conversation_sim" &&
+                          activeScenarioJob)
                       ? "A generation is already in progress"
                       : undefined
               }
               className="px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {datasetType === "conversation_sim" ? "+ Generate Scenarios" : "+ New Generation"}
+              {datasetType === "conversation_sim"
+                ? "+ Generate Scenarios"
+                : "+ New Generation"}
             </button>
           )}
         </div>
@@ -487,35 +538,53 @@ function GeneratePageContent() {
 
       <div className="flex flex-1 overflow-hidden max-w-full">
         {datasetType === "conversation_sim" ? (
-          !selectedKbId || !browseDatasetId || (!scenarios || scenarios.length === 0) ? (
+          !selectedKbId ||
+          !browseDatasetId ||
+          !scenarios ||
+          scenarios.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-text-dim text-xs">
-              {selectedKbId
-                ? browseDatasetId
-                  ? activeScenarioJob && activeScenarioJob.datasetId === browseDatasetId
-                    ? (
-                      <div className="text-center space-y-2">
-                        <div className="flex items-center gap-2 justify-center">
-                          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-                          <span className="text-accent">Generating scenarios...</span>
-                        </div>
-                        <span>{activeScenarioJob.generatedCount} of {activeScenarioJob.targetCount} generated</span>
+              {selectedKbId ? (
+                browseDatasetId ? (
+                  activeScenarioJob &&
+                  activeScenarioJob.datasetId === browseDatasetId ? (
+                    <div className="text-center space-y-2">
+                      <div className="flex items-center gap-2 justify-center">
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                        <span className="text-accent">
+                          Generating scenarios...
+                        </span>
                       </div>
-                    )
-                    : "No scenarios in this dataset"
-                  : "Select a scenario dataset to view scenarios"
-                : "Select a knowledge base to get started"}
+                      <span>
+                        {activeScenarioJob.generatedCount} of{" "}
+                        {activeScenarioJob.targetCount} generated
+                      </span>
+                    </div>
+                  ) : (
+                    "No scenarios in this dataset"
+                  )
+                ) : (
+                  "Select a scenario dataset to view scenarios"
+                )
+              ) : (
+                "Select a knowledge base to get started"
+              )}
             </div>
           ) : (
             <>
-              <ResizablePanel storageKey="scenario-list" defaultWidth={320} minWidth={200} maxWidth={600}>
+              <ResizablePanel
+                storageKey="scenario-list"
+                defaultWidth={320}
+                minWidth={200}
+                maxWidth={600}
+              >
                 <div className="h-full border-r border-border bg-bg">
                   <ScenarioList
                     scenarios={scenarios}
                     selectedId={selectedScenarioId}
                     onSelect={setSelectedScenarioId}
                     onEdit={(id) => {
-                      const s = scenarios.find(sc => sc._id === id);
-                      if (s) setEditingScenario(s);
+                      const s = scenarios.find((sc) => sc._id === id)
+                      if (s) setEditingScenario(s)
                     }}
                   />
                 </div>
@@ -545,7 +614,12 @@ function GeneratePageContent() {
         ) : (
           <>
             {/* Left: question list (resizable) */}
-            <ResizablePanel storageKey="generate-questions" defaultWidth={320} minWidth={200} maxWidth={600}>
+            <ResizablePanel
+              storageKey="generate-questions"
+              defaultWidth={320}
+              minWidth={200}
+              maxWidth={600}
+            >
               <div className="h-full border-r border-border bg-bg">
                 <QuestionList
                   questions={displayQuestions}
@@ -557,7 +631,9 @@ function GeneratePageContent() {
                   phaseStatus={displayPhaseStatus}
                   realWorldCount={
                     !displayGenerating
-                      ? displayQuestions.filter((q) => q.source === "real-world").length
+                      ? displayQuestions.filter(
+                          (q) => q.source === "real-world"
+                        ).length
                       : undefined
                   }
                 />
@@ -580,18 +656,21 @@ function GeneratePageContent() {
       {/* Generation Wizard Modal */}
       {showWizardModal && selectedKbId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowWizardModal(false)} />
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowWizardModal(false)}
+          />
           <div className="relative bg-bg-elevated border border-border rounded-lg shadow-xl w-full max-w-4xl max-h-[85vh] overflow-y-auto animate-fade-in">
             {datasetType === "conversation_sim" ? (
               <ScenarioGenerationWizard
                 kbId={selectedKbId}
                 onGenerated={(dsId) => {
-                  setBrowseDatasetId(dsId);
-                  setShowWizardModal(false);
+                  setBrowseDatasetId(dsId)
+                  setShowWizardModal(false)
                 }}
                 onError={(err) => {
-                  setGenError(err);
-                  setShowWizardModal(false);
+                  setGenError(err)
+                  setShowWizardModal(false)
                 }}
                 onCancel={() => setShowWizardModal(false)}
               />
@@ -599,17 +678,19 @@ function GeneratePageContent() {
               <GenerationWizard
                 kbId={selectedKbId}
                 generating={generating}
-                disabledReason={activeJob ? "Only one generation at a time" : undefined}
+                disabledReason={
+                  activeJob ? "Only one generation at a time" : undefined
+                }
                 onGenerated={(dsId, jId) => {
-                  setDatasetId(dsId);
-                  setJobId(jId);
-                  setBrowseDatasetId(dsId);
-                  setMode("browse");
-                  setShowWizardModal(false);
+                  setDatasetId(dsId)
+                  setJobId(jId)
+                  setBrowseDatasetId(dsId)
+                  setMode("browse")
+                  setShowWizardModal(false)
                 }}
                 onError={(err) => {
-                  setGenError(err);
-                  setShowWizardModal(false);
+                  setGenError(err)
+                  setShowWizardModal(false)
                 }}
                 onCancel={() => setShowWizardModal(false)}
               />
@@ -633,7 +714,10 @@ function GeneratePageContent() {
           questionCount={deleteTarget.questionCount}
           strategy={deleteTarget.strategy}
           onConfirm={handleDeleteDataset}
-          onClose={() => { setDeleteTarget(null); setDeleteError(null); }}
+          onClose={() => {
+            setDeleteTarget(null)
+            setDeleteError(null)
+          }}
         />
       )}
 
@@ -647,7 +731,7 @@ function GeneratePageContent() {
               _id: browseQuestions[editingQuestionIndex]._id,
               queryText: browseQuestions[editingQuestionIndex].queryText,
               sourceDocId: browseQuestions[editingQuestionIndex].sourceDocId,
-              relevantSpans: browseQuestions[editingQuestionIndex].relevantSpans,
+              relevantSpans: browseQuestions[editingQuestionIndex].relevantSpans
             }}
             kbId={selectedKbId}
             onClose={() => setEditingQuestionIndex(null)}
@@ -680,5 +764,5 @@ function GeneratePageContent() {
         </div>
       )}
     </div>
-  );
+  )
 }

@@ -1,17 +1,17 @@
-"use client";
+"use client"
 
-import type { ReactNode } from "react";
-import { StatusBadge } from "./StatusBadge";
+import type { ReactNode } from "react"
+import { StatusBadge } from "./StatusBadge"
 
 interface StrategyCardProps {
-  id: string;
-  name: string;
-  description: string;
-  status: "available" | "coming-soon";
-  selected: boolean;
-  onSelect: (id: string) => void;
-  tags?: readonly string[];
-  badge?: ReactNode;
+  id: string
+  name: string
+  description: string
+  status: "available" | "coming-soon"
+  selected: boolean
+  onSelect: (id: string) => void
+  tags?: readonly string[]
+  badge?: ReactNode
 }
 
 export function StrategyCard({
@@ -22,15 +22,15 @@ export function StrategyCard({
   selected,
   onSelect,
   tags,
-  badge,
+  badge
 }: StrategyCardProps) {
-  const isDisabled = status === "coming-soon";
+  const isDisabled = status === "coming-soon"
 
   const handleClick = () => {
     if (!isDisabled) {
-      onSelect(id);
+      onSelect(id)
     }
-  };
+  }
 
   return (
     <button
@@ -40,11 +40,12 @@ export function StrategyCard({
       className={`
         relative w-full text-left p-3 rounded-lg border
         transition-all duration-150
-        ${isDisabled
-          ? "opacity-50 cursor-not-allowed border-border bg-bg-surface"
-          : selected
-            ? "border-accent bg-accent-dim/10"
-            : "border-border bg-bg-surface hover:bg-bg-hover hover:border-border-bright cursor-pointer"
+        ${
+          isDisabled
+            ? "opacity-50 cursor-not-allowed border-border bg-bg-surface"
+            : selected
+              ? "border-accent bg-accent-dim/10"
+              : "border-border bg-bg-surface hover:bg-bg-hover hover:border-border-bright cursor-pointer"
         }
       `}
     >
@@ -79,5 +80,5 @@ export function StrategyCard({
         <span className="absolute top-2.5 right-2.5 w-1.5 h-1.5 rounded-full bg-accent" />
       )}
     </button>
-  );
+  )
 }

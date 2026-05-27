@@ -1,30 +1,28 @@
-"use client";
+"use client"
 
-import type { OptionDef } from "@tars-inc/eval-lib/registry";
-import { InfoTooltip } from "./InfoTooltip";
+import type { OptionDef } from "@tars-inc/eval-lib/registry"
+import { InfoTooltip } from "./InfoTooltip"
 
 interface OptionFieldProps {
-  option: OptionDef;
-  value: unknown;
-  onChange: (key: string, value: unknown) => void;
-  disabled?: boolean;
+  option: OptionDef
+  value: unknown
+  onChange: (key: string, value: unknown) => void
+  disabled?: boolean
 }
 
 export function OptionField({
   option,
   value,
   onChange,
-  disabled = false,
+  disabled = false
 }: OptionFieldProps) {
-  const wrapperClass = disabled ? "opacity-50 pointer-events-none" : "";
+  const wrapperClass = disabled ? "opacity-50 pointer-events-none" : ""
 
   return (
     <div className={wrapperClass}>
       {/* Label row */}
       <div className="flex items-center gap-1.5 mb-1">
-        <label className="text-xs font-medium text-text">
-          {option.label}
-        </label>
+        <label className="text-xs font-medium text-text">{option.label}</label>
         {option.description && <InfoTooltip text={option.description} />}
       </div>
 
@@ -34,17 +32,17 @@ export function OptionField({
       {/* Description */}
       <p className="mt-1 text-xs text-text-muted">{option.description}</p>
     </div>
-  );
+  )
 }
 
 function renderInput(
   option: OptionDef,
   value: unknown,
-  onChange: (key: string, value: unknown) => void,
+  onChange: (key: string, value: unknown) => void
 ) {
   const baseInputClass =
     "w-full bg-bg-surface border border-border text-text text-xs rounded px-2 py-1.5 " +
-    "focus:outline-none focus:border-accent/50 transition-colors";
+    "focus:outline-none focus:border-accent/50 transition-colors"
 
   switch (option.type) {
     case "select":
@@ -60,7 +58,7 @@ function renderInput(
             </option>
           ))}
         </select>
-      );
+      )
 
     case "number": {
       const numericValue =
@@ -68,7 +66,7 @@ function renderInput(
           ? Number(value)
           : option.default != null
             ? Number(option.default)
-            : "";
+            : ""
       return (
         <input
           type="number"
@@ -79,12 +77,12 @@ function renderInput(
           onChange={(e) =>
             onChange(
               option.key,
-              e.target.value === "" ? undefined : Number(e.target.value),
+              e.target.value === "" ? undefined : Number(e.target.value)
             )
           }
           className={baseInputClass}
         />
-      );
+      )
     }
 
     case "boolean":
@@ -97,14 +95,14 @@ function renderInput(
             className="w-3.5 h-3.5 rounded border-border bg-bg-surface text-accent focus:ring-accent/50"
           />
           <span className="text-xs text-text-muted">
-            {Boolean(value ?? option.default) ? "Enabled" : "Disabled"}
+            {(value ?? option.default) ? "Enabled" : "Disabled"}
           </span>
         </label>
-      );
+      )
 
     case "string": {
       const isTextArea =
-        option.description?.toLowerCase().includes("prompt") ?? false;
+        option.description?.toLowerCase().includes("prompt") ?? false
 
       if (isTextArea) {
         return (
@@ -114,7 +112,7 @@ function renderInput(
             rows={4}
             className={`${baseInputClass} resize-y`}
           />
-        );
+        )
       }
 
       return (
@@ -124,7 +122,7 @@ function renderInput(
           onChange={(e) => onChange(option.key, e.target.value)}
           className={baseInputClass}
         />
-      );
+      )
     }
   }
 }
