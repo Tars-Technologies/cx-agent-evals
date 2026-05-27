@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
+import { CreateSimulationModal } from "@/components/conversation-sim/CreateSimulationModal";
 
 type Simulation = NonNullable<
   ReturnType<typeof useQuery<typeof api.conversationSim.orchestration.byAgent>>
@@ -78,38 +79,6 @@ function ActiveBanner({
   );
 }
 
-// NOTE: CreateSimulationModal requires a `datasetId` prop and calls
-// orchestration.start with { agentId, datasetId, k, concurrency, maxTurns, timeoutMs }.
-// However, orchestration.start was updated in Phase 1 to take only { agentId } and
-// load scenarios directly — the datasetId param was removed. The modal is incompatible
-// and must be rebuilt in a future task. The "+ New Simulation" button shows a
-// placeholder message until then.
-function ComingSoonModal({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div
-        className="relative bg-bg-elevated border border-border rounded-lg shadow-xl w-full max-w-sm p-6 text-center"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <p className="text-sm font-medium text-text mb-2">Coming soon</p>
-        <p className="text-xs text-text-dim leading-relaxed">
-          The &ldquo;New Simulation&rdquo; modal needs to be rebuilt after the
-          Phase 1 orchestration refactor removed the{" "}
-          <code className="text-accent">datasetId</code> parameter. This is
-          tracked for a follow-up task.
-        </p>
-        <button
-          onClick={onClose}
-          className="mt-4 px-4 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors"
-        >
-          OK
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function SimulationRow({
   sim,
   agentId,
@@ -118,6 +87,9 @@ function SimulationRow({
   agentId: Id<"agents">;
 }) {
   const router = useRouter();
+  const set = useQuery(api.conversationSim.scenarioSets.get, {
+    id: sim.scenarioSetId,
+  });
   const badgeCls = STATUS_BADGE[sim.status] ?? "bg-border text-text-dim";
 
   return (
@@ -139,6 +111,7 @@ function SimulationRow({
             {sim.totalRuns} runs
           </span>
         </div>
+        <p className="text-[10px] text-text-dim">Set: {set?.name ?? "—"}</p>
       </div>
       <div className="text-right shrink-0 space-y-0.5">
         <p className="text-[10px] text-text-dim">
@@ -158,16 +131,17 @@ function SimulationRow({
 export default function ExperimentsPage() {
   const params = useParams<{ id: string }>();
   const agentId = params.id as Id<"agents">;
+  const router = useRouter();
 
   const simulations = useQuery(api.conversationSim.orchestration.byAgent, {
     agentId,
   });
-  const scenarios = useQuery(api.conversationSim.scenarios.byAgent, { agentId });
+  const sets = useQuery(api.conversationSim.scenarioSets.byAgent, { agentId });
   const cancelSimulation = useMutation(api.conversationSim.orchestration.cancel);
 
   const [showModal, setShowModal] = useState(false);
 
-  const hasScenarios = (scenarios?.length ?? 0) > 0;
+  const hasSets = (sets?.length ?? 0) > 0;
 
   async function handleCancel(simulationId: Id<"conversationSimulations">) {
     await cancelSimulation({ simulationId });
@@ -180,12 +154,8 @@ export default function ExperimentsPage() {
         <h1 className="text-sm font-medium text-text">Experiments</h1>
         <button
           onClick={() => setShowModal(true)}
-          disabled={!hasScenarios}
-          title={
-            !hasScenarios
-              ? "Add scenarios to this agent before running a simulation"
-              : undefined
-          }
+          disabled={!hasSets}
+          title={!hasSets ? "Generate a scenario set first" : undefined}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <span>+</span> New Simulation
@@ -212,9 +182,9 @@ export default function ExperimentsPage() {
           <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-center">
             <p className="text-sm text-text-dim">No simulations yet.</p>
             <p className="text-xs text-text-muted mt-1">
-              {hasScenarios
+              {hasSets
                 ? "Click '+ New Simulation' to run one."
-                : "Add scenarios first, then run a simulation."}
+                : "Generate a scenario set first, then run a simulation."}
             </p>
           </div>
         ) : (
@@ -226,7 +196,16 @@ export default function ExperimentsPage() {
         )}
       </div>
 
-      {showModal && <ComingSoonModal onClose={() => setShowModal(false)} />}
+      {showModal && (
+        <CreateSimulationModal
+          agentId={agentId}
+          onClose={() => setShowModal(false)}
+          onCreated={(simId) => {
+            setShowModal(false);
+            router.push(`/agents/${agentId}/evaluate/experiments/${simId}`);
+          }}
+        />
+      )}
     </div>
   );
 }
