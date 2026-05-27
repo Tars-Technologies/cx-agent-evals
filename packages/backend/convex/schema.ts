@@ -683,10 +683,10 @@ export default defineSchema({
   conversationScenarios: defineTable({
     orgId: v.string(),
     agentId: v.id("agents"),
+    scenarioSetId: v.id("scenarioSets"),
     source: v.union(
       v.object({ kind: v.literal("synthetic"),  kbId: v.id("knowledgeBases") }),
       v.object({ kind: v.literal("grounded"),   transcriptUploadId: v.id("livechatUploads") }),
-      v.object({ kind: v.literal("manual") }),
     ),
     persona: v.object({
       type: v.string(),
@@ -728,6 +728,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_agent", ["agentId"])
+    .index("by_set", ["scenarioSetId"])
     .index("by_kb", ["source.kbId"])
     .index("by_transcript_upload", ["source.transcriptUploadId"]),
 
@@ -794,6 +795,7 @@ export default defineSchema({
     orgId: v.string(),
     userId: v.id("users"),
     agentId: v.id("agents"),
+    scenarioSetId: v.id("scenarioSets"),
     k: v.number(),
     passThreshold: v.optional(v.number()),
     concurrency: v.number(),
@@ -853,10 +855,12 @@ export default defineSchema({
   scenarioGenJobs: defineTable({
     orgId: v.string(),
     agentId: v.id("agents"),
-    source: v.union(
-      v.object({ kind: v.literal("synthetic"),  kbId: v.id("knowledgeBases") }),
-      v.object({ kind: v.literal("grounded"),   transcriptUploadId: v.id("livechatUploads") }),
-    ),
+    scenarioSetId: v.id("scenarioSets"),
+    // Inputs available for generation. A single job can run both synthetic
+    // (kbId) and grounded (transcriptUploadId) tracks; the per-scenario row
+    // still carries its own source discriminator.
+    kbId: v.optional(v.id("knowledgeBases")),
+    transcriptUploadId: v.optional(v.id("livechatUploads")),
     status: v.union(
       v.literal("pending"),
       v.literal("running"),
@@ -876,4 +880,34 @@ export default defineSchema({
     .index("by_org", ["orgId"])
     .index("by_org_status", ["orgId", "status"])
     .index("by_agent", ["agentId"]),
+
+  scenarioSets: defineTable({
+    orgId: v.string(),
+    agentId: v.id("agents"),
+    name: v.string(),
+    source: v.union(
+      v.literal("synthetic"),
+      v.literal("grounded"),
+      v.literal("mixed"),
+    ),
+    generationConfig: v.object({
+      kbId: v.optional(v.id("knowledgeBases")),
+      transcriptUploadId: v.optional(v.id("livechatUploads")),
+      transcriptConversationIds: v.optional(
+        v.array(v.id("livechatConversations")),
+      ),
+      targetCount: v.number(),
+      distribution: v.optional(v.number()),
+      fidelity: v.optional(v.number()),
+      complexityDistribution: v.optional(
+        v.object({ low: v.number(), medium: v.number(), high: v.number() }),
+      ),
+      model: v.optional(v.string()),
+    }),
+    scenarioCount: v.number(),
+    generationJobId: v.id("scenarioGenJobs"),
+    createdAt: v.number(),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_org", ["orgId"]),
 });
