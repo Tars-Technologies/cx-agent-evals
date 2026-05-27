@@ -14,6 +14,7 @@ export default function AgentRunLayout({ children }: { children: React.ReactNode
 
   return (
     <EntityDetailLayout
+      embedded
       sidebar={agentRunSidebar(agentId, runId)}
       breadcrumbs={[
         { label: "Agents", href: "/agents" },

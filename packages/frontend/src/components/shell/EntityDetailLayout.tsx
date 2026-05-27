@@ -23,6 +23,8 @@ interface EntityDetailLayoutProps {
   breadcrumbLabelOverrides?: Record<string, string>;
   /** When true, content stretches edge-to-edge; otherwise constrained to max-w-7xl. */
   fullWidth?: boolean;
+  /** When true, skips the app TopBar and outer chrome — for use inside another EntityDetailLayout. */
+  embedded?: boolean;
   children: ReactNode;
 }
 
@@ -108,6 +110,7 @@ export function EntityDetailLayout({
   breadcrumbs,
   breadcrumbLabelOverrides,
   fullWidth = false,
+  embedded = false,
   children,
 }: EntityDetailLayoutProps) {
   const pathname = usePathname() ?? "/";
@@ -140,10 +143,8 @@ export function EntityDetailLayout({
 
   const collapsedItems = collapsed ? flattenForCollapsed(sidebar) : [];
 
-  return (
-    <div className="h-screen flex flex-col overflow-hidden">
-      <TopBar />
-      <div className={containerClass}>
+  const inner = (
+    <div className={containerClass}>
         <aside
           className={`shrink-0 hidden md:flex flex-col ${
             collapsed ? "w-10" : "w-40"
@@ -196,6 +197,14 @@ export function EntityDetailLayout({
           <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">{children}</div>
         </main>
       </div>
+  );
+
+  if (embedded) return inner;
+
+  return (
+    <div className="h-screen flex flex-col overflow-hidden">
+      <TopBar />
+      {inner}
     </div>
   );
 }
