@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { setupTest, seedUser, testIdentity, TEST_ORG_ID } from "./helpers";
+import { setupTest, seedUser, seedKB, testIdentity, TEST_ORG_ID } from "./helpers";
 import { api, internal } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 
@@ -26,16 +26,36 @@ async function seedAgent(
   );
 }
 
+async function seedScenarioSet(
+  t: ReturnType<typeof setupTest>,
+  agentId: Id<"agents">,
+): Promise<Id<"scenarioSets">> {
+  return await t.run(async (ctx) =>
+    ctx.db.insert("scenarioSets", {
+      orgId: TEST_ORG_ID,
+      agentId,
+      name: "test set",
+      source: "synthetic" as const,
+      generationConfig: { targetCount: 1 },
+      scenarioCount: 0,
+      createdAt: Date.now(),
+    }),
+  );
+}
+
 async function seedSimRunWithConversation(
   t: ReturnType<typeof setupTest>,
   userId: Id<"users">,
   agentId: Id<"agents">,
+  scenarioSetId: Id<"scenarioSets">,
+  kbId: Id<"knowledgeBases">,
 ) {
   const simId = await t.run(async (ctx) =>
     ctx.db.insert("conversationSimulations", {
       orgId: TEST_ORG_ID,
       userId,
       agentId,
+      scenarioSetId,
       k: 1,
       concurrency: 1,
       maxTurns: 5,
@@ -59,7 +79,8 @@ async function seedSimRunWithConversation(
     ctx.db.insert("conversationScenarios", {
       orgId: TEST_ORG_ID,
       agentId,
-      source: { kind: "manual" as const },
+      scenarioSetId,
+      source: { kind: "synthetic" as const, kbId },
       persona: {
         type: "x",
         traits: [],
@@ -95,7 +116,9 @@ describe("autoApply ready evaluators on sim run completion", () => {
     const t = setupTest();
     const userId = await seedUser(t);
     const agentId = await seedAgent(t);
-    const { runId, convId } = await seedSimRunWithConversation(t, userId, agentId);
+    const kbId = await seedKB(t, userId);
+    const scenarioSetId = await seedScenarioSet(t, agentId);
+    const { runId, convId } = await seedSimRunWithConversation(t, userId, agentId, scenarioSetId, kbId);
 
     // Seed messages: assistant says "We cannot help with that"
     await t.run(async (ctx) => {
@@ -150,7 +173,9 @@ describe("autoApply ready evaluators on sim run completion", () => {
     const t = setupTest();
     const userId = await seedUser(t);
     const agentId = await seedAgent(t);
-    const { runId, convId } = await seedSimRunWithConversation(t, userId, agentId);
+    const kbId = await seedKB(t, userId);
+    const scenarioSetId = await seedScenarioSet(t, agentId);
+    const { runId, convId } = await seedSimRunWithConversation(t, userId, agentId, scenarioSetId, kbId);
     await t.run(async (ctx) => {
       await ctx.db.insert("messages", {
         conversationId: convId,
@@ -205,7 +230,9 @@ describe("autoApply ready evaluators on sim run completion", () => {
     const t = setupTest();
     const userId = await seedUser(t);
     const agentId = await seedAgent(t);
-    const { runId } = await seedSimRunWithConversation(t, userId, agentId);
+    const kbId = await seedKB(t, userId);
+    const scenarioSetId = await seedScenarioSet(t, agentId);
+    const { runId } = await seedSimRunWithConversation(t, userId, agentId, scenarioSetId, kbId);
 
     const evalId = await t.withIdentity(testIdentity).mutation(api.evaluator.crud.create, {
       agentId,
@@ -241,12 +268,15 @@ describe("autoApply ready evaluators on sim run completion", () => {
     const t = setupTest();
     const userId = await seedUser(t);
     const agentId = await seedAgent(t);
+    const kbId = await seedKB(t, userId);
+    const scenarioSetId = await seedScenarioSet(t, agentId);
 
     const simId = await t.run(async (ctx) =>
       ctx.db.insert("conversationSimulations", {
         orgId: TEST_ORG_ID,
         userId,
         agentId,
+        scenarioSetId,
         k: 1,
         concurrency: 1,
         maxTurns: 5,
@@ -261,7 +291,8 @@ describe("autoApply ready evaluators on sim run completion", () => {
       ctx.db.insert("conversationScenarios", {
         orgId: TEST_ORG_ID,
         agentId,
-        source: { kind: "manual" as const },
+        scenarioSetId,
+        source: { kind: "synthetic" as const, kbId },
         persona: {
           type: "x",
           traits: [],
