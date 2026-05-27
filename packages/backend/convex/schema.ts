@@ -906,7 +906,7 @@ export default defineSchema({
       model: v.optional(v.string()),
     }),
     scenarioCount: v.number(),
-    generationJobId: v.id("scenarioGenJobs"),
+    generationJobId: v.optional(v.id("scenarioGenJobs")),
     createdAt: v.number(),
   })
     .index("by_agent", ["agentId"])
