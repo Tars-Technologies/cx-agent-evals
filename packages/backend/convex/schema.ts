@@ -817,7 +817,8 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
   })
     .index("by_org", ["orgId"])
-    .index("by_agent", ["agentId"]),
+    .index("by_agent", ["agentId"])
+    .index("by_set", ["scenarioSetId"]),
 
   conversationSimRuns: defineTable({
     simulationId: v.id("conversationSimulations"),
