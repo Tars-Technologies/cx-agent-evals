@@ -21,7 +21,7 @@ export default function AgentPlayground({ agentId }: AgentPlaygroundProps) {
 
   const getOrCreate = useMutation(api.agents.orchestration.getOrCreatePlayground);
   const send = useMutation(api.agents.orchestration.sendMessage);
-  const clear = useMutation(api.agents.orchestration.clearPlayground);
+  const newChat = useMutation(api.agents.orchestration.newPlayground);
 
   const initRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -86,12 +86,9 @@ export default function AgentPlayground({ agentId }: AgentPlaygroundProps) {
     }
   };
 
-  const handleClear = async () => {
-    if (!conversationId) return;
-    await clear({ conversationId });
+  const handleNewChat = async () => {
     setConversationId(null);
-    // Create a fresh playground conversation immediately
-    const newId = await getOrCreate({ agentId });
+    const newId = await newChat({ agentId });
     setConversationId(newId);
   };
 
@@ -125,10 +122,10 @@ export default function AgentPlayground({ agentId }: AgentPlaygroundProps) {
             </button>
           </div>
           <button
-            onClick={handleClear}
-            className="text-[10px] text-text-dim hover:text-text-muted transition-colors"
+            onClick={handleNewChat}
+            className="flex items-center gap-1.5 px-3 py-1 text-[11px] bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors"
           >
-            Clear chat
+            <span>+</span> New chat
           </button>
         </div>
       </div>
