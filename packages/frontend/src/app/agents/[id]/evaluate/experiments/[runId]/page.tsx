@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/lib/convex";
@@ -38,6 +39,10 @@ function SimMetadataBand({
   const started = sim.startedAt ? new Date(sim.startedAt).toLocaleString() : null;
   const completed = sim.completedAt ? new Date(sim.completedAt).toLocaleString() : null;
 
+  const set = useQuery(api.conversationSim.scenarioSets.get, {
+    id: sim.scenarioSetId,
+  });
+
   return (
     <div className="px-4 py-2.5 border-b border-border bg-bg-elevated/50 flex flex-wrap items-center gap-x-4 gap-y-1.5">
       {/* ID + status */}
@@ -47,6 +52,21 @@ function SimMetadataBand({
         </span>
         <StatusBadge status={sim.status} />
       </div>
+
+      {/* Scenario set */}
+      <span className="text-[11px] text-text-dim">
+        Set:{" "}
+        {set ? (
+          <Link
+            href={`/agents/${sim.agentId}/evaluate/scenarios/${set._id}`}
+            className="text-accent hover:underline"
+          >
+            {set.name}
+          </Link>
+        ) : (
+          "—"
+        )}
+      </span>
 
       {/* Counts */}
       <div className="flex items-center gap-3 text-[11px] text-text-dim">
