@@ -156,6 +156,15 @@ export function WizardStepDimensions({
                   ×
                 </button>
               </div>
+              <input
+                placeholder="Description (required)"
+                value={dim.description}
+                onChange={(e) =>
+                  updateDimension(di, { description: e.target.value })
+                }
+                className="w-full bg-transparent border-b border-border/30 text-[11px] text-text-muted
+                           placeholder:text-text-dim/30 pb-1 focus:outline-none focus:border-accent/30 transition-colors"
+              />
               <div className="flex flex-wrap gap-1">
                 {dim.values.map((val, vi) => (
                   <span
@@ -232,7 +241,13 @@ export function WizardStepDimensions({
           </button>
           <button
             onClick={onNext}
-            disabled={dimensions.length === 0}
+            disabled={dimensions.some(
+              (d) =>
+                !(d.name ?? "").trim() ||
+                !(d.description ?? "").trim() ||
+                d.values.length < 2 ||
+                d.values.some((v) => !(v ?? "").trim())
+            )}
             className="px-3 py-1.5 text-xs rounded bg-accent-dim text-accent-bright hover:bg-accent/20 transition-colors disabled:opacity-40"
           >
             Next →
