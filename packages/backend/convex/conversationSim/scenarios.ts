@@ -69,7 +69,6 @@ const sourceValidator = v.union(
     kind: v.literal("grounded"),
     transcriptUploadId: v.id("livechatUploads"),
   }),
-  v.object({ kind: v.literal("manual") }),
 );
 
 const contentFields = {
@@ -172,6 +171,7 @@ export const create = mutation({
     const { orgId } = await getAuthContext(ctx);
     const agent = await ctx.db.get(args.agentId);
     if (!agent || agent.orgId !== orgId) throw new Error("Agent not found");
+    // @ts-expect-error scenarioSetId missing — public `create` pending removal in Task 7
     return await ctx.db.insert("conversationScenarios", {
       orgId,
       ...args,
@@ -236,6 +236,7 @@ export const createInternal = internalMutation({
   args: {
     orgId: v.string(),
     agentId: v.id("agents"),
+    scenarioSetId: v.id("scenarioSets"),
     source: sourceValidator,
     ...contentFields,
   },
