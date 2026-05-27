@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
-import { setupTest, seedUser, TEST_ORG_ID } from "../helpers";
-import { internal } from "../../convex/_generated/api";
+import { setupTest, seedUser, seedKB, TEST_ORG_ID, testIdentity } from "../helpers";
+import { api, internal } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 
 async function seedAgent(
@@ -137,5 +137,141 @@ describe("scenarioSets", () => {
     expect(after?.scenarioCount).toBe(7);
     expect(after?.name).toBe("Patch test set");
     expect(after?.source).toBe("grounded");
+  });
+
+  test("byAgent returns org-scoped sets for the given agent", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const agentA = await seedAgent(t, userId);
+    const agentB = await seedAgent(t, userId);
+
+    // seedJobWithSet creates one scenarioSets row per call (the placeholder
+    // is patched in place, so it stays as the real row). Two calls → 2 sets.
+    await seedJobWithSet(t, agentA);
+    await seedJobWithSet(t, agentA);
+
+    // One set for agentB
+    await seedJobWithSet(t, agentB);
+
+    const setsA = await t.withIdentity(testIdentity).query(
+      api.conversationSim.scenarioSets.byAgent,
+      { agentId: agentA },
+    );
+    expect(setsA).toHaveLength(2);
+    expect(setsA.every((s) => s.agentId === agentA)).toBe(true);
+
+    const setsB = await t.withIdentity(testIdentity).query(
+      api.conversationSim.scenarioSets.byAgent,
+      { agentId: agentB },
+    );
+    expect(setsB).toHaveLength(1);
+    expect(setsB[0].agentId).toBe(agentB);
+  });
+
+  test("remove deletes set and its scenarios when no simulations reference it", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const agentId = await seedAgent(t, userId);
+    const kbId = await seedKB(t, userId);
+    const jobId = await seedJobWithSet(t, agentId);
+
+    const setId = await t.mutation(
+      internal.conversationSim.scenarioSets.createInternal,
+      {
+        orgId: TEST_ORG_ID,
+        agentId,
+        name: "Set to remove",
+        source: "synthetic" as const,
+        generationConfig: { targetCount: 3 },
+        generationJobId: jobId,
+      },
+    );
+
+    // Insert 3 scenarios directly
+    await t.run(async (ctx) => {
+      const scenarioBase = {
+        orgId: TEST_ORG_ID,
+        agentId,
+        scenarioSetId: setId,
+        source: { kind: "synthetic" as const, kbId },
+        persona: {
+          type: "end_user",
+          traits: ["impatient"],
+          communicationStyle: "direct",
+          patienceLevel: "low" as const,
+        },
+        topic: "billing",
+        intent: "get refund",
+        complexity: "low" as const,
+        reasonForContact: "overcharged",
+        knownInfo: "invoice number",
+        unknownInfo: "refund timeline",
+        instruction: "ask about refund",
+        createdAt: Date.now(),
+      };
+      await ctx.db.insert("conversationScenarios", scenarioBase);
+      await ctx.db.insert("conversationScenarios", { ...scenarioBase, topic: "shipping" });
+      await ctx.db.insert("conversationScenarios", { ...scenarioBase, topic: "returns" });
+    });
+
+    await t.withIdentity(testIdentity).mutation(
+      api.conversationSim.scenarioSets.remove,
+      { id: setId },
+    );
+
+    const deletedSet = await t.run(async (ctx) => ctx.db.get(setId));
+    expect(deletedSet).toBeNull();
+
+    const remainingScenarios = await t.run(async (ctx) =>
+      ctx.db
+        .query("conversationScenarios")
+        .withIndex("by_set", (q) => q.eq("scenarioSetId", setId))
+        .collect(),
+    );
+    expect(remainingScenarios).toHaveLength(0);
+  });
+
+  test("remove throws when a simulation references the set", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const agentId = await seedAgent(t, userId);
+    const jobId = await seedJobWithSet(t, agentId);
+
+    const setId = await t.mutation(
+      internal.conversationSim.scenarioSets.createInternal,
+      {
+        orgId: TEST_ORG_ID,
+        agentId,
+        name: "Referenced set",
+        source: "synthetic" as const,
+        generationConfig: { targetCount: 5 },
+        generationJobId: jobId,
+      },
+    );
+
+    // Insert a simulation referencing this set
+    await t.run(async (ctx) => {
+      await ctx.db.insert("conversationSimulations", {
+        orgId: TEST_ORG_ID,
+        userId,
+        agentId,
+        scenarioSetId: setId,
+        k: 1,
+        concurrency: 1,
+        maxTurns: 10,
+        timeoutMs: 30000,
+        userSimModel: "gpt-4o-mini",
+        status: "pending" as const,
+        totalRuns: 0,
+        completedRuns: 0,
+      });
+    });
+
+    await expect(
+      t.withIdentity(testIdentity).mutation(
+        api.conversationSim.scenarioSets.remove,
+        { id: setId },
+      ),
+    ).rejects.toThrow(/Cannot delete.*referenced/);
   });
 });
