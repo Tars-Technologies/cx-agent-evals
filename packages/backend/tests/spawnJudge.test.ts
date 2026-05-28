@@ -75,7 +75,11 @@ describe("spawnJudge.fromFailureMode", () => {
 
     const row = await t.run(async (ctx) => ctx.db.get(evalId));
     expect(row?.type).toBe("llm_judge");
-    expect(row?.source).toEqual({ kind: "error_analysis", failureModeId: fmId });
+    expect(row?.source).toEqual({
+      kind: "error_analysis",
+      failureModeId: fmId,
+      errorAnalysisId: eaId,
+    });
     expect(row?.llmJudgeConfig?.dimensions).toHaveLength(1);
     expect(row?.llmJudgeConfig?.dimensions[0].failureModeId).toBe(fmId);
     expect(row?.status).toBe("draft");
@@ -87,20 +91,20 @@ describe("spawnJudge.fromFailureMode", () => {
     const userId = await seedUser(t);
     const agentId = await seedAgent(t, userId);
 
+    const eaId = await seedAnalysis(t, agentId);
     const convIds: Id<"conversations">[] = [];
     for (let i = 0; i < 5; i++) {
       const c = await seedConv(t, agentId);
       convIds.push(c);
       await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsertWithAutoContainer, {
         agentId,
-        hint: { kind: "playground" },
+        hint: { kind: "analysis", errorAnalysisId: eaId },
         source: { kind: "conversation", conversationId: c },
         rating: i < 2 ? "bad" : "good_enough",
         tags: [],
       });
     }
 
-    const eaId = await seedAnalysis(t, agentId);
     const fmId = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
       agentId,
       errorAnalysisId: eaId,
@@ -140,19 +144,19 @@ describe("spawnJudge.fromFailureMode", () => {
     const userId = await seedUser(t);
     const agentId = await seedAgent(t, userId);
 
+    const eaId = await seedAnalysis(t, agentId);
     const convIds: Id<"conversations">[] = [];
     for (let i = 0; i < 10; i++) {
       const c = await seedConv(t, agentId);
       convIds.push(c);
       await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsertWithAutoContainer, {
         agentId,
-        hint: { kind: "playground" },
+        hint: { kind: "analysis", errorAnalysisId: eaId },
         source: { kind: "conversation", conversationId: c },
         rating: "bad",
         tags: [],
       });
     }
-    const eaId = await seedAnalysis(t, agentId);
     const fmId = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
       agentId,
       errorAnalysisId: eaId,

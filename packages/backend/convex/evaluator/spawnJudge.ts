@@ -51,7 +51,11 @@ export const fromFailureMode = mutation({
         model: "gpt-4o-mini",
         inputContext: ["transcript" as const],
       },
-      source: { kind: "error_analysis" as const, failureModeId: fm._id },
+      source: {
+        kind: "error_analysis" as const,
+        failureModeId: fm._id,
+        errorAnalysisId: fm.errorAnalysisId,
+      },
       status: "draft" as const,
       splitConfig: { trainPct: 0.6, devPct: 0.2, testPct: 0.2 },
       splitSeed: seed,
@@ -88,18 +92,18 @@ export const fromFailureMode = mutation({
       });
     }
 
-    // 3. Inherit PASS labels from agent-scoped annotated conversations
-    // that are NOT members of this failure mode.
-    const allOrgAnnotations = await ctx.db
+    // 3. Inherit PASS labels from annotations in this analysis that
+    // are NOT members of this failure mode.
+    const analysisAnnotations = await ctx.db
       .query("annotations")
-      .withIndex("by_org", (q) => q.eq("orgId", orgId))
+      .withIndex("by_analysis", (q) => q.eq("errorAnalysisId", fm.errorAnalysisId))
       .collect();
 
-    for (const a of allOrgAnnotations) {
-      if (a.source.kind !== "conversation") continue;
-      const conv = await ctx.db.get(a.source.conversationId);
-      if (!conv || !conv.agentIds.includes(fm.agentId)) continue;
-      const key = `c:${a.source.conversationId}`;
+    for (const a of analysisAnnotations) {
+      const key =
+        a.source.kind === "conversation"
+          ? `c:${a.source.conversationId}`
+          : `t:${a.source.transcriptId}`;
       if (memberKeys.has(key)) continue;
 
       await ctx.db.insert("evaluatorLabels", {

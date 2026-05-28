@@ -38,7 +38,11 @@ const llmJudgeConfigValidator = v.object({
 const sourceValidator = v.union(
   v.object({ kind: v.literal("manual") }),
   v.object({ kind: v.literal("template"), templateId: v.id("evaluatorTemplates") }),
-  v.object({ kind: v.literal("error_analysis"), failureModeId: v.id("failureModes") }),
+  v.object({
+    kind: v.literal("error_analysis"),
+    failureModeId: v.id("failureModes"),
+    errorAnalysisId: v.id("errorAnalyses"),
+  }),
 );
 
 const statusValidator = v.union(
