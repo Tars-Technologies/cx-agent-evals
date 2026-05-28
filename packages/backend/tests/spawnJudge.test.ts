@@ -73,7 +73,9 @@ describe("spawnJudge.fromFailureMode", () => {
     for (let i = 0; i < 5; i++) {
       const c = await seedConv(t, agentId);
       convIds.push(c);
-      await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsert, {
+      await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
         source: { kind: "conversation", conversationId: c },
         rating: i < 2 ? "bad" : "good_enough",
         tags: [],
@@ -122,7 +124,9 @@ describe("spawnJudge.fromFailureMode", () => {
     for (let i = 0; i < 10; i++) {
       const c = await seedConv(t, agentId);
       convIds.push(c);
-      await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsert, {
+      await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
         source: { kind: "conversation", conversationId: c },
         rating: "bad",
         tags: [],

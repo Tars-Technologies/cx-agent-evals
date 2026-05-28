@@ -35,6 +35,7 @@ import type * as crud_knowledgeBasesActions from "../crud/knowledgeBasesActions.
 import type * as crud_questions from "../crud/questions.js";
 import type * as crud_retrievers from "../crud/retrievers.js";
 import type * as crud_users from "../crud/users.js";
+import type * as errorAnalysis_members from "../errorAnalysis/members.js";
 import type * as evaluator_autoApply from "../evaluator/autoApply.js";
 import type * as evaluator_crud from "../evaluator/crud.js";
 import type * as evaluator_labels from "../evaluator/labels.js";
@@ -107,6 +108,7 @@ declare const fullApi: ApiFromModules<{
   "crud/questions": typeof crud_questions;
   "crud/retrievers": typeof crud_retrievers;
   "crud/users": typeof crud_users;
+  "errorAnalysis/members": typeof errorAnalysis_members;
   "evaluator/autoApply": typeof evaluator_autoApply;
   "evaluator/crud": typeof evaluator_crud;
   "evaluator/labels": typeof evaluator_labels;

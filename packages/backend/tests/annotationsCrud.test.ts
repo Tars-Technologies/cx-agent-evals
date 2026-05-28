@@ -90,39 +90,55 @@ async function seedTranscript(
 }
 
 describe("annotations CRUD (polymorphic source)", () => {
-  it("upsert creates an annotation for a conversation", async () => {
+  it("upsertWithAutoContainer creates an annotation for a conversation", async () => {
     const t = setupTest();
     const userId = await seedUser(t);
     const agentId = await seedAgent(t, userId);
     const convId = await seedConversation(t, agentId);
 
-    const id = await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsert, {
-      source: { kind: "conversation", conversationId: convId },
-      rating: "bad",
-      tags: ["tone_issue"],
-    });
+    const id = await t
+      .withIdentity(testIdentity)
+      .mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
+        source: { kind: "conversation", conversationId: convId },
+        rating: "bad",
+        tags: ["tone_issue"],
+      });
 
     const row = await t.run(async (ctx) => ctx.db.get(id));
     expect(row?.source).toEqual({ kind: "conversation", conversationId: convId });
     expect(row?.rating).toBe("bad");
     expect(row?.tags).toEqual(["tone_issue"]);
     expect(row?.ratedBy).toBe(userId);
+    expect(row?.errorAnalysisId).toBeDefined();
   });
 
-  it("upsert updates an existing annotation for the same (user, source)", async () => {
+  it("upsertWithAutoContainer updates an existing annotation for the same (user, source)", async () => {
     const t = setupTest();
     const userId = await seedUser(t);
     const agentId = await seedAgent(t, userId);
     const convId = await seedConversation(t, agentId);
 
-    const id1 = await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsert, {
-      source: { kind: "conversation", conversationId: convId },
-      rating: "bad", tags: ["x"],
-    });
-    const id2 = await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsert, {
-      source: { kind: "conversation", conversationId: convId },
-      rating: "good_enough", tags: ["y"], comment: "improved",
-    });
+    const id1 = await t
+      .withIdentity(testIdentity)
+      .mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
+        source: { kind: "conversation", conversationId: convId },
+        rating: "bad",
+        tags: ["x"],
+      });
+    const id2 = await t
+      .withIdentity(testIdentity)
+      .mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
+        source: { kind: "conversation", conversationId: convId },
+        rating: "good_enough",
+        tags: ["y"],
+        comment: "improved",
+      });
 
     expect(id1).toBe(id2);
     const row = await t.run(async (ctx) => ctx.db.get(id1));
@@ -135,13 +151,19 @@ describe("annotations CRUD (polymorphic source)", () => {
   it("transcript-source annotation", async () => {
     const t = setupTest();
     const userId = await seedUser(t);
+    const agentId = await seedAgent(t, userId);
     const uploadId = await seedUpload(t, userId);
     const transcriptId = await seedTranscript(t, uploadId);
 
-    const id = await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsert, {
-      source: { kind: "transcript", transcriptId },
-      rating: "pass", tags: [],
-    });
+    const id = await t
+      .withIdentity(testIdentity)
+      .mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "upload", uploadId },
+        source: { kind: "transcript", transcriptId },
+        rating: "pass",
+        tags: [],
+      });
 
     const row = await t.run(async (ctx) => ctx.db.get(id));
     expect(row?.source).toEqual({ kind: "transcript", transcriptId });
@@ -154,12 +176,24 @@ describe("annotations CRUD (polymorphic source)", () => {
     const conv1 = await seedConversation(t, agentId);
     const conv2 = await seedConversation(t, agentId);
 
-    await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsert, {
-      source: { kind: "conversation", conversationId: conv1 }, rating: "bad", tags: [],
-    });
-    await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsert, {
-      source: { kind: "conversation", conversationId: conv2 }, rating: "good_enough", tags: [],
-    });
+    await t
+      .withIdentity(testIdentity)
+      .mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
+        source: { kind: "conversation", conversationId: conv1 },
+        rating: "bad",
+        tags: [],
+      });
+    await t
+      .withIdentity(testIdentity)
+      .mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
+        source: { kind: "conversation", conversationId: conv2 },
+        rating: "good_enough",
+        tags: [],
+      });
 
     const got = await t.withIdentity(testIdentity).query(api.annotations.crud.bySource, {
       source: { kind: "conversation", conversationId: conv1 },
@@ -175,28 +209,43 @@ describe("annotations CRUD (polymorphic source)", () => {
     const conv1 = await seedConversation(t, agentId);
     const conv2 = await seedConversation(t, agentId);
 
-    await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsert, {
-      source: { kind: "conversation", conversationId: conv1 }, rating: "bad", tags: ["b", "a"],
-    });
-    await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsert, {
-      source: { kind: "conversation", conversationId: conv2 }, rating: "bad", tags: ["a", "c"],
-    });
+    await t
+      .withIdentity(testIdentity)
+      .mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
+        source: { kind: "conversation", conversationId: conv1 },
+        rating: "bad",
+        tags: ["b", "a"],
+      });
+    await t
+      .withIdentity(testIdentity)
+      .mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
+        source: { kind: "conversation", conversationId: conv2 },
+        rating: "bad",
+        tags: ["a", "c"],
+      });
 
     const tags = await t.withIdentity(testIdentity).query(api.annotations.crud.allTagsForOrg, {});
     expect(tags).toEqual(["a", "b", "c"]);
   });
 
-  it("rejects unauthenticated upsert", async () => {
+  it("rejects unauthenticated upsertWithAutoContainer", async () => {
     const t = setupTest();
     const userId = await seedUser(t);
     const agentId = await seedAgent(t, userId);
     const convId = await seedConversation(t, agentId);
 
     await expect(
-      t.mutation(api.annotations.crud.upsert, {
+      t.mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
         source: { kind: "conversation", conversationId: convId },
-        rating: "bad", tags: [],
-      })
+        rating: "bad",
+        tags: [],
+      }),
     ).rejects.toThrow();
   });
 
@@ -206,9 +255,15 @@ describe("annotations CRUD (polymorphic source)", () => {
     const agentId = await seedAgent(t, userId);
     const convId = await seedConversation(t, agentId);
 
-    const id = await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsert, {
-      source: { kind: "conversation", conversationId: convId }, rating: "bad", tags: [],
-    });
+    const id = await t
+      .withIdentity(testIdentity)
+      .mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
+        source: { kind: "conversation", conversationId: convId },
+        rating: "bad",
+        tags: [],
+      });
     await t.withIdentity(testIdentity).mutation(api.annotations.crud.remove, { id });
     const row = await t.run(async (ctx) => ctx.db.get(id));
     expect(row).toBeNull();
@@ -222,12 +277,24 @@ describe("annotations CRUD (polymorphic source)", () => {
     const conv2 = await seedConversation(t, agentId);
     const conv3 = await seedConversation(t, agentId);
 
-    await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsert, {
-      source: { kind: "conversation", conversationId: conv1 }, rating: "great", tags: [],
-    });
-    await t.withIdentity(testIdentity).mutation(api.annotations.crud.upsert, {
-      source: { kind: "conversation", conversationId: conv2 }, rating: "bad", tags: [],
-    });
+    await t
+      .withIdentity(testIdentity)
+      .mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
+        source: { kind: "conversation", conversationId: conv1 },
+        rating: "great",
+        tags: [],
+      });
+    await t
+      .withIdentity(testIdentity)
+      .mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
+        source: { kind: "conversation", conversationId: conv2 },
+        rating: "bad",
+        tags: [],
+      });
     // conv3 unannotated
 
     const stats = await t.withIdentity(testIdentity).query(api.annotations.crud.statsForSources, {
@@ -241,5 +308,109 @@ describe("annotations CRUD (polymorphic source)", () => {
     expect(stats.annotated).toBe(2);
     expect(stats.great).toBe(1);
     expect(stats.bad).toBe(1);
+  });
+
+  it("upsertWithAutoContainer creates a container and links the annotation", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const agentId = await seedAgent(t, userId);
+    const convId = await seedConversation(t, agentId);
+
+    const id1 = await t
+      .withIdentity(testIdentity)
+      .mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
+        source: { kind: "conversation", conversationId: convId },
+        rating: "bad",
+        tags: [],
+      });
+
+    const row1 = await t.run(async (ctx) => ctx.db.get(id1));
+    expect(row1?.errorAnalysisId).toBeDefined();
+    const containerId = row1!.errorAnalysisId;
+
+    // Verify container has correct origin
+    const container = await t.run(async (ctx) => ctx.db.get(containerId));
+    expect(container?.agentId).toBe(agentId);
+    expect(container?.origin).toEqual({ kind: "playground" });
+
+    // Verify membership row exists with addedVia: "annotation"
+    const members = await t.run(async (ctx) =>
+      ctx.db
+        .query("errorAnalysisMembers")
+        .withIndex("by_analysis", (q) => q.eq("errorAnalysisId", containerId))
+        .collect(),
+    );
+    expect(members).toHaveLength(1);
+    expect(members[0].source).toEqual({
+      kind: "conversation",
+      conversationId: convId,
+    });
+    expect(members[0].addedVia).toBe("annotation");
+
+    // Call again with same source — same container, same annotation row patched
+    const id2 = await t
+      .withIdentity(testIdentity)
+      .mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "playground" },
+        source: { kind: "conversation", conversationId: convId },
+        rating: "good_enough",
+        tags: [],
+      });
+    expect(id2).toBe(id1);
+
+    const row2 = await t.run(async (ctx) => ctx.db.get(id2));
+    expect(row2?.errorAnalysisId).toBe(containerId);
+    expect(row2?.rating).toBe("good_enough");
+
+    // Still only one container, one member
+    const allContainers = await t.run(async (ctx) =>
+      ctx.db
+        .query("errorAnalyses")
+        .withIndex("by_agent", (q) => q.eq("agentId", agentId))
+        .collect(),
+    );
+    expect(allContainers).toHaveLength(1);
+
+    const allMembers = await t.run(async (ctx) =>
+      ctx.db
+        .query("errorAnalysisMembers")
+        .withIndex("by_analysis", (q) => q.eq("errorAnalysisId", containerId))
+        .collect(),
+    );
+    expect(allMembers).toHaveLength(1);
+  });
+
+  it("uses the analysis hint when provided", async () => {
+    const t = setupTest();
+    const userId = await seedUser(t);
+    const agentId = await seedAgent(t, userId);
+    const convId = await seedConversation(t, agentId);
+
+    // Pre-create an errorAnalyses row
+    const preCreatedId = await t.run(async (ctx) =>
+      ctx.db.insert("errorAnalyses", {
+        orgId: TEST_ORG_ID,
+        agentId,
+        name: "Pre-existing container",
+        origin: { kind: "custom" as const },
+        createdAt: Date.now(),
+      }),
+    );
+
+    const id = await t
+      .withIdentity(testIdentity)
+      .mutation(api.annotations.crud.upsertWithAutoContainer, {
+        agentId,
+        hint: { kind: "analysis", errorAnalysisId: preCreatedId },
+        source: { kind: "conversation", conversationId: convId },
+        rating: "bad",
+        tags: [],
+      });
+
+    const row = await t.run(async (ctx) => ctx.db.get(id));
+    expect(row?.errorAnalysisId).toBe(preCreatedId);
   });
 });
