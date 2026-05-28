@@ -423,6 +423,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
   })
+    .index("by_org", ["orgId"])
     .index("by_agent", ["agentId"])
     .index("by_agent_origin_simulation", ["agentId", "origin.simulationId"])
     .index("by_agent_origin_upload",     ["agentId", "origin.uploadId"]),
