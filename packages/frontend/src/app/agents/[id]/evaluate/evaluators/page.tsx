@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
 import { CreateEvaluatorModal } from "@/components/evaluators/CreateEvaluatorModal";
+import { FromFailureModeModal } from "@/components/evaluators/FromFailureModeModal";
 
 type Evaluator = NonNullable<
   ReturnType<typeof useQuery<typeof api.evaluator.crud.byAgent>>
@@ -96,7 +97,21 @@ export default function AgentEvaluatorsPage() {
   const removeEvaluator = useMutation(api.evaluator.crud.remove);
 
   const [showModal, setShowModal] = useState(false);
+  const [fromFailureModeOpen, setFromFailureModeOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onDocClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [menuOpen]);
 
   function handleCreated(newId: Id<"evaluators">) {
     setShowModal(false);
@@ -108,12 +123,37 @@ export default function AgentEvaluatorsPage() {
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
         <h1 className="text-sm font-medium text-text">Evaluators</h1>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors"
-        >
-          <span>+</span> New evaluator
-        </button>
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors"
+          >
+            <span>+</span> New evaluator
+            <span className="text-[10px] opacity-70">▾</span>
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 mt-1 w-48 rounded-md border border-border bg-bg-elevated shadow-lg z-10 py-1">
+              <button
+                className="w-full text-left px-3 py-2 text-xs text-text hover:bg-bg-surface transition-colors"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setShowModal(true);
+                }}
+              >
+                Start blank / template
+              </button>
+              <button
+                className="w-full text-left px-3 py-2 text-xs text-text hover:bg-bg-surface transition-colors"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setFromFailureModeOpen(true);
+                }}
+              >
+                From failure mode
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* List */}
@@ -150,6 +190,16 @@ export default function AgentEvaluatorsPage() {
           onCreated={handleCreated}
         />
       )}
+
+      <FromFailureModeModal
+        agentId={agentId}
+        open={fromFailureModeOpen}
+        onClose={() => setFromFailureModeOpen(false)}
+        onSpawned={(evalId) => {
+          setFromFailureModeOpen(false);
+          router.push(`/agents/${agentId}/evaluate/evaluators/${evalId}`);
+        }}
+      />
     </div>
   );
 }
