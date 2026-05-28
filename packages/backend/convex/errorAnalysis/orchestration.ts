@@ -32,6 +32,79 @@ type MemberSource =
   | { kind: "conversation"; conversationId: Id<"conversations"> }
   | { kind: "transcript"; transcriptId: Id<"livechatConversations"> };
 
+export const openForOrigin = mutation({
+  args: {
+    agentId: v.id("agents"),
+    hint: v.union(
+      v.object({
+        kind: v.literal("simulation"),
+        simulationId: v.id("conversationSimulations"),
+      }),
+      v.object({
+        kind: v.literal("upload"),
+        uploadId: v.id("livechatUploads"),
+      }),
+      v.object({ kind: v.literal("playground") }),
+    ),
+  },
+  handler: async (ctx, { agentId, hint }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const agent = await ctx.db.get(agentId);
+    if (!agent || agent.orgId !== orgId) throw new Error("Agent not found");
+
+    // Look up existing container for this origin (mirrors
+    // errorAnalysis/members.ts::resolveContainerInternal — duplicated here so
+    // this public mutation runs in a single transaction without crossing
+    // function boundaries).
+    if (hint.kind === "simulation") {
+      const existing = await ctx.db
+        .query("errorAnalyses")
+        .withIndex("by_agent_origin_simulation", (q) =>
+          q
+            .eq("agentId", agentId)
+            .eq("origin.simulationId", hint.simulationId),
+        )
+        .first();
+      if (existing) return existing._id;
+    } else if (hint.kind === "upload") {
+      const existing = await ctx.db
+        .query("errorAnalyses")
+        .withIndex("by_agent_origin_upload", (q) =>
+          q.eq("agentId", agentId).eq("origin.uploadId", hint.uploadId),
+        )
+        .first();
+      if (existing) return existing._id;
+    } else {
+      const candidates = await ctx.db
+        .query("errorAnalyses")
+        .withIndex("by_agent", (q) => q.eq("agentId", agentId))
+        .collect();
+      const existing = candidates.find((c) => c.origin.kind === "playground");
+      if (existing) return existing._id;
+    }
+
+    const name =
+      hint.kind === "simulation"
+        ? "Simulation run"
+        : hint.kind === "upload"
+          ? (await ctx.db.get(hint.uploadId))?.filename ?? "Upload"
+          : "Playground conversations";
+
+    return await ctx.db.insert("errorAnalyses", {
+      orgId,
+      agentId,
+      name,
+      origin:
+        hint.kind === "simulation"
+          ? { kind: "simulation", simulationId: hint.simulationId }
+          : hint.kind === "upload"
+            ? { kind: "upload", uploadId: hint.uploadId }
+            : { kind: "playground" },
+      createdAt: Date.now(),
+    });
+  },
+});
+
 export const byAgent = query({
   args: { agentId: v.id("agents") },
   handler: async (ctx, { agentId }) => {

@@ -60,11 +60,3 @@ export function agentSidebar(agentId: string): SidebarItem[] {
   ];
 }
 
-export function agentRunSidebar(agentId: string, runId: string): SidebarItem[] {
-  const base = `/agents/${agentId}/evaluate/experiments/${runId}`;
-  return [
-    { label: "Run detail", href: base, icon: ICONS.experiments, match: (p) => p === base },
-    { label: "Open coding", href: `${base}/open-coding`, icon: ICONS["open-coding"] },
-    { label: "Axial coding", href: `${base}/axial-coding`, icon: ICONS["axial-coding"] },
-  ];
-}

@@ -168,7 +168,7 @@ export function CreateCustomCohortModal({
                     <option value="">Select a simulation…</option>
                     {(simulations ?? []).map((sim) => (
                       <option key={sim._id} value={sim._id}>
-                        {new Date(sim.startedAt).toLocaleString()} ·{" "}
+                        {sim.startedAt ? new Date(sim.startedAt).toLocaleString() : "—"} ·{" "}
                         {sim.status} · {sim.completedRuns}/{sim.totalRuns}
                       </option>
                     ))}

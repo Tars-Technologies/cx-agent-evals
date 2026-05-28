@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useQuery } from "convex/react";
+import { useParams, useRouter } from "next/navigation";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
 import { SimRunDetail } from "@/components/conversation-sim/SimRunDetail";
 import { SimScenarioList } from "@/components/conversation-sim/SimScenarioList";
+import { AnnotationSidePanel } from "@/components/annotation/AnnotationSidePanel";
+import type { Turn } from "@/components/annotation/AnnotationEditor";
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
@@ -33,8 +35,10 @@ function StatusBadge({ status }: { status: string }) {
 
 function SimMetadataBand({
   sim,
+  onViewAsAnalysis,
 }: {
   sim: NonNullable<Awaited<ReturnType<typeof useQuery<typeof api.conversationSim.orchestration.get>>>>;
+  onViewAsAnalysis(): void;
 }) {
   const started = sim.startedAt ? new Date(sim.startedAt).toLocaleString() : null;
   const completed = sim.completedAt ? new Date(sim.completedAt).toLocaleString() : null;
@@ -96,6 +100,14 @@ function SimMetadataBand({
       {completed && (
         <span className="text-[11px] text-text-dim">Completed {completed}</span>
       )}
+
+      {/* View as error analysis */}
+      <button
+        onClick={onViewAsAnalysis}
+        className="text-[11px] text-accent hover:underline"
+      >
+        View as error analysis →
+      </button>
     </div>
   );
 }
@@ -103,7 +115,9 @@ function SimMetadataBand({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AgentExperimentRunPage() {
+  const router = useRouter();
   const { id: agentId, runId } = useParams<{ id: string; runId: string }>();
+  const agentIdTyped = agentId as Id<"agents">;
   const simulationId = runId as Id<"conversationSimulations">;
 
   const sim = useQuery(api.conversationSim.orchestration.get, { id: simulationId });
@@ -111,11 +125,44 @@ export default function AgentExperimentRunPage() {
 
   const [selectedRunId, setSelectedRunId] = useState<Id<"conversationSimRuns"> | null>(null);
   const [phase, setPhase] = useState<"conversations" | "evaluation">("conversations");
+  const [annotateOpen, setAnnotateOpen] = useState(false);
+
+  const openContainer = useMutation(api.errorAnalysis.orchestration.openForOrigin);
 
   // Auto-select the first run once loaded
   const effectiveRunId =
-    selectedRunId ??
-    (runs && runs.length > 0 ? runs[0]._id : null);
+    selectedRunId ?? (runs && runs.length > 0 ? runs[0]._id : null);
+
+  // Load the currently selected run (for conversationId → messages → turns).
+  const selectedRun = useQuery(
+    api.conversationSim.runs.get,
+    effectiveRunId ? { id: effectiveRunId } : "skip",
+  );
+  const selectedMessages = useQuery(
+    api.crud.conversations.listMessages,
+    selectedRun?.conversationId
+      ? { conversationId: selectedRun.conversationId }
+      : "skip",
+  );
+
+  const turns = useMemo<Turn[]>(() => {
+    if (!selectedMessages) return [];
+    return selectedMessages
+      .filter((m) =>
+        ["user", "assistant", "tool_call", "tool_result", "system"].includes(
+          m.role,
+        ),
+      )
+      .map((m) => ({ role: m.role as Turn["role"], content: m.content }));
+  }, [selectedMessages]);
+
+  async function handleViewAsAnalysis() {
+    const id = await openContainer({
+      agentId: agentIdTyped,
+      hint: { kind: "simulation", simulationId },
+    });
+    router.push(`/agents/${agentId}/evaluate/error-analysis/${id}/annotate`);
+  }
 
   // Loading
   if (sim === undefined || runs === undefined) {
@@ -140,7 +187,7 @@ export default function AgentExperimentRunPage() {
   if (runs.length === 0) {
     return (
       <div className="h-full flex flex-col overflow-hidden">
-        <SimMetadataBand sim={sim} />
+        <SimMetadataBand sim={sim} onViewAsAnalysis={handleViewAsAnalysis} />
         <div className="flex-1 flex items-center justify-center text-text-dim text-xs">
           No runs yet for this simulation.
         </div>
@@ -151,7 +198,7 @@ export default function AgentExperimentRunPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Metadata strip */}
-      <SimMetadataBand sim={sim} />
+      <SimMetadataBand sim={sim} onViewAsAnalysis={handleViewAsAnalysis} />
 
       {/* Two-column body */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
@@ -168,9 +215,22 @@ export default function AgentExperimentRunPage() {
         </div>
 
         {/* Right: run transcript */}
-        <div className="flex-1 min-w-0 overflow-hidden">
+        <div className="flex-1 min-w-0 overflow-hidden relative">
           {effectiveRunId ? (
-            <SimRunDetail runId={effectiveRunId} />
+            <>
+              <SimRunDetail runId={effectiveRunId} />
+              {/* Floating pencil button (top-right of transcript pane) */}
+              {selectedRun?.conversationId && (
+                <button
+                  onClick={() => setAnnotateOpen(true)}
+                  title="Annotate"
+                  aria-label="Annotate"
+                  className="absolute top-2.5 right-3 z-10 px-2 py-1 text-[11px] text-accent border border-accent/30 rounded hover:bg-accent/10 transition-colors"
+                >
+                  ✏ Annotate
+                </button>
+              )}
+            </>
           ) : (
             <div className="h-full flex items-center justify-center text-text-dim text-xs">
               Select a run on the left.
@@ -178,6 +238,21 @@ export default function AgentExperimentRunPage() {
           )}
         </div>
       </div>
+
+      {/* Annotation side panel (floats over right side when open) */}
+      {selectedRun?.conversationId && (
+        <AnnotationSidePanel
+          agentId={agentIdTyped}
+          conversationRef={{
+            kind: "conversation",
+            conversationId: selectedRun.conversationId,
+          }}
+          originHint={{ kind: "simulation", simulationId }}
+          conversation={{ turns }}
+          open={annotateOpen}
+          onClose={() => setAnnotateOpen(false)}
+        />
+      )}
     </div>
   );
 }
