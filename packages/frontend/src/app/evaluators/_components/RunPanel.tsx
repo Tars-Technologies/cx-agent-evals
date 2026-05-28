@@ -1,92 +1,90 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id, Doc } from "@convex/_generated/dataModel";
+import type { Doc, Id } from "@convex/_generated/dataModel"
+import { useMutation, useQuery } from "convex/react"
+import { useState } from "react"
+import { api } from "@/lib/convex"
 
 interface RunPanelProps {
-  config: Doc<"evaluatorConfigs">;
-  experimentId: Id<"experiments">;
-  experiment: Doc<"experiments">;
+  config: Doc<"evaluatorConfigs">
+  experimentId: Id<"experiments">
+  experiment: Doc<"experiments">
 }
 
 export function RunPanel({ config, experimentId, experiment }: RunPanelProps) {
-  const startFullRun = useMutation(api.evaluator.crud.startFullRun);
-  const [running, setRunning] = useState(false);
+  const startFullRun = useMutation(api.evaluator.crud.startFullRun)
+  const [running, setRunning] = useState(false)
   const [activeRunId, setActiveRunId] = useState<Id<"evaluatorRuns"> | null>(
-    null,
-  );
-  const [filter, setFilter] = useState<"all" | "pass" | "fail">("all");
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+    null
+  )
+  const [filter, setFilter] = useState<"all" | "pass" | "fail">("all")
+  const [expandedRow, setExpandedRow] = useState<string | null>(null)
 
   // Get available experiments to run on (same KB)
   const experiments = useQuery(
     api.experiments.orchestration.byKb,
-    experiment.kbId ? { kbId: experiment.kbId } : "skip",
-  );
+    experiment.kbId ? { kbId: experiment.kbId } : "skip"
+  )
   const completedExperiments = (experiments ?? []).filter(
     (e) =>
       e.experimentType === "agent" &&
-      (e.status === "completed" || e.status === "completed_with_errors"),
-  );
+      (e.status === "completed" || e.status === "completed_with_errors")
+  )
 
-  const [targetExpId, setTargetExpId] = useState<Id<"experiments"> | "">("");
+  const [targetExpId, setTargetExpId] = useState<Id<"experiments"> | "">("")
 
   // Get runs
   const runs = useQuery(api.evaluator.crud.runsByConfig, {
-    evaluatorConfigId: config._id,
-  });
-  const fullRuns = (runs ?? []).filter((r) => r.runType === "full");
+    evaluatorConfigId: config._id
+  })
+  const fullRuns = (runs ?? []).filter((r) => r.runType === "full")
   const runningRun = fullRuns.find(
-    (r) => r.status === "pending" || r.status === "running",
-  );
+    (r) => r.status === "pending" || r.status === "running"
+  )
 
   // Display run: active selection or latest completed full run
   const displayRunId =
-    activeRunId ?? fullRuns.find((r) => r.status === "completed")?._id;
+    activeRunId ?? fullRuns.find((r) => r.status === "completed")?._id
   const displayRun = displayRunId
     ? fullRuns.find((r) => r._id === displayRunId)
-    : null;
+    : null
 
   const results = useQuery(
     api.evaluator.crud.resultsByRun,
-    displayRunId ? { runId: displayRunId } : "skip",
-  );
+    displayRunId ? { runId: displayRunId } : "skip"
+  )
 
   // Questions for display
   const targetExp = useQuery(
     api.experiments.orchestration.get,
     displayRun?.targetExperimentId
       ? { id: displayRun.targetExperimentId }
-      : "skip",
-  );
+      : "skip"
+  )
   const targetQuestions = useQuery(
     api.crud.questions.byDataset,
-    targetExp?.datasetId ? { datasetId: targetExp.datasetId } : "skip",
-  );
-  const questionMap = new Map(
-    (targetQuestions ?? []).map((q) => [q._id, q]),
-  );
+    targetExp?.datasetId ? { datasetId: targetExp.datasetId } : "skip"
+  )
+  const questionMap = new Map((targetQuestions ?? []).map((q) => [q._id, q]))
 
   const handleRun = async () => {
-    if (!targetExpId) return;
-    setRunning(true);
+    if (!targetExpId) return
+    setRunning(true)
     try {
       const runId = await startFullRun({
         evaluatorConfigId: config._id,
-        targetExperimentId: targetExpId as Id<"experiments">,
-      });
-      setActiveRunId(runId);
+        targetExperimentId: targetExpId as Id<"experiments">
+      })
+      setActiveRunId(runId)
     } finally {
-      setRunning(false);
+      setRunning(false)
     }
-  };
+  }
 
   const filteredResults = (results ?? []).filter((r) => {
-    if (filter === "all") return true;
-    return r.judgeVerdict === filter;
-  });
+    if (filter === "all") return true
+    return r.judgeVerdict === filter
+  })
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden p-6 min-h-0">
@@ -161,7 +159,7 @@ export function RunPanel({ config, experimentId, experiment }: RunPanelProps) {
               <div
                 className="h-full bg-accent rounded-full transition-all"
                 style={{
-                  width: `${(runningRun.processedTraces / runningRun.totalTraces) * 100}%`,
+                  width: `${(runningRun.processedTraces / runningRun.totalTraces) * 100}%`
                 }}
               />
             </div>
@@ -184,7 +182,8 @@ export function RunPanel({ config, experimentId, experiment }: RunPanelProps) {
             </div>
             {displayRun.confidenceInterval && (
               <div className="text-xs text-text-dim mt-0.5">
-                95% CI: [{(displayRun.confidenceInterval.lower * 100).toFixed(1)}
+                95% CI: [
+                {(displayRun.confidenceInterval.lower * 100).toFixed(1)}
                 %, {(displayRun.confidenceInterval.upper * 100).toFixed(1)}%]
               </div>
             )}
@@ -228,7 +227,7 @@ export function RunPanel({ config, experimentId, experiment }: RunPanelProps) {
               [
                 { key: "all", label: "All" },
                 { key: "pass", label: "Pass" },
-                { key: "fail", label: "Fail" },
+                { key: "fail", label: "Fail" }
               ] as const
             ).map((f) => (
               <button
@@ -266,15 +265,13 @@ export function RunPanel({ config, experimentId, experiment }: RunPanelProps) {
               </thead>
               <tbody>
                 {filteredResults.map((r) => {
-                  const q = questionMap.get(r.questionId);
-                  const isExpanded = expandedRow === r._id;
+                  const q = questionMap.get(r.questionId)
+                  const isExpanded = expandedRow === r._id
 
                   return (
                     <tr
                       key={r._id}
-                      onClick={() =>
-                        setExpandedRow(isExpanded ? null : r._id)
-                      }
+                      onClick={() => setExpandedRow(isExpanded ? null : r._id)}
                       className="border-b border-border cursor-pointer hover:bg-bg-hover transition-colors"
                     >
                       <td className="px-3 py-2">
@@ -302,7 +299,7 @@ export function RunPanel({ config, experimentId, experiment }: RunPanelProps) {
                         </span>
                       </td>
                     </tr>
-                  );
+                  )
                 })}
               </tbody>
             </table>
@@ -317,5 +314,5 @@ export function RunPanel({ config, experimentId, experiment }: RunPanelProps) {
         </div>
       )}
     </div>
-  );
+  )
 }

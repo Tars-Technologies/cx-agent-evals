@@ -1,65 +1,74 @@
-"use client";
+"use client"
 
-import { useState } from "react";
+import { useState } from "react"
 
 interface Scenario {
-  _id: string;
+  _id: string
   persona: {
-    type: string;
-    traits: string[];
-    communicationStyle: string;
-    patienceLevel: "low" | "medium" | "high";
-  };
-  topic: string;
-  intent: string;
-  complexity: "low" | "medium" | "high";
-  reasonForContact: string;
-  instruction: string;
+    type: string
+    traits: string[]
+    communicationStyle: string
+    patienceLevel: "low" | "medium" | "high"
+  }
+  topic: string
+  intent: string
+  complexity: "low" | "medium" | "high"
+  reasonForContact: string
+  instruction: string
   // Provenance metadata (read-only, set during generation)
-  sourceType?: "transcript_grounded" | "synthetic";
+  sourceType?: "transcript_grounded" | "synthetic"
 }
 
 export function ScenarioList({
   scenarios,
   selectedId,
   onSelect,
-  onEdit,
+  onEdit
 }: {
-  scenarios: Scenario[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  onEdit?: (id: string) => void;
+  scenarios: Scenario[]
+  selectedId: string | null
+  onSelect: (id: string) => void
+  onEdit?: (id: string) => void
 }) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [complexityFilter, setComplexityFilter] = useState<"all" | "low" | "medium" | "high">("all");
+  const [searchQuery, setSearchQuery] = useState("")
+  const [complexityFilter, setComplexityFilter] = useState<
+    "all" | "low" | "medium" | "high"
+  >("all")
 
-  const filtered = scenarios.filter(s => {
+  const filtered = scenarios.filter((s) => {
     if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      if (!s.topic.toLowerCase().includes(q) &&
-          !s.intent.toLowerCase().includes(q) &&
-          !s.persona.type.toLowerCase().includes(q)) {
-        return false;
+      const q = searchQuery.toLowerCase()
+      if (
+        !s.topic.toLowerCase().includes(q) &&
+        !s.intent.toLowerCase().includes(q) &&
+        !s.persona.type.toLowerCase().includes(q)
+      ) {
+        return false
       }
     }
-    if (complexityFilter !== "all" && s.complexity !== complexityFilter) return false;
-    return true;
-  });
+    if (complexityFilter !== "all" && s.complexity !== complexityFilter)
+      return false
+    return true
+  })
 
   if (scenarios.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-text-dim text-xs">
         Scenarios will appear here
       </div>
-    );
+    )
   }
 
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-bg-elevated/50">
-        <span className="text-[11px] text-text-dim uppercase tracking-wider">Scenarios</span>
-        <span className="text-[11px] text-text-muted">{scenarios.length} total</span>
+        <span className="text-[11px] text-text-dim uppercase tracking-wider">
+          Scenarios
+        </span>
+        <span className="text-[11px] text-text-muted">
+          {scenarios.length} total
+        </span>
       </div>
 
       {/* Search + Filter */}
@@ -67,12 +76,12 @@ export function ScenarioList({
         <input
           type="text"
           value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
+          onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search scenarios..."
           className="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-xs text-text placeholder:text-text-dim focus:border-accent outline-none"
         />
         <div className="flex gap-1">
-          {(["all", "low", "medium", "high"] as const).map(level => (
+          {(["all", "low", "medium", "high"] as const).map((level) => (
             <button
               key={level}
               onClick={() => setComplexityFilter(level)}
@@ -82,7 +91,9 @@ export function ScenarioList({
                   : "text-text-dim hover:text-text border border-transparent"
               }`}
             >
-              {level === "all" ? "All" : level.charAt(0).toUpperCase() + level.slice(1)}
+              {level === "all"
+                ? "All"
+                : level.charAt(0).toUpperCase() + level.slice(1)}
             </button>
           ))}
         </div>
@@ -90,7 +101,7 @@ export function ScenarioList({
 
       {/* Scenario Items */}
       <div className="flex-1 overflow-y-auto">
-        {filtered.map(scenario => (
+        {filtered.map((scenario) => (
           <div
             key={scenario._id}
             onClick={() => onSelect(scenario._id)}
@@ -101,8 +112,12 @@ export function ScenarioList({
             }`}
           >
             {/* Topic + Intent */}
-            <div className="text-xs text-text font-medium truncate">{scenario.topic}</div>
-            <div className="text-[11px] text-text-dim mt-0.5 truncate">{scenario.intent}</div>
+            <div className="text-xs text-text font-medium truncate">
+              {scenario.topic}
+            </div>
+            <div className="text-[11px] text-text-dim mt-0.5 truncate">
+              {scenario.intent}
+            </div>
 
             {/* Tags */}
             <div className="flex flex-wrap gap-1 mt-1.5">
@@ -111,13 +126,15 @@ export function ScenarioList({
                 {scenario.persona.type}
               </span>
               {/* Complexity */}
-              <span className={`px-1.5 py-0.5 text-[9px] rounded border ${
-                scenario.complexity === "high"
-                  ? "bg-red-500/15 text-red-400 border-red-500/20"
-                  : scenario.complexity === "medium"
-                    ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/20"
-                    : "bg-green-500/15 text-green-400 border-green-500/20"
-              }`}>
+              <span
+                className={`px-1.5 py-0.5 text-[9px] rounded border ${
+                  scenario.complexity === "high"
+                    ? "bg-red-500/15 text-red-400 border-red-500/20"
+                    : scenario.complexity === "medium"
+                      ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/20"
+                      : "bg-green-500/15 text-green-400 border-green-500/20"
+                }`}
+              >
                 {scenario.complexity}
               </span>
               {/* Communication style */}
@@ -125,12 +142,16 @@ export function ScenarioList({
                 {scenario.persona.communicationStyle}
               </span>
               {scenario.sourceType && (
-                <span className={`px-1.5 py-0.5 text-[9px] rounded border ${
-                  scenario.sourceType === "transcript_grounded"
-                    ? "bg-green-500/15 text-green-400 border-green-500/20"
-                    : "bg-purple-500/15 text-purple-400 border-purple-500/20"
-                }`}>
-                  {scenario.sourceType === "transcript_grounded" ? "grounded" : "synthetic"}
+                <span
+                  className={`px-1.5 py-0.5 text-[9px] rounded border ${
+                    scenario.sourceType === "transcript_grounded"
+                      ? "bg-green-500/15 text-green-400 border-green-500/20"
+                      : "bg-purple-500/15 text-purple-400 border-purple-500/20"
+                  }`}
+                >
+                  {scenario.sourceType === "transcript_grounded"
+                    ? "grounded"
+                    : "synthetic"}
                 </span>
               )}
             </div>
@@ -138,11 +159,24 @@ export function ScenarioList({
             {/* Edit button (on hover) */}
             {onEdit && (
               <button
-                onClick={e => { e.stopPropagation(); onEdit(scenario._id); }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onEdit(scenario._id)
+                }}
                 className="hidden group-hover:inline-flex absolute right-2 top-2 p-1 text-text-dim hover:text-accent"
               >
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                <svg
+                  className="w-3 h-3"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
+                  />
                 </svg>
               </button>
             )}
@@ -155,5 +189,5 @@ export function ScenarioList({
         )}
       </div>
     </div>
-  );
+  )
 }

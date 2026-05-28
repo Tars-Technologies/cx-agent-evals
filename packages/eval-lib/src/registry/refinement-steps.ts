@@ -1,4 +1,4 @@
-import type { RegistryEntry } from "./types.js";
+import type { RegistryEntry } from "./types.js"
 
 export const REFINEMENT_STEP_REGISTRY: readonly RegistryEntry[] = [
   {
@@ -16,10 +16,10 @@ export const REFINEMENT_STEP_REGISTRY: readonly RegistryEntry[] = [
           "Number of chunks to keep after reranking. Lower than the input size (e.g. 5 from 25) to widen-then-narrow.",
         type: "number",
         default: 5,
-        constraints: { min: 1, max: 100, step: 1 },
-      },
+        constraints: { min: 1, max: 100, step: 1 }
+      }
     ],
-    defaults: { topN: 5 },
+    defaults: { topN: 5 }
   },
   {
     id: "threshold",
@@ -36,10 +36,10 @@ export const REFINEMENT_STEP_REGISTRY: readonly RegistryEntry[] = [
           "Chunks with a relevance score below this threshold are discarded. Higher values are stricter, keeping only high-confidence results.",
         type: "number",
         default: 0.3,
-        constraints: { min: 0, max: 1, step: 0.05 },
-      },
+        constraints: { min: 0, max: 1, step: 0.05 }
+      }
     ],
-    defaults: { minScore: 0.3 },
+    defaults: { minScore: 0.3 }
   },
   {
     id: "dedup",
@@ -59,16 +59,16 @@ export const REFINEMENT_STEP_REGISTRY: readonly RegistryEntry[] = [
           {
             value: "exact",
             label: "Exact",
-            description: "Remove only identical chunks",
+            description: "Remove only identical chunks"
           },
           {
             value: "overlap",
             label: "Overlap",
             description:
-              "Remove chunks with character overlap above the threshold",
-          },
+              "Remove chunks with character overlap above the threshold"
+          }
         ],
-        default: "overlap",
+        default: "overlap"
       },
       {
         key: "overlapThreshold",
@@ -77,10 +77,10 @@ export const REFINEMENT_STEP_REGISTRY: readonly RegistryEntry[] = [
           "Minimum character overlap ratio (0-1) to consider two chunks as duplicates. Only used when method is 'overlap'.",
         type: "number",
         default: 0.5,
-        constraints: { min: 0, max: 1, step: 0.1 },
-      },
+        constraints: { min: 0, max: 1, step: 0.1 }
+      }
     ],
-    defaults: { method: "overlap", overlapThreshold: 0.5 },
+    defaults: { method: "overlap", overlapThreshold: 0.5 }
   },
   {
     id: "mmr",
@@ -97,10 +97,10 @@ export const REFINEMENT_STEP_REGISTRY: readonly RegistryEntry[] = [
           "Trade-off between relevance (1.0) and diversity (0.0). Lower values produce more diverse result sets.",
         type: "number",
         default: 0.7,
-        constraints: { min: 0, max: 1, step: 0.1 },
-      },
+        constraints: { min: 0, max: 1, step: 0.1 }
+      }
     ],
-    defaults: { lambda: 0.7 },
+    defaults: { lambda: 0.7 }
   },
   {
     id: "expand-context",
@@ -117,9 +117,9 @@ export const REFINEMENT_STEP_REGISTRY: readonly RegistryEntry[] = [
           "Number of characters to include before and after each chunk from the source document.",
         type: "number",
         default: 500,
-        constraints: { min: 50, max: 5000, step: 50 },
-      },
+        constraints: { min: 50, max: 5000, step: 50 }
+      }
     ],
-    defaults: { windowChars: 500 },
-  },
-] as const;
+    defaults: { windowChars: 500 }
+  }
+] as const

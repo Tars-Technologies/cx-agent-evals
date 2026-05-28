@@ -1,23 +1,23 @@
-"use client";
+"use client"
 
-import { CollapsibleSection } from "./CollapsibleSection";
-import { TagsSection } from "./TagsSection";
+import { CollapsibleSection } from "./CollapsibleSection"
+import { TagsSection } from "./TagsSection"
 
 interface MetadataPaneProps {
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  result: any | null;
-  question: any | null;
-  annotation: any | null;
-  allTags: string[];
+  result: any | null
+  question: any | null
+  annotation: any | null
+  allTags: string[]
 }
 
 export function MetadataPane({
   result,
   question,
   annotation,
-  allTags,
+  allTags
 }: MetadataPaneProps) {
-  if (!result) return null;
+  if (!result) return null
 
   return (
     <div className="w-96 border-l border-border overflow-y-auto shrink-0 flex flex-col">
@@ -57,9 +57,7 @@ export function MetadataPane({
         </CollapsibleSection>
 
         {/* Tool Calls */}
-        <CollapsibleSection
-          title={`Tool Calls (${result.toolCalls.length})`}
-        >
+        <CollapsibleSection title={`Tool Calls (${result.toolCalls.length})`}>
           {result.toolCalls.length === 0 ? (
             <div className="text-text-dim text-xs">No tool calls.</div>
           ) : (
@@ -126,12 +124,12 @@ export function MetadataPane({
                       {value.toFixed(3)}
                     </span>
                   </div>
-                ),
+                )
               )}
             </div>
           </CollapsibleSection>
         )}
       </div>
     </div>
-  );
+  )
 }

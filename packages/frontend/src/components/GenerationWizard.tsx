@@ -1,48 +1,48 @@
-"use client";
+"use client"
 
-import { useState, useEffect, useCallback } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
-import type { PromptPreferences, UnifiedWizardConfig } from "@/lib/types";
-import { WizardStepRealWorld } from "./WizardStepRealWorld";
-import { WizardStepDimensions } from "./WizardStepDimensions";
-import { WizardStepPreferences } from "./WizardStepPreferences";
-import { WizardStepReview } from "./WizardStepReview";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation, useQuery } from "convex/react"
+import { useCallback, useEffect, useState } from "react"
+import { api } from "@/lib/convex"
+import type { PromptPreferences, UnifiedWizardConfig } from "@/lib/types"
+import { WizardStepDimensions } from "./WizardStepDimensions"
+import { WizardStepPreferences } from "./WizardStepPreferences"
+import { WizardStepRealWorld } from "./WizardStepRealWorld"
+import { WizardStepReview } from "./WizardStepReview"
 
-const WIZARD_CONFIG_PREFIX = "rag-eval:unified-wizard-config:";
-const OLD_WIZARD_CONFIG_KEY = "rag-eval:unified-wizard-config";
-const wizardKey = (kbId: string) => `${WIZARD_CONFIG_PREFIX}${kbId}`;
+const WIZARD_CONFIG_PREFIX = "rag-eval:unified-wizard-config:"
+const OLD_WIZARD_CONFIG_KEY = "rag-eval:unified-wizard-config"
+const wizardKey = (kbId: string) => `${WIZARD_CONFIG_PREFIX}${kbId}`
 
-const OLD_DISCOVER_URL_KEY = "rag-eval:dimension-discover-url";
-const DISCOVER_URL_PREFIX = "rag-eval:dimension-discover-url:";
-const discoverUrlKey = (kbId: string) => `${DISCOVER_URL_PREFIX}${kbId}`;
+const OLD_DISCOVER_URL_KEY = "rag-eval:dimension-discover-url"
+const DISCOVER_URL_PREFIX = "rag-eval:dimension-discover-url:"
+const discoverUrlKey = (kbId: string) => `${DISCOVER_URL_PREFIX}${kbId}`
 
 const DEFAULT_PREFERENCES: PromptPreferences = {
   questionTypes: ["factoid", "procedural", "conditional"],
   tone: "professional but accessible",
-  focusAreas: "",
-};
+  focusAreas: ""
+}
 
 const DEFAULT_CONFIG: UnifiedWizardConfig = {
   realWorldQuestions: [],
   dimensions: [],
   preferences: DEFAULT_PREFERENCES,
   totalQuestions: 30,
-  allocationOverrides: {},
-};
+  allocationOverrides: {}
+}
 
-const STEPS = ["Real-World Qs", "Dimensions", "Preferences", "Review"];
+const STEPS = ["Real-World Qs", "Dimensions", "Preferences", "Review"]
 
-export const DEFAULT_PRIORITY = 3;
+export const DEFAULT_PRIORITY = 3
 
 interface GenerationWizardProps {
-  kbId: Id<"knowledgeBases">;
-  generating: boolean;
-  disabledReason?: string;
-  onGenerated: (datasetId: Id<"datasets">, jobId: Id<"generationJobs">) => void;
-  onError: (error: string) => void;
-  onCancel: () => void;
+  kbId: Id<"knowledgeBases">
+  generating: boolean
+  disabledReason?: string
+  onGenerated: (datasetId: Id<"datasets">, jobId: Id<"generationJobs">) => void
+  onError: (error: string) => void
+  onCancel: () => void
 }
 
 export function GenerationWizard({
@@ -51,116 +51,118 @@ export function GenerationWizard({
   disabledReason,
   onGenerated,
   onError,
-  onCancel,
+  onCancel
 }: GenerationWizardProps) {
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(0)
   const [config, setConfig] = useState<UnifiedWizardConfig>(() => {
     try {
-      const saved = localStorage.getItem(wizardKey(kbId));
-      if (saved) return { ...DEFAULT_CONFIG, ...JSON.parse(saved) };
+      const saved = localStorage.getItem(wizardKey(kbId))
+      if (saved) return { ...DEFAULT_CONFIG, ...JSON.parse(saved) }
     } catch {
       // Ignore corrupted localStorage
     }
-    return DEFAULT_CONFIG;
-  });
+    return DEFAULT_CONFIG
+  })
 
   useEffect(() => {
     try {
-      localStorage.setItem(wizardKey(kbId), JSON.stringify(config));
+      localStorage.setItem(wizardKey(kbId), JSON.stringify(config))
     } catch {
       // localStorage full or unavailable
     }
-  }, [config, kbId]);
+  }, [config, kbId])
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(wizardKey(kbId));
+      const saved = localStorage.getItem(wizardKey(kbId))
       if (saved) {
-        setConfig({ ...DEFAULT_CONFIG, ...JSON.parse(saved) });
+        setConfig({ ...DEFAULT_CONFIG, ...JSON.parse(saved) })
       } else {
-        setConfig(DEFAULT_CONFIG);
+        setConfig(DEFAULT_CONFIG)
       }
     } catch {
-      setConfig(DEFAULT_CONFIG);
+      setConfig(DEFAULT_CONFIG)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId]);
+  }, [kbId])
 
   useEffect(() => {
     try {
-      const oldConfig = localStorage.getItem(OLD_WIZARD_CONFIG_KEY);
+      const oldConfig = localStorage.getItem(OLD_WIZARD_CONFIG_KEY)
       if (oldConfig != null) {
-        const currentKey = wizardKey(kbId);
+        const currentKey = wizardKey(kbId)
         if (localStorage.getItem(currentKey) == null) {
-          localStorage.setItem(currentKey, oldConfig);
+          localStorage.setItem(currentKey, oldConfig)
         }
-        localStorage.removeItem(OLD_WIZARD_CONFIG_KEY);
+        localStorage.removeItem(OLD_WIZARD_CONFIG_KEY)
       }
-      const oldUrl = localStorage.getItem(OLD_DISCOVER_URL_KEY);
+      const oldUrl = localStorage.getItem(OLD_DISCOVER_URL_KEY)
       if (oldUrl != null) {
-        const currentUrlKey = discoverUrlKey(kbId);
+        const currentUrlKey = discoverUrlKey(kbId)
         if (localStorage.getItem(currentUrlKey) == null) {
-          localStorage.setItem(currentUrlKey, oldUrl);
+          localStorage.setItem(currentUrlKey, oldUrl)
         }
-        localStorage.removeItem(OLD_DISCOVER_URL_KEY);
+        localStorage.removeItem(OLD_DISCOVER_URL_KEY)
       }
     } catch {
       // Silent — migration is best-effort
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [])
 
   // KB metadata (for total doc count, emptiness check)
-  const kb = useQuery(api.crud.knowledgeBases.get, { id: kbId });
-  const totalDocCount = kb?.documentCount ?? 0;
+  const kb = useQuery(api.crud.knowledgeBases.get, { id: kbId })
+  const totalDocCount = kb?.documentCount ?? 0
 
   // Reactive list of docs the user has customized priority on. Server-side
   // bounded; the wizard never loads the full KB doc list.
   const customizedDocs = useQuery(api.crud.documents.listCustomizedDocs, {
-    kbId,
-  });
+    kbId
+  })
 
-  const updatePriority = useMutation(api.crud.documents.updatePriority);
-  const startGeneration = useMutation(api.generation.orchestration.startGeneration);
+  const updatePriority = useMutation(api.crud.documents.updatePriority)
+  const startGeneration = useMutation(
+    api.generation.orchestration.startGeneration
+  )
 
   const handlePriorityChange = useCallback(
     async (documentId: Id<"documents">, priority: number) => {
       try {
-        await updatePriority({ documentId, priority });
+        await updatePriority({ documentId, priority })
       } catch {
         // Best-effort sync — Convex reactivity will re-fetch customizedDocs
       }
     },
-    [updatePriority],
-  );
+    [updatePriority]
+  )
 
   async function handleGenerate() {
-    if (!kbId || generating) return;
+    if (!kbId || generating) return
     try {
       const strategyConfig: Record<string, unknown> = {
         totalQuestions: config.totalQuestions,
-        promptPreferences: config.preferences,
-      };
+        promptPreferences: config.preferences
+      }
       if (config.realWorldQuestions.length > 0) {
-        strategyConfig.realWorldQuestions = config.realWorldQuestions;
+        strategyConfig.realWorldQuestions = config.realWorldQuestions
       }
       if (config.dimensions.length > 0) {
-        strategyConfig.dimensions = config.dimensions;
+        strategyConfig.dimensions = config.dimensions
       }
       if (Object.keys(config.allocationOverrides).length > 0) {
-        strategyConfig.allocationOverrides = config.allocationOverrides;
+        strategyConfig.allocationOverrides = config.allocationOverrides
       }
 
       const result = await startGeneration({
         kbId,
         name: `unified-${Date.now()}`,
         strategy: "unified",
-        strategyConfig,
-      });
+        strategyConfig
+      })
 
-      onGenerated(result.datasetId, result.jobId);
+      onGenerated(result.datasetId, result.jobId)
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Failed to start generation");
+      onError(err instanceof Error ? err.message : "Failed to start generation")
     }
   }
 
@@ -169,7 +171,9 @@ export function GenerationWizard({
       <div className="max-w-[840px] mx-auto border border-border rounded-lg bg-bg-elevated p-6 animate-fade-in">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 mb-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-text">New Question Generation</h2>
+          <h2 className="text-sm font-semibold text-text">
+            New Question Generation
+          </h2>
           <button
             onClick={onCancel}
             className="text-xs text-text-dim hover:text-text transition-colors"
@@ -181,7 +185,7 @@ export function GenerationWizard({
         {/* Stepper */}
         <div className="flex items-stretch gap-2 mb-6">
           {STEPS.map((label, i) => {
-            const state = i === step ? "active" : i < step ? "done" : "pending";
+            const state = i === step ? "active" : i < step ? "done" : "pending"
             return (
               <button
                 key={label}
@@ -209,7 +213,7 @@ export function GenerationWizard({
                   {label}
                 </span>
               </button>
-            );
+            )
           })}
         </div>
 
@@ -218,7 +222,9 @@ export function GenerationWizard({
           {step === 0 && (
             <WizardStepRealWorld
               questions={config.realWorldQuestions}
-              onChange={(qs) => setConfig((prev) => ({ ...prev, realWorldQuestions: qs }))}
+              onChange={(qs) =>
+                setConfig((prev) => ({ ...prev, realWorldQuestions: qs }))
+              }
               onNext={() => setStep(1)}
               onSkip={() => setStep(1)}
             />
@@ -227,16 +233,23 @@ export function GenerationWizard({
             <WizardStepDimensions
               kbId={kbId}
               dimensions={config.dimensions}
-              onChange={(dims) => setConfig((prev) => ({ ...prev, dimensions: dims }))}
+              onChange={(dims) =>
+                setConfig((prev) => ({ ...prev, dimensions: dims }))
+              }
               onNext={() => setStep(2)}
-              onSkip={() => setStep(2)}
+              onSkip={() => {
+                setConfig((prev) => ({ ...prev, dimensions: [] }))
+                setStep(2)
+              }}
               onBack={() => setStep(0)}
             />
           )}
           {step === 2 && (
             <WizardStepPreferences
               preferences={config.preferences}
-              onChange={(prefs) => setConfig((prev) => ({ ...prev, preferences: prefs }))}
+              onChange={(prefs) =>
+                setConfig((prev) => ({ ...prev, preferences: prefs }))
+              }
               onNext={() => setStep(3)}
               onBack={() => setStep(1)}
             />
@@ -247,7 +260,9 @@ export function GenerationWizard({
               config={config}
               totalDocCount={totalDocCount}
               customizedDocs={customizedDocs ?? []}
-              onTotalQuestionsChange={(n) => setConfig((prev) => ({ ...prev, totalQuestions: n }))}
+              onTotalQuestionsChange={(n) =>
+                setConfig((prev) => ({ ...prev, totalQuestions: n }))
+              }
               onPriorityChange={handlePriorityChange}
               onGenerate={handleGenerate}
               onBack={() => setStep(2)}
@@ -260,5 +275,5 @@ export function GenerationWizard({
         </div>
       </div>
     </div>
-  );
+  )
 }

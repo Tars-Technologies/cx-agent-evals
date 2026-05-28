@@ -1,4 +1,4 @@
-import type { SeedEntity } from "./types.js";
+import type { SeedEntity } from "./types.js"
 
 export const SEED_ENTITIES: SeedEntity[] = [
   // ── Finance (3) ──────────────────────────────────────────────
@@ -9,9 +9,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://www.chase.com/digital/resources/privacy-security/security/report-fraud",
-      "https://www.chase.com/personal/customer-service",
+      "https://www.chase.com/personal/customer-service"
     ],
-    tags: ["fortune-500", "cx", "support", "banking"],
+    tags: ["fortune-500", "cx", "support", "banking"]
   },
   {
     name: "Bank of America",
@@ -20,9 +20,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://www.bankofamerica.com/customer-service/contact-us/",
-      "https://www.bankofamerica.com/security-center/faq/",
+      "https://www.bankofamerica.com/security-center/faq/"
     ],
-    tags: ["fortune-500", "cx", "support", "banking"],
+    tags: ["fortune-500", "cx", "support", "banking"]
   },
   {
     name: "Wells Fargo",
@@ -31,9 +31,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://www.wellsfargo.com/help/",
-      "https://www.wellsfargo.com/privacy-security/fraud/report/",
+      "https://www.wellsfargo.com/privacy-security/fraud/report/"
     ],
-    tags: ["fortune-500", "cx", "support", "banking"],
+    tags: ["fortune-500", "cx", "support", "banking"]
   },
 
   // ── Insurance (3) ───────────────────────────────────────────
@@ -44,9 +44,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://www.uhc.com/member-resources/contact-us",
-      "https://www.uhc.com/member-resources/member-faq",
+      "https://www.uhc.com/member-resources/member-faq"
     ],
-    tags: ["fortune-500", "cx", "support", "health-insurance"],
+    tags: ["fortune-500", "cx", "support", "health-insurance"]
   },
   {
     name: "Elevance Health",
@@ -55,9 +55,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://www.anthem.com/contact-us/",
-      "https://www.anthem.com/member/faq",
+      "https://www.anthem.com/member/faq"
     ],
-    tags: ["fortune-500", "cx", "support", "health-insurance"],
+    tags: ["fortune-500", "cx", "support", "health-insurance"]
   },
   {
     name: "MetLife",
@@ -66,9 +66,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://www.metlife.com/support/",
-      "https://www.metlife.com/support/faq/",
+      "https://www.metlife.com/support/faq/"
     ],
-    tags: ["fortune-500", "cx", "support", "life-insurance"],
+    tags: ["fortune-500", "cx", "support", "life-insurance"]
   },
 
   // ── Healthcare (3) ──────────────────────────────────────────
@@ -79,9 +79,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://www.cvs.com/help/help-index.jsp",
-      "https://www.cvs.com/help/email-customer-relations.jsp",
+      "https://www.cvs.com/help/email-customer-relations.jsp"
     ],
-    tags: ["fortune-500", "cx", "support", "pharmacy"],
+    tags: ["fortune-500", "cx", "support", "pharmacy"]
   },
   {
     name: "HCA Healthcare",
@@ -90,9 +90,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://hcahealthcare.com/patients/",
-      "https://hcahealthcare.com/about/faq.dot",
+      "https://hcahealthcare.com/about/faq.dot"
     ],
-    tags: ["fortune-500", "cx", "support", "hospital"],
+    tags: ["fortune-500", "cx", "support", "hospital"]
   },
   {
     name: "Humana",
@@ -101,9 +101,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://www.humana.com/help/contact-us",
-      "https://www.humana.com/help",
+      "https://www.humana.com/help"
     ],
-    tags: ["fortune-500", "cx", "support", "managed-care"],
+    tags: ["fortune-500", "cx", "support", "managed-care"]
   },
 
   // ── Telecom (3) ─────────────────────────────────────────────
@@ -114,9 +114,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://www.att.com/support/",
-      "https://www.att.com/support/contact-us/",
+      "https://www.att.com/support/contact-us/"
     ],
-    tags: ["fortune-500", "cx", "support", "wireless"],
+    tags: ["fortune-500", "cx", "support", "wireless"]
   },
   {
     name: "Verizon",
@@ -125,9 +125,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://www.verizon.com/support/",
-      "https://www.verizon.com/support/contact-us/",
+      "https://www.verizon.com/support/contact-us/"
     ],
-    tags: ["fortune-500", "cx", "support", "wireless"],
+    tags: ["fortune-500", "cx", "support", "wireless"]
   },
   {
     name: "T-Mobile",
@@ -136,9 +136,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://www.t-mobile.com/support",
-      "https://www.t-mobile.com/contact-us",
+      "https://www.t-mobile.com/contact-us"
     ],
-    tags: ["fortune-500", "cx", "support", "wireless"],
+    tags: ["fortune-500", "cx", "support", "wireless"]
   },
 
   // ── Education (3) ───────────────────────────────────────────
@@ -149,9 +149,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://www.universityofcalifornia.edu/about-us/contact-us",
-      "https://admission.universityofcalifornia.edu/how-to-apply/applying-as-a-freshman/",
+      "https://admission.universityofcalifornia.edu/how-to-apply/applying-as-a-freshman/"
     ],
-    tags: ["cx", "support", "public-university", "higher-education"],
+    tags: ["cx", "support", "public-university", "higher-education"]
   },
   {
     name: "Coursera",
@@ -160,9 +160,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://www.coursera.support/s/",
-      "https://www.coursera.org/about/contact",
+      "https://www.coursera.org/about/contact"
     ],
-    tags: ["cx", "support", "online-education", "edtech"],
+    tags: ["cx", "support", "online-education", "edtech"]
   },
   {
     name: "Pearson",
@@ -171,9 +171,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "company",
     sourceUrls: [
       "https://www.pearson.com/en-us/support.html",
-      "https://www.pearson.com/en-us/contact-us.html",
+      "https://www.pearson.com/en-us/contact-us.html"
     ],
-    tags: ["cx", "support", "educational-publishing", "edtech"],
+    tags: ["cx", "support", "educational-publishing", "edtech"]
   },
 
   // ── Government - States (8) ─────────────────────────────────
@@ -184,9 +184,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "government-state",
     sourceUrls: [
       "https://www.ca.gov/contact/",
-      "https://www.dmv.ca.gov/portal/customer-service/",
+      "https://www.dmv.ca.gov/portal/customer-service/"
     ],
-    tags: ["government", "state", "cx", "support"],
+    tags: ["government", "state", "cx", "support"]
   },
   {
     name: "Texas",
@@ -195,9 +195,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "government-state",
     sourceUrls: [
       "https://www.texas.gov/contact/",
-      "https://www.txdmv.gov/contact-us",
+      "https://www.txdmv.gov/contact-us"
     ],
-    tags: ["government", "state", "cx", "support"],
+    tags: ["government", "state", "cx", "support"]
   },
   {
     name: "New York",
@@ -206,9 +206,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "government-state",
     sourceUrls: [
       "https://www.ny.gov/services",
-      "https://dmv.ny.gov/contact-us",
+      "https://dmv.ny.gov/contact-us"
     ],
-    tags: ["government", "state", "cx", "support"],
+    tags: ["government", "state", "cx", "support"]
   },
   {
     name: "Florida",
@@ -217,9 +217,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "government-state",
     sourceUrls: [
       "https://www.myflorida.com/help/",
-      "https://www.flhsmv.gov/contact-us/",
+      "https://www.flhsmv.gov/contact-us/"
     ],
-    tags: ["government", "state", "cx", "support"],
+    tags: ["government", "state", "cx", "support"]
   },
   {
     name: "Illinois",
@@ -228,9 +228,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "government-state",
     sourceUrls: [
       "https://www2.illinois.gov/sites/contactus/",
-      "https://www.ilsos.gov/contactus/",
+      "https://www.ilsos.gov/contactus/"
     ],
-    tags: ["government", "state", "cx", "support"],
+    tags: ["government", "state", "cx", "support"]
   },
   {
     name: "Ohio",
@@ -239,9 +239,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "government-state",
     sourceUrls: [
       "https://ohio.gov/contact",
-      "https://www.bmv.ohio.gov/contact-us.aspx",
+      "https://www.bmv.ohio.gov/contact-us.aspx"
     ],
-    tags: ["government", "state", "cx", "support"],
+    tags: ["government", "state", "cx", "support"]
   },
   {
     name: "Georgia",
@@ -250,9 +250,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "government-state",
     sourceUrls: [
       "https://georgia.gov/contact-georgia",
-      "https://dds.georgia.gov/contact-us",
+      "https://dds.georgia.gov/contact-us"
     ],
-    tags: ["government", "state", "cx", "support"],
+    tags: ["government", "state", "cx", "support"]
   },
   {
     name: "Washington",
@@ -261,9 +261,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "government-state",
     sourceUrls: [
       "https://access.wa.gov/contact/",
-      "https://www.dol.wa.gov/contact-us",
+      "https://www.dol.wa.gov/contact-us"
     ],
-    tags: ["government", "state", "cx", "support"],
+    tags: ["government", "state", "cx", "support"]
   },
 
   // ── Government - Counties (5) ───────────────────────────────
@@ -274,9 +274,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "government-county",
     sourceUrls: [
       "https://www.lacounty.gov/contact-us/",
-      "https://www.lacounty.gov/residents/",
+      "https://www.lacounty.gov/residents/"
     ],
-    tags: ["government", "county", "cx", "support"],
+    tags: ["government", "county", "cx", "support"]
   },
   {
     name: "Cook County",
@@ -285,9 +285,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "government-county",
     sourceUrls: [
       "https://www.cookcountyil.gov/contact",
-      "https://www.cookcountyil.gov/service/resident-services",
+      "https://www.cookcountyil.gov/service/resident-services"
     ],
-    tags: ["government", "county", "cx", "support"],
+    tags: ["government", "county", "cx", "support"]
   },
   {
     name: "Harris County",
@@ -296,9 +296,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "government-county",
     sourceUrls: [
       "https://www.harriscountytx.gov/Contact-Us",
-      "https://www.harriscountytx.gov/Government/Departments",
+      "https://www.harriscountytx.gov/Government/Departments"
     ],
-    tags: ["government", "county", "cx", "support"],
+    tags: ["government", "county", "cx", "support"]
   },
   {
     name: "Maricopa County",
@@ -307,9 +307,9 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "government-county",
     sourceUrls: [
       "https://www.maricopa.gov/Directory.aspx",
-      "https://www.maricopa.gov/5523/Contact-Us",
+      "https://www.maricopa.gov/5523/Contact-Us"
     ],
-    tags: ["government", "county", "cx", "support"],
+    tags: ["government", "county", "cx", "support"]
   },
   {
     name: "King County",
@@ -318,16 +318,16 @@ export const SEED_ENTITIES: SeedEntity[] = [
     entityType: "government-county",
     sourceUrls: [
       "https://kingcounty.gov/en/legacy/about/contact-us",
-      "https://kingcounty.gov/en/dept/executive/governance-leadership",
+      "https://kingcounty.gov/en/dept/executive/governance-leadership"
     ],
-    tags: ["government", "county", "cx", "support"],
-  },
-];
+    tags: ["government", "county", "cx", "support"]
+  }
+]
 
 export function getSeedIndustries(): string[] {
-  return [...new Set(SEED_ENTITIES.map((e) => e.industry))];
+  return [...new Set(SEED_ENTITIES.map((e) => e.industry))]
 }
 
 export function getSeedEntitiesByIndustry(industry: string): SeedEntity[] {
-  return SEED_ENTITIES.filter((e) => e.industry === industry);
+  return SEED_ENTITIES.filter((e) => e.industry === industry)
 }

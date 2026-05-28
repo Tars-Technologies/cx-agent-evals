@@ -1,40 +1,40 @@
-"use client";
+"use client"
 
-import { useEffect, useRef, useState } from "react";
-import { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useEffect, useRef, useState } from "react"
 
 interface FailureMode {
-  _id: Id<"failureModes">;
-  name: string;
-  description: string;
-  order: number;
+  _id: Id<"failureModes">
+  name: string
+  description: string
+  order: number
 }
 
 interface FailureModeListPaneProps {
-  failureModes: FailureMode[];
-  mappingCounts: Map<string, number>;
-  selectedId: Id<"failureModes"> | null;
-  onSelect: (id: Id<"failureModes">) => void;
+  failureModes: FailureMode[]
+  mappingCounts: Map<string, number>
+  selectedId: Id<"failureModes"> | null
+  onSelect: (id: Id<"failureModes">) => void
 }
 
 export function FailureModeListPane({
   failureModes,
   mappingCounts,
   selectedId,
-  onSelect,
+  onSelect
 }: FailureModeListPaneProps) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const selectedRef = useRef<HTMLButtonElement>(null);
+  const [searchQuery, setSearchQuery] = useState("")
+  const selectedRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
-    selectedRef.current?.scrollIntoView({ block: "nearest" });
-  }, [selectedId]);
+    selectedRef.current?.scrollIntoView({ block: "nearest" })
+  }, [selectedId])
 
   const filtered = searchQuery
     ? failureModes.filter((fm) =>
-        fm.name.toLowerCase().includes(searchQuery.toLowerCase()),
+        fm.name.toLowerCase().includes(searchQuery.toLowerCase())
       )
-    : failureModes;
+    : failureModes
 
   return (
     <div className="w-72 border-r border-border shrink-0 flex flex-col h-full bg-bg">
@@ -65,8 +65,8 @@ export function FailureModeListPane({
           </div>
         ) : (
           filtered.map((fm) => {
-            const isSelected = fm._id === selectedId;
-            const count = mappingCounts.get(fm._id) ?? 0;
+            const isSelected = fm._id === selectedId
+            const count = mappingCounts.get(fm._id) ?? 0
 
             return (
               <button
@@ -91,10 +91,10 @@ export function FailureModeListPane({
                   </span>
                 </div>
               </button>
-            );
+            )
           })
         )}
       </div>
     </div>
-  );
+  )
 }

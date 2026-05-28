@@ -1,14 +1,14 @@
-import { describe, it, expect } from "vitest";
-import { api, internal } from "../convex/_generated/api";
-import { Id } from "../convex/_generated/dataModel";
-import { setupTest, seedUser, testIdentity, TEST_ORG_ID } from "./helpers";
+import { describe, expect, it } from "vitest"
+import { api, internal } from "../convex/_generated/api"
+import type { Id } from "../convex/_generated/dataModel"
+import { seedUser, setupTest, TEST_ORG_ID, testIdentity } from "./helpers"
 
 // ─── Helpers ───
 
 function stubConversation(
   uploadId: Id<"livechatUploads">,
   orgId: string,
-  idx = 0,
+  idx = 0
 ) {
   return {
     uploadId,
@@ -27,15 +27,15 @@ function stubConversation(
     messages: [{ id: 1, role: "user" as const, text: "Hello" }],
     metadata: {},
     classificationStatus: "none" as const,
-    translationStatus: "none" as const,
-  };
+    translationStatus: "none" as const
+  }
 }
 
 async function seedUpload(
   t: ReturnType<typeof setupTest>,
   userId: Id<"users">,
   csvStorageId: Id<"_storage">,
-  orgId = TEST_ORG_ID,
+  orgId = TEST_ORG_ID
 ) {
   return await t.run(async (ctx) =>
     ctx.db.insert("livechatUploads", {
@@ -44,55 +44,55 @@ async function seedUpload(
       filename: "test.csv",
       csvStorageId,
       status: "ready",
-      createdAt: Date.now(),
-    }),
-  );
+      createdAt: Date.now()
+    })
+  )
 }
 
 // ─── Tests ───
 
 describe("livechat orchestration", () => {
   it("generateUploadUrl requires auth", async () => {
-    const t = setupTest();
+    const t = setupTest()
     await expect(
-      t.mutation(api.livechat.orchestration.generateUploadUrl, {}),
-    ).rejects.toThrow(/Unauthenticated/);
-  });
+      t.mutation(api.livechat.orchestration.generateUploadUrl, {})
+    ).rejects.toThrow(/Unauthenticated/)
+  })
 
   it("create inserts upload with pending status", async () => {
-    const t = setupTest();
-    await seedUser(t);
-    const asUser = t.withIdentity(testIdentity);
+    const t = setupTest()
+    await seedUser(t)
+    const asUser = t.withIdentity(testIdentity)
 
     const csvStorageId = await t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["a,b\n1,2\n"])),
-    );
+      ctx.storage.store(new Blob(["a,b\n1,2\n"]))
+    )
 
     const { uploadId } = await asUser.mutation(
       api.livechat.orchestration.create,
-      { filename: "test.csv", csvStorageId },
-    );
+      { filename: "test.csv", csvStorageId }
+    )
 
-    const row = await t.run(async (ctx) => ctx.db.get(uploadId));
-    expect(row).not.toBeNull();
-    expect(row?.orgId).toBe(TEST_ORG_ID);
-    expect(row?.status).toBe("pending");
-    expect(row?.filename).toBe("test.csv");
+    const row = await t.run(async (ctx) => ctx.db.get(uploadId))
+    expect(row).not.toBeNull()
+    expect(row?.orgId).toBe(TEST_ORG_ID)
+    expect(row?.status).toBe("pending")
+    expect(row?.filename).toBe("test.csv")
     // No microtopicsStatus field in new schema
-    expect(row).not.toHaveProperty("microtopicsStatus");
-  });
+    expect(row).not.toHaveProperty("microtopicsStatus")
+  })
 
   it("list returns only org rows", async () => {
-    const t = setupTest();
-    const userId = await seedUser(t);
-    const asUser = t.withIdentity(testIdentity);
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const asUser = t.withIdentity(testIdentity)
 
     const ourStorageId = await t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["a\n1\n"])),
-    );
+      ctx.storage.store(new Blob(["a\n1\n"]))
+    )
     const otherStorageId = await t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["a\n1\n"])),
-    );
+      ctx.storage.store(new Blob(["a\n1\n"]))
+    )
 
     await t.run(async (ctx) => {
       await ctx.db.insert("livechatUploads", {
@@ -101,31 +101,31 @@ describe("livechat orchestration", () => {
         filename: "ours.csv",
         csvStorageId: ourStorageId,
         status: "ready",
-        createdAt: Date.now(),
-      });
+        createdAt: Date.now()
+      })
       await ctx.db.insert("livechatUploads", {
         orgId: "org_other",
         createdBy: userId,
         filename: "theirs.csv",
         csvStorageId: otherStorageId,
         status: "ready",
-        createdAt: Date.now(),
-      });
-    });
+        createdAt: Date.now()
+      })
+    })
 
-    const rows = await asUser.query(api.livechat.orchestration.list, {});
-    expect(rows).toHaveLength(1);
-    expect(rows[0].filename).toBe("ours.csv");
-  });
+    const rows = await asUser.query(api.livechat.orchestration.list, {})
+    expect(rows).toHaveLength(1)
+    expect(rows[0].filename).toBe("ours.csv")
+  })
 
   it("get returns null for cross-org", async () => {
-    const t = setupTest();
-    const userId = await seedUser(t);
-    const asUser = t.withIdentity(testIdentity);
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const asUser = t.withIdentity(testIdentity)
 
     const storageId = await t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["a\n1\n"])),
-    );
+      ctx.storage.store(new Blob(["a\n1\n"]))
+    )
 
     const otherUploadId = await t.run(async (ctx) =>
       ctx.db.insert("livechatUploads", {
@@ -134,270 +134,273 @@ describe("livechat orchestration", () => {
         filename: "other.csv",
         csvStorageId: storageId,
         status: "ready",
-        createdAt: Date.now(),
-      }),
-    );
+        createdAt: Date.now()
+      })
+    )
 
     const result = await asUser.query(api.livechat.orchestration.get, {
-      id: otherUploadId,
-    });
-    expect(result).toBeNull();
-  });
+      id: otherUploadId
+    })
+    expect(result).toBeNull()
+  })
 
   it("insertConversationBatch inserts rows with default statuses", async () => {
-    const t = setupTest();
-    const userId = await seedUser(t);
+    const t = setupTest()
+    const userId = await seedUser(t)
 
     const csvStorageId = await t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["csv"])),
-    );
-    const uploadId = await seedUpload(t, userId, csvStorageId);
+      ctx.storage.store(new Blob(["csv"]))
+    )
+    const uploadId = await seedUpload(t, userId, csvStorageId)
 
     const convs = [
       stubConversation(uploadId, TEST_ORG_ID, 0),
-      stubConversation(uploadId, TEST_ORG_ID, 1),
-    ];
+      stubConversation(uploadId, TEST_ORG_ID, 1)
+    ]
 
     await t.mutation(internal.livechat.orchestration.insertConversationBatch, {
       uploadId,
       orgId: TEST_ORG_ID,
-      conversations: convs,
-    });
+      conversations: convs
+    })
 
     const rows = await t.run(async (ctx) =>
       ctx.db
         .query("livechatConversations")
         .withIndex("by_upload", (q) => q.eq("uploadId", uploadId))
-        .collect(),
-    );
+        .collect()
+    )
 
-    expect(rows).toHaveLength(2);
-    expect(rows[0].classificationStatus).toBe("none");
-    expect(rows[0].translationStatus).toBe("none");
-    expect(rows[1].conversationId).toBe("conv-1");
-  });
+    expect(rows).toHaveLength(2)
+    expect(rows[0].classificationStatus).toBe("none")
+    expect(rows[0].translationStatus).toBe("none")
+    expect(rows[1].conversationId).toBe("conv-1")
+  })
 
   it("listConversations paginates correctly", async () => {
-    const t = setupTest();
-    const userId = await seedUser(t);
-    const asUser = t.withIdentity(testIdentity);
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const asUser = t.withIdentity(testIdentity)
 
     const csvStorageId = await t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["csv"])),
-    );
-    const uploadId = await seedUpload(t, userId, csvStorageId);
+      ctx.storage.store(new Blob(["csv"]))
+    )
+    const uploadId = await seedUpload(t, userId, csvStorageId)
 
     // Insert 5 conversations
     await t.run(async (ctx) => {
       for (let i = 0; i < 5; i++) {
         await ctx.db.insert(
           "livechatConversations",
-          stubConversation(uploadId, TEST_ORG_ID, i),
-        );
+          stubConversation(uploadId, TEST_ORG_ID, i)
+        )
       }
-    });
+    })
 
     const page = await asUser.query(
       api.livechat.orchestration.listConversations,
       {
         uploadId,
-        paginationOpts: { numItems: 3, cursor: null },
-      },
-    );
+        paginationOpts: { numItems: 3, cursor: null }
+      }
+    )
 
-    expect(page.page).toHaveLength(3);
-    expect(page.isDone).toBe(false);
-  });
+    expect(page.page).toHaveLength(3)
+    expect(page.isDone).toBe(false)
+  })
 
   it("getClassificationCounts returns correct counts", async () => {
-    const t = setupTest();
-    const userId = await seedUser(t);
-    const asUser = t.withIdentity(testIdentity);
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const asUser = t.withIdentity(testIdentity)
 
     const csvStorageId = await t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["csv"])),
-    );
-    const uploadId = await seedUpload(t, userId, csvStorageId);
+      ctx.storage.store(new Blob(["csv"]))
+    )
+    const uploadId = await seedUpload(t, userId, csvStorageId)
 
     await t.run(async (ctx) => {
       // 2 done, 1 running, 1 failed, 1 none
       await ctx.db.insert("livechatConversations", {
         ...stubConversation(uploadId, TEST_ORG_ID, 0),
-        classificationStatus: "done",
-      });
+        classificationStatus: "done"
+      })
       await ctx.db.insert("livechatConversations", {
         ...stubConversation(uploadId, TEST_ORG_ID, 1),
-        classificationStatus: "done",
-      });
+        classificationStatus: "done"
+      })
       await ctx.db.insert("livechatConversations", {
         ...stubConversation(uploadId, TEST_ORG_ID, 2),
-        classificationStatus: "running",
-      });
+        classificationStatus: "running"
+      })
       await ctx.db.insert("livechatConversations", {
         ...stubConversation(uploadId, TEST_ORG_ID, 3),
-        classificationStatus: "failed",
-      });
+        classificationStatus: "failed"
+      })
       await ctx.db.insert("livechatConversations", {
         ...stubConversation(uploadId, TEST_ORG_ID, 4),
-        classificationStatus: "none",
-      });
-    });
+        classificationStatus: "none"
+      })
+    })
 
     const counts = await asUser.query(
       api.livechat.orchestration.getClassificationCounts,
-      { uploadId },
-    );
+      { uploadId }
+    )
 
-    expect(counts.total).toBe(5);
-    expect(counts.classified).toBe(2);
-    expect(counts.running).toBe(1);
-    expect(counts.failed).toBe(1);
-  });
+    expect(counts.total).toBe(5)
+    expect(counts.classified).toBe(2)
+    expect(counts.running).toBe(1)
+    expect(counts.failed).toBe(1)
+  })
 
   it("classifyBatch throws on >100 conversations", async () => {
-    const t = setupTest();
-    const userId = await seedUser(t);
-    const asUser = t.withIdentity(testIdentity);
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const asUser = t.withIdentity(testIdentity)
 
     const csvStorageId = await t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["csv"])),
-    );
-    const uploadId = await seedUpload(t, userId, csvStorageId);
+      ctx.storage.store(new Blob(["csv"]))
+    )
+    const uploadId = await seedUpload(t, userId, csvStorageId)
 
     // Insert 101 conversations via insertConversationBatch in chunks
     const convs = Array.from({ length: 101 }, (_, i) =>
-      stubConversation(uploadId, TEST_ORG_ID, i),
-    );
+      stubConversation(uploadId, TEST_ORG_ID, i)
+    )
     // insertConversationBatch is internal; insert directly
     await t.run(async (ctx) => {
       for (const conv of convs) {
-        await ctx.db.insert("livechatConversations", conv);
+        await ctx.db.insert("livechatConversations", conv)
       }
-    });
+    })
 
     const allIds = await t.run(async (ctx) =>
       ctx.db
         .query("livechatConversations")
         .withIndex("by_upload", (q) => q.eq("uploadId", uploadId))
         .collect()
-        .then((rows) => rows.map((r) => r._id)),
-    );
+        .then((rows) => rows.map((r) => r._id))
+    )
 
-    expect(allIds).toHaveLength(101);
+    expect(allIds).toHaveLength(101)
 
     await expect(
       asUser.mutation(api.livechat.orchestration.classifyBatch, {
         uploadId,
-        conversationIds: allIds,
-      }),
-    ).rejects.toThrow(/100/);
-  });
+        conversationIds: allIds
+      })
+    ).rejects.toThrow(/100/)
+  })
 
   it("translateBatch throws on >100 conversations", async () => {
-    const t = setupTest();
-    const userId = await seedUser(t);
-    const asUser = t.withIdentity(testIdentity);
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const asUser = t.withIdentity(testIdentity)
 
     const csvStorageId = await t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["csv"])),
-    );
-    const uploadId = await seedUpload(t, userId, csvStorageId);
+      ctx.storage.store(new Blob(["csv"]))
+    )
+    const uploadId = await seedUpload(t, userId, csvStorageId)
 
     await t.run(async (ctx) => {
       for (let i = 0; i < 101; i++) {
         await ctx.db.insert(
           "livechatConversations",
-          stubConversation(uploadId, TEST_ORG_ID, i),
-        );
+          stubConversation(uploadId, TEST_ORG_ID, i)
+        )
       }
-    });
+    })
 
     const allIds = await t.run(async (ctx) =>
       ctx.db
         .query("livechatConversations")
         .withIndex("by_upload", (q) => q.eq("uploadId", uploadId))
         .collect()
-        .then((rows) => rows.map((r) => r._id)),
-    );
+        .then((rows) => rows.map((r) => r._id))
+    )
 
     await expect(
       asUser.mutation(api.livechat.orchestration.translateBatch, {
         uploadId,
-        conversationIds: allIds,
-      }),
-    ).rejects.toThrow(/100/);
-  });
+        conversationIds: allIds
+      })
+    ).rejects.toThrow(/100/)
+  })
 
   it("remove marks as deleting", async () => {
-    const t = setupTest();
-    const userId = await seedUser(t);
-    const asUser = t.withIdentity(testIdentity);
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const asUser = t.withIdentity(testIdentity)
 
     const csvStorageId = await t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["csv data"])),
-    );
-    const uploadId = await seedUpload(t, userId, csvStorageId);
+      ctx.storage.store(new Blob(["csv data"]))
+    )
+    const uploadId = await seedUpload(t, userId, csvStorageId)
 
-    await asUser.mutation(api.livechat.orchestration.remove, { id: uploadId });
+    await asUser.mutation(api.livechat.orchestration.remove, { id: uploadId })
 
-    const row = await t.run(async (ctx) => ctx.db.get(uploadId));
+    const row = await t.run(async (ctx) => ctx.db.get(uploadId))
     // Row should be marked as deleting (async deletion scheduled)
-    expect(row?.status).toBe("deleting");
-  });
+    expect(row?.status).toBe("deleting")
+  })
 
   it("patchClassificationStatus updates fields correctly", async () => {
-    const t = setupTest();
-    const userId = await seedUser(t);
+    const t = setupTest()
+    const userId = await seedUser(t)
 
     const csvStorageId = await t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["csv"])),
-    );
-    const uploadId = await seedUpload(t, userId, csvStorageId);
+      ctx.storage.store(new Blob(["csv"]))
+    )
+    const uploadId = await seedUpload(t, userId, csvStorageId)
 
     const convId = await t.run(async (ctx) =>
       ctx.db.insert(
         "livechatConversations",
-        stubConversation(uploadId, TEST_ORG_ID, 0),
-      ),
-    );
+        stubConversation(uploadId, TEST_ORG_ID, 0)
+      )
+    )
 
-    await t.mutation(internal.livechat.orchestration.patchClassificationStatus, {
-      conversationId: convId,
-      status: "done",
-      messageTypes: [{ type: "inquiry", count: 2 }],
-    });
+    await t.mutation(
+      internal.livechat.orchestration.patchClassificationStatus,
+      {
+        conversationId: convId,
+        status: "done",
+        messageTypes: [{ type: "inquiry", count: 2 }]
+      }
+    )
 
-    const row = await t.run(async (ctx) => ctx.db.get(convId));
-    expect(row?.classificationStatus).toBe("done");
-    expect(row?.messageTypes).toEqual([{ type: "inquiry", count: 2 }]);
-    expect(row?.classificationError).toBeUndefined();
-  });
+    const row = await t.run(async (ctx) => ctx.db.get(convId))
+    expect(row?.classificationStatus).toBe("done")
+    expect(row?.messageTypes).toEqual([{ type: "inquiry", count: 2 }])
+    expect(row?.classificationError).toBeUndefined()
+  })
 
   it("patchTranslationStatus updates fields correctly", async () => {
-    const t = setupTest();
-    const userId = await seedUser(t);
+    const t = setupTest()
+    const userId = await seedUser(t)
 
     const csvStorageId = await t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["csv"])),
-    );
-    const uploadId = await seedUpload(t, userId, csvStorageId);
+      ctx.storage.store(new Blob(["csv"]))
+    )
+    const uploadId = await seedUpload(t, userId, csvStorageId)
 
     const convId = await t.run(async (ctx) =>
       ctx.db.insert(
         "livechatConversations",
-        stubConversation(uploadId, TEST_ORG_ID, 0),
-      ),
-    );
+        stubConversation(uploadId, TEST_ORG_ID, 0)
+      )
+    )
 
     await t.mutation(internal.livechat.orchestration.patchTranslationStatus, {
       conversationId: convId,
       status: "done",
-      translatedMessages: [{ id: 1, text: "Hola" }],
-    });
+      translatedMessages: [{ id: 1, text: "Hola" }]
+    })
 
-    const row = await t.run(async (ctx) => ctx.db.get(convId));
-    expect(row?.translationStatus).toBe("done");
-    expect(row?.translatedMessages).toEqual([{ id: 1, text: "Hola" }]);
-    expect(row?.translationError).toBeUndefined();
-  });
-});
+    const row = await t.run(async (ctx) => ctx.db.get(convId))
+    expect(row?.translationStatus).toBe("done")
+    expect(row?.translatedMessages).toEqual([{ id: 1, text: "Hola" }])
+    expect(row?.translationError).toBeUndefined()
+  })
+})

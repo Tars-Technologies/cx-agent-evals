@@ -1,30 +1,30 @@
-"use client";
+"use client"
 
-import { useEffect, useRef, useState } from "react";
-import { DocumentInfo, GeneratedQuestion } from "@/lib/types";
-import { MarkdownViewer } from "@/components/MarkdownViewer";
+import { useEffect, useRef, useState } from "react"
+import { MarkdownViewer } from "@/components/MarkdownViewer"
+import type { DocumentInfo, GeneratedQuestion } from "@/lib/types"
 
-type ViewMode = "raw" | "rendered";
+type ViewMode = "raw" | "rendered"
 
 const HIGHLIGHT_COLORS = [
   "var(--color-chunk-1)",
   "var(--color-chunk-2)",
   "var(--color-chunk-3)",
   "var(--color-chunk-4)",
-  "var(--color-chunk-5)",
-];
+  "var(--color-chunk-5)"
+]
 
 interface HighlightSpan {
-  start: number;
-  end: number;
-  colorIndex: number;
+  start: number
+  end: number
+  colorIndex: number
 }
 
 function computeHighlights(
   doc: DocumentInfo,
-  question: GeneratedQuestion,
+  question: GeneratedQuestion
 ): HighlightSpan[] {
-  const spans: HighlightSpan[] = [];
+  const spans: HighlightSpan[] = []
 
   if (question.relevantSpans) {
     question.relevantSpans.forEach((span, i) => {
@@ -32,31 +32,31 @@ function computeHighlights(
         spans.push({
           start: span.start,
           end: span.end,
-          colorIndex: i % HIGHLIGHT_COLORS.length,
-        });
+          colorIndex: i % HIGHLIGHT_COLORS.length
+        })
       }
-    });
+    })
   }
 
   // Sort by start position
-  spans.sort((a, b) => a.start - b.start);
-  return spans;
+  spans.sort((a, b) => a.start - b.start)
+  return spans
 }
 
 function renderHighlightedText(content: string, highlights: HighlightSpan[]) {
   if (highlights.length === 0) {
-    return <span>{content}</span>;
+    return <span>{content}</span>
   }
 
-  const parts: React.ReactNode[] = [];
-  let lastEnd = 0;
+  const parts: React.ReactNode[] = []
+  let lastEnd = 0
 
   highlights.forEach((span, i) => {
     // Text before this highlight
     if (span.start > lastEnd) {
       parts.push(
-        <span key={`t-${i}`}>{content.slice(lastEnd, span.start)}</span>,
-      );
+        <span key={`t-${i}`}>{content.slice(lastEnd, span.start)}</span>
+      )
     }
 
     // Highlighted text
@@ -67,76 +67,76 @@ function renderHighlightedText(content: string, highlights: HighlightSpan[]) {
         className={i === 0 ? "first-highlight" : ""}
         style={{
           backgroundColor: HIGHLIGHT_COLORS[span.colorIndex],
-          color: "var(--color-text)",
+          color: "var(--color-text)"
         }}
       >
         {content.slice(span.start, span.end)}
-      </mark>,
-    );
+      </mark>
+    )
 
-    lastEnd = span.end;
-  });
+    lastEnd = span.end
+  })
 
   // Remaining text
   if (lastEnd < content.length) {
-    parts.push(<span key="tail">{content.slice(lastEnd)}</span>);
+    parts.push(<span key="tail">{content.slice(lastEnd)}</span>)
   }
 
-  return <>{parts}</>;
+  return <>{parts}</>
 }
 
 export function DocumentViewer({
   doc,
   question,
   allDocIds,
-  onNavigateDoc,
+  onNavigateDoc
 }: {
-  doc: DocumentInfo | null;
-  question: GeneratedQuestion | null;
+  doc: DocumentInfo | null
+  question: GeneratedQuestion | null
   /** All document IDs relevant to the current question (source + span docs) */
-  allDocIds?: string[];
+  allDocIds?: string[]
   /** Called when user navigates to a different doc */
-  onNavigateDoc?: (docId: string) => void;
+  onNavigateDoc?: (docId: string) => void
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null)
 
-  const highlights = question && doc ? computeHighlights(doc, question) : [];
-  const hasHighlights = highlights.length > 0;
+  const highlights = question && doc ? computeHighlights(doc, question) : []
+  const hasHighlights = highlights.length > 0
 
   // Multi-doc navigation
-  const showDocNav = allDocIds && allDocIds.length > 1 && doc;
-  const currentDocIndex = showDocNav ? allDocIds.indexOf(doc.id) : -1;
+  const showDocNav = allDocIds && allDocIds.length > 1 && doc
+  const currentDocIndex = showDocNav ? allDocIds.indexOf(doc.id) : -1
 
   const [viewMode, setViewMode] = useState<ViewMode>(
-    hasHighlights ? "raw" : "rendered",
-  );
+    hasHighlights ? "raw" : "rendered"
+  )
 
   // When highlights appear/disappear (e.g. selecting a different question),
   // switch to raw mode so the user sees them immediately.
   useEffect(() => {
     if (hasHighlights) {
-      setViewMode("raw");
+      setViewMode("raw")
     }
-  }, [hasHighlights]);
+  }, [hasHighlights])
 
   useEffect(() => {
-    if (viewMode !== "raw") return;
-    if (!containerRef.current) return;
-    const firstMark = containerRef.current.querySelector(".first-highlight");
+    if (viewMode !== "raw") return
+    if (!containerRef.current) return
+    const firstMark = containerRef.current.querySelector(".first-highlight")
     if (firstMark) {
-      firstMark.scrollIntoView({ behavior: "smooth", block: "center" });
+      firstMark.scrollIntoView({ behavior: "smooth", block: "center" })
     }
-  }, [question, viewMode]);
+  }, [question, viewMode])
 
   if (!doc) {
     return (
       <div className="flex items-center justify-center h-full text-text-dim text-xs">
         Select a question to view its source document
       </div>
-    );
+    )
   }
 
-  const noHighlights = question && highlights.length === 0;
+  const noHighlights = question && highlights.length === 0
 
   return (
     <div className="h-full flex flex-col">
@@ -169,8 +169,13 @@ export function DocumentViewer({
               {highlights.length} span{highlights.length !== 1 ? "s" : ""}
             </span>
           )}
-          <span className="text-[10px] text-text-dim" title={`${doc.contentLength.toLocaleString()} characters`}>
-            {doc.contentLength >= 1000 ? `${Math.round(doc.contentLength / 1000)}k chars` : `${doc.contentLength} chars`}
+          <span
+            className="text-[10px] text-text-dim"
+            title={`${doc.contentLength.toLocaleString()} characters`}
+          >
+            {doc.contentLength >= 1000
+              ? `${Math.round(doc.contentLength / 1000)}k chars`
+              : `${doc.contentLength} chars`}
           </span>
           <div className="inline-flex items-center bg-elevated border border-border rounded-full text-[10px] overflow-hidden">
             <button
@@ -207,7 +212,10 @@ export function DocumentViewer({
         </div>
       )}
 
-      <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden">
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-y-auto overflow-x-hidden"
+      >
         {question && (
           <div className="mx-4 mt-4 mb-4 pb-3 border-b border-border/50 animate-fade-in">
             <span className="text-[10px] text-text-dim uppercase tracking-wider block mb-1">
@@ -241,5 +249,5 @@ export function DocumentViewer({
         )}
       </div>
     </div>
-  );
+  )
 }

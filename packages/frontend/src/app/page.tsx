@@ -1,5 +1,5 @@
-import { ModeSelector } from "@/components/ModeSelector";
+import { ModeSelector } from "@/components/ModeSelector"
 
 export default function Home() {
-  return <ModeSelector />;
+  return <ModeSelector />
 }

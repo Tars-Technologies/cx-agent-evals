@@ -1,0 +1,113 @@
+name: Bug Report
+description: Report a bug, regression, or broken workflow
+title: "[BUG] "
+labels:
+  - bug
+  - triage
+type: bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. Please provide a concrete reproduction and the real impact so the issue can be triaged quickly.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What broke?
+      description: Describe the bug and its user or system impact.
+      placeholder: Running `pnpm build` in the workspace fails after the recent retriever changes.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest reliable reproduction. Exact commands, URLs, inputs, or code snippets are preferred.
+      placeholder: |
+        1. Checkout branch `...`
+        2. Run `pnpm build`
+        3. Open `...`
+        4. Observe `...`
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: The build completes successfully and outputs the eval-lib dist files.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include error text, stack traces, or unexpected output.
+      placeholder: The build fails in `packages/backend/...` with `...`.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Pick the main area involved.
+      options:
+        - packages/eval-lib
+        - packages/backend
+        - packages/frontend
+        - docs / repository workflow
+        - multiple areas
+        - unsure
+      default: 5
+    validations:
+      required: true
+  - type: textarea
+    id: affected_files
+    attributes:
+      label: Affected files or components
+      description: List file paths, functions, routes, jobs, or UI surfaces if known.
+      placeholder: |
+        - packages/backend/convex/retrieval/indexing.ts
+        - packages/frontend/src/components/RetrieverPlayground.tsx
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include anything relevant such as OS, Node version, browser, package version, Convex deployment, or branch.
+      placeholder: |
+        - OS: Windows 11
+        - Node: 20.11.0
+        - Browser: Chrome 124
+        - Branch: rm_improvement_docs
+  - type: input
+    id: branch
+    attributes:
+      label: Branch or commit
+      description: If applicable, share the branch name or commit SHA where you saw the bug.
+      placeholder: rm_improvement_docs or 7011a30
+  - type: upload
+    id: screenshots
+    attributes:
+      label: Screenshots or videos
+      description: Upload screenshots, videos, or other supporting files if helpful.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution interest
+      options:
+        - label: I want to work on this issue.
+  - type: textarea
+    id: internal_tracker
+    attributes:
+      label: Internal tracker (optional)
+      description: Internal-only field. External contributors can leave this blank. Maintainers may fill it in during or after triage.
+      value: |
+        - Link:
+        - Priority:
+  - type: checkboxes
+    id: search
+    attributes:
+      label: Before submitting
+      description: Confirm the basics before opening the issue.
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true

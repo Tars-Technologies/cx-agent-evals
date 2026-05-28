@@ -1,40 +1,40 @@
-"use client";
+"use client"
 
-import Link from "next/link";
+import Link from "next/link"
 
 interface SummaryBarProps {
-  retrieverName: string;
-  experimentName: string;
-  datasetName: string;
-  questionCount: number;
-  scores: Record<string, number>;
-  metricNames: string[];
-  backHref: string;
-  configChip?: string;
-  status: string;
-  phase?: string | null;
-  totalQuestions?: number | null;
-  processedQuestions?: number | null;
+  retrieverName: string
+  experimentName: string
+  datasetName: string
+  questionCount: number
+  scores: Record<string, number>
+  metricNames: string[]
+  backHref: string
+  configChip?: string
+  status: string
+  phase?: string | null
+  totalQuestions?: number | null
+  processedQuestions?: number | null
 }
 
-const RUNNING_STATUSES = new Set(["pending", "running"]);
+const RUNNING_STATUSES = new Set(["pending", "running"])
 
 function RunningBadge({
   phase,
   processed,
-  total,
+  total
 }: {
-  phase: string | null | undefined;
-  processed: number | null | undefined;
-  total: number | null | undefined;
+  phase: string | null | undefined
+  processed: number | null | undefined
+  total: number | null | undefined
 }) {
-  let label: string;
+  let label: string
   if (phase && phase !== "evaluating" && phase !== "done") {
-    label = phase[0]!.toUpperCase() + phase.slice(1) + "…";
+    label = phase[0]!.toUpperCase() + phase.slice(1) + "…"
   } else if (total && total > 0) {
-    label = `${processed ?? 0} / ${total} questions`;
+    label = `${processed ?? 0} / ${total} questions`
   } else {
-    label = "Running…";
+    label = "Running…"
   }
   return (
     <span
@@ -43,7 +43,7 @@ function RunningBadge({
         background: "rgba(59,130,246,0.12)",
         color: "#3b82f6",
         fontSize: "11px",
-        fontWeight: 600,
+        fontWeight: 600
       }}
     >
       <span
@@ -52,29 +52,53 @@ function RunningBadge({
           width: 6,
           height: 6,
           background: "#3b82f6",
-          animation: "pulse-dot 1.4s ease-in-out infinite",
+          animation: "pulse-dot 1.4s ease-in-out infinite"
         }}
       />
       {label}
     </span>
-  );
+  )
 }
 
-function MetricChip({ label, value }: { label: string; value: number | undefined }) {
-  if (value === undefined) return null;
+function MetricChip({
+  label,
+  value
+}: {
+  label: string
+  value: number | undefined
+}) {
+  if (value === undefined) return null
   return (
     <div
       className="flex items-center gap-1.5 px-2 py-1 rounded"
-      style={{ background: "var(--color-bg-surface)", border: "1px solid var(--color-border)" }}
+      style={{
+        background: "var(--color-bg-surface)",
+        border: "1px solid var(--color-border)"
+      }}
     >
-      <span style={{ fontSize: "10px", color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+      <span
+        style={{
+          fontSize: "10px",
+          color: "var(--color-text-dim)",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          fontWeight: 600
+        }}
+      >
         {label}
       </span>
-      <span className="tabular-nums" style={{ fontSize: "12px", color: "var(--color-text)", fontWeight: 600 }}>
+      <span
+        className="tabular-nums"
+        style={{
+          fontSize: "12px",
+          color: "var(--color-text)",
+          fontWeight: 600
+        }}
+      >
         {(value * 100).toFixed(1)}%
       </span>
     </div>
-  );
+  )
 }
 
 export function SummaryBar({
@@ -89,18 +113,18 @@ export function SummaryBar({
   status,
   phase,
   totalQuestions,
-  processedQuestions,
+  processedQuestions
 }: SummaryBarProps) {
-  const showF1 = metricNames.includes("f1");
-  const showIoU = metricNames.includes("iou");
-  const isRunning = RUNNING_STATUSES.has(status);
+  const showF1 = metricNames.includes("f1")
+  const showIoU = metricNames.includes("iou")
+  const isRunning = RUNNING_STATUSES.has(status)
 
   return (
     <div
       className="flex items-center gap-4 px-5 py-3 sticky top-0 z-10"
       style={{
         borderBottom: "1px solid var(--color-border)",
-        background: "var(--color-bg-elevated)",
+        background: "var(--color-bg-elevated)"
       }}
     >
       <Link
@@ -115,7 +139,13 @@ export function SummaryBar({
 
       <div className="flex flex-col">
         <div className="flex items-center gap-2">
-          <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--color-text)" }}>
+          <span
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              color: "var(--color-text)"
+            }}
+          >
             {retrieverName}
           </span>
           {isRunning && (
@@ -128,7 +158,12 @@ export function SummaryBar({
         </div>
         <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
           {experimentName} · {datasetName} · {questionCount} questions
-          {configChip ? <> · <span className="font-mono">{configChip}</span></> : null}
+          {configChip ? (
+            <>
+              {" "}
+              · <span className="font-mono">{configChip}</span>
+            </>
+          ) : null}
         </span>
       </div>
 
@@ -143,5 +178,5 @@ export function SummaryBar({
         </div>
       )}
     </div>
-  );
+  )
 }

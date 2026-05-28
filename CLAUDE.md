@@ -119,6 +119,25 @@ pnpm -C packages/frontend build    # Production build (good for verifying TypeSc
 cd packages/backend && npx convex dev --once
 ```
 
+## GitHub issues
+
+GitHub's web issue chooser uses the YAML issue forms in `.github/ISSUE_TEMPLATE/`.
+
+If the request is about a security vulnerability, sensitive exposure, auth bypass, secret leak, or similar security issue, do not create a public GitHub issue. Follow `SECURITY.md` instead and direct the report to the repository Security section for private reporting. Use the email fallback from `SECURITY.md` only if the Security reporting flow is unavailable.
+
+When asked to create a new GitHub issue with `gh`, use one of the agent-friendly Markdown templates in `.github/agent-issue-templates/`:
+- `bug_report.md` for bugs, regressions, broken workflows, or incorrect behavior
+- `feature_request.md` for enhancements, proposals, or new capabilities
+
+Do not create freeform issues when one of these templates applies. Mirror the selected Markdown template's sections in the `gh issue create` body and gather any missing required details before opening the issue.
+
+When creating the issue with `gh`:
+- bug issues must use a title starting with `[Bug] `
+- feature issues must use a title starting with `[Feature] `
+- bug issues must include the labels `bug` and `triage`
+- feature issues must include the labels `enhancement` and `triage`
+- preserve the `Internal tracker` section in the issue body, but leave its fields blank for human triage
+
 ## Development workflow
 
 After changing library code in `packages/eval-lib/src/`:

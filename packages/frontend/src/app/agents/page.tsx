@@ -1,61 +1,71 @@
-"use client";
+"use client"
 
-import { Suspense, useState, useCallback, useEffect } from "react";
-import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import type { Id } from "@convex/_generated/dataModel";
-import { Header } from "@/components/Header";
-import AgentConfigPanel from "@/components/AgentConfigPanel";
-import AgentPlayground from "@/components/AgentPlayground";
-import { ExperimentModeLayout } from "@/components/agent-experiments/ExperimentModeLayout";
-import { SimulationModeLayout } from "@/components/conversation-sim/SimulationModeLayout";
-import { CreateSimulationModal } from "@/components/conversation-sim/CreateSimulationModal";
-import { GenerationBanner } from "@/components/GenerationBanner";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation, useQuery } from "convex/react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { Suspense, useCallback, useEffect, useState } from "react"
+import AgentConfigPanel from "@/components/AgentConfigPanel"
+import AgentPlayground from "@/components/AgentPlayground"
+import { ExperimentModeLayout } from "@/components/agent-experiments/ExperimentModeLayout"
+import { CreateSimulationModal } from "@/components/conversation-sim/CreateSimulationModal"
+import { SimulationModeLayout } from "@/components/conversation-sim/SimulationModeLayout"
+import { GenerationBanner } from "@/components/GenerationBanner"
+import { Header } from "@/components/Header"
+import { api } from "@/lib/convex"
 
 // ---------------------------------------------------------------------------
 // URL param helpers
 // ---------------------------------------------------------------------------
 
 function useUrlState() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
 
-  const mode = (searchParams.get("mode") as "create" | "experiment") ?? "create";
-  const agentId = searchParams.get("agent") as Id<"agents"> | null;
-  const experimentId = searchParams.get("experiment") as Id<"experiments"> | null;
+  const mode = (searchParams.get("mode") as "create" | "experiment") ?? "create"
+  const agentId = searchParams.get("agent") as Id<"agents"> | null
+  const experimentId = searchParams.get(
+    "experiment"
+  ) as Id<"experiments"> | null
 
   const setParams = useCallback(
     (updates: Record<string, string | null>) => {
-      const params = new URLSearchParams(searchParams.toString());
+      const params = new URLSearchParams(searchParams.toString())
       for (const [key, value] of Object.entries(updates)) {
         if (value) {
-          params.set(key, value);
+          params.set(key, value)
         } else {
-          params.delete(key);
+          params.delete(key)
         }
       }
-      const qs = params.toString();
-      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+      const qs = params.toString()
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false })
     },
-    [searchParams, router, pathname],
-  );
+    [searchParams, router, pathname]
+  )
 
   const setMode = useCallback(
     (m: "create" | "experiment") => setParams({ mode: m }),
-    [setParams],
-  );
+    [setParams]
+  )
   const setAgentId = useCallback(
     (id: Id<"agents"> | null) => setParams({ agent: id }),
-    [setParams],
-  );
+    [setParams]
+  )
   const setExperimentId = useCallback(
     (id: Id<"experiments"> | null) => setParams({ experiment: id }),
-    [setParams],
-  );
+    [setParams]
+  )
 
-  return { mode, agentId, experimentId, setMode, setAgentId, setExperimentId, setParams };
+  return {
+    mode,
+    agentId,
+    experimentId,
+    setMode,
+    setAgentId,
+    setExperimentId,
+    setParams
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -67,7 +77,7 @@ export default function AgentsPage() {
     <Suspense fallback={<div className="h-screen bg-bg" />}>
       <AgentsPageContent />
     </Suspense>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -75,22 +85,30 @@ export default function AgentsPage() {
 // ---------------------------------------------------------------------------
 
 function AgentsPageContent() {
-  const { mode, agentId, experimentId, setMode, setAgentId, setExperimentId, setParams } =
-    useUrlState();
+  const {
+    mode,
+    agentId,
+    experimentId,
+    setMode,
+    setAgentId,
+    setExperimentId,
+    setParams
+  } = useUrlState()
 
   // --- Agent data ---
-  const agents = useQuery(api.crud.agents.byOrg) ?? [];
-  const createAgent = useMutation(api.crud.agents.create);
+  const agents = useQuery(api.crud.agents.byOrg) ?? []
+  const createAgent = useMutation(api.crud.agents.create)
 
   // --- Running simulation for selected agent ---
-  const simulations = useQuery(
-    api.conversationSim.orchestration.byAgent,
-    agentId ? { agentId } : "skip",
-  ) ?? [];
+  const simulations =
+    useQuery(
+      api.conversationSim.orchestration.byAgent,
+      agentId ? { agentId } : "skip"
+    ) ?? []
   const runningSim = simulations.find(
-    (s) => s.status === "running" || s.status === "pending",
-  );
-  const cancelSimulation = useMutation(api.conversationSim.orchestration.cancel);
+    (s) => s.status === "running" || s.status === "pending"
+  )
+  const cancelSimulation = useMutation(api.conversationSim.orchestration.cancel)
 
   // --- New agent handler ---
   const handleNewAgent = useCallback(async () => {
@@ -99,21 +117,21 @@ function AgentsPageContent() {
       identity: {
         agentName: "New Agent",
         companyName: "",
-        roleDescription: "You are a helpful customer support agent.",
+        roleDescription: "You are a helpful customer support agent."
       },
       guardrails: {},
       responseStyle: { formality: "professional", length: "concise" },
       model: "claude-sonnet-4-20250514",
       enableReflection: false,
-      retrieverIds: [],
-    });
-    setAgentId(id);
-  }, [createAgent, setAgentId]);
+      retrieverIds: []
+    })
+    setAgentId(id)
+  }, [createAgent, setAgentId])
 
   // --- Experiment modal ---
-  const [showExperimentModal, setShowExperimentModal] = useState(false);
+  const [showExperimentModal, setShowExperimentModal] = useState(false)
   // --- Simulation modal ---
-  const [showSimModal, setShowSimModal] = useState(false);
+  const [showSimModal, setShowSimModal] = useState(false)
 
   return (
     <div className="h-screen flex flex-col bg-bg overflow-hidden">
@@ -190,7 +208,9 @@ function AgentsPageContent() {
           strategy="Simulation"
           kbName={agents.find((a) => a._id === agentId)?.name ?? "Agent"}
           phase="generating"
-          processedItems={runningSim.completedRuns + (runningSim.failedRuns ?? 0)}
+          processedItems={
+            runningSim.completedRuns + (runningSim.failedRuns ?? 0)
+          }
           totalItems={runningSim.totalRuns}
           questionsGenerated={runningSim.completedRuns}
           itemLabel="Conversations"
@@ -248,5 +268,5 @@ function AgentsPageContent() {
         </div>
       )}
     </div>
-  );
+  )
 }

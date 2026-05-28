@@ -1,8 +1,8 @@
-"use client";
+"use client"
 
 interface PriorityDotsProps {
-  value: number;
-  onChange: (priority: number) => void;
+  value: number
+  onChange: (priority: number) => void
 }
 
 export function PriorityDots({ value, onChange }: PriorityDotsProps) {
@@ -15,23 +15,22 @@ export function PriorityDots({ value, onChange }: PriorityDotsProps) {
           onClick={() => onChange(level)}
           className="w-2 h-2 rounded-full transition-colors"
           style={{
-            backgroundColor: level <= value
-              ? "var(--color-accent)"
-              : "var(--color-border)",
+            backgroundColor:
+              level <= value ? "var(--color-accent)" : "var(--color-border)"
           }}
           onMouseEnter={(e) => {
             if (level > value) {
-              e.currentTarget.style.backgroundColor = "var(--color-border-bright)";
+              e.currentTarget.style.backgroundColor =
+                "var(--color-border-bright)"
             }
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = level <= value
-              ? "var(--color-accent)"
-              : "var(--color-border)";
+            e.currentTarget.style.backgroundColor =
+              level <= value ? "var(--color-accent)" : "var(--color-border)"
           }}
           aria-label={`Set priority to ${level}`}
         />
       ))}
     </div>
-  );
+  )
 }

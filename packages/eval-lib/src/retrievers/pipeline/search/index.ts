@@ -1,14 +1,17 @@
-export { BM25SearchIndex, BM25SearchStrategy } from "./bm25.js";
-export { DenseSearchStrategy, assignRankScores } from "./dense.js";
-export { HybridSearchStrategy } from "./hybrid.js";
-export type { SearchStrategy, SearchStrategyDeps } from "./strategy.interface.js";
-export type { ScoredChunk } from "../types.js";
+export type { ScoredChunk } from "../types.js"
+export { BM25SearchIndex, BM25SearchStrategy } from "./bm25.js"
+export { assignRankScores, DenseSearchStrategy } from "./dense.js"
+export type {
+  ReciprocalRankFusionParams,
+  WeightedScoreFusionParams
+} from "./fusion.js"
 export {
-  weightedScoreFusion,
   reciprocalRankFusion,
   rrfFuseMultiple,
-} from "./fusion.js";
+  weightedScoreFusion
+} from "./fusion.js"
+export { HybridSearchStrategy } from "./hybrid.js"
 export type {
-  WeightedScoreFusionParams,
-  ReciprocalRankFusionParams,
-} from "./fusion.js";
+  SearchStrategy,
+  SearchStrategyDeps
+} from "./strategy.interface.js"

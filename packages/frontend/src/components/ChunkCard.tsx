@@ -1,18 +1,18 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { MarkdownViewer } from "./MarkdownViewer";
+import { useState } from "react"
+import { MarkdownViewer } from "./MarkdownViewer"
 
 interface ChunkCardProps {
-  rank: number;
-  score: number;
-  docId?: string;
-  start?: number;
-  end?: number;
-  content: string;
-  metadata?: Record<string, unknown>;
+  rank: number
+  score: number
+  docId?: string
+  start?: number
+  end?: number
+  content: string
+  metadata?: Record<string, unknown>
   /** Default collapsed (3-line clamp). Click to expand. */
-  defaultExpanded?: boolean;
+  defaultExpanded?: boolean
 }
 
 function formatHeader(
@@ -20,16 +20,16 @@ function formatHeader(
   score: number,
   docId?: string,
   start?: number,
-  end?: number,
+  end?: number
 ): string {
-  let header = `#${rank} · score: ${score.toFixed(2)}`;
+  let header = `#${rank} · score: ${score.toFixed(2)}`
   if (docId != null) {
-    header += ` · ${docId}`;
+    header += ` · ${docId}`
   }
   if (start != null && end != null) {
-    header += ` (${start}–${end})`;
+    header += ` (${start}–${end})`
   }
-  return header;
+  return header
 }
 
 export function ChunkCard({
@@ -39,9 +39,9 @@ export function ChunkCard({
   start,
   end,
   content,
-  defaultExpanded = false,
+  defaultExpanded = false
 }: ChunkCardProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [expanded, setExpanded] = useState(defaultExpanded)
 
   return (
     <div
@@ -50,8 +50,8 @@ export function ChunkCard({
       onClick={() => setExpanded((prev) => !prev)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          setExpanded((prev) => !prev);
+          e.preventDefault()
+          setExpanded((prev) => !prev)
         }
       }}
       className="bg-elevated border border-border rounded-lg p-3 cursor-pointer hover:border-accent/30 transition-colors"
@@ -61,13 +61,7 @@ export function ChunkCard({
       </p>
 
       <div className="relative">
-        <div
-          className={
-            expanded
-              ? ""
-              : "max-h-[4.5rem] overflow-hidden"
-          }
-        >
+        <div className={expanded ? "" : "max-h-[4.5rem] overflow-hidden"}>
           {/* Stop click on the toggle pill from toggling the card */}
           {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
           <div onClick={(e) => e.stopPropagation()}>
@@ -85,5 +79,5 @@ export function ChunkCard({
         )}
       </div>
     </div>
-  );
+  )
 }

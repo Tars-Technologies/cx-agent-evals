@@ -1,2 +1,5 @@
-export type { VectorStore, VectorSearchResult } from "./vector-store.interface.js";
-export { InMemoryVectorStore } from "./in-memory.js";
+export { InMemoryVectorStore } from "./in-memory.js"
+export type {
+  VectorSearchResult,
+  VectorStore
+} from "./vector-store.interface.js"

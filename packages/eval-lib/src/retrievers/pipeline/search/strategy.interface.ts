@@ -1,7 +1,7 @@
-import type { PositionAwareChunk } from "../../../types/chunks.js";
-import type { Embedder } from "../../../embedders/embedder.interface.js";
-import type { VectorStore } from "../../../vector-stores/vector-store.interface.js";
-import type { ScoredChunk } from "../types.js";
+import type { Embedder } from "../../../embedders/embedder.interface.js"
+import type { PositionAwareChunk } from "../../../types/chunks.js"
+import type { VectorStore } from "../../../vector-stores/vector-store.interface.js"
+import type { ScoredChunk } from "../types.js"
 
 /**
  * Runtime dependencies passed to search strategies.
@@ -11,8 +11,8 @@ import type { ScoredChunk } from "../types.js";
  * shared instances (embedder, vector store).
  */
 export interface SearchStrategyDeps {
-  readonly embedder: Embedder;
-  readonly vectorStore: VectorStore;
+  readonly embedder: Embedder
+  readonly vectorStore: VectorStore
 }
 
 /**
@@ -23,7 +23,7 @@ export interface SearchStrategyDeps {
  */
 export interface SearchStrategy {
   /** Human-readable strategy name (e.g. "dense", "bm25", "hybrid"). */
-  readonly name: string;
+  readonly name: string
 
   /**
    * Initialise any internal data structures required for search.
@@ -31,15 +31,22 @@ export interface SearchStrategy {
    * For dense search this means embedding and storing chunks in the vector
    * store; for BM25 it means building the inverted index.
    */
-  init(chunks: readonly PositionAwareChunk[], deps: SearchStrategyDeps): Promise<void>;
+  init(
+    chunks: readonly PositionAwareChunk[],
+    deps: SearchStrategyDeps
+  ): Promise<void>
 
   /**
    * Execute a search and return scored chunks, ordered by descending score.
    */
-  search(query: string, k: number, deps: SearchStrategyDeps): Promise<ScoredChunk[]>;
+  search(
+    query: string,
+    k: number,
+    deps: SearchStrategyDeps
+  ): Promise<ScoredChunk[]>
 
   /**
    * Release all resources held by this strategy.
    */
-  cleanup(deps: SearchStrategyDeps): Promise<void>;
+  cleanup(deps: SearchStrategyDeps): Promise<void>
 }

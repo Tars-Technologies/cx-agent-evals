@@ -1,12 +1,12 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from "next"
 
 const nextConfig: NextConfig = {
   serverExternalPackages: [
     "@tars-inc/eval-lib",
     "openai",
     "langsmith",
-    "@langchain/core",
-  ],
-};
+    "@langchain/core"
+  ]
+}
 
-export default nextConfig;
+export default nextConfig

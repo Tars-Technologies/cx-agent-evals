@@ -1,25 +1,30 @@
-import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
-import { v } from "convex/values";
-import { getAuthContext } from "../lib/auth";
-import { spanValidator } from "../lib/validators";
+import { v } from "convex/values"
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query
+} from "../_generated/server"
+import { getAuthContext } from "../lib/auth"
+import { spanValidator } from "../lib/validators"
 
 export const byDataset = query({
   args: { datasetId: v.id("datasets") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
+    const { orgId } = await getAuthContext(ctx)
 
     // Verify dataset belongs to org
-    const dataset = await ctx.db.get(args.datasetId);
+    const dataset = await ctx.db.get(args.datasetId)
     if (!dataset || dataset.orgId !== orgId) {
-      throw new Error("Dataset not found");
+      throw new Error("Dataset not found")
     }
 
     return await ctx.db
       .query("questions")
       .withIndex("by_dataset", (q) => q.eq("datasetId", args.datasetId))
-      .collect();
-  },
-});
+      .collect()
+  }
+})
 
 /**
  * Public mutation: update a question's text and/or spans.
@@ -29,27 +34,29 @@ export const updateQuestion = mutation({
   args: {
     questionId: v.id("questions"),
     queryText: v.optional(v.string()),
-    relevantSpans: v.optional(v.array(spanValidator)),
+    relevantSpans: v.optional(v.array(spanValidator))
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
+    const { orgId } = await getAuthContext(ctx)
 
-    const question = await ctx.db.get(args.questionId);
-    if (!question) throw new Error("Question not found");
+    const question = await ctx.db.get(args.questionId)
+    if (!question) throw new Error("Question not found")
 
     // Verify org access via dataset
-    const dataset = await ctx.db.get(question.datasetId);
+    const dataset = await ctx.db.get(question.datasetId)
     if (!dataset || dataset.orgId !== orgId) {
-      throw new Error("Question not found");
+      throw new Error("Question not found")
     }
 
     await ctx.db.patch(args.questionId, {
       langsmithExampleId: undefined,
       ...(args.queryText !== undefined && { queryText: args.queryText }),
-      ...(args.relevantSpans !== undefined && { relevantSpans: args.relevantSpans }),
-    });
-  },
-});
+      ...(args.relevantSpans !== undefined && {
+        relevantSpans: args.relevantSpans
+      })
+    })
+  }
+})
 
 /**
  * Insert a batch of questions into a dataset.
@@ -65,22 +72,22 @@ export const insertBatch = internalMutation({
         sourceDocId: v.string(),
         relevantSpans: v.array(spanValidator),
         metadata: v.optional(v.any()),
-        source: v.optional(v.string()),
-      }),
-    ),
+        source: v.optional(v.string())
+      })
+    )
   },
   handler: async (ctx, args) => {
     // Check for existing queryIds to prevent duplicate insertion on retry
     const existing = await ctx.db
       .query("questions")
       .withIndex("by_dataset", (q) => q.eq("datasetId", args.datasetId))
-      .collect();
-    const existingQueryIds = new Set(existing.map((q) => q.queryId));
+      .collect()
+    const existingQueryIds = new Set(existing.map((q) => q.queryId))
 
-    const ids = [];
+    const ids = []
     for (const q of args.questions) {
       if (existingQueryIds.has(q.queryId)) {
-        continue; // Skip duplicate
+        continue // Skip duplicate
       }
       const id = await ctx.db.insert("questions", {
         datasetId: args.datasetId,
@@ -89,13 +96,13 @@ export const insertBatch = internalMutation({
         sourceDocId: q.sourceDocId,
         relevantSpans: q.relevantSpans,
         metadata: q.metadata ?? {},
-        source: q.source,
-      });
-      ids.push(id);
+        source: q.source
+      })
+      ids.push(id)
     }
-    return ids;
-  },
-});
+    return ids
+  }
+})
 
 /**
  * Internal query: list all questions in a dataset (no auth check).
@@ -106,9 +113,9 @@ export const byDatasetInternal = internalQuery({
     return await ctx.db
       .query("questions")
       .withIndex("by_dataset", (q) => q.eq("datasetId", args.datasetId))
-      .collect();
-  },
-});
+      .collect()
+  }
+})
 
 /**
  * Internal query: get a single question by ID (no auth check).
@@ -116,11 +123,11 @@ export const byDatasetInternal = internalQuery({
 export const getInternal = internalQuery({
   args: { id: v.id("questions") },
   handler: async (ctx, args) => {
-    const question = await ctx.db.get(args.id);
-    if (!question) throw new Error("Question not found");
-    return question;
-  },
-});
+    const question = await ctx.db.get(args.id)
+    if (!question) throw new Error("Question not found")
+    return question
+  }
+})
 
 /**
  * Batch-update langsmithExampleId on questions after dataset sync.
@@ -130,28 +137,28 @@ export const updateLangsmithExampleIds = internalMutation({
     updates: v.array(
       v.object({
         questionId: v.id("questions"),
-        langsmithExampleId: v.string(),
-      }),
-    ),
+        langsmithExampleId: v.string()
+      })
+    )
   },
   handler: async (ctx, args) => {
     for (const { questionId, langsmithExampleId } of args.updates) {
-      await ctx.db.patch(questionId, { langsmithExampleId });
+      await ctx.db.patch(questionId, { langsmithExampleId })
     }
-  },
-});
+  }
+})
 
 export const updateSpans = internalMutation({
   args: {
     questionId: v.id("questions"),
-    relevantSpans: v.array(spanValidator),
+    relevantSpans: v.array(spanValidator)
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.questionId, {
-      relevantSpans: args.relevantSpans,
-    });
-  },
-});
+      relevantSpans: args.relevantSpans
+    })
+  }
+})
 
 /**
  * Delete all questions belonging to a dataset.
@@ -162,12 +169,12 @@ export const deleteByDataset = internalMutation({
     const questions = await ctx.db
       .query("questions")
       .withIndex("by_dataset", (q) => q.eq("datasetId", args.datasetId))
-      .collect();
+      .collect()
 
     for (const q of questions) {
-      await ctx.db.delete(q._id);
+      await ctx.db.delete(q._id)
     }
 
-    return { deleted: questions.length };
-  },
-});
+    return { deleted: questions.length }
+  }
+})

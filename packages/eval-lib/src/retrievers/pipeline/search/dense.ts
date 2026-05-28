@@ -1,6 +1,9 @@
-import type { PositionAwareChunk } from "../../../types/chunks.js";
-import type { ScoredChunk } from "../types.js";
-import type { SearchStrategy, SearchStrategyDeps } from "./strategy.interface.js";
+import type { PositionAwareChunk } from "../../../types/chunks.js"
+import type { ScoredChunk } from "../types.js"
+import type {
+  SearchStrategy,
+  SearchStrategyDeps
+} from "./strategy.interface.js"
 
 /**
  * Dense (embedding-based) vector search strategy.
@@ -10,32 +13,39 @@ import type { SearchStrategy, SearchStrategyDeps } from "./strategy.interface.js
  * is performed.
  */
 export class DenseSearchStrategy implements SearchStrategy {
-  readonly name = "dense";
+  readonly name = "dense"
 
-  private readonly _batchSize: number;
+  private readonly _batchSize: number
 
   constructor(options?: { readonly batchSize?: number }) {
-    this._batchSize = options?.batchSize ?? 100;
+    this._batchSize = options?.batchSize ?? 100
   }
 
-  async init(chunks: readonly PositionAwareChunk[], deps: SearchStrategyDeps): Promise<void> {
-    const { embedder, vectorStore } = deps;
+  async init(
+    chunks: readonly PositionAwareChunk[],
+    deps: SearchStrategyDeps
+  ): Promise<void> {
+    const { embedder, vectorStore } = deps
 
     for (let i = 0; i < chunks.length; i += this._batchSize) {
-      const batch = chunks.slice(i, i + this._batchSize);
-      const embeddings = await embedder.embed(batch.map((c) => c.content));
-      await vectorStore.add(batch, embeddings);
+      const batch = chunks.slice(i, i + this._batchSize)
+      const embeddings = await embedder.embed(batch.map((c) => c.content))
+      await vectorStore.add(batch, embeddings)
     }
   }
 
-  async search(query: string, k: number, deps: SearchStrategyDeps): Promise<ScoredChunk[]> {
-    const { embedder, vectorStore } = deps;
+  async search(
+    query: string,
+    k: number,
+    deps: SearchStrategyDeps
+  ): Promise<ScoredChunk[]> {
+    const { embedder, vectorStore } = deps
 
-    const queryEmbedding = await embedder.embedQuery(query);
-    const results = await vectorStore.search(queryEmbedding, k);
+    const queryEmbedding = await embedder.embedQuery(query)
+    const results = await vectorStore.search(queryEmbedding, k)
 
     // VectorStore now returns real similarity scores — use them directly.
-    return results.map(({ chunk, score }) => ({ chunk, score }));
+    return results.map(({ chunk, score }) => ({ chunk, score }))
   }
 
   async cleanup(_deps: SearchStrategyDeps): Promise<void> {
@@ -52,11 +62,13 @@ export class DenseSearchStrategy implements SearchStrategy {
  * Assigns linearly decaying scores based on position.
  * First result gets 1.0, last gets 1/count.
  */
-export function assignRankScores(chunks: readonly PositionAwareChunk[]): ScoredChunk[] {
-  const count = chunks.length;
-  if (count === 0) return [];
+export function assignRankScores(
+  chunks: readonly PositionAwareChunk[]
+): ScoredChunk[] {
+  const count = chunks.length
+  if (count === 0) return []
   return chunks.map((chunk, i) => ({
     chunk,
-    score: (count - i) / count,
-  }));
+    score: (count - i) / count
+  }))
 }

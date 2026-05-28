@@ -1,35 +1,35 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation } from "convex/react"
+import { useState } from "react"
+import { api } from "@/lib/convex"
 
 interface ReadyStateProps {
-  experimentId: Id<"experiments">;
-  annotated: number;
-  total: number;
+  experimentId: Id<"experiments">
+  annotated: number
+  total: number
 }
 
 export function ReadyState({
   experimentId,
   annotated,
-  total,
+  total
 }: ReadyStateProps) {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const startGeneration = useMutation(api.failureModes.crud.startGeneration);
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const startGeneration = useMutation(api.failureModes.crud.startGeneration)
 
   const handleGenerate = async () => {
-    setIsGenerating(true);
-    setError(null);
+    setIsGenerating(true)
+    setError(null)
     try {
-      await startGeneration({ experimentId });
+      await startGeneration({ experimentId })
     } catch (err: any) {
-      setError(err.message ?? "Failed to start generation");
-      setIsGenerating(false);
+      setError(err.message ?? "Failed to start generation")
+      setIsGenerating(false)
     }
-  };
+  }
 
   return (
     <div className="flex-1 flex items-center justify-center">
@@ -82,5 +82,5 @@ export function ReadyState({
         </button>
       </div>
     </div>
-  );
+  )
 }

@@ -1,5 +1,5 @@
-import type { ScoredChunk } from "../types.js";
-import { contentOverlapRatio } from "./overlap-ratio.js";
+import type { ScoredChunk } from "../types.js"
+import { contentOverlapRatio } from "./overlap-ratio.js"
 
 /**
  * Remove duplicate or near-duplicate chunks from scored results.
@@ -13,25 +13,25 @@ import { contentOverlapRatio } from "./overlap-ratio.js";
 export function applyDedup(
   results: readonly ScoredChunk[],
   method: "exact" | "overlap",
-  overlapThreshold: number,
+  overlapThreshold: number
 ): ScoredChunk[] {
   if (method === "exact") {
-    const seen = new Set<string>();
+    const seen = new Set<string>()
     return results.filter(({ chunk }) => {
-      if (seen.has(chunk.content)) return false;
-      seen.add(chunk.content);
-      return true;
-    });
+      if (seen.has(chunk.content)) return false
+      seen.add(chunk.content)
+      return true
+    })
   }
 
   // overlap method: compare against already-kept results
-  const kept: ScoredChunk[] = [];
+  const kept: ScoredChunk[] = []
   for (const result of results) {
     const isDuplicate = kept.some(
       (existing) =>
-        contentOverlapRatio(existing.chunk, result.chunk) >= overlapThreshold,
-    );
-    if (!isDuplicate) kept.push(result);
+        contentOverlapRatio(existing.chunk, result.chunk) >= overlapThreshold
+    )
+    if (!isDuplicate) kept.push(result)
   }
-  return kept;
+  return kept
 }

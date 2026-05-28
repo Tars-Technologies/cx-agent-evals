@@ -7,5 +7,5 @@ export function parseVariants(text: string, expectedCount: number): string[] {
     .split("\n")
     .map((line) => line.replace(/^\s*(?:\d+[.)]\s*|-\s*)/, "").trim())
     .filter((line) => line.length > 0)
-    .slice(0, expectedCount);
+    .slice(0, expectedCount)
 }

@@ -1,27 +1,38 @@
-"use client";
+"use client"
 
 interface RankedResult {
-  experimentId: string;
-  retrieverId: string | undefined;
-  retrieverName: string;
-  compositeScore: number;
-  recall: number;
-  precision: number;
-  f1?: number;
-  iou?: number;
-  status: string;
+  experimentId: string
+  retrieverId: string | undefined
+  retrieverName: string
+  compositeScore: number
+  recall: number
+  precision: number
+  f1?: number
+  iou?: number
+  status: string
 }
 
 interface HeadToHeadViewProps {
-  winner: RankedResult;
-  loser: RankedResult;
-  formula: string;
+  winner: RankedResult
+  loser: RankedResult
+  formula: string
 }
 
-function MetricRow({ label, value, dim }: { label: string; value: number; dim?: boolean }) {
+function MetricRow({
+  label,
+  value,
+  dim
+}: {
+  label: string
+  value: number
+  dim?: boolean
+}) {
   return (
     <div className="flex justify-between items-center gap-2">
-      <span style={{ fontSize: "10px" }} className="text-text-muted uppercase tracking-wide">
+      <span
+        style={{ fontSize: "10px" }}
+        className="text-text-muted uppercase tracking-wide"
+      >
         {label}
       </span>
       <span
@@ -31,11 +42,17 @@ function MetricRow({ label, value, dim }: { label: string; value: number; dim?: 
         {(value * 100).toFixed(1)}%
       </span>
     </div>
-  );
+  )
 }
 
-export function HeadToHeadView({ winner, loser, formula }: HeadToHeadViewProps) {
-  const delta = ((winner.compositeScore - loser.compositeScore) * 100).toFixed(1);
+export function HeadToHeadView({
+  winner,
+  loser,
+  formula
+}: HeadToHeadViewProps) {
+  const delta = ((winner.compositeScore - loser.compositeScore) * 100).toFixed(
+    1
+  )
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -49,23 +66,38 @@ export function HeadToHeadView({ winner, loser, formula }: HeadToHeadViewProps) 
           className="flex-1 rounded-lg p-4 flex flex-col gap-2"
           style={{
             border: "1px solid rgba(110,231,183,0.3)",
-            background: "linear-gradient(135deg, rgba(110,231,183,0.08) 0%, rgba(110,231,183,0.03) 100%)",
+            background:
+              "linear-gradient(135deg, rgba(110,231,183,0.08) 0%, rgba(110,231,183,0.03) 100%)"
           }}
         >
           <div
-            style={{ fontSize: "10px", color: "#fbbf24", fontWeight: 600, letterSpacing: "0.05em" }}
+            style={{
+              fontSize: "10px",
+              color: "#fbbf24",
+              fontWeight: 600,
+              letterSpacing: "0.05em"
+            }}
             className="uppercase"
           >
             ★ Winner
           </div>
           <div
-            style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-accent-bright)" }}
+            style={{
+              fontSize: "13px",
+              fontWeight: 600,
+              color: "var(--color-accent-bright)"
+            }}
             className="leading-tight"
           >
             {winner.retrieverName}
           </div>
           <div
-            style={{ fontSize: "30px", fontWeight: 700, color: "var(--color-accent)", lineHeight: 1 }}
+            style={{
+              fontSize: "30px",
+              fontWeight: 700,
+              color: "var(--color-accent)",
+              lineHeight: 1
+            }}
             className="tabular-nums"
           >
             {(winner.compositeScore * 100).toFixed(1)}%
@@ -77,7 +109,7 @@ export function HeadToHeadView({ winner, loser, formula }: HeadToHeadViewProps) 
               fontSize: "10px",
               fontWeight: 600,
               color: "var(--color-accent)",
-              background: "rgba(110,231,183,0.1)",
+              background: "rgba(110,231,183,0.1)"
             }}
           >
             +{delta}% ahead
@@ -91,7 +123,12 @@ export function HeadToHeadView({ winner, loser, formula }: HeadToHeadViewProps) 
         {/* vs divider */}
         <div
           className="flex items-center justify-center"
-          style={{ width: "32px", fontSize: "12px", fontWeight: 700, color: "var(--color-text-dim)" }}
+          style={{
+            width: "32px",
+            fontSize: "12px",
+            fontWeight: 700,
+            color: "var(--color-text-dim)"
+          }}
         >
           vs
         </div>
@@ -101,23 +138,37 @@ export function HeadToHeadView({ winner, loser, formula }: HeadToHeadViewProps) 
           className="flex-1 rounded-lg p-4 flex flex-col gap-2"
           style={{
             border: "1px solid var(--color-border)",
-            background: "transparent",
+            background: "transparent"
           }}
         >
           <div
-            style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 600, letterSpacing: "0.05em" }}
+            style={{
+              fontSize: "10px",
+              color: "#94a3b8",
+              fontWeight: 600,
+              letterSpacing: "0.05em"
+            }}
             className="uppercase"
           >
             2nd
           </div>
           <div
-            style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-text)" }}
+            style={{
+              fontSize: "13px",
+              fontWeight: 600,
+              color: "var(--color-text)"
+            }}
             className="leading-tight"
           >
             {loser.retrieverName}
           </div>
           <div
-            style={{ fontSize: "30px", fontWeight: 600, color: "var(--color-text-muted)", lineHeight: 1 }}
+            style={{
+              fontSize: "30px",
+              fontWeight: 600,
+              color: "var(--color-text-muted)",
+              lineHeight: 1
+            }}
             className="tabular-nums"
           >
             {(loser.compositeScore * 100).toFixed(1)}%
@@ -132,10 +183,8 @@ export function HeadToHeadView({ winner, loser, formula }: HeadToHeadViewProps) 
       {/* Formula note */}
       <div style={{ fontSize: "10px" }} className="text-text-muted text-center">
         Ranked by{" "}
-        <span className="font-mono text-text-dim">
-          Score = {formula}
-        </span>
+        <span className="font-mono text-text-dim">Score = {formula}</span>
       </div>
     </div>
-  );
+  )
 }

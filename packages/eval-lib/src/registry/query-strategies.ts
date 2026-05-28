@@ -1,4 +1,4 @@
-import type { RegistryEntry } from "./types.js";
+import type { RegistryEntry } from "./types.js"
 
 export const QUERY_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
   {
@@ -8,7 +8,7 @@ export const QUERY_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
       "Passes the user query through to search unchanged. No query transformation or expansion. The simplest and fastest approach, recommended as a baseline.",
     status: "available",
     options: [],
-    defaults: {},
+    defaults: {}
   },
   {
     id: "hyde",
@@ -25,7 +25,7 @@ export const QUERY_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
           "Number of hypothetical documents to generate. More documents increase recall but add latency and cost.",
         type: "number",
         default: 1,
-        constraints: { min: 1, max: 5, step: 1 },
+        constraints: { min: 1, max: 5, step: 1 }
       },
       {
         key: "hydePrompt",
@@ -34,10 +34,10 @@ export const QUERY_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
           "Custom prompt template for generating hypothetical documents. Leave empty to use the built-in default.",
         type: "string",
         default: "",
-        advanced: true,
-      },
+        advanced: true
+      }
     ],
-    defaults: { numHypotheticalDocs: 1, hydePrompt: "" },
+    defaults: { numHypotheticalDocs: 1, hydePrompt: "" }
   },
   {
     id: "multi-query",
@@ -54,7 +54,7 @@ export const QUERY_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
           "How many query variations to generate. More queries improve recall but increase latency linearly.",
         type: "number",
         default: 3,
-        constraints: { min: 2, max: 10, step: 1 },
+        constraints: { min: 2, max: 10, step: 1 }
       },
       {
         key: "fusionMethod",
@@ -67,16 +67,15 @@ export const QUERY_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
             value: "rrf",
             label: "RRF",
             description:
-              "Reciprocal Rank Fusion -- rank-based, no score calibration needed",
+              "Reciprocal Rank Fusion -- rank-based, no score calibration needed"
           },
           {
             value: "weighted",
             label: "Weighted",
-            description:
-              "Weighted average of normalized scores",
-          },
+            description: "Weighted average of normalized scores"
+          }
         ],
-        default: "rrf",
+        default: "rrf"
       },
       {
         key: "generationPrompt",
@@ -85,10 +84,10 @@ export const QUERY_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
           "Custom prompt template for generating query variations. Leave empty to use the built-in default.",
         type: "string",
         default: "",
-        advanced: true,
-      },
+        advanced: true
+      }
     ],
-    defaults: { numQueries: 3, fusionMethod: "rrf", generationPrompt: "" },
+    defaults: { numQueries: 3, fusionMethod: "rrf", generationPrompt: "" }
   },
   {
     id: "step-back",
@@ -104,7 +103,7 @@ export const QUERY_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
         description:
           "Whether to also retrieve using the original query in addition to the step-back query.",
         type: "boolean",
-        default: true,
+        default: true
       },
       {
         key: "stepBackPrompt",
@@ -113,10 +112,10 @@ export const QUERY_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
           "Custom prompt template for generating the step-back question. Leave empty to use the built-in default.",
         type: "string",
         default: "",
-        advanced: true,
-      },
+        advanced: true
+      }
     ],
-    defaults: { includeOriginal: true, stepBackPrompt: "" },
+    defaults: { includeOriginal: true, stepBackPrompt: "" }
   },
   {
     id: "rewrite",
@@ -133,9 +132,9 @@ export const QUERY_STRATEGY_REGISTRY: readonly RegistryEntry[] = [
           "Custom prompt template for query rewriting. Leave empty to use the built-in default.",
         type: "string",
         default: "",
-        advanced: true,
-      },
+        advanced: true
+      }
     ],
-    defaults: { rewritePrompt: "" },
-  },
-] as const;
+    defaults: { rewritePrompt: "" }
+  }
+] as const

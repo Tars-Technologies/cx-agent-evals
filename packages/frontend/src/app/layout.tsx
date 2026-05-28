@@ -1,25 +1,25 @@
-import type { Metadata } from "next";
-import { JetBrains_Mono } from "next/font/google";
-import "./globals.css";
-import ConvexClientProvider from "@/components/ConvexClientProvider";
-import { AuthGate } from "@/components/AuthGate";
+import type { Metadata } from "next"
+import { JetBrains_Mono } from "next/font/google"
+import "./globals.css"
+import { AuthGate } from "@/components/AuthGate"
+import ConvexClientProvider from "@/components/ConvexClientProvider"
 
 const jetbrains = JetBrains_Mono({
   variable: "--font-jetbrains",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-});
+  weight: ["300", "400", "500", "600", "700"]
+})
 
 export const metadata: Metadata = {
   title: "RAG Eval — Synthetic Data Generator",
   description:
-    "Generate synthetic evaluation questions for RAG retrieval pipelines",
-};
+    "Generate synthetic evaluation questions for RAG retrieval pipelines"
+}
 
 export default function RootLayout({
-  children,
+  children
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
   return (
     <html lang="en" className="dark">
@@ -32,5 +32,5 @@ export default function RootLayout({
         </ConvexClientProvider>
       </body>
     </html>
-  );
+  )
 }

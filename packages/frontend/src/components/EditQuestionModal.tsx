@@ -1,139 +1,144 @@
-"use client";
+"use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
-import { SpanInfo } from "@/lib/types";
-import { DocSearchResults, type DocSearchHit } from "./DocSearchResults";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation, useQuery } from "convex/react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { api } from "@/lib/convex"
+import type { SpanInfo } from "@/lib/types"
+import { type DocSearchHit, DocSearchResults } from "./DocSearchResults"
 
 const SPAN_COLORS = [
   "var(--color-chunk-1)",
   "var(--color-chunk-2)",
   "var(--color-chunk-3)",
   "var(--color-chunk-4)",
-  "var(--color-chunk-5)",
-];
+  "var(--color-chunk-5)"
+]
 
 interface EditQuestionModalProps {
   /** Convex question record */
   question: {
-    _id: Id<"questions">;
-    queryText: string;
-    sourceDocId: string;
-    relevantSpans: SpanInfo[];
-  };
+    _id: Id<"questions">
+    queryText: string
+    sourceDocId: string
+    relevantSpans: SpanInfo[]
+  }
   /** KB ID for loading documents */
-  kbId: Id<"knowledgeBases">;
-  onClose: () => void;
-  onSaved?: () => void;
+  kbId: Id<"knowledgeBases">
+  onClose: () => void
+  onSaved?: () => void
 }
 
 export function EditQuestionModal({
   question,
   kbId,
   onClose,
-  onSaved,
+  onSaved
 }: EditQuestionModalProps) {
-  const updateQuestion = useMutation(api.crud.questions.updateQuestion);
+  const updateQuestion = useMutation(api.crud.questions.updateQuestion)
 
   // Editable state
-  const [queryText, setQueryText] = useState(question.queryText);
-  const [spans, setSpans] = useState<SpanInfo[]>([...question.relevantSpans]);
+  const [queryText, setQueryText] = useState(question.queryText)
+  const [spans, setSpans] = useState<SpanInfo[]>([...question.relevantSpans])
 
   // Track unsaved changes
   const hasChanges =
     queryText !== question.queryText ||
-    JSON.stringify(spans) !== JSON.stringify(question.relevantSpans);
+    JSON.stringify(spans) !== JSON.stringify(question.relevantSpans)
 
   // Delete confirmation
-  const [confirmDeleteIndex, setConfirmDeleteIndex] = useState<number | null>(null);
+  const [confirmDeleteIndex, setConfirmDeleteIndex] = useState<number | null>(
+    null
+  )
 
   // Resolve referenced docIds (source + span docs) via point lookup. Includes
   // every doc the user has added a span on, so navigation always has the _id.
   const referencedDocIds = useMemo(() => {
-    const set = new Set<string>([question.sourceDocId]);
-    for (const s of spans) set.add(s.docId);
-    return [...set];
-  }, [question.sourceDocId, spans]);
+    const set = new Set<string>([question.sourceDocId])
+    for (const s of spans) set.add(s.docId)
+    return [...set]
+  }, [question.sourceDocId, spans])
 
   const resolvedDocs = useQuery(
     api.crud.documents.getDocsByDocIds,
-    referencedDocIds.length > 0 ? { kbId, docIds: referencedDocIds } : "skip",
-  );
+    referencedDocIds.length > 0 ? { kbId, docIds: referencedDocIds } : "skip"
+  )
 
   const docByDocId = useMemo(() => {
-    const map = new Map<string, Pick<DocSearchHit, "_id" | "docId" | "title">>();
+    const map = new Map<string, Pick<DocSearchHit, "_id" | "docId" | "title">>()
     for (const d of resolvedDocs ?? []) {
-      map.set(d.docId, { _id: d._id, docId: d.docId, title: d.title });
+      map.set(d.docId, { _id: d._id, docId: d.docId, title: d.title })
     }
-    return map;
-  }, [resolvedDocs]);
+    return map
+  }, [resolvedDocs])
 
   // Explicit selection from the right-panel search; falls back to the source doc.
-  const [pickedDocId, setPickedDocId] = useState<Id<"documents"> | null>(null);
+  const [pickedDocId, setPickedDocId] = useState<Id<"documents"> | null>(null)
   const selectedDocId =
-    pickedDocId ?? docByDocId.get(question.sourceDocId)?._id ?? null;
+    pickedDocId ?? docByDocId.get(question.sourceDocId)?._id ?? null
 
   // Saving state
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState(false)
 
   // Close on Escape
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onClose()
     }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [onClose])
 
   // Group spans by docId for display
-  const spansByDoc = new Map<string, { span: SpanInfo; globalIndex: number }[]>();
+  const spansByDoc = new Map<
+    string,
+    { span: SpanInfo; globalIndex: number }[]
+  >()
   spans.forEach((span, i) => {
-    const list = spansByDoc.get(span.docId) || [];
-    list.push({ span, globalIndex: i });
-    spansByDoc.set(span.docId, list);
-  });
+    const list = spansByDoc.get(span.docId) || []
+    list.push({ span, globalIndex: i })
+    spansByDoc.set(span.docId, list)
+  })
 
   // Focused span for scroll-to + glow
-  const [focusedSpanIndex, setFocusedSpanIndex] = useState<number | null>(null);
+  const [focusedSpanIndex, setFocusedSpanIndex] = useState<number | null>(null)
 
   function handleDeleteSpan(index: number) {
-    setSpans((prev) => prev.filter((_, i) => i !== index));
-    setConfirmDeleteIndex(null);
+    setSpans((prev) => prev.filter((_, i) => i !== index))
+    setConfirmDeleteIndex(null)
   }
 
   function handleAddSpan(span: SpanInfo) {
-    setSpans((prev) => [...prev, span]);
+    setSpans((prev) => [...prev, span])
   }
 
   function handleSpanClick(globalIndex: number, span: SpanInfo) {
-    navigateToDoc(span.docId);
-    setFocusedSpanIndex(globalIndex);
+    navigateToDoc(span.docId)
+    setFocusedSpanIndex(globalIndex)
   }
 
   async function handleSave() {
-    setSaving(true);
+    setSaving(true)
     try {
       await updateQuestion({
         questionId: question._id,
         queryText,
-        relevantSpans: spans,
-      });
-      onSaved?.();
-      onClose();
+        relevantSpans: spans
+      })
+      onSaved?.()
+      onClose()
     } catch {
-      setSaving(false);
+      setSaving(false)
     }
   }
 
   function navigateToDoc(docId: string) {
-    const doc = docByDocId.get(docId);
-    if (doc) setPickedDocId(doc._id);
+    const doc = docByDocId.get(docId)
+    if (doc) setPickedDocId(doc._id)
   }
 
   function handlePickSearchResult(doc: DocSearchHit) {
-    setPickedDocId(doc._id);
+    setPickedDocId(doc._id)
   }
 
   return (
@@ -142,13 +147,20 @@ export function EditQuestionModal({
 
       <div
         className="relative bg-bg-elevated border border-border rounded-lg shadow-2xl flex flex-col animate-fade-in"
-        style={{ width: "95vw", maxWidth: 1200, height: "80vh", maxHeight: 720 }}
+        style={{
+          width: "95vw",
+          maxWidth: 1200,
+          height: "80vh",
+          maxHeight: 720
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border flex-shrink-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-text">Edit Question</span>
+            <span className="text-sm font-semibold text-text">
+              Edit Question
+            </span>
             <span className="text-[9px] text-accent bg-accent-dim px-1.5 py-0.5 rounded font-medium">
               {question._id.slice(-4)}
             </span>
@@ -202,15 +214,19 @@ export function EditQuestionModal({
               </span>
               <span className="text-[10px] text-accent font-medium">
                 {spans.length} span{spans.length !== 1 ? "s" : ""}
-                {spansByDoc.size > 1 ? ` across ${spansByDoc.size} docs` : spansByDoc.size === 1 ? " · 1 doc" : ""}
+                {spansByDoc.size > 1
+                  ? ` across ${spansByDoc.size} docs`
+                  : spansByDoc.size === 1
+                    ? " · 1 doc"
+                    : ""}
               </span>
             </div>
 
             {/* Spans list */}
             <div className="flex-1 overflow-y-auto p-2">
               {[...spansByDoc.entries()].map(([docId, items]) => {
-                const docRef = docByDocId.get(docId);
-                const label = docRef?.title ?? docId;
+                const docRef = docByDocId.get(docId)
+                const label = docRef?.title ?? docId
                 return (
                   <div key={docId} className="mb-3">
                     <button
@@ -236,7 +252,8 @@ export function EditQuestionModal({
                         <div
                           className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l"
                           style={{
-                            backgroundColor: SPAN_COLORS[globalIndex % SPAN_COLORS.length],
+                            backgroundColor:
+                              SPAN_COLORS[globalIndex % SPAN_COLORS.length]
                           }}
                         />
 
@@ -251,7 +268,9 @@ export function EditQuestionModal({
 
                         {confirmDeleteIndex === globalIndex && (
                           <div className="absolute -top-1 right-1 bg-bg-elevated border border-red-500 rounded px-2.5 py-1.5 flex items-center gap-2 shadow-lg z-10">
-                            <span className="text-[10px] text-text-muted">Remove?</span>
+                            <span className="text-[10px] text-text-muted">
+                              Remove?
+                            </span>
                             <button
                               onClick={() => handleDeleteSpan(globalIndex)}
                               className="text-[9px] font-semibold bg-red-500 text-white px-2 py-0.5 rounded cursor-pointer"
@@ -267,14 +286,17 @@ export function EditQuestionModal({
                           </div>
                         )}
 
-                        <p className="text-text line-clamp-3 pr-12">{span.text}</p>
+                        <p className="text-text line-clamp-3 pr-12">
+                          {span.text}
+                        </p>
                         <p className="text-[8px] text-text-dim mt-1">
-                          chars {span.start.toLocaleString()} — {span.end.toLocaleString()}
+                          chars {span.start.toLocaleString()} —{" "}
+                          {span.end.toLocaleString()}
                         </p>
                       </div>
                     ))}
                   </div>
-                );
+                )
               })}
 
               {spans.length === 0 && (
@@ -310,7 +332,11 @@ export function EditQuestionModal({
         {/* Footer */}
         <div className="flex items-center justify-between px-5 py-2.5 border-t border-border flex-shrink-0">
           <span className="text-[10px] text-text-dim">
-            Select text in the document to add a ground truth span · <kbd className="bg-bg-surface border border-border rounded px-1.5 py-0.5 text-[9px] text-text-muted">Esc</kbd> to close
+            Select text in the document to add a ground truth span ·{" "}
+            <kbd className="bg-bg-surface border border-border rounded px-1.5 py-0.5 text-[9px] text-text-muted">
+              Esc
+            </kbd>{" "}
+            to close
           </span>
           <span className="text-[10px] text-text-dim">
             Saving will clear LangSmith sync for re-upload
@@ -318,7 +344,7 @@ export function EditQuestionModal({
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 // ─── Right Panel ───
@@ -330,106 +356,108 @@ function RightPanel({
   existingSpans,
   onAddSpan,
   focusedSpanIndex,
-  onFocusHandled,
+  onFocusHandled
 }: {
-  kbId: Id<"knowledgeBases">;
-  selectedDocId: Id<"documents"> | null;
-  onPickDoc: (doc: DocSearchHit) => void;
-  existingSpans: SpanInfo[];
-  onAddSpan: (span: SpanInfo) => void;
-  focusedSpanIndex: number | null;
-  onFocusHandled: () => void;
+  kbId: Id<"knowledgeBases">
+  selectedDocId: Id<"documents"> | null
+  onPickDoc: (doc: DocSearchHit) => void
+  existingSpans: SpanInfo[]
+  onAddSpan: (span: SpanInfo) => void
+  focusedSpanIndex: number | null
+  onFocusHandled: () => void
 }) {
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("")
 
   const docContent = useQuery(
     api.crud.documents.getContent,
-    selectedDocId ? { id: selectedDocId } : "skip",
-  );
+    selectedDocId ? { id: selectedDocId } : "skip"
+  )
 
   // Text selection state
   const [selection, setSelection] = useState<{
-    text: string;
-    start: number;
-    end: number;
-  } | null>(null);
+    text: string
+    start: number
+    end: number
+  } | null>(null)
 
   const handleMouseUp = useCallback(() => {
-    const sel = window.getSelection();
+    const sel = window.getSelection()
     if (!sel || sel.isCollapsed || !sel.rangeCount) {
-      setSelection(null);
-      return;
+      setSelection(null)
+      return
     }
 
-    const container = document.getElementById("doc-content-area");
-    if (!container) return;
+    const container = document.getElementById("doc-content-area")
+    if (!container) return
 
-    const range = sel.getRangeAt(0);
+    const range = sel.getRangeAt(0)
     if (!container.contains(range.commonAncestorContainer)) {
-      setSelection(null);
-      return;
+      setSelection(null)
+      return
     }
 
-    const text = sel.toString().trim();
+    const text = sel.toString().trim()
     if (!text) {
-      setSelection(null);
-      return;
+      setSelection(null)
+      return
     }
 
-    const preRange = document.createRange();
-    preRange.setStart(container, 0);
-    preRange.setEnd(range.startContainer, range.startOffset);
-    const start = preRange.toString().length;
-    const end = start + text.length;
+    const preRange = document.createRange()
+    preRange.setStart(container, 0)
+    preRange.setEnd(range.startContainer, range.startOffset)
+    const start = preRange.toString().length
+    const end = start + text.length
 
-    setSelection({ text, start, end });
-  }, []);
+    setSelection({ text, start, end })
+  }, [])
 
   function handleAddSelection() {
-    if (!selection || !docContent) return;
+    if (!selection || !docContent) return
     onAddSpan({
       docId: docContent.docId,
       start: selection.start,
       end: selection.end,
-      text: selection.text,
-    });
-    setSelection(null);
-    window.getSelection()?.removeAllRanges();
+      text: selection.text
+    })
+    setSelection(null)
+    window.getSelection()?.removeAllRanges()
   }
 
   // Scroll to and glow focused span
   useEffect(() => {
-    if (focusedSpanIndex === null || !docContent) return;
+    if (focusedSpanIndex === null || !docContent) return
     const timer = setTimeout(() => {
-      const container = document.getElementById("doc-content-area");
-      if (!container) return;
-      const mark = container.querySelector(`[data-span-index="${focusedSpanIndex}"]`);
+      const container = document.getElementById("doc-content-area")
+      if (!container) return
+      const mark = container.querySelector(
+        `[data-span-index="${focusedSpanIndex}"]`
+      )
       if (mark) {
-        mark.scrollIntoView({ behavior: "smooth", block: "center" });
-        mark.classList.add("span-glow");
-        setTimeout(() => mark.classList.remove("span-glow"), 2000);
+        mark.scrollIntoView({ behavior: "smooth", block: "center" })
+        mark.classList.add("span-glow")
+        setTimeout(() => mark.classList.remove("span-glow"), 2000)
       }
-      onFocusHandled();
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [focusedSpanIndex, docContent, onFocusHandled]);
+      onFocusHandled()
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [focusedSpanIndex, docContent, onFocusHandled])
 
   const docSpans = docContent
     ? existingSpans
         .map((s, i) => ({ ...s, colorIndex: i }))
         .filter((s) => s.docId === docContent.docId)
         .sort((a, b) => a.start - b.start)
-    : [];
+    : []
 
   function renderContent(content: string) {
-    if (docSpans.length === 0) return content;
+    if (docSpans.length === 0) return content
 
-    const parts: React.ReactNode[] = [];
-    let lastEnd = 0;
+    const parts: React.ReactNode[] = []
+    let lastEnd = 0
 
     docSpans.forEach((span, i) => {
       if (span.start > lastEnd) {
-        parts.push(content.slice(lastEnd, span.start));
+        parts.push(content.slice(lastEnd, span.start))
       }
       parts.push(
         <mark
@@ -439,20 +467,20 @@ function RightPanel({
             backgroundColor: SPAN_COLORS[span.colorIndex % SPAN_COLORS.length],
             color: "var(--color-text)",
             borderRadius: 2,
-            padding: "1px 0",
+            padding: "1px 0"
           }}
         >
           {content.slice(span.start, span.end)}
-        </mark>,
-      );
-      lastEnd = span.end;
-    });
+        </mark>
+      )
+      lastEnd = span.end
+    })
 
     if (lastEnd < content.length) {
-      parts.push(content.slice(lastEnd));
+      parts.push(content.slice(lastEnd))
     }
 
-    return <>{parts}</>;
+    return <>{parts}</>
   }
 
   return (
@@ -477,8 +505,8 @@ function RightPanel({
           <button
             key={r._id}
             onClick={() => {
-              onPickDoc(r);
-              setSearchQuery("");
+              onPickDoc(r)
+              setSearchQuery("")
             }}
             className="w-full text-left px-3 py-1.5 border-b border-border last:border-b-0 hover:bg-bg-hover transition-colors flex items-center gap-2 cursor-pointer"
           >
@@ -492,7 +520,6 @@ function RightPanel({
         )}
       />
 
-
       {/* Document content */}
       <div
         id="doc-content-area"
@@ -505,7 +532,9 @@ function RightPanel({
           </pre>
         ) : (
           <div className="flex items-center justify-center h-full text-[11px] text-text-dim">
-            {selectedDocId ? "Loading document..." : "Search for a document to view its content"}
+            {selectedDocId
+              ? "Loading document..."
+              : "Search for a document to view its content"}
           </div>
         )}
 
@@ -525,5 +554,5 @@ function RightPanel({
         )}
       </div>
     </>
-  );
+  )
 }

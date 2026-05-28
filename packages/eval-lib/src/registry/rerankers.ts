@@ -1,4 +1,4 @@
-import type { RegistryEntry } from "./types.js";
+import type { RegistryEntry } from "./types.js"
 
 export const RERANKER_REGISTRY: readonly RegistryEntry[] = [
   {
@@ -18,24 +18,23 @@ export const RERANKER_REGISTRY: readonly RegistryEntry[] = [
           {
             value: "rerank-english-v3.0",
             label: "rerank-english-v3.0",
-            description:
-              "English-only, proven stable — recommended default",
+            description: "English-only, proven stable — recommended default"
           },
           {
             value: "rerank-v3.5",
             label: "rerank-v3.5",
-            description: "Latest multilingual model",
+            description: "Latest multilingual model"
           },
           {
             value: "rerank-english-v2.0",
             label: "rerank-english-v2.0",
-            description: "Legacy — use v3.0 unless benchmarking",
-          },
+            description: "Legacy — use v3.0 unless benchmarking"
+          }
         ],
-        default: "rerank-english-v3.0",
-      },
+        default: "rerank-english-v3.0"
+      }
     ],
-    defaults: { model: "rerank-english-v3.0" },
+    defaults: { model: "rerank-english-v3.0" }
   },
   {
     id: "jina",
@@ -55,13 +54,13 @@ export const RERANKER_REGISTRY: readonly RegistryEntry[] = [
             value: "jina-reranker-v2-base-multilingual",
             label: "jina-reranker-v2-base-multilingual",
             description:
-              "Base multilingual reranker — good balance of speed and quality",
-          },
+              "Base multilingual reranker — good balance of speed and quality"
+          }
         ],
-        default: "jina-reranker-v2-base-multilingual",
-      },
+        default: "jina-reranker-v2-base-multilingual"
+      }
     ],
-    defaults: { model: "jina-reranker-v2-base-multilingual" },
+    defaults: { model: "jina-reranker-v2-base-multilingual" }
   },
   {
     id: "voyage",
@@ -80,12 +79,12 @@ export const RERANKER_REGISTRY: readonly RegistryEntry[] = [
           {
             value: "rerank-2.5",
             label: "rerank-2.5",
-            description: "Latest Voyage reranker",
-          },
+            description: "Latest Voyage reranker"
+          }
         ],
-        default: "rerank-2.5",
-      },
+        default: "rerank-2.5"
+      }
     ],
-    defaults: { model: "rerank-2.5" },
-  },
-] as const;
+    defaults: { model: "rerank-2.5" }
+  }
+] as const

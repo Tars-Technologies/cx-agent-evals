@@ -1,89 +1,88 @@
-"use client";
+"use client"
 
-import { useState, useRef, useEffect, useCallback } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation } from "convex/react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { api } from "@/lib/convex"
 
 interface TagsSectionProps {
-  resultId: Id<"agentExperimentResults">;
-  currentTags: string[];
-  allTags: string[];
-  hasAnnotation: boolean;
+  resultId: Id<"agentExperimentResults">
+  currentTags: string[]
+  allTags: string[]
+  hasAnnotation: boolean
 }
 
 export function TagsSection({
   resultId,
   currentTags,
   allTags,
-  hasAnnotation,
+  hasAnnotation
 }: TagsSectionProps) {
-  const updateTags = useMutation(api.annotations.crud.updateTags);
-  const [input, setInput] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [selectedSuggestion, setSelectedSuggestion] = useState(-1);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const updateTags = useMutation(api.annotations.crud.updateTags)
+  const [input, setInput] = useState("")
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [selectedSuggestion, setSelectedSuggestion] = useState(-1)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // Reset input when switching results
   useEffect(() => {
-    setInput("");
-    setShowSuggestions(false);
-    setSelectedSuggestion(-1);
-  }, [resultId]);
+    setInput("")
+    setShowSuggestions(false)
+    setSelectedSuggestion(-1)
+  }, [resultId])
 
   const suggestions = allTags.filter(
     (t) =>
-      !currentTags.includes(t) &&
-      t.toLowerCase().includes(input.toLowerCase()),
-  );
+      !currentTags.includes(t) && t.toLowerCase().includes(input.toLowerCase())
+  )
 
   const addTag = useCallback(
     async (tag: string) => {
-      const trimmed = tag.trim().toLowerCase();
-      if (!trimmed || currentTags.includes(trimmed)) return;
-      const newTags = [...currentTags, trimmed];
-      await updateTags({ resultId, tags: newTags });
-      setInput("");
-      setShowSuggestions(false);
-      setSelectedSuggestion(-1);
+      const trimmed = tag.trim().toLowerCase()
+      if (!trimmed || currentTags.includes(trimmed)) return
+      const newTags = [...currentTags, trimmed]
+      await updateTags({ resultId, tags: newTags })
+      setInput("")
+      setShowSuggestions(false)
+      setSelectedSuggestion(-1)
     },
-    [currentTags, resultId, updateTags],
-  );
+    [currentTags, resultId, updateTags]
+  )
 
   const removeTag = useCallback(
     async (tag: string) => {
-      const newTags = currentTags.filter((t) => t !== tag);
-      await updateTags({ resultId, tags: newTags });
+      const newTags = currentTags.filter((t) => t !== tag)
+      await updateTags({ resultId, tags: newTags })
     },
-    [currentTags, resultId, updateTags],
-  );
+    [currentTags, resultId, updateTags]
+  )
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Enter") {
-        e.preventDefault();
+        e.preventDefault()
         if (selectedSuggestion >= 0 && suggestions[selectedSuggestion]) {
-          addTag(suggestions[selectedSuggestion]);
+          addTag(suggestions[selectedSuggestion])
         } else if (input.trim()) {
-          addTag(input);
+          addTag(input)
         }
       } else if (e.key === "ArrowDown") {
-        e.preventDefault();
+        e.preventDefault()
         setSelectedSuggestion((prev) =>
-          prev < suggestions.length - 1 ? prev + 1 : prev,
-        );
+          prev < suggestions.length - 1 ? prev + 1 : prev
+        )
       } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedSuggestion((prev) => (prev > 0 ? prev - 1 : -1));
+        e.preventDefault()
+        setSelectedSuggestion((prev) => (prev > 0 ? prev - 1 : -1))
       } else if (e.key === "Escape") {
-        setShowSuggestions(false);
-        setSelectedSuggestion(-1);
+        setShowSuggestions(false)
+        setSelectedSuggestion(-1)
       } else if (e.key === "Backspace" && !input && currentTags.length > 0) {
-        removeTag(currentTags[currentTags.length - 1]);
+        removeTag(currentTags[currentTags.length - 1])
       }
     },
-    [input, selectedSuggestion, suggestions, currentTags, addTag, removeTag],
-  );
+    [input, selectedSuggestion, suggestions, currentTags, addTag, removeTag]
+  )
 
   if (!hasAnnotation) {
     return (
@@ -95,7 +94,7 @@ export function TagsSection({
           Rate this result first to add tags.
         </div>
       </div>
-    );
+    )
   }
 
   return (
@@ -131,9 +130,9 @@ export function TagsSection({
           type="text"
           value={input}
           onChange={(e) => {
-            setInput(e.target.value);
-            setShowSuggestions(true);
-            setSelectedSuggestion(-1);
+            setInput(e.target.value)
+            setShowSuggestions(true)
+            setSelectedSuggestion(-1)
           }}
           onFocus={() => setShowSuggestions(true)}
           onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
@@ -148,8 +147,8 @@ export function TagsSection({
               <button
                 key={s}
                 onMouseDown={(e) => {
-                  e.preventDefault();
-                  addTag(s);
+                  e.preventDefault()
+                  addTag(s)
                 }}
                 className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${
                   i === selectedSuggestion
@@ -164,5 +163,5 @@ export function TagsSection({
         )}
       </div>
     </div>
-  );
+  )
 }

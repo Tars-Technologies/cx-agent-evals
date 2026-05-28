@@ -1,29 +1,52 @@
-"use client";
+"use client"
 
-import type { SpanLite } from "./types";
+import type { SpanLite } from "./types"
 
 export type SpanCardKind =
-  | "gold-hit"      // ground-truth span that was retrieved
-  | "gold-miss"     // ground-truth span that was missed
+  | "gold-hit" // ground-truth span that was retrieved
+  | "gold-miss" // ground-truth span that was missed
   | "retrieved-hit" // retrieved span that overlaps a gold span
-  | "retrieved-over"; // retrieved span outside any gold span
+  | "retrieved-over" // retrieved span outside any gold span
 
-const KIND_STYLE: Record<SpanCardKind, { border: string; bg: string; chipColor: string; chipLabel: string }> = {
-  "gold-hit":       { border: "#22c55e", bg: "rgba(34,197,94,0.06)",  chipColor: "#22c55e", chipLabel: "Hit" },
-  "gold-miss":      { border: "#ef4444", bg: "rgba(239,68,68,0.06)",  chipColor: "#ef4444", chipLabel: "Miss" },
-  "retrieved-hit":  { border: "#22c55e", bg: "rgba(34,197,94,0.06)",  chipColor: "#22c55e", chipLabel: "Hit" },
-  "retrieved-over": { border: "#eab308", bg: "rgba(234,179,8,0.06)",  chipColor: "#eab308", chipLabel: "Over" },
-};
+const KIND_STYLE: Record<
+  SpanCardKind,
+  { border: string; bg: string; chipColor: string; chipLabel: string }
+> = {
+  "gold-hit": {
+    border: "#22c55e",
+    bg: "rgba(34,197,94,0.06)",
+    chipColor: "#22c55e",
+    chipLabel: "Hit"
+  },
+  "gold-miss": {
+    border: "#ef4444",
+    bg: "rgba(239,68,68,0.06)",
+    chipColor: "#ef4444",
+    chipLabel: "Miss"
+  },
+  "retrieved-hit": {
+    border: "#22c55e",
+    bg: "rgba(34,197,94,0.06)",
+    chipColor: "#22c55e",
+    chipLabel: "Hit"
+  },
+  "retrieved-over": {
+    border: "#eab308",
+    bg: "rgba(234,179,8,0.06)",
+    chipColor: "#eab308",
+    chipLabel: "Over"
+  }
+}
 
 interface SpanCardProps {
-  span: SpanLite;
-  kind: SpanCardKind;
-  rank?: number;
-  similarity?: number;
+  span: SpanLite
+  kind: SpanCardKind
+  rank?: number
+  similarity?: number
 }
 
 export function SpanCard({ span, kind, rank, similarity }: SpanCardProps) {
-  const style = KIND_STYLE[kind];
+  const style = KIND_STYLE[kind]
   return (
     <div
       className="rounded p-2.5 flex flex-col gap-1.5"
@@ -35,7 +58,7 @@ export function SpanCard({ span, kind, rank, similarity }: SpanCardProps) {
         borderRightWidth: 1,
         borderBottomWidth: 1,
         borderLeftWidth: 3,
-        borderLeftColor: style.border,
+        borderLeftColor: style.border
       }}
     >
       <div className="flex items-center justify-between gap-2">
@@ -46,7 +69,7 @@ export function SpanCard({ span, kind, rank, similarity }: SpanCardProps) {
               fontSize: "10px",
               fontWeight: 600,
               color: style.chipColor,
-              background: `${style.chipColor}1a`,
+              background: `${style.chipColor}1a`
             }}
           >
             {style.chipLabel}
@@ -81,11 +104,11 @@ export function SpanCard({ span, kind, rank, similarity }: SpanCardProps) {
         style={{
           fontSize: "12px",
           color: "var(--color-text)",
-          lineHeight: 1.5,
+          lineHeight: 1.5
         }}
       >
         {span.text}
       </div>
     </div>
-  );
+  )
 }

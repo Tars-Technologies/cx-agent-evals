@@ -1,14 +1,20 @@
-"use client";
+"use client"
 
-import Link from "next/link";
-import { OrganizationSwitcher, UserButton } from "@clerk/nextjs";
-import { Id } from "@convex/_generated/dataModel";
-import { buildKbLink } from "@/lib/useKbFromUrl";
+import { OrganizationSwitcher, UserButton } from "@clerk/nextjs"
+import type { Id } from "@convex/_generated/dataModel"
+import Link from "next/link"
+import { buildKbLink } from "@/lib/useKbFromUrl"
 
 interface HeaderProps {
-  mode?: "kb" | "dataset" | "retrievers" | "agents" | "experiments" | "evaluators";
-  kbId?: Id<"knowledgeBases"> | null;
-  onReset?: () => void;
+  mode?:
+    | "kb"
+    | "dataset"
+    | "retrievers"
+    | "agents"
+    | "experiments"
+    | "evaluators"
+  kbId?: Id<"knowledgeBases"> | null
+  onReset?: () => void
 }
 
 export function Header({ mode, kbId, onReset }: HeaderProps) {
@@ -16,7 +22,10 @@ export function Header({ mode, kbId, onReset }: HeaderProps) {
     <header className="border-b border-border bg-bg-elevated/80 backdrop-blur-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+          <Link
+            href="/"
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
             <div className="w-2 h-2 rounded-full bg-accent animate-pulse-dot" />
             <h1 className="text-sm font-semibold tracking-wide text-text">
               CX Agent Evals
@@ -103,19 +112,19 @@ export function Header({ mode, kbId, onReset }: HeaderProps) {
             appearance={{
               elements: {
                 rootBox: "text-sm",
-                organizationSwitcherTrigger: "text-text-muted hover:text-text",
-              },
+                organizationSwitcherTrigger: "text-text-muted hover:text-text"
+              }
             }}
           />
           <UserButton
             appearance={{
               elements: {
-                avatarBox: "w-7 h-7",
-              },
+                avatarBox: "w-7 h-7"
+              }
             }}
           />
         </div>
       </div>
     </header>
-  );
+  )
 }

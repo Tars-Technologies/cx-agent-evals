@@ -1,16 +1,16 @@
-"use client";
+"use client"
 
-import { Suspense, useState, useEffect } from "react";
-import { useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
-import { Header } from "@/components/Header";
-import { KBDropdown } from "@/components/KBDropdown";
-import { useKbFromUrl } from "@/lib/useKbFromUrl";
+import type { Id } from "@convex/_generated/dataModel"
+import { useQuery } from "convex/react"
+import { Suspense, useEffect, useState } from "react"
+import { Header } from "@/components/Header"
+import { KBDropdown } from "@/components/KBDropdown"
+import { api } from "@/lib/convex"
+import { useKbFromUrl } from "@/lib/useKbFromUrl"
 
-import { EvaluatorSidebar } from "./_components/EvaluatorSidebar";
-import { EvaluatorWorkspace } from "./_components/EvaluatorWorkspace";
-import { NewEvaluatorModal } from "./_components/NewEvaluatorModal";
+import { EvaluatorSidebar } from "./_components/EvaluatorSidebar"
+import { EvaluatorWorkspace } from "./_components/EvaluatorWorkspace"
+import { NewEvaluatorModal } from "./_components/NewEvaluatorModal"
 
 export default function EvaluatorsPage() {
   return (
@@ -23,32 +23,32 @@ export default function EvaluatorsPage() {
     >
       <EvaluatorsPageContent />
     </Suspense>
-  );
+  )
 }
 
 function EvaluatorsPageContent() {
-  const [selectedKbId, setSelectedKbId] = useKbFromUrl();
+  const [selectedKbId, setSelectedKbId] = useKbFromUrl()
   const [selectedConfigId, setSelectedConfigId] =
-    useState<Id<"evaluatorConfigs"> | null>(null);
-  const [showNewModal, setShowNewModal] = useState(false);
+    useState<Id<"evaluatorConfigs"> | null>(null)
+  const [showNewModal, setShowNewModal] = useState(false)
 
   // Load evaluator configs for selected KB
   const configs = useQuery(
     api.evaluator.crud.configsByKb,
-    selectedKbId ? { kbId: selectedKbId } : "skip",
-  );
+    selectedKbId ? { kbId: selectedKbId } : "skip"
+  )
 
   // Reset selection when KB changes
   useEffect(() => {
-    setSelectedConfigId(null);
-  }, [selectedKbId]);
+    setSelectedConfigId(null)
+  }, [selectedKbId])
 
   // Auto-select first config if none selected
   useEffect(() => {
     if (!selectedConfigId && configs && configs.length > 0) {
-      setSelectedConfigId(configs[0]._id);
+      setSelectedConfigId(configs[0]._id)
     }
-  }, [configs, selectedConfigId]);
+  }, [configs, selectedConfigId])
 
   return (
     <div className="flex flex-col h-screen">
@@ -60,10 +60,7 @@ function EvaluatorsPageContent() {
           <span className="text-xs text-text-dim uppercase tracking-wide">
             Knowledge Base:
           </span>
-          <KBDropdown
-            selectedKbId={selectedKbId}
-            onSelect={setSelectedKbId}
-          />
+          <KBDropdown selectedKbId={selectedKbId} onSelect={setSelectedKbId} />
         </div>
       </div>
 
@@ -96,11 +93,11 @@ function EvaluatorsPageContent() {
           kbId={selectedKbId}
           onClose={() => setShowNewModal(false)}
           onCreated={(configId) => {
-            setSelectedConfigId(configId);
-            setShowNewModal(false);
+            setSelectedConfigId(configId)
+            setShowNewModal(false)
           }}
         />
       )}
     </div>
-  );
+  )
 }

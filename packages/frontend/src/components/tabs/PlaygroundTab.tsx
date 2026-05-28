@@ -1,38 +1,38 @@
-"use client";
+"use client"
 
-import { useState, useCallback } from "react";
-import { useAction } from "convex/react";
-import { api } from "@/lib/convex";
-import { ChunkCard } from "@/components/ChunkCard";
-import type { Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel"
+import { useAction } from "convex/react"
+import { useCallback, useState } from "react"
+import { ChunkCard } from "@/components/ChunkCard"
+import { api } from "@/lib/convex"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface PlaygroundTabProps {
-  selectedRetrieverIds: Set<Id<"retrievers">>;
+  selectedRetrieverIds: Set<Id<"retrievers">>
   retrievers: Array<{
-    _id: Id<"retrievers">;
-    name: string;
-    status: string;
-    defaultK: number;
-  }>;
+    _id: Id<"retrievers">
+    name: string
+    status: string
+    defaultK: number
+  }>
 }
 
 interface ChunkResult {
-  readonly chunkId: string;
-  readonly content: string;
-  readonly docId: string;
-  readonly start: number;
-  readonly end: number;
-  readonly score: number;
-  readonly metadata: Record<string, unknown>;
+  readonly chunkId: string
+  readonly content: string
+  readonly docId: string
+  readonly start: number
+  readonly end: number
+  readonly score: number
+  readonly metadata: Record<string, unknown>
 }
 
 interface RetrievalResult {
-  readonly finalChunks: ChunkResult[];
-  readonly totalLatencyMs: number;
+  readonly finalChunks: ChunkResult[]
+  readonly totalLatencyMs: number
 }
 
 // ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ function Spinner({ className }: { className?: string }) {
     <div
       className={`w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin ${className ?? ""}`}
     />
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -53,79 +53,79 @@ function Spinner({ className }: { className?: string }) {
 
 export function PlaygroundTab({
   selectedRetrieverIds,
-  retrievers,
+  retrievers
 }: PlaygroundTabProps) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState("")
   const [resultMap, setResultMap] = useState<Map<string, RetrievalResult>>(
-    new Map(),
-  );
-  const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
-  const [errorMap, setErrorMap] = useState<Map<string, string>>(new Map());
+    new Map()
+  )
+  const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set())
+  const [errorMap, setErrorMap] = useState<Map<string, string>>(new Map())
 
   const retrieveAction = useAction(
-    api.retrieval.pipelineActions.retrieveWithTrace,
-  );
+    api.retrieval.pipelineActions.retrieveWithTrace
+  )
 
-  const isRunning = loadingIds.size > 0;
+  const isRunning = loadingIds.size > 0
 
   // Only ready + selected retrievers can be queried
   const selectedRetrievers = retrievers.filter(
-    (r) => selectedRetrieverIds.has(r._id) && r.status === "ready",
-  );
+    (r) => selectedRetrieverIds.has(r._id) && r.status === "ready"
+  )
 
-  const noRetrieversSelected = selectedRetrieverIds.size === 0;
-  const noReadyRetrievers = selectedRetrievers.length === 0;
+  const noRetrieversSelected = selectedRetrieverIds.size === 0
+  const noReadyRetrievers = selectedRetrievers.length === 0
 
   const handleRetrieve = useCallback(async () => {
-    if (!query.trim() || selectedRetrievers.length === 0) return;
+    if (!query.trim() || selectedRetrievers.length === 0) return
 
     // Reset previous results and mark all as loading
-    const ids = selectedRetrievers.map((r) => String(r._id));
-    setLoadingIds(new Set(ids));
-    setResultMap(new Map());
-    setErrorMap(new Map());
+    const ids = selectedRetrievers.map((r) => String(r._id))
+    setLoadingIds(new Set(ids))
+    setResultMap(new Map())
+    setErrorMap(new Map())
 
     await Promise.allSettled(
       selectedRetrievers.map(async (r) => {
-        const idStr = String(r._id);
+        const idStr = String(r._id)
         try {
           const result = await retrieveAction({
             retrieverId: r._id,
             query: query.trim(),
-            k: r.defaultK,
-          });
+            k: r.defaultK
+          })
           setResultMap((prev) => {
-            const next = new Map(prev);
+            const next = new Map(prev)
             next.set(idStr, {
               finalChunks: result.finalChunks as ChunkResult[],
-              totalLatencyMs: result.totalLatencyMs,
-            });
-            return next;
-          });
+              totalLatencyMs: result.totalLatencyMs
+            })
+            return next
+          })
         } catch (err) {
           setErrorMap((prev) => {
-            const next = new Map(prev);
+            const next = new Map(prev)
             next.set(
               idStr,
-              err instanceof Error ? err.message : "Retrieval failed",
-            );
-            return next;
-          });
+              err instanceof Error ? err.message : "Retrieval failed"
+            )
+            return next
+          })
         } finally {
           setLoadingIds((prev) => {
-            const next = new Set(prev);
-            next.delete(idStr);
-            return next;
-          });
+            const next = new Set(prev)
+            next.delete(idStr)
+            return next
+          })
         }
-      }),
-    );
-  }, [query, selectedRetrievers, retrieveAction]);
+      })
+    )
+  }, [query, selectedRetrievers, retrieveAction])
 
-  const hasAnyResults = resultMap.size > 0 || loadingIds.size > 0;
+  const hasAnyResults = resultMap.size > 0 || loadingIds.size > 0
 
   // Show columns once a retrieval is triggered
-  const columnRetrievers = hasAnyResults ? selectedRetrievers : [];
+  const columnRetrievers = hasAnyResults ? selectedRetrievers : []
 
   // Grid column class based on count
   const gridClass =
@@ -133,7 +133,7 @@ export function PlaygroundTab({
       ? "grid-cols-1"
       : columnRetrievers.length === 2
         ? "grid-cols-1 lg:grid-cols-2"
-        : "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3";
+        : "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3"
 
   return (
     <div className="flex flex-col h-full">
@@ -144,7 +144,7 @@ export function PlaygroundTab({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !noReadyRetrievers) handleRetrieve();
+            if (e.key === "Enter" && !noReadyRetrievers) handleRetrieve()
           }}
           placeholder={
             noRetrieversSelected
@@ -202,10 +202,10 @@ export function PlaygroundTab({
       {columnRetrievers.length > 0 && (
         <div className={`grid ${gridClass} gap-4 p-4 flex-1 min-h-0`}>
           {columnRetrievers.map((r) => {
-            const idStr = String(r._id);
-            const result = resultMap.get(idStr);
-            const isLoading = loadingIds.has(idStr);
-            const error = errorMap.get(idStr);
+            const idStr = String(r._id)
+            const result = resultMap.get(idStr)
+            const isLoading = loadingIds.has(idStr)
+            const error = errorMap.get(idStr)
 
             return (
               <div
@@ -260,7 +260,7 @@ export function PlaygroundTab({
                   </div>
                 ) : null}
               </div>
-            );
+            )
           })}
         </div>
       )}
@@ -272,8 +272,7 @@ export function PlaygroundTab({
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center space-y-1">
               <p className="text-xs text-text-dim">
-                Testing:{" "}
-                {selectedRetrievers.map((r) => r.name).join(", ")}
+                Testing: {selectedRetrievers.map((r) => r.name).join(", ")}
               </p>
               <p className="text-[11px] text-text-dim/60">
                 Enter a query and press Retrieve to compare results.
@@ -282,5 +281,5 @@ export function PlaygroundTab({
           </div>
         )}
     </div>
-  );
+  )
 }

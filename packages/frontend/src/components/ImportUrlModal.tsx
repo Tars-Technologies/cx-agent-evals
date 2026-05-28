@@ -1,17 +1,17 @@
-"use client";
+"use client"
 
-import { useState, useEffect } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@convex/_generated/dataModel";
-import { loadImportUrlConfig, saveImportUrlConfig } from "@/lib/constants";
+import type { Id } from "@convex/_generated/dataModel"
+import { useMutation } from "convex/react"
+import { useEffect, useState } from "react"
+import { loadImportUrlConfig, saveImportUrlConfig } from "@/lib/constants"
+import { api } from "@/lib/convex"
 
 interface ImportUrlModalProps {
-  open: boolean;
-  onClose: () => void;
-  kbId: Id<"knowledgeBases">;
-  defaultUrl?: string; // pre-populated from KB's sourceUrl
-  onStarted: (jobId: Id<"crawlJobs">) => void;
+  open: boolean
+  onClose: () => void
+  kbId: Id<"knowledgeBases">
+  defaultUrl?: string // pre-populated from KB's sourceUrl
+  onStarted: (jobId: Id<"crawlJobs">) => void
 }
 
 export function ImportUrlModal({
@@ -19,67 +19,67 @@ export function ImportUrlModal({
   onClose,
   kbId,
   defaultUrl,
-  onStarted,
+  onStarted
 }: ImportUrlModalProps) {
-  const startCrawl = useMutation(api.scraping.orchestration.startCrawl);
+  const startCrawl = useMutation(api.scraping.orchestration.startCrawl)
 
   // Primary fields
-  const [url, setUrl] = useState("");
-  const [maxPages, setMaxPages] = useState(200);
-  const [includePaths, setIncludePaths] = useState("");
-  const [excludePaths, setExcludePaths] = useState("");
+  const [url, setUrl] = useState("")
+  const [maxPages, setMaxPages] = useState(200)
+  const [includePaths, setIncludePaths] = useState("")
+  const [excludePaths, setExcludePaths] = useState("")
 
   // Advanced fields
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [maxDepth, setMaxDepth] = useState(3);
-  const [allowSubdomains, setAllowSubdomains] = useState(false);
-  const [concurrency, setConcurrency] = useState(3);
-  const [delay, setDelay] = useState(0);
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [maxDepth, setMaxDepth] = useState(3)
+  const [allowSubdomains, setAllowSubdomains] = useState(false)
+  const [concurrency, setConcurrency] = useState(3)
+  const [delay, setDelay] = useState(0)
 
-  const [starting, setStarting] = useState(false);
+  const [starting, setStarting] = useState(false)
 
   // Pre-populate on open
   useEffect(() => {
-    if (!open) return;
-    setUrl(defaultUrl || "");
-    setStarting(false);
-    setShowAdvanced(false);
+    if (!open) return
+    setUrl(defaultUrl || "")
+    setStarting(false)
+    setShowAdvanced(false)
 
-    const saved = loadImportUrlConfig();
+    const saved = loadImportUrlConfig()
     if (saved) {
-      setMaxPages(saved.maxPages);
-      setIncludePaths(saved.includePaths.join(", "));
-      setExcludePaths(saved.excludePaths.join(", "));
-      setMaxDepth(saved.maxDepth);
-      setAllowSubdomains(saved.allowSubdomains);
-      setConcurrency(saved.concurrency);
-      setDelay(saved.delay);
+      setMaxPages(saved.maxPages)
+      setIncludePaths(saved.includePaths.join(", "))
+      setExcludePaths(saved.excludePaths.join(", "))
+      setMaxDepth(saved.maxDepth)
+      setAllowSubdomains(saved.allowSubdomains)
+      setConcurrency(saved.concurrency)
+      setDelay(saved.delay)
     } else {
-      setMaxPages(200);
-      setIncludePaths("");
-      setExcludePaths("");
-      setMaxDepth(3);
-      setAllowSubdomains(false);
-      setConcurrency(3);
-      setDelay(0);
+      setMaxPages(200)
+      setIncludePaths("")
+      setExcludePaths("")
+      setMaxDepth(3)
+      setAllowSubdomains(false)
+      setConcurrency(3)
+      setDelay(0)
     }
-  }, [open, defaultUrl]);
+  }, [open, defaultUrl])
 
-  if (!open) return null;
+  if (!open) return null
 
   function parsePatterns(raw: string): string[] {
     return raw
       .split(",")
       .map((s) => s.trim())
-      .filter(Boolean);
+      .filter(Boolean)
   }
 
   async function handleStart() {
-    if (!url.trim() || starting) return;
-    setStarting(true);
+    if (!url.trim() || starting) return
+    setStarting(true)
     try {
-      const includeArr = parsePatterns(includePaths);
-      const excludeArr = parsePatterns(excludePaths);
+      const includeArr = parsePatterns(includePaths)
+      const excludeArr = parsePatterns(excludePaths)
 
       const jobId = await startCrawl({
         kbId,
@@ -91,9 +91,9 @@ export function ImportUrlModal({
           excludePaths: excludeArr.length ? excludeArr : undefined,
           allowSubdomains,
           concurrency: Math.min(Math.max(concurrency, 1), 10),
-          delay: Math.max(delay, 0),
-        },
-      });
+          delay: Math.max(delay, 0)
+        }
+      })
 
       saveImportUrlConfig({
         maxPages,
@@ -102,13 +102,13 @@ export function ImportUrlModal({
         maxDepth,
         allowSubdomains,
         concurrency,
-        delay,
-      });
+        delay
+      })
 
-      onStarted(jobId);
-      onClose();
+      onStarted(jobId)
+      onClose()
     } finally {
-      setStarting(false);
+      setStarting(false)
     }
   }
 
@@ -130,7 +130,9 @@ export function ImportUrlModal({
 
         {/* Start URL */}
         <div className="space-y-1">
-          <label className="text-xs text-text-muted uppercase tracking-wide">Start URL *</label>
+          <label className="text-xs text-text-muted uppercase tracking-wide">
+            Start URL *
+          </label>
           <input
             type="url"
             value={url}
@@ -144,7 +146,8 @@ export function ImportUrlModal({
         {/* Max Pages */}
         <div className="space-y-1">
           <label className="text-xs text-text-muted uppercase tracking-wide">
-            Max Pages <span className="normal-case text-text-dim">(1–1000)</span>
+            Max Pages{" "}
+            <span className="normal-case text-text-dim">(1–1000)</span>
           </label>
           <input
             type="number"
@@ -159,7 +162,9 @@ export function ImportUrlModal({
         {/* Include / Exclude patterns */}
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <label className="text-xs text-text-muted uppercase tracking-wide">Include Paths</label>
+            <label className="text-xs text-text-muted uppercase tracking-wide">
+              Include Paths
+            </label>
             <input
               type="text"
               value={includePaths}
@@ -169,7 +174,9 @@ export function ImportUrlModal({
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-text-muted uppercase tracking-wide">Exclude Paths</label>
+            <label className="text-xs text-text-muted uppercase tracking-wide">
+              Exclude Paths
+            </label>
             <input
               type="text"
               value={excludePaths}
@@ -193,7 +200,9 @@ export function ImportUrlModal({
           <div className="space-y-3 pl-2 border-l-2 border-border">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs text-text-muted uppercase tracking-wide">Max Depth</label>
+                <label className="text-xs text-text-muted uppercase tracking-wide">
+                  Max Depth
+                </label>
                 <input
                   type="number"
                   value={maxDepth}
@@ -205,7 +214,8 @@ export function ImportUrlModal({
               </div>
               <div className="space-y-1">
                 <label className="text-xs text-text-muted uppercase tracking-wide">
-                  Concurrency <span className="normal-case text-text-dim">(1–10)</span>
+                  Concurrency{" "}
+                  <span className="normal-case text-text-dim">(1–10)</span>
                 </label>
                 <input
                   type="number"
@@ -220,7 +230,9 @@ export function ImportUrlModal({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs text-text-muted uppercase tracking-wide">Delay (ms)</label>
+                <label className="text-xs text-text-muted uppercase tracking-wide">
+                  Delay (ms)
+                </label>
                 <input
                   type="number"
                   value={delay}
@@ -237,7 +249,10 @@ export function ImportUrlModal({
                   onChange={(e) => setAllowSubdomains(e.target.checked)}
                   className="accent-accent"
                 />
-                <label htmlFor="allowSubdomains" className="text-xs text-text-dim">
+                <label
+                  htmlFor="allowSubdomains"
+                  className="text-xs text-text-dim"
+                >
                   Allow subdomains
                 </label>
               </div>
@@ -264,5 +279,5 @@ export function ImportUrlModal({
         </div>
       </div>
     </div>
-  );
+  )
 }

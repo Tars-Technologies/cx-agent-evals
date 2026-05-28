@@ -1,6 +1,6 @@
-import { query, mutation, internalQuery } from "../_generated/server";
-import { v } from "convex/values";
-import { getAuthContext, lookupUser } from "../lib/auth";
+import { v } from "convex/values"
+import { internalQuery, mutation, query } from "../_generated/server"
+import { getAuthContext, lookupUser } from "../lib/auth"
 
 export const upsert = mutation({
   args: {
@@ -10,40 +10,40 @@ export const upsert = mutation({
       v.literal("good_enough"),
       v.literal("bad"),
       v.literal("pass"),
-      v.literal("fail"),
+      v.literal("fail")
     ),
     comment: v.optional(v.string()),
-    tags: v.optional(v.array(v.string())),
+    tags: v.optional(v.array(v.string()))
   },
   handler: async (ctx, args) => {
-    const { orgId, userId } = await getAuthContext(ctx);
-    const user = await lookupUser(ctx, userId);
+    const { orgId, userId } = await getAuthContext(ctx)
+    const user = await lookupUser(ctx, userId)
 
     // Load the result to get experimentId and questionId
-    const result = await ctx.db.get(args.resultId);
-    if (!result) throw new Error("Result not found");
+    const result = await ctx.db.get(args.resultId)
+    if (!result) throw new Error("Result not found")
 
     // Verify experiment belongs to org
-    const experiment = await ctx.db.get(result.experimentId);
+    const experiment = await ctx.db.get(result.experimentId)
     if (!experiment || experiment.orgId !== orgId) {
-      throw new Error("Experiment not found");
+      throw new Error("Experiment not found")
     }
 
     // Check for existing annotation by this user on this result
     const existing = await ctx.db
       .query("annotations")
       .withIndex("by_result", (q) => q.eq("resultId", args.resultId))
-      .collect();
-    const myAnnotation = existing.find((a) => a.ratedBy === user._id);
+      .collect()
+    const myAnnotation = existing.find((a) => a.ratedBy === user._id)
 
     if (myAnnotation) {
       await ctx.db.patch(myAnnotation._id, {
         rating: args.rating,
         comment: args.comment,
         tags: args.tags,
-        updatedAt: Date.now(),
-      });
-      return myAnnotation._id;
+        updatedAt: Date.now()
+      })
+      return myAnnotation._id
     }
 
     return await ctx.db.insert("annotations", {
@@ -55,66 +55,66 @@ export const upsert = mutation({
       comment: args.comment,
       tags: args.tags,
       ratedBy: user._id,
-      createdAt: Date.now(),
-    });
-  },
-});
+      createdAt: Date.now()
+    })
+  }
+})
 
 export const byExperiment = query({
   args: { experimentId: v.id("experiments") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
+    const { orgId } = await getAuthContext(ctx)
 
-    const exp = await ctx.db.get(args.experimentId);
+    const exp = await ctx.db.get(args.experimentId)
     if (!exp || exp.orgId !== orgId) {
-      throw new Error("Experiment not found");
+      throw new Error("Experiment not found")
     }
 
     return await ctx.db
       .query("annotations")
       .withIndex("by_experiment", (q) =>
-        q.eq("experimentId", args.experimentId),
+        q.eq("experimentId", args.experimentId)
       )
-      .collect();
-  },
-});
+      .collect()
+  }
+})
 
 export const stats = query({
   args: { experimentId: v.id("experiments") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
+    const { orgId } = await getAuthContext(ctx)
 
-    const exp = await ctx.db.get(args.experimentId);
+    const exp = await ctx.db.get(args.experimentId)
     if (!exp || exp.orgId !== orgId) {
-      throw new Error("Experiment not found");
+      throw new Error("Experiment not found")
     }
 
     const annotations = await ctx.db
       .query("annotations")
       .withIndex("by_experiment", (q) =>
-        q.eq("experimentId", args.experimentId),
+        q.eq("experimentId", args.experimentId)
       )
-      .collect();
+      .collect()
 
     const results = await ctx.db
       .query("agentExperimentResults")
       .withIndex("by_experiment", (q) =>
-        q.eq("experimentId", args.experimentId),
+        q.eq("experimentId", args.experimentId)
       )
-      .collect();
+      .collect()
 
-    const total = results.length;
-    let great = 0;
-    let good_enough = 0;
-    let bad = 0;
-    let pass = 0;
-    let fail = 0;
+    const total = results.length
+    let great = 0
+    let good_enough = 0
+    let bad = 0
+    let pass = 0
+    let fail = 0
     for (const a of annotations) {
-      if (a.rating === "great") great++;
-      else if (a.rating === "good_enough") good_enough++;
-      else if (a.rating === "bad") bad++;
-      else if (a.rating === "pass") pass++;
-      else if (a.rating === "fail") fail++;
+      if (a.rating === "great") great++
+      else if (a.rating === "good_enough") good_enough++
+      else if (a.rating === "bad") bad++
+      else if (a.rating === "pass") pass++
+      else if (a.rating === "fail") fail++
     }
 
     return {
@@ -124,72 +124,72 @@ export const stats = query({
       good_enough,
       bad,
       pass,
-      fail,
-    };
-  },
-});
+      fail
+    }
+  }
+})
 
 export const updateTags = mutation({
   args: {
     resultId: v.id("agentExperimentResults"),
-    tags: v.array(v.string()),
+    tags: v.array(v.string())
   },
   handler: async (ctx, args) => {
-    const { orgId, userId } = await getAuthContext(ctx);
-    const user = await lookupUser(ctx, userId);
+    const { orgId, userId } = await getAuthContext(ctx)
+    const user = await lookupUser(ctx, userId)
 
-    const result = await ctx.db.get(args.resultId);
-    if (!result) throw new Error("Result not found");
+    const result = await ctx.db.get(args.resultId)
+    if (!result) throw new Error("Result not found")
 
-    const experiment = await ctx.db.get(result.experimentId);
+    const experiment = await ctx.db.get(result.experimentId)
     if (!experiment || experiment.orgId !== orgId) {
-      throw new Error("Experiment not found");
+      throw new Error("Experiment not found")
     }
 
     const existing = await ctx.db
       .query("annotations")
       .withIndex("by_result", (q) => q.eq("resultId", args.resultId))
-      .collect();
-    const myAnnotation = existing.find((a) => a.ratedBy === user._id);
+      .collect()
+    const myAnnotation = existing.find((a) => a.ratedBy === user._id)
 
     if (!myAnnotation) {
-      throw new Error("Rate this result before adding tags");
+      throw new Error("Rate this result before adding tags")
     }
 
     await ctx.db.patch(myAnnotation._id, {
       tags: args.tags,
-      updatedAt: Date.now(),
-    });
-    return myAnnotation._id;
-  },
-});
+      updatedAt: Date.now()
+    })
+    return myAnnotation._id
+  }
+})
 
 export const allTags = query({
   args: { experimentId: v.id("experiments") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
+    const { orgId } = await getAuthContext(ctx)
 
-    const exp = await ctx.db.get(args.experimentId);
+    const exp = await ctx.db.get(args.experimentId)
     if (!exp || exp.orgId !== orgId) {
-      throw new Error("Experiment not found");
+      throw new Error("Experiment not found")
     }
 
     const annotations = await ctx.db
       .query("annotations")
       .withIndex("by_experiment", (q) =>
-        q.eq("experimentId", args.experimentId),
+        q.eq("experimentId", args.experimentId)
       )
-      .collect();
+      .collect()
 
-    const tagSet = new Set<string>();
+    const tagSet = new Set<string>()
     for (const a of annotations) {
       if (a.tags) {
-        for (const t of a.tags) tagSet.add(t);
+        for (const t of a.tags) tagSet.add(t)
       }
     }
-    return [...tagSet].sort();
-  },
-});
+    return [...tagSet].sort()
+  }
+})
 
 // ─── Internal queries (no auth, for use by actions) ───
 
@@ -199,11 +199,11 @@ export const byExperimentInternal = internalQuery({
     return await ctx.db
       .query("annotations")
       .withIndex("by_experiment", (q) =>
-        q.eq("experimentId", args.experimentId),
+        q.eq("experimentId", args.experimentId)
       )
-      .collect();
-  },
-});
+      .collect()
+  }
+})
 
 export const statsInternal = internalQuery({
   args: { experimentId: v.id("experiments") },
@@ -211,25 +211,30 @@ export const statsInternal = internalQuery({
     const annotations = await ctx.db
       .query("annotations")
       .withIndex("by_experiment", (q) =>
-        q.eq("experimentId", args.experimentId),
+        q.eq("experimentId", args.experimentId)
       )
-      .collect();
+      .collect()
 
     const results = await ctx.db
       .query("agentExperimentResults")
       .withIndex("by_experiment", (q) =>
-        q.eq("experimentId", args.experimentId),
+        q.eq("experimentId", args.experimentId)
       )
-      .collect();
+      .collect()
 
-    const total = results.length;
-    let pass = 0;
-    let fail = 0;
+    const total = results.length
+    let pass = 0
+    let fail = 0
     for (const a of annotations) {
-      if (a.rating === "pass" || a.rating === "great" || a.rating === "good_enough") pass++;
-      else if (a.rating === "fail" || a.rating === "bad") fail++;
+      if (
+        a.rating === "pass" ||
+        a.rating === "great" ||
+        a.rating === "good_enough"
+      )
+        pass++
+      else if (a.rating === "fail" || a.rating === "bad") fail++
     }
 
-    return { total, annotated: annotations.length, pass, fail };
-  },
-});
+    return { total, annotated: annotations.length, pass, fail }
+  }
+})

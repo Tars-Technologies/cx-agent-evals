@@ -1,15 +1,15 @@
-"use client";
+"use client"
 
-import { QUERY_STRATEGY_REGISTRY } from "@tars-inc/eval-lib/registry";
-import { StrategyCard } from "../shared/StrategyCard";
+import { QUERY_STRATEGY_REGISTRY } from "@tars-inc/eval-lib/registry"
+import { StrategyCard } from "../shared/StrategyCard"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface QueryStepProps {
-  queryStrategy: string;
-  onQueryStrategyChange: (strategy: string) => void;
+  queryStrategy: string
+  onQueryStrategyChange: (strategy: string) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -18,7 +18,7 @@ interface QueryStepProps {
 
 export function QueryStep({
   queryStrategy,
-  onQueryStrategyChange,
+  onQueryStrategyChange
 }: QueryStepProps) {
   return (
     <div className="flex flex-col gap-3">
@@ -39,5 +39,5 @@ export function QueryStep({
         ))}
       </div>
     </div>
-  );
+  )
 }

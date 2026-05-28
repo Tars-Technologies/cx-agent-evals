@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "convex dev",
+    "lint": "biome check .",
+    "format": "biome format --write .",
     "deploy": "convex deploy",
     "typecheck": "tsc --noEmit -p convex/tsconfig.json",
     "test": "vitest run"
