@@ -346,7 +346,7 @@ function LabelsTab({
           <div className="absolute left-0 top-full mt-1 bg-bg-elevated border border-border rounded-lg shadow-xl z-20 py-1 min-w-[220px]">
             {[
               "Calibrate fresh sample",
-              "Import from open-coding tags",
+              "Import from error analysis tags",
               "Manually paste conversations",
             ].map((item) => (
               <button

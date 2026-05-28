@@ -26,8 +26,7 @@ const SECTION_LABELS: Record<string, string> = {
   retrievers: "Retrievers",
   experiments: "Experiments",
   scenarios: "Scenarios",
-  "open-coding": "Open coding",
-  "axial-coding": "Axial coding",
+  "error-analysis": "Error analysis",
   evaluators: "Evaluators",
   transcripts: "Transcripts",
 };
