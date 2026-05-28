@@ -27,6 +27,22 @@ async function seedAgent(
   );
 }
 
+async function seedAnalysis(
+  t: ReturnType<typeof setupTest>,
+  agentId: Id<"agents">,
+  orgId: string = TEST_ORG_ID,
+): Promise<Id<"errorAnalyses">> {
+  return await t.run(async (ctx) =>
+    ctx.db.insert("errorAnalyses", {
+      orgId,
+      agentId,
+      name: "test analysis",
+      origin: { kind: "custom" },
+      createdAt: Date.now(),
+    }),
+  );
+}
+
 async function seedConv(t: ReturnType<typeof setupTest>, agentId: Id<"agents">) {
   return await t.run(async (ctx) =>
     ctx.db.insert("conversations", {
@@ -44,8 +60,10 @@ describe("spawnJudge.fromFailureMode", () => {
     const t = setupTest();
     const userId = await seedUser(t);
     const agentId = await seedAgent(t, userId);
+    const eaId = await seedAnalysis(t, agentId);
     const fmId = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
       agentId,
+      errorAnalysisId: eaId,
       name: "promo confusion",
       description: "agent confuses promo codes",
     });
@@ -82,8 +100,10 @@ describe("spawnJudge.fromFailureMode", () => {
       });
     }
 
+    const eaId = await seedAnalysis(t, agentId);
     const fmId = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
       agentId,
+      errorAnalysisId: eaId,
       name: "x",
       description: "",
     });
@@ -132,8 +152,10 @@ describe("spawnJudge.fromFailureMode", () => {
         tags: [],
       });
     }
+    const eaId = await seedAnalysis(t, agentId);
     const fmId = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
       agentId,
+      errorAnalysisId: eaId,
       name: "x",
       description: "",
     });
@@ -175,8 +197,10 @@ describe("spawnJudge.fromFailureMode", () => {
     const t = setupTest();
     const userId = await seedUser(t);
     const agentId = await seedAgent(t, userId);
+    const eaId = await seedAnalysis(t, agentId);
     const fmId = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
       agentId,
+      errorAnalysisId: eaId,
       name: "original",
       description: "auto rubric",
     });
@@ -198,10 +222,12 @@ describe("spawnJudge.fromFailureMode", () => {
     const t = setupTest();
     const userId = await seedUser(t);
     const agentId = await seedAgent(t, userId);
+    const foreignEa = await seedAnalysis(t, agentId, "org_other");
     const foreignFm = await t.run(async (ctx) =>
       ctx.db.insert("failureModes", {
         orgId: "org_other",
         agentId,
+        errorAnalysisId: foreignEa,
         name: "x",
         description: "",
         order: 0,

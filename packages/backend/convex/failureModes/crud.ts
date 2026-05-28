@@ -33,6 +33,7 @@ export const get = query({
 export const create = mutation({
   args: {
     agentId: v.id("agents"),
+    errorAnalysisId: v.id("errorAnalyses"),
     name: v.string(),
     description: v.string(),
   },
@@ -40,6 +41,8 @@ export const create = mutation({
     const { orgId } = await getAuthContext(ctx);
     const agent = await ctx.db.get(args.agentId);
     if (!agent || agent.orgId !== orgId) throw new Error("Agent not found");
+    const analysis = await ctx.db.get(args.errorAnalysisId);
+    if (!analysis || analysis.orgId !== orgId) throw new Error("Error analysis not found");
 
     const existing = await ctx.db
       .query("failureModes")
@@ -50,11 +53,24 @@ export const create = mutation({
     return await ctx.db.insert("failureModes", {
       orgId,
       agentId: args.agentId,
+      errorAnalysisId: args.errorAnalysisId,
       name: args.name,
       description: args.description,
       order: maxOrder + 1,
       createdAt: Date.now(),
     });
+  },
+});
+
+export const byAnalysis = query({
+  args: { errorAnalysisId: v.id("errorAnalyses") },
+  handler: async (ctx, { errorAnalysisId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const rows = await ctx.db
+      .query("failureModes")
+      .withIndex("by_analysis", (q) => q.eq("errorAnalysisId", errorAnalysisId))
+      .collect();
+    return rows.filter((r) => r.orgId === orgId);
   },
 });
 
@@ -114,6 +130,7 @@ export const createInternal = internalMutation({
   args: {
     orgId: v.string(),
     agentId: v.id("agents"),
+    errorAnalysisId: v.id("errorAnalyses"),
     name: v.string(),
     description: v.string(),
     order: v.number(),

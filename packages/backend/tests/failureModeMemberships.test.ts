@@ -30,14 +30,31 @@ async function seedConversation(t: ReturnType<typeof setupTest>, agentId: Id<"ag
   } as any));
 }
 
+async function seedAnalysis(
+  t: ReturnType<typeof setupTest>,
+  agentId: Id<"agents">,
+  orgId: string = TEST_ORG_ID,
+): Promise<Id<"errorAnalyses">> {
+  return await t.run(async (ctx) =>
+    ctx.db.insert("errorAnalyses", {
+      orgId,
+      agentId,
+      name: "test analysis",
+      origin: { kind: "custom" },
+      createdAt: Date.now(),
+    }),
+  );
+}
+
 describe("failureModeMemberships CRUD", () => {
   it("add inserts a new membership for a conversation source", async () => {
     const t = setupTest();
     const userId = await seedUser(t);
     const agentId = await seedAgent(t, userId);
     const convId = await seedConversation(t, agentId);
+    const eaId = await seedAnalysis(t, agentId);
     const fmId = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
-      agentId, name: "x", description: "",
+      agentId, errorAnalysisId: eaId, name: "x", description: "",
     });
 
     const memId = await t.withIdentity(testIdentity).mutation(api.failureModes.memberships.add, {
@@ -55,8 +72,9 @@ describe("failureModeMemberships CRUD", () => {
     const userId = await seedUser(t);
     const agentId = await seedAgent(t, userId);
     const convId = await seedConversation(t, agentId);
+    const eaId = await seedAnalysis(t, agentId);
     const fmId = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
-      agentId, name: "x", description: "",
+      agentId, errorAnalysisId: eaId, name: "x", description: "",
     });
 
     const id1 = await t.withIdentity(testIdentity).mutation(api.failureModes.memberships.add, {
@@ -78,8 +96,9 @@ describe("failureModeMemberships CRUD", () => {
     const userId = await seedUser(t);
     const agentId = await seedAgent(t, userId);
     const convId = await seedConversation(t, agentId);
+    const eaId = await seedAnalysis(t, agentId);
     const fmId = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
-      agentId, name: "x", description: "",
+      agentId, errorAnalysisId: eaId, name: "x", description: "",
     });
 
     await t.withIdentity(testIdentity).mutation(api.failureModes.memberships.add, {
@@ -101,11 +120,12 @@ describe("failureModeMemberships CRUD", () => {
     const agentId = await seedAgent(t, userId);
     const c1 = await seedConversation(t, agentId);
     const c2 = await seedConversation(t, agentId);
+    const eaId = await seedAnalysis(t, agentId);
     const fm1 = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
-      agentId, name: "fm1", description: "",
+      agentId, errorAnalysisId: eaId, name: "fm1", description: "",
     });
     const fm2 = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
-      agentId, name: "fm2", description: "",
+      agentId, errorAnalysisId: eaId, name: "fm2", description: "",
     });
 
     await t.withIdentity(testIdentity).mutation(api.failureModes.memberships.add, {
@@ -157,8 +177,9 @@ describe("failureModeMemberships CRUD", () => {
         translationStatus: "none",
       } as any);
     });
+    const eaId = await seedAnalysis(t, agentId);
     const fmId = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
-      agentId, name: "x", description: "",
+      agentId, errorAnalysisId: eaId, name: "x", description: "",
     });
 
     const memId = await t.withIdentity(testIdentity).mutation(api.failureModes.memberships.add, {
@@ -174,8 +195,9 @@ describe("failureModeMemberships CRUD", () => {
     const agentId = await seedAgent(t, userId);
     const convId = await seedConversation(t, agentId);
 
+    const foreignEa = await seedAnalysis(t, agentId, "org_other");
     const foreignFm = await t.run(async (ctx) => ctx.db.insert("failureModes", {
-      orgId: "org_other", agentId, name: "f", description: "", order: 0, createdAt: Date.now(),
+      orgId: "org_other", agentId, errorAnalysisId: foreignEa, name: "f", description: "", order: 0, createdAt: Date.now(),
     }));
 
     await expect(
@@ -190,8 +212,9 @@ describe("failureModeMemberships CRUD", () => {
     const userId = await seedUser(t);
     const agentId = await seedAgent(t, userId);
     const convId = await seedConversation(t, agentId);
+    const eaId = await seedAnalysis(t, agentId);
     const fmId = await t.withIdentity(testIdentity).mutation(api.failureModes.crud.create, {
-      agentId, name: "x", description: "",
+      agentId, errorAnalysisId: eaId, name: "x", description: "",
     });
 
     await expect(
