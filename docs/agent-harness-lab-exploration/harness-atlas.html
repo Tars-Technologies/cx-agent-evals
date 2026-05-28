@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Harness Atlas</title>
+<style>
+  :root{--bg:#0d0f0f;--panel:#141717;--line:#2a2e2e;--ink:#e6e9e9;--dim:#8a9090;--acc:#6ee7b7;--gold:#ffd166;--cyan:#6ee7b7;--vio:#aab4ff;--red:#ff7a7a;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  header{position:sticky;top:0;background:rgba(13,15,15,.95);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:12px 20px;z-index:10;}
+  .nav{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .tab{padding:7px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--dim);cursor:pointer;font-size:12.5px;font-weight:600;}
+  .tab:hover{color:var(--ink);border-color:#3a4040;}
+  .tab.active{color:#0d0f0f;background:var(--acc);border-color:var(--acc);}
+  .pager{margin-left:auto;display:flex;gap:8px;}
+  .pager button{padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);cursor:pointer;font-size:12.5px;}
+  .pager button:disabled{opacity:.35;cursor:default;}
+  main{max-width:1080px;margin:0 auto;padding:26px 22px 70px;}
+  .panel{display:none;animation:f .2s ease;}
+  .panel.show{display:block;}
+  @keyframes f{from{opacity:0;transform:translateY(4px);}to{opacity:1;}}
+  h1{font-size:21px;margin:0 0 4px;}
+  h2{font-size:18px;margin:26px 0 4px;}
+  .sub{color:var(--dim);font-size:13px;margin:0 0 16px;}
+  table{width:100%;border-collapse:collapse;font-size:11.5px;margin:14px 0;}
+  th{color:var(--dim);text-align:left;padding:6px;border-bottom:1px solid #333;}
+  td{padding:7px;border-bottom:1px solid #222;vertical-align:top;}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin:14px 0;}
+  .boxhead{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim);margin-bottom:10px;}
+  .split{display:flex;gap:14px;flex-wrap:wrap;}
+  .split>.box{flex:1;min-width:260px;}
+  .pc{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;}
+  .pc>div{flex:1;min-width:240px;border:1px solid var(--line);border-radius:10px;padding:12px;}
+  .pc h4{margin:0 0 8px;font-size:13px;}
+  .pc ul{margin:0;padding-left:18px;}
+  .pc li{margin:3px 0;font-size:12px;}
+  code{background:#1c2020;padding:1px 5px;border-radius:4px;font-size:11px;}
+  .g{background:rgba(255,209,102,.2);color:var(--gold);padding:1px 5px;border-radius:3px;}
+  .c{background:rgba(110,231,183,.16);color:var(--cyan);padding:1px 5px;border-radius:3px;}
+  .v{background:rgba(150,150,255,.16);color:var(--vio);padding:1px 5px;border-radius:3px;}
+  .map{position:relative;height:540px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,rgba(255,90,90,.06),rgba(110,231,183,.06));margin:16px 0;font-size:12px;}
+  .map .t{position:absolute;}
+  .legend{font-size:12px;color:var(--dim);}
+  .crumb{font-size:12px;color:var(--dim);margin-bottom:14px;}
+  .crumb b{color:var(--acc);}
+</style>
+</head>
+<body>
+<header>
+  <div class="nav" id="nav">
+    <div class="tab" data-i="0">Index</div>
+    <div class="tab" data-i="1">1 · Universe Map</div>
+    <div class="tab" data-i="2">2 · 8 Dimensions</div>
+    <div class="tab" data-i="3">3 · Control Locus</div>
+    <div class="tab" data-i="4">4 · Rung 4 Deep-Dive</div>
+    <div class="tab" data-i="5">5 · State &amp; the Stack</div>
+    <div class="tab" data-i="6">6 · LLM Granularity</div>
+    <div class="tab" data-i="7">7 · A·D·F·G·H</div>
+    <div class="tab" data-i="8">8 · The Lab Board</div>
+    <div class="pager">
+      <button id="prev">← Prev</button>
+      <button id="next">Next →</button>
+    </div>
+  </div>
+</header>
+<main>
+
+<!-- 0 INDEX -->
+<section class="panel" data-i="0">
+  <h1>Harness Atlas</h1>
+  <p class="sub">Everything we've built so far, in one place. Click a card or use the tabs / Prev-Next. New diagrams get added here as tabs.</p>
+  <div class="split">
+    <div class="box" onclick="go(1)" style="cursor:pointer;">
+      <div class="boxhead">Diagram 1</div><b>The Universe Map</b>
+      <p style="font-size:12.5px;color:var(--dim);">All 12 agent-orchestration topologies on two axes (autonomy × agent-multiplicity). Your two models are the ★ stars; the green zone is the 2025–26 production consensus.</p>
+    </div>
+    <div class="box" onclick="go(2)" style="cursor:pointer;">
+      <div class="boxhead">Diagram 2</div><b>The 8-Dimension Rack</b>
+      <p style="font-size:12.5px;color:var(--dim);">The generative core: a harness = one path through 8 orthogonal dimensions. Three paths drawn (your 2 models + a CALM-style one).</p>
+    </div>
+  </div>
+  <div class="split">
+    <div class="box" onclick="go(3)" style="cursor:pointer;">
+      <div class="boxhead">Diagram 3</div><b>Control Locus — the 5 rungs</b>
+      <p style="font-size:12.5px;color:var(--dim);">"Who picks the next step?" from pure code to pure LLM. Rung 4 = the answer. + the 5-stage rung-4 mechanism.</p>
+    </div>
+    <div class="box" onclick="go(4)" style="cursor:pointer;">
+      <div class="boxhead">Diagram 4</div><b>Rung 4, Implemented</b>
+      <p style="font-size:12.5px;color:var(--dim);">Command grammar · 3 ways to implement "propose" · where confidence comes from · where it still fails + defenses.</p>
+    </div>
+  </div>
+  <div class="split">
+    <div class="box" onclick="go(5)" style="cursor:pointer;">
+      <div class="boxhead">Diagram 5</div><b>State &amp; the Stack</b>
+      <p style="font-size:12.5px;color:var(--dim);">Dimension E. Flat vs typed vs stack state; the push/pop/resume lifecycle; the durable cross-turn link to F; stack-pathology guards; what to build on Convex.</p>
+    </div>
+    <div class="box" onclick="go(6)" style="cursor:pointer;">
+      <div class="boxhead">Diagram 6</div><b>LLM Granularity</b>
+      <p style="font-size:12.5px;color:var(--dim);">Dimension C. The 4-level ladder; the understand×generate 2×2 (the real insight); the three-tier-in-one-workflow recommendation; why C drives your G/H burden.</p>
+    </div>
+  </div>
+  <div class="split">
+    <div class="box" onclick="go(7)" style="cursor:pointer;">
+      <div class="boxhead">Diagram 7</div><b>The Other 5 (A·D·F·G·H)</b>
+      <p style="font-size:12.5px;color:var(--dim);">Brief passes on backbone, multiplicity, suspension, guardrails, verification — plus the synthesis: get B/C/E right and these mostly follow.</p>
+    </div>
+    <div class="box" onclick="go(8)" style="cursor:pointer;border-color:var(--acc);">
+      <div class="boxhead" style="color:var(--acc);">Diagram 8 ★</div><b>The Lab Board</b>
+      <p style="font-size:12.5px;color:var(--dim);">The collapse: 8 dimensions → 3 experiment knobs (Routing · Generation · Multiplicity) + shared infra. The actual board your harness lab varies.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 1 UNIVERSE MAP -->
+<section class="panel" data-i="1">
+  <p class="crumb">Atlas › <b>1 · Universe Map</b></p>
+  <h1>The agent-harness universe — one map</h1>
+  <p class="sub">Two axes the whole field converged on. Your two models = ★ stars.</p>
+  <div class="map">
+    <div class="t" style="top:8px;left:50%;transform:translateX(-50%);color:var(--red);font-weight:600;">▲ HIGH AUTONOMY — the LLM drives control flow</div>
+    <div class="t" style="bottom:8px;left:50%;transform:translateX(-50%);color:var(--acc);font-weight:600;">▼ LOW AUTONOMY — authored code drives control flow</div>
+    <div class="t" style="left:12px;top:50%;transform:translateY(-50%);writing-mode:vertical-rl;transform:rotate(180deg);color:var(--dim);">◄ SINGLE MIND</div>
+    <div class="t" style="right:12px;top:50%;transform:translateY(-50%);writing-mode:vertical-rl;color:var(--dim);">MANY MINDS ►</div>
+    <div class="t" style="left:14%;bottom:6%;width:34%;height:42%;border:1px dashed var(--acc);border-radius:10px;background:rgba(110,231,183,.10);"></div>
+    <div class="t" style="left:15%;bottom:43%;color:var(--acc);font-size:11px;font-weight:600;">2025–26 PRODUCTION CONSENSUS ZONE</div>
+    <div class="t" style="left:22%;top:13%;color:#ddd;">● Single ReAct loop</div>
+    <div class="t" style="left:20%;top:23%;color:#ddd;">● Plan-and-execute</div>
+    <div class="t" style="left:23%;top:33%;color:#ddd;">● Reflection / evaluator-optimizer</div>
+    <div class="t" style="left:62%;top:11%;color:#ddd;">● Handoff / swarm</div>
+    <div class="t" style="left:60%;top:21%;color:#ddd;">● Supervisor / orchestrator-workers</div>
+    <div class="t" style="left:66%;top:31%;color:#ddd;">● Hierarchical / recursive teams</div>
+    <div class="t" style="left:73%;top:17%;color:#ddd;">● Network / group-chat mesh</div>
+    <div class="t" style="left:70%;top:39%;color:#ddd;">● Mixture / debate</div>
+    <div class="t" style="left:18%;top:70%;color:#bbb;">○ Router / dispatcher</div>
+    <div class="t" style="left:29%;top:82%;color:#bbb;">○ Graph / state-machine workflow</div>
+    <div class="t" style="left:58%;top:74%;color:#bbb;">○ Blackboard / shared memory</div>
+    <div class="t" style="left:25%;top:60%;max-width:210px;color:#9ee;font-weight:600;">◆ Workflow with embedded agent node <span style="font-weight:400;color:#789;">(de-facto production default)</span></div>
+    <div class="t" style="left:23%;top:52%;color:var(--gold);font-weight:700;font-size:13px;">★ YOUR Single-Workflow "Gambit" Harness</div>
+    <div class="t" style="left:54%;top:49%;color:var(--gold);font-weight:700;font-size:13px;">★ YOUR Multi-Workflow Supervisor Harness</div>
+  </div>
+  <div class="pc">
+    <div><h4 style="color:var(--acc);">Research confirms</h4><ul><li>"Agent = Model + Harness" is now standard framing</li><li>Your gambit-graph-with-an-AI-gambit IS the consensus pattern</li><li>Every serious CX vendor independently built this two-layer shape</li></ul></div>
+    <div><h4 style="color:var(--red);">Research challenges</h4><ul><li>"Harness" is coding/eval vocabulary — not used in CX</li><li>Naming the whole thing "harness" is technically imprecise</li><li>Supervisor/multi-agent discouraged for the <i>live</i> CX turn loop</li></ul></div>
+  </div>
+</section>
+
+<!-- 2 DIMENSIONS -->
+<section class="panel" data-i="2">
+  <p class="crumb">Atlas › <b>2 · 8 Dimensions</b></p>
+  <h1>The harness design-space — 8 orthogonal dimensions</h1>
+  <p class="sub">A harness = one path through this rack. <span class="g">★1</span> your gambit harness · <span class="c">★2</span> your supervisor harness · <span class="v">◆</span> a CALM-style path you don't run yet.</p>
+  <table>
+    <thead><tr><th style="width:150px;">Dimension</th><th>Possible values →</th></tr></thead>
+    <tbody>
+      <tr><td style="color:#9ee;font-weight:600;">A · Backbone structure</td><td>Linear chain · <span class="g">★1 Graph / state-machine</span> <span class="c">★2</span> · <span class="v">◆ Stack (push/pop)</span> · Free-form</td></tr>
+      <tr><td style="color:#9ee;font-weight:600;">B · Control locus<br><span style="font-weight:400;color:#666;">who picks next step</span></td><td><span class="g">★1 Authored code</span> · <span class="v">◆ LLM-proposes / code-validates</span> · <span class="c">★2 LLM-decides</span></td></tr>
+      <tr><td style="color:#9ee;font-weight:600;">C · LLM granularity<br><span style="font-weight:400;color:#666;">where model touches flow</span></td><td>None · <span class="v">◆ Turn-understanding only</span> · <span class="g">★1 Per-node agent</span> · <span class="c">★2 Whole-flow agent</span></td></tr>
+      <tr><td style="color:#9ee;font-weight:600;">D · Agent multiplicity</td><td><span class="g">★1 Single</span> <span class="v">◆</span> · Router→specialist · <span class="c">★2 Supervisor+workers</span> · Peer handoff/swarm · Mesh</td></tr>
+      <tr><td style="color:#9ee;font-weight:600;">E · State &amp; memory</td><td>History-only · <span class="g">★1 Typed shared session state</span> · <span class="v">◆ Stack-structured</span> · <span class="c">★2 Isolated + trace-sharing</span></td></tr>
+      <tr><td style="color:#9ee;font-weight:600;">F · Cross-turn suspension</td><td>Synchronous only · <span class="g">★1 Durable signal / awaitable</span> <span class="c">★2</span> <span class="v">◆</span> · Re-entrant replay</td></tr>
+      <tr><td style="color:#9ee;font-weight:600;">G · Guardrail enforcement</td><td>Prompt-only · <span class="g">★1 Deterministic gates</span> <span class="v">◆</span> · Supervisor model · <span class="c">★2 Layered</span></td></tr>
+      <tr><td style="color:#9ee;font-weight:600;">H · Verification before acting</td><td>None · <span class="g">★1 Rules-based</span> <span class="v">◆</span> · <span class="c">★2 LLM-judge reflection</span> · Human approval</td></tr>
+    </tbody>
+  </table>
+  <div class="pc">
+    <div><h4 style="color:var(--acc);">Why dimensions-first</h4><ul><li>Every named pattern = a coordinate here</li><li>New harness = pick an unexplored path (systematic)</li><li>A/B = change one dimension, hold the rest</li></ul></div>
+    <div><h4 style="color:var(--gold);">The paths</h4><ul><li><span style="color:var(--gold);">★1</span> Your single-workflow gambit harness</li><li><span style="color:var(--cyan);">★2</span> Your multi-workflow supervisor harness</li><li><span style="color:var(--vio);">◆</span> A Rasa-CALM-style harness (not run yet)</li></ul></div>
+  </div>
+</section>
+
+<!-- 3 CONTROL LOCUS -->
+<section class="panel" data-i="3">
+  <p class="crumb">Atlas › <b>3 · Control Locus</b></p>
+  <h1>Dimension B — Control Locus</h1>
+  <p class="sub">"Who decides the next step?" — a 5-rung ladder. Rung 4 is the production answer; Rasa CALM is rung 4 made real.</p>
+  <table>
+    <thead><tr><th>Rung</th><th>Who decides</th><th>CX example</th><th>Failure mode</th></tr></thead>
+    <tbody>
+      <tr style="background:rgba(110,231,183,.07);"><td style="color:var(--acc);font-weight:600;">1 · Static edge</td><td>Code, no decision. Hard-wired next.</td><td>"Greeting → Ask account #"</td><td style="color:#888;">Zero flexibility.</td></tr>
+      <tr style="background:rgba(110,231,183,.05);"><td style="color:var(--acc);font-weight:600;">2 · Code function</td><td>Code, computed from state.</td><td>"if order.shipped → Track else Refund"</td><td style="color:#888;">Can't read intent / language.</td></tr>
+      <tr><td style="color:#bbb;font-weight:600;">3 · LLM constrained-choice</td><td>LLM picks 1 from a fixed menu.</td><td>Intent router → billing|tech|account</td><td style="color:#e88;">Misclassify → confidently wrong branch.</td></tr>
+      <tr style="background:rgba(255,209,102,.14);"><td style="color:var(--gold);font-weight:700;">4 · LLM proposes /<br>code validates ◀ ANSWER</td><td>LLM proposes; code checks legal &amp; safe; rejects/clarifies.</td><td><b>This is Rasa CALM.</b> LLM emits a <i>command</i>; FlowPolicy+stack execute.</td><td style="color:#888;">Needs grammar + stack + confidence handling.</td></tr>
+      <tr style="background:rgba(255,90,90,.08);"><td style="color:var(--red);font-weight:600;">5 · LLM free choice</td><td>LLM decides anything, no check.</td><td>★2 supervisor; agent picks next agent freely</td><td style="color:#e88;">Hallucinated/illegal jumps. <b>Your AI-gambit jump is near here today.</b></td></tr>
+    </tbody>
+  </table>
+  <div class="box">
+    <div class="boxhead">Rung 4 mechanism — fallible LLM → safe decision (left → right)</div>
+    <div style="display:flex;gap:8px;font-size:11px;">
+      <div style="flex:1;background:rgba(255,90,90,.10);border:1px solid #533;border-radius:8px;padding:8px;"><b style="color:#ff9b9b;">① Propose</b><br>LLM reads convo+flows+slots → emits a <b>command</b> from a fixed grammar. Menu, not free-writing.</div>
+      <div style="flex:1;background:rgba(255,209,102,.12);border:1px solid #553;border-radius:8px;padding:8px;"><b style="color:var(--gold);">② Validate</b><br>Code: is this transition <b>legal</b> from current node given preconditions/slots? Illegal → reject.</div>
+      <div style="flex:1;background:rgba(255,209,102,.12);border:1px solid #553;border-radius:8px;padding:8px;"><b style="color:var(--gold);">③ Confidence</b><br>Low/ambiguous → don't jump. Emit <b>Clarify</b>, safe default, or human.</div>
+      <div style="flex:1;background:rgba(150,150,255,.12);border:1px solid #445;border-radius:8px;padding:8px;"><b style="color:var(--vio);">④ Reversibility tier</b><br>FAQ → trust. Refund/account → deterministic preconditions or human approval.</div>
+      <div style="flex:1;background:rgba(110,231,183,.12);border:1px solid #353;border-radius:8px;padding:8px;"><b style="color:var(--acc);">⑤ Execute / Repair</b><br>Legal+confident → run. Digression → push stack, handle, pop, resume.</div>
+    </div>
+  </div>
+  <p class="sub">LLM = linguistic intelligence (intent, certainty, digression). Code = business logic + legal move-set. Command grammar + stack = the contract. That's the whole CALM design and the upgrade path for your AI-gambit jump.</p>
+</section>
+
+<!-- 4 RUNG 4 DEEP -->
+<section class="panel" data-i="4">
+  <p class="crumb">Atlas › <b>4 · Rung 4 Deep-Dive</b></p>
+  <h1>Rung 4, implemented — grammar, proposal, confidence, failures</h1>
+  <p class="sub">How "LLM proposes / code validates" is actually built for a gambit graph.</p>
+  <div class="box">
+    <div class="boxhead">① A starter command grammar for your gambit system (LLM may ONLY emit these)</div>
+    <div style="font-size:11.5px;line-height:1.9;">
+      <code style="color:#9ee;">GoToGambit(id)</code> propose a jump; rejected if not a legal edge ·
+      <code style="color:#9ee;">Stay()</code> keep talking ·
+      <code style="color:#9ee;">SetVar(k,v)</code> record input<br>
+      <code style="color:var(--gold);">Clarify(q)</code> "I'm not sure" → ask user ·
+      <code style="color:var(--vio);">Digress(id)</code> push side gambit ·
+      <code style="color:var(--vio);">Resume()</code> pop back<br>
+      <code style="color:var(--acc);">Cancel()</code> abandon flow ·
+      <code style="color:#ff9b9b;">Escalate(reason)</code> human handoff ·
+      <code style="color:#888;">CannotHandle()</code> escape hatch (grammar gap)
+    </div>
+  </div>
+  <div class="split">
+    <div class="box"><div class="boxhead">② Three ways to implement "Propose"</div>
+      <div style="font-size:11.5px;">
+        <b style="color:#9ee;">a. Structured JSON output</b> — <code>{cmd,args,confidence}</code> vs schema. Simplest; confidence self-reported.<br><br>
+        <b style="color:#9ee;">b. Tool-call with enum</b> — <code>GoToGambit</code> arg = enum of <i>only legal next gambits</i>. Hardest to emit invalid. <b>Best default.</b><br><br>
+        <b style="color:#9ee;">c. Fine-tuned small model</b> — CALM's path (~Llama-8B). Cheap/fast/consistent; needs data. Do once volume justifies.
+      </div>
+    </div>
+    <div class="box"><div class="boxhead">③ Where confidence comes from</div>
+      <div style="font-size:11.5px;">
+        <b style="color:var(--gold);">Self-reported field</b> — easy, over-confident. Weak floor alone.<br><br>
+        <b style="color:var(--gold);">A <code>Clarify</code> command</b> — CALM's trick: make "unsure" a <i>valid move</i>. Strongest, cheapest.<br><br>
+        <b style="color:var(--gold);">Logprobs</b> — real signal, more plumbing.<br><br>
+        <b style="color:var(--gold);">Double-sample disagree</b> — 2× cost.
+      </div>
+    </div>
+  </div>
+  <div class="box">
+    <div class="boxhead">④ Where rung 4 STILL fails — and the defense</div>
+    <table>
+      <tr><th>Failure</th><th>Defense</th></tr>
+      <tr><td style="color:#e88;">Legal-but-wrong jump (passes validation — it IS a legal edge)</td><td>Richer edge preconditions · reversibility tiering · supervisor model · post-hoc verification before side-effects</td></tr>
+      <tr><td style="color:#e88;">Confidently wrong (high self-confidence, wrong cmd)</td><td>Never trust self-confidence as floor; deterministic preconditions are the floor; consequential edges always gated</td></tr>
+      <tr><td style="color:#e88;">Grammar gap (user wants what no command expresses)</td><td>Always include <code>CannotHandle</code>/<code>Escalate</code>; review logs to grow the grammar</td></tr>
+      <tr><td style="color:#e88;">Stack pathologies (infinite digression, user never returns)</td><td>Stack depth limit · TTL on suspended gambits · "unfinished X — continue?" resume prompt</td></tr>
+      <tr><td style="color:#e88;">Multi-command sequence ordering/atomicity</td><td>Validate the whole sequence transactionally; all-or-nothing</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- 5 STATE & THE STACK -->
+<section class="panel" data-i="5">
+  <p class="crumb">Atlas › <b>5 · State &amp; the Stack</b></p>
+  <h1>Dimension E — State &amp; the Stack</h1>
+  <p class="sub">Two different questions need two different stores. Your system has one and is missing the other.</p>
+
+  <table>
+    <thead><tr><th>State shape</th><th>Answers</th><th>Can represent</th><th>Cannot represent</th><th>Who</th></tr></thead>
+    <tbody>
+      <tr><td style="color:#bbb;font-weight:600;">History-only</td><td>"what was said"</td><td>raw transcript</td><td style="color:#e88;">structured facts; position in a flow</td><td>pure chatbots</td></tr>
+      <tr style="background:rgba(255,209,102,.10);"><td style="color:var(--gold);font-weight:600;">Typed session state</td><td>"what do we <i>know</i>"</td><td>named typed slots (account_id, intent…) + history</td><td style="color:#e88;">where am I / how do I get back (no nesting, no return point)</td><td><span style="color:var(--gold);">★1 you</span> · ADK</td></tr>
+      <tr style="background:rgba(150,150,255,.10);"><td style="color:var(--vio);font-weight:600;">Dialogue stack</td><td>"where are we &amp; how to return"</td><td>nested frames, resume point, digression/return</td><td style="color:#888;">(pairs with typed slots — not a replacement)</td><td><span style="color:var(--vio);">◆ CALM</span></td></tr>
+      <tr style="background:rgba(110,231,183,.10);"><td style="color:var(--cyan);font-weight:600;">Isolated + trace-share</td><td>"each agent's own context"</td><td>parallel agents, explicit trace passing</td><td style="color:#e88;">shared single source of truth (must re-share)</td><td><span style="color:var(--cyan);">★2 supervisor</span></td></tr>
+    </tbody>
+  </table>
+  <p class="sub">Typed slots answer <b>“what do we know?”</b>. The stack answers <b>“where are we and how do we get back?”</b> You need <u>both</u>. You have the first; the stack is the missing piece that makes digression+resume possible.</p>
+
+  <div class="box">
+    <div class="boxhead">Anatomy of a stack frame</div>
+    <div style="font-size:12px;">A frame = <code>{ gambitId, localVars, stepCursor (which step within the gambit), returnTo }</code>. The stack is a LIFO list of frames; the <b>top</b> frame is active. Persisted per conversation (not in memory).</div>
+  </div>
+
+  <div class="box">
+    <div class="boxhead">The push / pop / resume lifecycle — worked trace</div>
+    <div style="display:flex;gap:6px;font-size:10.5px;align-items:flex-end;overflow-x:auto;">
+      <div style="flex:1;min-width:150px;"><div style="color:var(--dim);margin-bottom:5px;">1. In flow</div><div style="border:1px solid #553;border-radius:6px;background:rgba(255,209,102,.10);padding:6px;">CollectAddress<br><span style="color:#888;">step=street</span></div></div>
+      <div style="color:var(--dim);font-size:18px;padding-bottom:18px;">→</div>
+      <div style="flex:1;min-width:150px;"><div style="color:var(--dim);margin-bottom:5px;">2. User digresses<br>"return policy?"<br>LLM→ <code>Digress</code></div><div style="border:1px solid #445;border-radius:6px;background:rgba(150,150,255,.12);padding:6px;">ReturnPolicy <span style="color:var(--vio);">◀ pushed</span></div><div style="border:1px solid #553;border-radius:6px;background:rgba(255,209,102,.10);padding:6px;margin-top:3px;">CollectAddress<br><span style="color:#888;">step=street</span></div></div>
+      <div style="color:var(--dim);font-size:18px;padding-bottom:18px;">→</div>
+      <div style="flex:1;min-width:150px;"><div style="color:var(--dim);margin-bottom:5px;">3. FAQ answered<br>→ <code>pop</code></div><div style="border:1px solid #553;border-radius:6px;background:rgba(255,209,102,.10);padding:6px;">CollectAddress<br><span style="color:#888;">step=street</span></div></div>
+      <div style="color:var(--dim);font-size:18px;padding-bottom:18px;">→</div>
+      <div style="flex:1;min-width:150px;"><div style="color:var(--acc);margin-bottom:5px;">4. RESUME at<br>exactly step=street</div><div style="border:1px solid #353;border-radius:6px;background:rgba(110,231,183,.12);padding:6px;">CollectAddress<br><span style="color:var(--acc);">"what's your street?"</span></div></div>
+    </div>
+    <div style="font-size:11px;color:var(--dim);margin-top:8px;">Flat-state system: no frame to pop back to → resuming means re-running CollectAddress from the top (losing collected fields) or just breaking. The <code>stepCursor</code> is what makes resume <i>exact</i>.</div>
+  </div>
+
+  <div class="split">
+    <div class="box">
+      <div class="boxhead">E × F — the stack must survive across turns</div>
+      <div style="font-size:11.5px;">
+        Customer answers, closes browser, returns tomorrow. So the stack is <b>durable persisted state</b>, loaded on every inbound message.<br><br>
+        <b>Suspend</b> (collect-input) = persist stack+slots, return.<br>
+        <b>Resume</b> (inbound msg) = load stack; top frame's <code>stepCursor</code> says exactly where to continue.<br><br>
+        Mental model: Temporal <i>Signal</i> / Restate <i>awakeable</i> / LangGraph <i>interrupt+checkpoint</i>. <b>Convex is already your durability substrate</b> — the stack is just a persisted doc per conversation; no Temporal needed.<br><br>
+        Pitfall: if resume re-runs the frame body, side-effects must sit <i>after</i> the suspend point or be idempotent. <code>stepCursor</code> is what lets you skip already-done steps.
+      </div>
+    </div>
+    <div class="box">
+      <div class="boxhead">Stack op per command (B × E wiring)</div>
+      <div style="font-size:11.5px;">
+        <code style="color:#9ee;">GoToGambit</code> → <b>replace</b> top frame (normal transition, no return)<br><br>
+        <code style="color:var(--vio);">Digress</code> → <b>push</b> a frame (expects return)<br><br>
+        flow-complete / <code style="color:var(--vio);">Resume</code> → <b>pop</b>, continue parent at its <code>stepCursor</code><br><br>
+        <code style="color:var(--acc);">Cancel</code> → <b>pop + discard</b> frame &amp; its local vars<br><br>
+        <code style="color:#ff9b9b;">Escalate</code> → snapshot full stack → handoff payload<br><br>
+        <b>Key:</b> "transition" (replace) vs "digression" (push) is a real semantic split — your grammar already separates them, so the stack just honors it.
+      </div>
+    </div>
+  </div>
+
+  <div class="box">
+    <div class="boxhead">Stack pathologies &amp; guards</div>
+    <table>
+      <tr><th>Pathology</th><th>Guard</th></tr>
+      <tr><td style="color:#e88;">Unbounded depth (digression in digression in digression)</td><td>Max stack depth (e.g. 5) → beyond it, flatten or escalate</td></tr>
+      <tr><td style="color:#e88;">Orphaned/stale frame (digressed, never returned)</td><td>Per-frame TTL → on resume if stale: "you had an unfinished change-of-address — resume or discard?"</td></tr>
+      <tr><td style="color:#e88;">Resume ambiguity (&gt;1 suspended user-facing frame)</td><td>LIFO default, but prompt the user when more than one is pending</td></tr>
+      <tr><td style="color:#e88;">Pop into a changed world (order shipped while suspended)</td><td>Re-validate frame preconditions <i>on resume</i>, not only on entry</td></tr>
+      <tr><td style="color:#e88;">State bloat over a long conversation</td><td>Compact <i>history</i> (summarize old turns); <b>never</b> compact stack or typed slots — they're source of truth</td></tr>
+      <tr><td style="color:#e88;">Cross-frame variable leakage</td><td>Two tiers: session-global typed slots + frame-local scratch vars</td></tr>
+    </table>
+  </div>
+
+  <p class="sub"><b>What to build on your stack:</b> keep your typed pre/post vars (the ✅ "what we know" tier) → add a persisted dialogue-stack doc per conversation in Convex (array of frames) → wire the rung-4 grammar to stack ops above → on collect-input persist stack+slots, resume from top frame's <code>stepCursor</code> → add the six guards → compact transcript only, never stack/slots.</p>
+</section>
+
+<!-- 6 LLM GRANULARITY -->
+<section class="panel" data-i="6">
+  <p class="crumb">Atlas › <b>6 · LLM Granularity</b></p>
+  <h1>Dimension C — LLM Granularity</h1>
+  <p class="sub">"Where does the model touch the flow?" The fork you flagged: your ★1 is 'per-node agent', CALM is 'turn-understanding-only'. They are not the same kind of intelligence.</p>
+
+  <table>
+    <thead><tr><th>Level</th><th>LLM's job</th><th>Bot's words are…</th><th>Capability</th><th>Control / risk</th></tr></thead>
+    <tbody>
+      <tr><td style="color:var(--acc);font-weight:600;">0 · None</td><td>nothing — pure code</td><td>authored templates</td><td>scripted only</td><td style="color:var(--acc);">total control</td></tr>
+      <tr style="background:rgba(150,150,255,.10);"><td style="color:var(--vio);font-weight:600;">1 · Turn-understanding only<br><span style="font-weight:400;color:#666;">◆ CALM</span></td><td>interpret each turn → emit <i>commands</i>. Never writes the reply.</td><td><b>authored templates</b></td><td>robust to off-script; safe</td><td style="color:var(--acc);">high control — you know exactly what it will say</td></tr>
+      <tr style="background:rgba(255,209,102,.12);"><td style="color:var(--gold);font-weight:600;">2 · Per-node agent<br><span style="font-weight:400;color:#666;">★1 your AI-gambit</span></td><td>at one node: reason + tools + <b>generate reply</b> + jump</td><td><b>LLM-generated</b> (at that node)</td><td>open conversation in a bounded region</td><td style="color:#e88;">that node needs heavier G+H</td></tr>
+      <tr style="background:rgba(255,90,90,.08);"><td style="color:var(--red);font-weight:600;">3 · Whole-flow agent<br><span style="font-weight:400;color:#666;">★2</span></td><td>owns the entire conversation; gambits are just tools</td><td>LLM-generated throughout</td><td>maximal flexibility</td><td style="color:#e88;">hardest to keep safe/on-policy</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box">
+    <div class="boxhead">The real insight — "understand" and "generate" are TWO separable knobs</div>
+    <div style="display:grid;grid-template-columns:90px 1fr 1fr;gap:6px;font-size:11px;">
+      <div></div>
+      <div style="text-align:center;color:var(--dim);font-weight:600;">Reply = TEMPLATED (authored)</div>
+      <div style="text-align:center;color:var(--dim);font-weight:600;">Reply = LLM-GENERATED</div>
+
+      <div style="color:var(--dim);font-weight:600;display:flex;align-items:center;">Routing<br>= CODE</div>
+      <div style="border:1px solid #353;border-radius:8px;background:rgba(110,231,183,.10);padding:10px;"><b style="color:var(--acc);">Classic deterministic gambit</b><br>your normal gambit today. Total control, zero flexibility.</div>
+      <div style="border:1px solid #445;border-radius:8px;background:rgba(150,150,255,.06);padding:10px;"><b style="color:var(--vio);">Templated route, generated phrasing</b><br>rare: fixed retrieval, LLM phrases the answer (a RAG answer node).</div>
+
+      <div style="color:var(--dim);font-weight:600;display:flex;align-items:center;">Routing<br>= LLM</div>
+      <div style="border:2px solid var(--vio);border-radius:8px;background:rgba(150,150,255,.14);padding:10px;"><b style="color:var(--vio);">◆ CALM sweet spot</b><br>LLM understands &amp; routes; <b>words stay authored</b>. Robust to off-script AND you know exactly what it says. <u>Underused in CX.</u></div>
+      <div style="border:2px solid var(--gold);border-radius:8px;background:rgba(255,209,102,.14);padding:10px;"><b style="color:var(--gold);">★1 your AI-agent gambit</b><br>LLM understands AND writes the reply. Most capable, biggest G/H burden.</div>
+    </div>
+    <div style="font-size:11px;color:var(--dim);margin-top:8px;">Your model treats "add intelligence" = jump to the gold cell. But the <b>violet cell is a lighter, safer intelligence injection</b> — and it's exactly what fixes the digression problem from Dimension E without going generative.</div>
+  </div>
+
+  <div class="box">
+    <div class="boxhead">Recommendation — three tiers inside ONE workflow (granularity is per-gambit, not global)</div>
+    <div style="display:flex;gap:10px;font-size:11.5px;">
+      <div style="flex:1;border:1px solid #353;border-radius:8px;background:rgba(110,231,183,.08);padding:10px;"><b style="color:var(--acc);">Tier A · Pure deterministic gambit</b><br>templated msg, code routing. Your existing 500-gambit flows. Unchanged.</div>
+      <div style="flex:1;border:2px solid var(--vio);border-radius:8px;background:rgba(150,150,255,.12);padding:10px;"><b style="color:var(--vio);">Tier B · Deterministic + understanding overlay</b><br>SAME templated gambit, but a CALM-style turn-understanding watcher runs every turn → detects digression/correction/cancel/escalate → manipulates the stack. <b>Makes your whole backbone off-script-robust without making it generative.</b></div>
+      <div style="flex:1;border:2px solid var(--gold);border-radius:8px;background:rgba(255,209,102,.12);padding:10px;"><b style="color:var(--gold);">Tier C · AI-agent gambit</b><br>full per-node generative agent for genuinely open segments. Heavier G+H. Use where open conversation is the point.</div>
+    </div>
+    <div style="font-size:11px;color:var(--dim);margin-top:8px;">Whole-flow agent (level 3 / ★2) = the degenerate case: a workflow that is one Tier-C gambit with everything as tools. It's not a separate thing — it's a coordinate.</div>
+  </div>
+
+  <div class="box">
+    <div class="boxhead">Why C drives your G &amp; H burden (dimensions interact)</div>
+    <div style="font-size:11.5px;">The more the LLM <b>generates user-facing words</b>, the more you don't know what the bot will say → the heavier your guardrail (G) and verification (H) must be. Tier A: ~none. Tier B: light (LLM only picks authored content, can't invent words — the safety win). Tier C: heavy (output validation, grounding checks, policy gates, supervisor). <b>"Authored words" is itself a guardrail</b> — Tier B gets robustness for free that Tier C must pay for.</div>
+  </div>
+
+  <p class="sub"><b>For your system:</b> don't treat the AI-agent gambit as the only intelligence. Add <b>Tier B</b> (turn-understanding overlay + stack from Dimension E) to your existing deterministic gambits → your 500-gambit workflows become digression-robust and stay fully controllable. Reserve <b>Tier C</b> (generative AI-gambit) for the few segments where open-ended conversation is the actual goal, and accept it needs the heavier G/H.</p>
+</section>
+
+<!-- 7 THE OTHER FIVE -->
+<section class="panel" data-i="7">
+  <p class="crumb">Atlas › <b>7 · A·D·F·G·H</b></p>
+  <h1>The other five dimensions — brief</h1>
+  <p class="sub">B, C, E are the hard core. These five are mostly <i>determined</i> by those choices. ★1 = where your single-workflow harness should sit.</p>
+
+  <table>
+    <thead><tr><th style="width:130px;">Dimension</th><th>Spectrum (★1 = your target)</th><th>The one thing that matters</th></tr></thead>
+    <tbody>
+      <tr><td style="color:#9ee;font-weight:600;">A · Backbone structure</td><td>Linear · <span class="g">★1 Graph/state-machine</span> · Stack · Free-form</td><td>You already have the graph (gambit connections). The graph is the <i>static program</i>; the stack (E) is the <i>dynamic execution</i>. Don't conflate them — you need both.</td></tr>
+      <tr><td style="color:#9ee;font-weight:600;">D · Agent multiplicity</td><td><span class="g">★1 Single</span> · Router→spec · Supervisor+workers <span class="c">★2</span> · Swarm · Mesh</td><td>Keep the <b>live turn loop single</b> (Cognition: single-threaded for coupled work). Multiplicity only for read-heavy fan-out &amp; offline. Covered on the Map.</td></tr>
+      <tr style="background:rgba(255,209,102,.08);"><td style="color:#9ee;font-weight:600;">F · Cross-turn suspension ★</td><td>Synchronous-only · <span class="g">★1 Durable signal/awaitable</span> · Re-entrant replay</td><td><b>F is not separate from E — it's HOW E's stack persists.</b> See deep-dive below.</td></tr>
+      <tr style="background:rgba(255,209,102,.08);"><td style="color:#9ee;font-weight:600;">G · Guardrail enforcement ★</td><td>Prompt-only · <span class="g">★1 Deterministic gates</span> · Supervisor model · <span class="c">★2 Layered</span></td><td>Probabilistic vs deterministic. See deep-dive below.</td></tr>
+      <tr><td style="color:#9ee;font-weight:600;">H · Verification before acting</td><td>None · <span class="g">★1 Rules-based</span> · LLM-judge · Human-approval (high-stakes)</td><td>The pre-side-effect gate referenced in B-stage④. Anthropic ranking: rules-based &gt; LLM-judge ("not robust"). <b>Your span-grounding eval IS a rules-based verifier — move it into the live harness, not just offline.</b></td></tr>
+    </tbody>
+  </table>
+
+  <div class="split">
+    <div class="box" style="border-color:#553;">
+      <div class="boxhead" style="color:var(--gold);">F deep-dive — cross-turn suspension</div>
+      <div style="font-size:11.5px;">
+        Your <code>collect-input</code> is inherently a suspension point. Three models:<br><br>
+        <b>a. Durable signal / awaitable</b> ★1 — suspend, persist state, an inbound message resumes. Survives the user closing the browser for a day. (Temporal Signal / Restate awakeable / <b>Convex — you have this free</b>.)<br><br>
+        <b>b. Re-entrant replay</b> — resume re-runs the node from the top → side-effects must be after the suspend point or idempotent (the LangGraph pitfall, restated).<br><br>
+        <b>c. Synchronous-only</b> — no real cross-turn; breaks for CX the moment the user pauses.<br><br>
+        <b>Takeaway:</b> F and E are <u>one mechanism</u> — the durable stack snapshot IS the suspension checkpoint.
+      </div>
+    </div>
+    <div class="box" style="border-color:#553;">
+      <div class="boxhead" style="color:var(--gold);">G deep-dive — guardrail enforcement</div>
+      <div style="font-size:11.5px;">
+        Core principle: <b>probabilistic compliance vs deterministic constraint.</b> "Follow policy" in a prompt is probabilistic; a code gate that blocks is deterministic. Two kinds (Fowler's <i>guides vs sensors</i>):<br><br>
+        <b>Feedforward</b> — constrain what the agent CAN do: allowed-tools, enum jumps, path constraints (= the rung-4 <i>validate</i> stage IS a feedforward guardrail).<br><br>
+        <b>Feedback</b> — check what it DID: output validators, grounding checks (= overlaps H).<br><br>
+        <b>Layered</b> (★2 / high-stakes): code rules → supervisor model → adversarial tests. <b>G scales with C</b>: the more generative the gambit, the heavier G.
+      </div>
+    </div>
+  </div>
+
+  <div class="box" style="border-color:var(--acc);background:rgba(110,231,183,.06);">
+    <div class="boxhead" style="color:var(--acc);">The synthesis that simplifies everything</div>
+    <div style="font-size:12px;">The 8 dimensions are not 8 independent decisions. <b>Three are the design (B control-locus · C granularity · E state/stack); five mostly follow:</b> A = the graph you already have (needs E's stack) · D = single for the live loop · <b>F = how E persists</b> · <b>G = the rung-4 validate gate (B) scaled by C</b> · H = the pre-side-effect gate from B-stage④. <b>Get B, C, E right and the rest fall into place.</b> That is the whole framework in one sentence.</div>
+  </div>
+</section>
+
+<!-- 8 THE LAB BOARD -->
+<section class="panel" data-i="8">
+  <p class="crumb">Atlas › <b>8 · The Lab Board</b></p>
+  <h1>The collapse — 8 dimensions → 3 knobs + fixed plumbing</h1>
+  <p class="sub">What you VARY to create different harnesses, vs what you build once. The result lands back on your very first map.</p>
+
+  <div class="box">
+    <div class="boxhead">The collapse</div>
+    <div style="display:grid;grid-template-columns:1fr 30px 1.3fr;gap:10px;align-items:center;font-size:11.5px;">
+      <div>
+        <div style="color:var(--dim);margin-bottom:6px;">8 dimensions</div>
+        <div style="line-height:2;">
+          <span class="g">A backbone</span> · <span class="g">B control-locus</span> · <span class="g">C granularity</span><br>
+          <span class="c">D multiplicity</span><br>
+          <span style="color:#789;">E state · F suspension · G guardrails · H verification</span>
+        </div>
+      </div>
+      <div style="text-align:center;color:var(--acc);font-size:22px;">→</div>
+      <div>
+        <div style="color:var(--dim);margin-bottom:6px;">3 experiment knobs + infra</div>
+        <div style="border:1px solid #553;border-radius:8px;background:rgba(255,209,102,.10);padding:8px;margin-bottom:6px;"><b style="color:var(--gold);">① Routing control</b> — who picks the next step? <span style="color:#888;">(B, absorbs A: free-form = no-graph extreme)</span></div>
+        <div style="border:1px solid #553;border-radius:8px;background:rgba(255,209,102,.10);padding:8px;margin-bottom:6px;"><b style="color:var(--gold);">② Generation control</b> — who writes the words? <span style="color:#888;">(C)</span></div>
+        <div style="border:1px solid #353;border-radius:8px;background:rgba(110,231,183,.10);padding:8px;margin-bottom:6px;"><b style="color:var(--cyan);">③ Multiplicity</b> — one mind or many? <span style="color:#888;">(D)</span></div>
+        <div style="border:1px dashed #456;border-radius:8px;background:rgba(120,140,160,.08);padding:8px;"><b style="color:#9ab;">Shared infrastructure (build once, identical everywhere)</b> — durable state+stack (E+F) · guardrails (G, +parked supervisor) · verification (H)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="box">
+    <div class="boxhead">The board — knobs ① × ② form your tab-6 2×2 (the archetypes you compare)</div>
+    <div style="display:grid;grid-template-columns:110px 1fr 1fr;gap:6px;font-size:11px;">
+      <div></div>
+      <div style="text-align:center;color:var(--dim);font-weight:600;">② words = TEMPLATED</div>
+      <div style="text-align:center;color:var(--dim);font-weight:600;">② words = LLM-GENERATED</div>
+
+      <div style="color:var(--dim);font-weight:600;display:flex;align-items:center;">① route<br>= CODE</div>
+      <div style="border:1px solid #353;border-radius:8px;background:rgba(110,231,183,.10);padding:10px;"><b style="color:var(--acc);">Deterministic harness</b><br><span style="color:#888;">scripted gambit graph (today)</span></div>
+      <div style="border:1px solid #445;border-radius:8px;background:rgba(150,150,255,.06);padding:10px;"><b style="color:var(--vio);">RAG-answer harness</b><br><span style="color:#888;">fixed route, generated phrasing (rare)</span></div>
+
+      <div style="color:var(--dim);font-weight:600;display:flex;align-items:center;">① route<br>= LLM</div>
+      <div style="border:2px solid var(--vio);border-radius:8px;background:rgba(150,150,255,.14);padding:10px;"><b style="color:var(--vio);">CALM-style harness</b><br><span style="color:#888;">LLM routes, words authored</span></div>
+      <div style="border:2px solid var(--gold);border-radius:8px;background:rgba(255,209,102,.14);padding:10px;"><b style="color:var(--gold);">Agentic harness</b><br><span style="color:#888;">your AI-agent gambit / free-form</span></div>
+    </div>
+    <div style="font-size:11px;color:var(--dim);margin-top:10px;">…and knob ③ <b>Multiplicity</b> takes any cell from <b>single</b> (★1) to <b>supervisor+workers</b> (★2). So the full board = this 2×2 × a single↔multi toggle.</div>
+  </div>
+
+  <div class="box" style="border-color:var(--acc);background:rgba(110,231,183,.06);">
+    <div class="boxhead" style="color:var(--acc);">What this means for the lab</div>
+    <div style="font-size:12px;">
+      Your harness lab <b>varies exactly 3 things</b> — routing control, generation control, multiplicity — and <b>builds everything else once</b> (durable state+stack, guardrails, verification). Each cell of the 2×2 (× single/multi) is a named, runnable harness archetype you can A/B. The <b>gambit framing survives</b>: deterministic gambits + agent gambits are the node types; the board just decides how they're wired and who chooses/speaks. And ① × ③ is literally your original map (tab 1): <b>autonomy × multiplicity</b>.
+    </div>
+  </div>
+</section>
+
+</main>
+<script>
+  var I=0, N=9;
+  function go(i){
+    I=Math.max(0,Math.min(N-1,i));
+    document.querySelectorAll('.panel').forEach(function(p){p.classList.toggle('show', +p.dataset.i===I);});
+    document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('active', +t.dataset.i===I);});
+    document.getElementById('prev').disabled = I===0;
+    document.getElementById('next').disabled = I===N-1;
+    window.scrollTo(0,0);
+    try{history.replaceState(null,'','#'+I);}catch(e){}
+  }
+  document.querySelectorAll('.tab').forEach(function(t){t.addEventListener('click',function(){go(+t.dataset.i);});});
+  document.getElementById('prev').addEventListener('click',function(){go(I-1);});
+  document.getElementById('next').addEventListener('click',function(){go(I+1);});
+  document.addEventListener('keydown',function(e){if(e.key==='ArrowLeft')go(I-1);if(e.key==='ArrowRight')go(I+1);});
+  var h=parseInt((location.hash||'').replace('#',''));
+  go(isNaN(h)?8:h);
+</script>
+</body>
+</html>
