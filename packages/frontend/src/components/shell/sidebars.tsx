@@ -53,6 +53,7 @@ export function agentSidebar(agentId: string): SidebarItem[] {
       children: [
         { label: "Scenarios", href: `${base}/evaluate/scenarios`, icon: ICONS.scenarios },
         { label: "Experiments", href: `${base}/evaluate/experiments`, icon: ICONS.experiments },
+        { label: "Error analysis", href: `${base}/evaluate/error-analysis`, icon: ICONS["open-coding"] },
         { label: "Evaluators", href: `${base}/evaluate/evaluators`, icon: ICONS.evaluators },
       ],
     },

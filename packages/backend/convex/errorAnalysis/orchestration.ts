@@ -177,6 +177,52 @@ export const importMore = mutation({
   },
 });
 
+export const membersByAnalysis = query({
+  args: { errorAnalysisId: v.id("errorAnalyses") },
+  handler: async (ctx, { errorAnalysisId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const a = await ctx.db.get(errorAnalysisId);
+    if (!a || a.orgId !== orgId) return [];
+    const members = await ctx.db
+      .query("errorAnalysisMembers")
+      .withIndex("by_analysis", (q) => q.eq("errorAnalysisId", errorAnalysisId))
+      .collect();
+
+    return await Promise.all(
+      members.map(async (m) => {
+        if (m.source.kind === "conversation") {
+          const c = await ctx.db.get(m.source.conversationId);
+          return {
+            ...m,
+            conversation: c
+              ? {
+                  _id: c._id,
+                  title: c.title,
+                  createdAt: c.createdAt,
+                  source: c.source,
+                }
+              : null,
+            transcript: null,
+          };
+        }
+        const t = await ctx.db.get(m.source.transcriptId);
+        return {
+          ...m,
+          conversation: null,
+          transcript: t
+            ? {
+                _id: t._id,
+                conversationId: t.conversationId,
+                visitorName: t.visitorName,
+                _creationTime: t._creationTime,
+              }
+            : null,
+        };
+      }),
+    );
+  },
+});
+
 export const rename = mutation({
   args: { id: v.id("errorAnalyses"), name: v.string() },
   handler: async (ctx, { id, name }) => {

@@ -74,6 +74,36 @@ export const byAnalysis = query({
   },
 });
 
+export const byAnalysisWithCounts = query({
+  args: { errorAnalysisId: v.id("errorAnalyses") },
+  handler: async (ctx, { errorAnalysisId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const rows = await ctx.db
+      .query("failureModes")
+      .withIndex("by_analysis", (q) => q.eq("errorAnalysisId", errorAnalysisId))
+      .collect();
+    const filtered = rows.filter((r) => r.orgId === orgId);
+    return await Promise.all(
+      filtered.map(async (r) => {
+        const ms = await ctx.db
+          .query("failureModeMemberships")
+          .withIndex("by_failure_mode", (q) => q.eq("failureModeId", r._id))
+          .collect();
+        const allEval = await ctx.db
+          .query("evaluators")
+          .withIndex("by_agent", (q) => q.eq("agentId", r.agentId))
+          .collect();
+        const judgeCount = allEval.filter(
+          (e) =>
+            e.source.kind === "error_analysis" &&
+            e.source.failureModeId === r._id,
+        ).length;
+        return { ...r, memberCount: ms.length, judgeCount };
+      }),
+    );
+  },
+});
+
 export const update = mutation({
   args: {
     id: v.id("failureModes"),
