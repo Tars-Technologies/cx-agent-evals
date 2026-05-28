@@ -375,6 +375,7 @@ export default defineSchema({
   // ─── Annotations (human ratings on conversations / transcripts) ───
   annotations: defineTable({
     orgId: v.string(),
+    errorAnalysisId: v.id("errorAnalyses"),
     source: v.union(
       v.object({ kind: v.literal("conversation"), conversationId: v.id("conversations") }),
       v.object({ kind: v.literal("transcript"),   transcriptId:   v.id("livechatConversations") }),
@@ -390,6 +391,7 @@ export default defineSchema({
     updatedAt: v.optional(v.number()),
   })
     .index("by_org", ["orgId"])
+    .index("by_analysis", ["errorAnalysisId"])
     .index("by_conversation", ["source.conversationId"])
     .index("by_transcript",   ["source.transcriptId"]),
 
@@ -397,13 +399,47 @@ export default defineSchema({
   failureModes: defineTable({
     orgId: v.string(),
     agentId: v.id("agents"),
+    errorAnalysisId: v.id("errorAnalyses"),
     name: v.string(),
     description: v.string(),
     order: v.number(),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
   })
-    .index("by_agent", ["agentId"]),
+    .index("by_agent", ["agentId"])
+    .index("by_analysis", ["errorAnalysisId"]),
+
+  // ─── Error Analyses (containers for annotation + axial coding work) ───
+  errorAnalyses: defineTable({
+    orgId: v.string(),
+    agentId: v.id("agents"),
+    name: v.string(),
+    origin: v.union(
+      v.object({ kind: v.literal("simulation"), simulationId: v.id("conversationSimulations") }),
+      v.object({ kind: v.literal("upload"),     uploadId:     v.id("livechatUploads") }),
+      v.object({ kind: v.literal("playground") }),
+      v.object({ kind: v.literal("custom") }),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_agent_origin_simulation", ["agentId", "origin.simulationId"])
+    .index("by_agent_origin_upload",     ["agentId", "origin.uploadId"]),
+
+  errorAnalysisMembers: defineTable({
+    orgId: v.string(),
+    errorAnalysisId: v.id("errorAnalyses"),
+    source: v.union(
+      v.object({ kind: v.literal("conversation"), conversationId: v.id("conversations") }),
+      v.object({ kind: v.literal("transcript"),   transcriptId:   v.id("livechatConversations") }),
+    ),
+    addedVia: v.union(v.literal("annotation"), v.literal("import")),
+    addedAt: v.number(),
+  })
+    .index("by_analysis", ["errorAnalysisId"])
+    .index("by_analysis_conversation", ["errorAnalysisId", "source.conversationId"])
+    .index("by_analysis_transcript",   ["errorAnalysisId", "source.transcriptId"]),
 
   // ─── Failure Mode Memberships (many-to-many) ───
   failureModeMemberships: defineTable({
@@ -766,7 +802,11 @@ export default defineSchema({
     source: v.union(
       v.object({ kind: v.literal("manual") }),
       v.object({ kind: v.literal("template"),       templateId:    v.id("evaluatorTemplates") }),
-      v.object({ kind: v.literal("error_analysis"), failureModeId: v.id("failureModes") }),
+      v.object({
+        kind: v.literal("error_analysis"),
+        failureModeId: v.id("failureModes"),
+        errorAnalysisId: v.id("errorAnalyses"),
+      }),
     ),
     status: v.union(
       v.literal("draft"), v.literal("calibrating"),
