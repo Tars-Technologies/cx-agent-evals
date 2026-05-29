@@ -191,7 +191,7 @@ export const remove = tenantMutation({
       if (sharingChunks.length === 0) {
         await ctx.scheduler.runAfter(
           0,
-          internal.retrieval.indexingActions.cleanupAction,
+          internal.kb.indexingActions.cleanupAction,
           {
             kbId: retriever.kbId,
             indexConfigHash: retriever.indexConfigHash,
@@ -273,7 +273,7 @@ export const deleteIndex = tenantMutation({
     if (retriever.indexingJobId) {
       await ctx.scheduler.runAfter(
         0,
-        internal.retrieval.indexingActions.cleanupAction,
+        internal.kb.indexingActions.cleanupAction,
         {
           kbId: retriever.kbId,
           indexConfigHash: retriever.indexConfigHash,

@@ -60,7 +60,7 @@ export const indexDocument = internalAction({
   }> => {
     // ── Idempotency check: single-row probe (avoids 16MB read limit) ──
     const { exists } = await ctx.runQuery(
-      internal.retrieval.chunks.hasChunksForDocConfig,
+      internal.kb.chunks.hasChunksForDocConfig,
       {
         documentId: args.documentId,
         indexConfigHash: args.indexConfigHash
@@ -72,7 +72,7 @@ export const indexDocument = internalAction({
       // If all are already embedded, Phase B finds nothing and returns early.
     } else {
       // ── PHASE A: Chunk & Store (pure compute, atomic) ──
-      const doc = await ctx.runQuery(internal.crud.documents.getInternal, {
+      const doc = await ctx.runQuery(internal.kb.documents.getInternal, {
         id: args.documentId
       })
 
@@ -100,7 +100,7 @@ export const indexDocument = internalAction({
 
         // Insert parent chunks (no embedding — level: "parent")
         const parentResult = await ctx.runMutation(
-          internal.retrieval.chunks.insertChunkBatch,
+          internal.kb.chunks.insertChunkBatch,
           {
             chunks: parentChunks.map((c) => ({
               documentId: args.documentId,
@@ -153,7 +153,7 @@ export const indexDocument = internalAction({
         })
 
         // Insert child chunks (will be embedded in Phase B)
-        await ctx.runMutation(internal.retrieval.chunks.insertChunkBatch, {
+        await ctx.runMutation(internal.kb.chunks.insertChunkBatch, {
           chunks: childChunksMapped
         })
       } else {
@@ -170,7 +170,7 @@ export const indexDocument = internalAction({
         }
 
         // Insert ALL chunks WITHOUT embeddings in one atomic mutation
-        await ctx.runMutation(internal.retrieval.chunks.insertChunkBatch, {
+        await ctx.runMutation(internal.kb.chunks.insertChunkBatch, {
           chunks: chunks.map((c) => ({
             documentId: args.documentId,
             kbId: args.kbId,
@@ -197,7 +197,7 @@ export const indexDocument = internalAction({
 
     while (!pageDone) {
       const page: any = await ctx.runQuery(
-        internal.retrieval.chunks.getChunksByDocConfigPage,
+        internal.kb.chunks.getChunksByDocConfigPage,
         {
           documentId: args.documentId,
           indexConfigHash: args.indexConfigHash,
@@ -239,7 +239,7 @@ export const indexDocument = internalAction({
       // Patch this batch's embeddings — checkpoint saved.
       // Retry with backoff if concurrent actions saturate write throughput.
       await retryOnWriteLimit(() =>
-        ctx.runMutation(internal.retrieval.chunks.patchChunkEmbeddings, {
+        ctx.runMutation(internal.kb.chunks.patchChunkEmbeddings, {
           patches: batch.map((c: any, idx: number) => ({
             chunkId: c._id,
             embedding: embeddings[idx]
@@ -278,7 +278,7 @@ export const cleanupAction = internalAction({
     let hasMore = true
     while (hasMore) {
       const result = await ctx.runMutation(
-        internal.retrieval.chunks.deleteKbConfigChunks,
+        internal.kb.chunks.deleteKbConfigChunks,
         {
           kbId: args.kbId,
           indexConfigHash: args.indexConfigHash,
@@ -292,14 +292,11 @@ export const cleanupAction = internalAction({
     // Optionally delete source documents
     let docsDeleted = 0
     if (args.deleteDocuments) {
-      const docs = await ctx.runQuery(
-        internal.crud.documents.listByKbInternal,
-        {
-          kbId: args.kbId
-        }
-      )
+      const docs = await ctx.runQuery(internal.kb.documents.listByKbInternal, {
+        kbId: args.kbId
+      })
       for (const doc of docs) {
-        await ctx.runMutation(internal.retrieval.chunks.deleteDocumentChunks, {
+        await ctx.runMutation(internal.kb.chunks.deleteDocumentChunks, {
           documentId: doc._id
         })
         // Note: document deletion itself is not done here — that would
@@ -310,7 +307,7 @@ export const cleanupAction = internalAction({
 
     // Delete the associated indexing job record
     if (args.jobId) {
-      await ctx.runMutation(internal.retrieval.indexing.deleteJob, {
+      await ctx.runMutation(internal.kb.indexing.deleteJob, {
         jobId: args.jobId
       })
     }

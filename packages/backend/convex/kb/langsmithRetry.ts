@@ -15,7 +15,7 @@ export const retryDatasetSync = tenantMutation({
       throw new Error("Dataset not found")
     }
 
-    await ctx.scheduler.runAfter(0, internal.langsmith.sync.syncDataset, {
+    await ctx.scheduler.runAfter(0, internal.kb.langsmithActions.syncDataset, {
       datasetId: args.datasetId
     })
   }

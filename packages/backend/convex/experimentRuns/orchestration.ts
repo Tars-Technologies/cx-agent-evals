@@ -94,7 +94,7 @@ export const create = mutation({
       // Schedule the full existing pipeline for this child
       await ctx.scheduler.runAfter(
         0,
-        internal.experiments.actions.runExperiment,
+        internal.kb.experimentActions.runExperiment,
         {
           experimentId,
           datasetId: args.datasetId,

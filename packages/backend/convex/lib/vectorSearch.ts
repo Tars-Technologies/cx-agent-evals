@@ -31,7 +31,7 @@ export async function vectorSearchWithFilter(
 
   // Phase 1: hydrate chunks only (no document records — those are heavy).
   const chunks: any[] = await ctx.runQuery(
-    internal.retrieval.chunks.fetchChunksByIds,
+    internal.kb.chunks.fetchChunksByIds,
     { ids: results.map((r: any) => r._id) }
   )
 
@@ -55,7 +55,7 @@ export async function vectorSearchWithFilter(
 
     const parents: any[] =
       parentIds.length > 0
-        ? await ctx.runQuery(internal.retrieval.chunks.fetchChunksByIds, {
+        ? await ctx.runQuery(internal.kb.chunks.fetchChunksByIds, {
             ids: parentIds
           })
         : []
@@ -98,7 +98,7 @@ export async function vectorSearchWithFilter(
 
   const docIdMap: Record<string, string> =
     uniqueDocumentIds.length > 0
-      ? await ctx.runQuery(internal.retrieval.chunks.fetchDocIdMap, {
+      ? await ctx.runQuery(internal.kb.chunks.fetchDocIdMap, {
           documentIds: uniqueDocumentIds
         })
       : {}

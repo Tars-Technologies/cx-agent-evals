@@ -54,7 +54,7 @@ async function loadAllChunksForRetriever(
   let done = false
   while (!done) {
     const page: any = await ctx.runQuery(
-      internal.retrieval.chunks.getChunksByKbConfigPage,
+      internal.kb.chunks.getChunksByKbConfigPage,
       { kbId, indexConfigHash, cursor }
     )
     all.push(...page.chunks)
@@ -224,7 +224,7 @@ export const create = tenantAction({
 
     // Dedup: check if retriever with same (kbId, retrieverConfigHash) exists
     const existing = await ctx.runQuery(
-      internal.crud.retrievers.findByConfigHash,
+      internal.kb.retrievers.findByConfigHash,
       { kbId: args.kbId, retrieverConfigHash }
     )
 
@@ -241,7 +241,7 @@ export const create = tenantAction({
     const name = config.name ?? `retriever-${retrieverConfigHash.slice(0, 8)}`
 
     const retrieverId = await ctx.runMutation(
-      internal.crud.retrievers.insertRetriever,
+      internal.kb.retrievers.insertRetriever,
       {
         orgId,
         kbId: args.kbId,
@@ -272,7 +272,7 @@ export const startIndexing = tenantAction({
   handler: async (ctx, args): Promise<{ status: string }> => {
     const { orgId, userId } = ctx
 
-    const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
+    const retriever = await ctx.runQuery(internal.kb.retrievers.getInternal, {
       id: args.retrieverId
     })
 
@@ -318,7 +318,7 @@ export const startIndexing = tenantAction({
 
     // Trigger indexing
     const indexResult = await ctx.runMutation(
-      internal.retrieval.indexing.startIndexing,
+      internal.kb.indexing.startIndexing,
       {
         orgId,
         kbId: retriever.kbId,
@@ -333,19 +333,16 @@ export const startIndexing = tenantAction({
     let chunkCount: number | undefined
 
     if (indexResult.alreadyCompleted) {
-      const job = await ctx.runQuery(
-        internal.retrieval.indexing.getJobInternal,
-        {
-          jobId: indexResult.jobId
-        }
-      )
+      const job = await ctx.runQuery(internal.kb.indexing.getJobInternal, {
+        jobId: indexResult.jobId
+      })
       chunkCount = job?.totalChunks
       status = "ready"
     } else {
       status = "indexing"
     }
 
-    await ctx.runMutation(internal.crud.retrievers.updateIndexingStatus, {
+    await ctx.runMutation(internal.kb.retrievers.updateIndexingStatus, {
       retrieverId: args.retrieverId,
       indexingJobId: indexResult.jobId,
       status,
@@ -385,7 +382,7 @@ export const retrieve = tenantAction({
     const { orgId } = ctx
 
     // Load retriever
-    const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
+    const retriever = await ctx.runQuery(internal.kb.retrievers.getInternal, {
       id: args.retrieverId
     })
 

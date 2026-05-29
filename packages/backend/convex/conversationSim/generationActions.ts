@@ -405,7 +405,7 @@ export const generateScenarios = internalAction({
     }
 
     // ── Load KB docs (for synthetic track and dimension context) ──
-    const docs = await ctx.runQuery(internal.crud.documents.listByKbInternal, {
+    const docs = await ctx.runQuery(internal.kb.documents.listByKbInternal, {
       kbId
     })
     if (docs.length === 0 && syntheticCount > 0) {
@@ -610,7 +610,7 @@ export const generateScenarios = internalAction({
     }
 
     // ── Update dataset scenario count ──
-    await ctx.runMutation(internal.crud.datasets.updateScenarioCount, {
+    await ctx.runMutation(internal.kb.datasets.updateScenarioCount, {
       datasetId,
       scenarioCount: generatedCount
     })

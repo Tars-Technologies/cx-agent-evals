@@ -69,7 +69,7 @@ describe("scraping: startCrawl", () => {
   it("creates a crawl job and seed URL", async () => {
     await seedUser(t)
     const authedT = t.withIdentity(testIdentity)
-    const kbId = await authedT.mutation(api.crud.knowledgeBases.create, {
+    const kbId = await authedT.mutation(api.kb.core.create, {
       name: "Test KB"
     })
 
@@ -150,7 +150,7 @@ describe("scraping: persistScrapedPage", () => {
     const kbId = await seedKB(t, userId)
 
     // Test createFromScrape directly (the mutation called by persistScrapedPage)
-    const docId = await t.mutation(internal.crud.documents.createFromScrape, {
+    const docId = await t.mutation(internal.kb.documents.createFromScrape, {
       orgId: TEST_ORG_ID,
       kbId,
       title: "Test Page",

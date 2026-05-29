@@ -41,11 +41,11 @@ export const runConversationSim = internalAction({
     const retrieverInfos: RetrieverInfo[] = []
     for (const retrieverId of agent.retrieverIds) {
       const retriever = await ctx.runQuery(
-        internal.crud.retrievers.getInternal,
+        internal.kb.retrievers.getInternal,
         { id: retrieverId }
       )
       if (!retriever || retriever.status !== "ready") continue
-      const kb = await ctx.runQuery(internal.crud.knowledgeBases.getInternal, {
+      const kb = await ctx.runQuery(internal.kb.core.getInternal, {
         id: retriever.kbId
       })
       retrieverInfos.push({

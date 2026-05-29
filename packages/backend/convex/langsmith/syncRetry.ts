@@ -14,7 +14,7 @@ export const retryFailed = internalAction({
     )
 
     for (const dataset of datasets) {
-      await ctx.scheduler.runAfter(0, internal.langsmith.sync.syncDataset, {
+      await ctx.scheduler.runAfter(0, internal.kb.langsmithActions.syncDataset, {
         datasetId: dataset._id
       })
     }

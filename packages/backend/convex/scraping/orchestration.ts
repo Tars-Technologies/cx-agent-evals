@@ -212,7 +212,7 @@ export const persistScrapedPage = internalMutation({
 
     // Create document via createFromScrape
     const documentId = await ctx.runMutation(
-      internal.crud.documents.createFromScrape,
+      internal.kb.documents.createFromScrape,
       {
         orgId: job.orgId,
         kbId: job.kbId,
