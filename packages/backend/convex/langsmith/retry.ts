@@ -1,15 +1,14 @@
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
-import { mutation } from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { tenantMutation } from "../lib/auth/tenant"
 
 /**
  * Manually retry a failed LangSmith sync for a dataset.
  */
-export const retryDatasetSync = mutation({
+export const retryDatasetSync = tenantMutation({
   args: { datasetId: v.id("datasets") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const dataset = await ctx.db.get(args.datasetId)
     if (!dataset || dataset.orgId !== orgId) {

@@ -1,6 +1,6 @@
 import { v } from "convex/values"
-import { internalMutation, internalQuery, query } from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { internalMutation, internalQuery } from "../_generated/server"
+import { tenantQuery } from "../lib/auth/tenant"
 import { spanValidator } from "../lib/validators"
 
 type QuestionStatus = "hit" | "partial" | "miss"
@@ -11,10 +11,10 @@ function statusFromRecall(recall: number | undefined): QuestionStatus {
   return "partial"
 }
 
-export const byExperiment = query({
+export const byExperiment = tenantQuery({
   args: { experimentId: v.id("experiments") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     // Verify experiment belongs to org
     const exp = await ctx.db.get(args.experimentId)
@@ -46,10 +46,10 @@ export const byExperimentInternal = internalQuery({
   }
 })
 
-export const getDetailForExperiment = query({
+export const getDetailForExperiment = tenantQuery({
   args: { experimentId: v.id("experiments") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const experiment = await ctx.db.get(args.experimentId)
     if (!experiment || experiment.orgId !== orgId) return null
