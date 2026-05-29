@@ -1,5 +1,11 @@
 "use node"
 
+/**
+ * Runs question-generation strategies (eval-lib + OpenAI) as Convex actions.
+ *
+ * Actions live here ("use node") because they import eval-lib/llm and openai,
+ * which depend on Node.js built-ins unavailable in the Convex edge runtime.
+ */
 import {
   calculateQuotas,
   createCorpusFromDocuments,

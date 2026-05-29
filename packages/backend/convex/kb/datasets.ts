@@ -1,3 +1,6 @@
+/**
+ * Evaluation dataset CRUD (org-scoped).
+ */
 import { v } from "convex/values"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { lookupUser } from "../lib/auth"

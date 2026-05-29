@@ -142,8 +142,8 @@ function RetrieversPageContent() {
     useState<Id<"experimentRuns"> | null>(null)
 
   // --- Actions & mutations ---
-  const createRetriever = useAction(api.kb.retrieveActions.create)
-  const startIndexingAction = useAction(api.kb.retrieveActions.startIndexing)
+  const createRetriever = useAction(api.kb.retrieve_actions.create)
+  const startIndexingAction = useAction(api.kb.retrieve_actions.startIndexing)
 
   const handleStartIndexing = useCallback(
     async (id: Id<"retrievers">) => {

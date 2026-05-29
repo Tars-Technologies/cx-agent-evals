@@ -78,13 +78,13 @@ function KBPageContent() {
     selectedDocId ? { id: selectedDocId } : "skip"
   )
   const crawlJob = useQuery(
-    api.scraping.orchestration.getJob,
+    api.kb.crawl.getJob,
     crawlJobId ? { jobId: crawlJobId } : "skip"
   )
 
   // --- Mutations ---
   const removeDoc = useMutation(api.kb.documents.remove)
-  const cancelCrawl = useMutation(api.scraping.orchestration.cancelCrawl)
+  const cancelCrawl = useMutation(api.kb.crawl.cancelCrawl)
 
   // --- Search ---
   const searchTrimmed = docSearchQuery.trim()

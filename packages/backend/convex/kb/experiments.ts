@@ -1,3 +1,9 @@
+/**
+ * KB experiment queries + mutations: start, status/list, cancel.
+ *
+ * Owns the KB experiment WorkPool and its onComplete callback; actual
+ * LangSmith evaluate() execution is delegated to experiment_actions.ts.
+ */
 import {
   type RunResult,
   vOnCompleteArgs,
@@ -84,7 +90,7 @@ export const start = tenantMutation({
     // Schedule the orchestrator action
     await ctx.scheduler.runAfter(
       0,
-      internal.kb.experimentActions.runExperiment,
+      internal.kb.experiment_actions.runExperiment,
       {
         experimentId,
         datasetId: args.datasetId,
@@ -223,7 +229,7 @@ export const enqueueExperiment = internalMutation({
   handler: async (ctx, args) => {
     const wId = await pool.enqueueAction(
       ctx,
-      internal.kb.experimentActions.runEvaluation,
+      internal.kb.experiment_actions.runEvaluation,
       {
         experimentId: args.experimentId,
         datasetId: args.datasetId,

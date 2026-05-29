@@ -365,7 +365,7 @@ describe("knowledgeBases: backfillDocumentCounts", () => {
     await seedDocument(t, kbBId, { title: "B3" })
 
     const result = await t.action(
-      internal.kb.coreActions.backfillDocumentCounts,
+      internal.kb.core_actions.backfillDocumentCounts,
       {}
     )
 

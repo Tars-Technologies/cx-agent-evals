@@ -1,3 +1,9 @@
+/**
+ * Indexing job orchestration: WorkPool callbacks, status transitions, cancel.
+ *
+ * Owns the indexing WorkPool; mutations here drive job lifecycle but delegate
+ * chunk-embedding work to indexing_actions.ts.
+ */
 import {
   type RunResult,
   vOnCompleteArgs,
@@ -154,7 +160,7 @@ export const startIndexing = internalMutation({
       for (const doc of page.page) {
         const wId = await pool.enqueueAction(
           ctx,
-          internal.kb.indexingActions.indexDocument,
+          internal.kb.indexing_actions.indexDocument,
           {
             documentId: doc._id,
             kbId: args.kbId,
@@ -423,12 +429,16 @@ export const cleanupIndex = tenantMutation({
       )
       .first()
 
-    await ctx.scheduler.runAfter(0, internal.kb.indexingActions.cleanupAction, {
-      kbId: args.kbId,
-      indexConfigHash: args.indexConfigHash,
-      jobId: job?._id,
-      deleteDocuments: args.deleteDocuments
-    })
+    await ctx.scheduler.runAfter(
+      0,
+      internal.kb.indexing_actions.cleanupAction,
+      {
+        kbId: args.kbId,
+        indexConfigHash: args.indexConfigHash,
+        jobId: job?._id,
+        deleteDocuments: args.deleteDocuments
+      }
+    )
 
     return { scheduled: true }
   }

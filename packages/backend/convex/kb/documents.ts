@@ -1,3 +1,6 @@
+/**
+ * Document CRUD: upload via Convex storage, scrape ingestion, doc-count maintenance.
+ */
 import { paginationOptsValidator } from "convex/server"
 import { v } from "convex/values"
 import type { Doc } from "../_generated/dataModel"

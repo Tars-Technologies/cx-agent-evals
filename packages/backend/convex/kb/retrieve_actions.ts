@@ -1,5 +1,11 @@
 "use node"
 
+/**
+ * Retriever creation (config hash), start indexing, standalone retrieve entry point.
+ *
+ * Actions live here ("use node") because they orchestrate pipeline_actions.ts
+ * and indexing_actions.ts, which require Node.js built-ins (openai, cohere).
+ */
 import type { PipelineLLM, Reranker } from "@tars-inc/eval-lib"
 import {
   computeIndexConfigHash,

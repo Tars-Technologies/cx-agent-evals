@@ -1,3 +1,9 @@
+/**
+ * Web-crawl job queries, mutations, and internal helpers.
+ *
+ * Owns the crawl WorkPool; batch scraping and page fetching are delegated
+ * to crawl_actions.ts because they import HTTP scraper dependencies.
+ */
 import {
   type RunResult,
   vOnCompleteArgs,
@@ -96,11 +102,11 @@ export const startCrawl = tenantMutation({
     // Enqueue the first batch scrape action
     const workId = await pool.enqueueAction(
       ctx,
-      internal.scraping.actions.batchScrape,
+      internal.kb.crawl_actions.batchScrape,
       { crawlJobId: jobId },
       {
         context: { jobId },
-        onComplete: internal.scraping.orchestration.onBatchComplete
+        onComplete: internal.kb.crawl.onBatchComplete
       }
     )
 
@@ -359,11 +365,11 @@ export const onBatchComplete = internalMutation({
       // More work to do — enqueue another batch
       await pool.enqueueAction(
         ctx,
-        internal.scraping.actions.batchScrape,
+        internal.kb.crawl_actions.batchScrape,
         { crawlJobId: context.jobId },
         {
           context: { jobId: context.jobId },
-          onComplete: internal.scraping.orchestration.onBatchComplete
+          onComplete: internal.kb.crawl.onBatchComplete
         }
       )
     } else {

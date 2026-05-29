@@ -1,5 +1,11 @@
 "use node"
 
+/**
+ * Retrieval pipeline: query rewrite, vector search, Cohere rerank/refine, traced retrieve.
+ *
+ * Actions live here ("use node") because they import openai and cohere,
+ * which depend on Node.js built-ins unavailable in the Convex edge runtime.
+ */
 import type {
   HydeQueryConfig,
   MultiQueryConfig,

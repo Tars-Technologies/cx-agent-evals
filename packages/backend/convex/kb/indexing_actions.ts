@@ -1,5 +1,11 @@
 "use node"
 
+/**
+ * Two-phase document indexing (chunk + embed) and cleanup as Convex actions.
+ *
+ * Actions live here ("use node") because they call OpenAI embeddings via
+ * eval-lib/llm, which depends on Node.js built-ins unavailable in the edge runtime.
+ */
 import { createDocument, RecursiveCharacterChunker } from "@tars-inc/eval-lib"
 import { createEmbedder } from "@tars-inc/eval-lib/llm"
 import { CLEANUP_BATCH_SIZE, EMBED_BATCH_SIZE } from "@tars-inc/eval-lib/shared"

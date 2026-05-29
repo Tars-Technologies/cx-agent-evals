@@ -100,7 +100,7 @@ export function RetrieverSidebar({
   )
 
   // --- Actions & Mutations ---
-  const startIndexingAction = useAction(api.kb.retrieveActions.startIndexing)
+  const startIndexingAction = useAction(api.kb.retrieve_actions.startIndexing)
   const removeRetriever = useMutation(api.kb.retrievers.remove)
   const deleteIndexMutation = useMutation(api.kb.retrievers.deleteIndex)
   const resetAfterCancelMutation = useMutation(

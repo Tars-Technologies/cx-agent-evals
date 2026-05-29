@@ -1,5 +1,12 @@
 "use node"
 
+/**
+ * Single-action experiment runner via LangSmith `evaluate()`.
+ *
+ * Actions live here ("use node") because they import langsmith and
+ * eval-lib/langsmith, which depend on Node.js built-ins unavailable in
+ * the Convex edge runtime.
+ */
 import type { PipelineLLM, Reranker } from "@tars-inc/eval-lib"
 import {
   CallbackRetriever,
@@ -450,7 +457,7 @@ export const runExperiment = internalAction({
           phase: "syncing"
         })
 
-        await ctx.runAction(internal.kb.langsmithActions.syncDataset, {
+        await ctx.runAction(internal.kb.langsmith_actions.syncDataset, {
           datasetId: args.datasetId
         })
 

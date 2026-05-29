@@ -1,3 +1,9 @@
+/**
+ * Question-generation job orchestration: WorkPool callbacks, status transitions, cancel.
+ *
+ * Owns the generation WorkPool; mutations here drive job lifecycle but never
+ * call OpenAI directly — heavy work is delegated to generation_actions.ts.
+ */
 import {
   type RunResult,
   vOnCompleteArgs,
@@ -125,7 +131,7 @@ export const startGeneration = tenantMutation({
     if (args.strategy === "simple") {
       const wId = await pool.enqueueAction(
         ctx,
-        internal.kb.generationActions.generateSimple,
+        internal.kb.generation_actions.generateSimple,
         {
           datasetId,
           kbId: args.kbId,
@@ -140,7 +146,7 @@ export const startGeneration = tenantMutation({
     } else if (args.strategy === "dimension-driven") {
       const wId = await pool.enqueueAction(
         ctx,
-        internal.kb.generationActions.generateDimensionDriven,
+        internal.kb.generation_actions.generateDimensionDriven,
         {
           datasetId,
           kbId: args.kbId,
@@ -155,7 +161,7 @@ export const startGeneration = tenantMutation({
     } else if (args.strategy === "real-world-grounded") {
       const wId = await pool.enqueueAction(
         ctx,
-        internal.kb.generationActions.generateRealWorldGrounded,
+        internal.kb.generation_actions.generateRealWorldGrounded,
         {
           datasetId,
           kbId: args.kbId,
@@ -171,7 +177,7 @@ export const startGeneration = tenantMutation({
       // Phase 1: preparation (single action that calls savePlanAndEnqueueDocs internally)
       const wId = await pool.enqueueAction(
         ctx,
-        internal.kb.generationActions.prepareGeneration,
+        internal.kb.generation_actions.prepareGeneration,
         {
           jobId,
           datasetId,
@@ -273,7 +279,7 @@ export const onQuestionGenerated = internalMutation({
       for (const question of questions) {
         const wId = await pool.enqueueAction(
           ctx,
-          internal.kb.generationActions.assignGroundTruthForQuestion,
+          internal.kb.generation_actions.assignGroundTruthForQuestion,
           {
             questionId: question._id,
             kbId: job.kbId,
@@ -366,7 +372,7 @@ export const onGroundTruthAssigned = internalMutation({
       // Fire-and-forget LangSmith sync
       await ctx.scheduler.runAfter(
         0,
-        internal.kb.langsmithActions.syncDataset,
+        internal.kb.langsmith_actions.syncDataset,
         {
           datasetId: job.datasetId
         }
@@ -493,7 +499,7 @@ export const savePlanAndEnqueueDocs = internalMutation({
     for (const doc of activeDocs) {
       const wId = await pool.enqueueAction(
         ctx,
-        internal.kb.generationActions.generateForDoc,
+        internal.kb.generation_actions.generateForDoc,
         {
           jobId: args.jobId,
           datasetId: args.datasetId,
@@ -619,7 +625,7 @@ export const onDocGenerated = internalMutation({
       // Fire-and-forget LangSmith sync
       await ctx.scheduler.runAfter(
         0,
-        internal.kb.langsmithActions.syncDataset,
+        internal.kb.langsmith_actions.syncDataset,
         {
           datasetId: job.datasetId
         }

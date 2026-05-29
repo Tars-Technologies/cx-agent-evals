@@ -1,5 +1,11 @@
 "use node"
 
+/**
+ * Dataset sync to LangSmith.
+ *
+ * Actions live here ("use node") because they import the LangSmith SDK,
+ * which depends on Node.js built-ins unavailable in the Convex edge runtime.
+ */
 import {
   type CharacterSpan,
   DocumentId,

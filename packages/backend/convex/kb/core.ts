@@ -1,4 +1,8 @@
+/**
+ * Knowledge Base CRUD (org-scoped queries + mutations).
+ */
 import { v } from "convex/values"
+import type { Doc } from "../_generated/dataModel"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 
@@ -81,7 +85,7 @@ export const listWithDocCounts = tenantQuery({
   args: { industry: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const { orgId } = ctx
-    let kbs
+    let kbs: Doc<"knowledgeBases">[]
     if (args.industry) {
       kbs = await ctx.db
         .query("knowledgeBases")
