@@ -27,6 +27,7 @@ export interface AnnotationEditorProps {
     tags: string[];
   }): Promise<void>;
   disabled?: boolean;
+  showConversation?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -261,6 +262,7 @@ export function AnnotationEditor({
   allTags,
   onUpsert,
   disabled = false,
+  showConversation = true,
 }: AnnotationEditorProps) {
   const [rating, setRating] = useState<RatingValue | null>(
     existingAnnotation?.rating ?? null
@@ -363,16 +365,21 @@ export function AnnotationEditor({
 
   return (
     <div className="flex flex-col min-h-0 h-full">
-      {/* Scrollable conversation transcript */}
-      <div className="flex-1 overflow-y-auto min-h-0 p-4">
-        <div className="text-xs text-text-dim uppercase tracking-wider mb-3">
-          Conversation
+      {showConversation && (
+        <div className="flex-1 overflow-y-auto min-h-0 p-4">
+          <div className="text-xs text-text-dim uppercase tracking-wider mb-3">
+            Conversation
+          </div>
+          <ConversationTranscript turns={conversation.turns} />
         </div>
-        <ConversationTranscript turns={conversation.turns} />
-      </div>
+      )}
 
       {/* Sticky annotation controls */}
-      <div className="flex-shrink-0 border-t border-border bg-bg p-4 space-y-3">
+      <div
+        className={`flex-shrink-0 bg-bg p-4 space-y-3 ${
+          showConversation ? "border-t border-border" : ""
+        }`}
+      >
         {/* Saving indicator (auto-saves on rating change + debounced on comment) */}
         <div className="text-[10px] text-text-dim text-right">
           {isSaving ? (

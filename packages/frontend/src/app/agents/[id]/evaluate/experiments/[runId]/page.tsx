@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
@@ -8,8 +8,7 @@ import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
 import { SimRunDetail } from "@/components/conversation-sim/SimRunDetail";
 import { SimScenarioList } from "@/components/conversation-sim/SimScenarioList";
-import { AnnotationSidePanel } from "@/components/annotation/AnnotationSidePanel";
-import type { Turn } from "@/components/annotation/AnnotationEditor";
+import { AnnotateButton } from "@/components/annotation/AnnotateButton";
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
@@ -125,7 +124,6 @@ export default function AgentExperimentRunPage() {
 
   const [selectedRunId, setSelectedRunId] = useState<Id<"conversationSimRuns"> | null>(null);
   const [phase, setPhase] = useState<"conversations" | "evaluation">("conversations");
-  const [annotateOpen, setAnnotateOpen] = useState(false);
 
   const openContainer = useMutation(api.errorAnalysis.orchestration.openForOrigin);
 
@@ -133,28 +131,11 @@ export default function AgentExperimentRunPage() {
   const effectiveRunId =
     selectedRunId ?? (runs && runs.length > 0 ? runs[0]._id : null);
 
-  // Load the currently selected run (for conversationId → messages → turns).
+  // Load the currently selected run (for conversationId).
   const selectedRun = useQuery(
     api.conversationSim.runs.get,
     effectiveRunId ? { id: effectiveRunId } : "skip",
   );
-  const selectedMessages = useQuery(
-    api.crud.conversations.listMessages,
-    selectedRun?.conversationId
-      ? { conversationId: selectedRun.conversationId }
-      : "skip",
-  );
-
-  const turns = useMemo<Turn[]>(() => {
-    if (!selectedMessages) return [];
-    return selectedMessages
-      .filter((m) =>
-        ["user", "assistant", "tool_call", "tool_result", "system"].includes(
-          m.role,
-        ),
-      )
-      .map((m) => ({ role: m.role as Turn["role"], content: m.content }));
-  }, [selectedMessages]);
 
   async function handleViewAsAnalysis() {
     const id = await openContainer({
@@ -221,14 +202,14 @@ export default function AgentExperimentRunPage() {
               runId={effectiveRunId}
               headerActions={
                 selectedRun?.conversationId ? (
-                  <button
-                    onClick={() => setAnnotateOpen(true)}
-                    title="Annotate"
-                    aria-label="Annotate"
-                    className="px-2.5 py-1 text-[10px] text-accent border border-accent/30 rounded hover:bg-accent/10 transition-colors"
-                  >
-                    ✏ Annotate
-                  </button>
+                  <AnnotateButton
+                    agentId={agentIdTyped}
+                    conversationRef={{
+                      kind: "conversation",
+                      conversationId: selectedRun.conversationId,
+                    }}
+                    originHint={{ kind: "simulation", simulationId }}
+                  />
                 ) : null
               }
             />
@@ -240,20 +221,6 @@ export default function AgentExperimentRunPage() {
         </div>
       </div>
 
-      {/* Annotation side panel (floats over right side when open) */}
-      {selectedRun?.conversationId && (
-        <AnnotationSidePanel
-          agentId={agentIdTyped}
-          conversationRef={{
-            kind: "conversation",
-            conversationId: selectedRun.conversationId,
-          }}
-          originHint={{ kind: "simulation", simulationId }}
-          conversation={{ turns }}
-          open={annotateOpen}
-          onClose={() => setAnnotateOpen(false)}
-        />
-      )}
     </div>
   );
 }
