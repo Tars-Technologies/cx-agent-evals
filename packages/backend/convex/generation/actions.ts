@@ -21,8 +21,8 @@ import { v } from "convex/values"
 import OpenAI from "openai"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
-import { action, internalAction } from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { internalAction } from "../_generated/server"
+import { tenantAction } from "../lib/auth/tenant"
 
 async function loadCorpusFromKb(
   ctx: { runQuery: (ref: any, args: any) => Promise<any> },
@@ -546,13 +546,11 @@ export const assignGroundTruthForQuestion = internalAction({
 
 // ─── Dimension Discovery ───
 
-export const discoverDimensions = action({
+export const discoverDimensions = tenantAction({
   args: {
     url: v.string()
   },
-  handler: async (ctx, args) => {
-    await getAuthContext(ctx)
-
+  handler: async (_ctx, args) => {
     const url = args.url.trim()
     if (!url) throw new Error("url is required")
     try {
