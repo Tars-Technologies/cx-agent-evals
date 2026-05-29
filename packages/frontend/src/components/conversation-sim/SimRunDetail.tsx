@@ -11,8 +11,10 @@ import { ChatBubble } from "@/components/livechat/ChatBubble";
 
 export function SimRunDetail({
   runId,
+  headerActions,
 }: {
   runId: Id<"conversationSimRuns">;
+  headerActions?: React.ReactNode;
 }) {
   const run = useQuery(api.conversationSim.runs.get, { id: runId });
 
@@ -97,6 +99,7 @@ export function SimRunDetail({
               {showSource ? "Hide source" : "Compare to source"}
             </button>
           )}
+          {headerActions}
         </div>
       </div>
 

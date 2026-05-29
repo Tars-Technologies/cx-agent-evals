@@ -217,20 +217,21 @@ export default function AgentExperimentRunPage() {
         {/* Right: run transcript */}
         <div className="flex-1 min-w-0 overflow-hidden relative">
           {effectiveRunId ? (
-            <>
-              <SimRunDetail runId={effectiveRunId} />
-              {/* Floating pencil button (top-right of transcript pane) */}
-              {selectedRun?.conversationId && (
-                <button
-                  onClick={() => setAnnotateOpen(true)}
-                  title="Annotate"
-                  aria-label="Annotate"
-                  className="absolute top-2.5 right-3 z-10 px-2 py-1 text-[11px] text-accent border border-accent/30 rounded hover:bg-accent/10 transition-colors"
-                >
-                  ✏ Annotate
-                </button>
-              )}
-            </>
+            <SimRunDetail
+              runId={effectiveRunId}
+              headerActions={
+                selectedRun?.conversationId ? (
+                  <button
+                    onClick={() => setAnnotateOpen(true)}
+                    title="Annotate"
+                    aria-label="Annotate"
+                    className="px-2.5 py-1 text-[10px] text-accent border border-accent/30 rounded hover:bg-accent/10 transition-colors"
+                  >
+                    ✏ Annotate
+                  </button>
+                ) : null
+              }
+            />
           ) : (
             <div className="h-full flex items-center justify-center text-text-dim text-xs">
               Select a run on the left.
