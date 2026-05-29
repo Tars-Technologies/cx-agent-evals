@@ -1,10 +1,12 @@
 import { z } from "zod"
 
-const requiredStr = z.string().min(1, "Required environment variable is empty or missing")
+const requiredStr = z
+  .string()
+  .min(1, "Required environment variable is empty or missing")
 
 const envSchema = z.object({
   OPENAI_API_KEY: requiredStr,
-  COHERE_API_KEY: z.string().optional(),   // optional — reranker falls back gracefully if not set
+  COHERE_API_KEY: z.string().optional() // optional — reranker falls back gracefully if not set
 })
 
 type Env = z.infer<typeof envSchema>
@@ -24,7 +26,7 @@ function parseEnv(): Env {
     const partial = envSchema.partial().parse(snapshot)
     return {
       OPENAI_API_KEY: partial.OPENAI_API_KEY ?? "",
-      COHERE_API_KEY: partial.COHERE_API_KEY,
+      COHERE_API_KEY: partial.COHERE_API_KEY
     }
   }
   const result = envSchema.safeParse(snapshot)

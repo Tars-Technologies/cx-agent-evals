@@ -11,8 +11,8 @@ function createBackendConfig(): BackendConfig {
   return {
     ai: {
       openaiApiKey: env.OPENAI_API_KEY,
-      cohereApiKey: env.COHERE_API_KEY,
-    },
+      cohereApiKey: env.COHERE_API_KEY
+    }
   }
 }
 
