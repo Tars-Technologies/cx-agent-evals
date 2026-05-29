@@ -1,17 +1,12 @@
 import { v } from "convex/values"
-import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query
-} from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { internalMutation, internalQuery } from "../_generated/server"
+import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 import { spanValidator } from "../lib/validators"
 
-export const byDataset = query({
+export const byDataset = tenantQuery({
   args: { datasetId: v.id("datasets") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     // Verify dataset belongs to org
     const dataset = await ctx.db.get(args.datasetId)
@@ -30,14 +25,14 @@ export const byDataset = query({
  * Public mutation: update a question's text and/or spans.
  * Clears langsmithExampleId to force re-sync on next experiment.
  */
-export const updateQuestion = mutation({
+export const updateQuestion = tenantMutation({
   args: {
     questionId: v.id("questions"),
     queryText: v.optional(v.string()),
     relevantSpans: v.optional(v.array(spanValidator))
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const question = await ctx.db.get(args.questionId)
     if (!question) throw new Error("Question not found")
