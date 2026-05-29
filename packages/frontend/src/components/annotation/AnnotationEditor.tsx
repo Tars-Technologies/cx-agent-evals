@@ -373,12 +373,14 @@ export function AnnotationEditor({
 
       {/* Sticky annotation controls */}
       <div className="flex-shrink-0 border-t border-border bg-bg p-4 space-y-3">
-        {/* Saving indicator */}
-        {isSaving && (
-          <div className="text-[10px] text-text-dim text-right animate-pulse">
-            Saving…
-          </div>
-        )}
+        {/* Saving indicator (auto-saves on rating change + debounced on comment) */}
+        <div className="text-[10px] text-text-dim text-right">
+          {isSaving ? (
+            <span className="animate-pulse">Saving…</span>
+          ) : (
+            <span>Auto-saves</span>
+          )}
+        </div>
 
         {/* Rating buttons */}
         <div className="flex flex-wrap gap-2">

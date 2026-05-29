@@ -56,7 +56,7 @@ export function AnnotationSidePanel({
       : null;
 
   return (
-    <aside className="fixed right-0 top-0 h-screen w-[360px] bg-zinc-900 border-l border-zinc-800 z-40 flex flex-col">
+    <aside className="fixed right-0 top-0 h-screen w-[360px] bg-zinc-900 border-l border-zinc-800 z-[60] flex flex-col">
       <div className="flex items-center justify-between p-4 border-b border-zinc-800 flex-shrink-0">
         <h2 className="text-sm font-semibold text-zinc-100">Annotate</h2>
         <button
