@@ -17,6 +17,7 @@ import { api, internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { type ActionCtx, action } from "../_generated/server"
 import { getAuthContext } from "../lib/auth"
+import { backendConfig } from "../config"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
 
 // ---------------------------------------------------------------------------
@@ -863,7 +864,7 @@ async function applyRerank(
   chunks: ChunkResult[],
   topK: number
 ): Promise<ChunkResult[]> {
-  const apiKey = process.env.COHERE_API_KEY
+  const apiKey = backendConfig.ai.cohereApiKey
   if (!apiKey) {
     throw new Error(
       "COHERE_API_KEY not set — required for the rerank refinement step"
