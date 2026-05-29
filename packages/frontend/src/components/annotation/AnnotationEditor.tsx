@@ -44,34 +44,16 @@ interface RatingConfig {
 
 const RATING_CONFIGS: RatingConfig[] = [
   {
-    value: "great",
-    label: "Great",
+    value: "pass",
+    label: "Pass",
     activeClass: "bg-accent/20 border-accent/50 text-accent",
     hoverClass: "hover:border-accent/30 hover:text-accent",
   },
   {
-    value: "good_enough",
-    label: "Good Enough",
-    activeClass: "bg-yellow-500/20 border-yellow-500/50 text-yellow-400",
-    hoverClass: "hover:border-yellow-500/30 hover:text-yellow-400",
-  },
-  {
-    value: "bad",
-    label: "Bad",
-    activeClass: "bg-red-500/20 border-red-500/50 text-red-400",
-    hoverClass: "hover:border-red-500/30 hover:text-red-400",
-  },
-  {
-    value: "pass",
-    label: "Pass",
-    activeClass: "bg-blue-500/20 border-blue-500/50 text-blue-400",
-    hoverClass: "hover:border-blue-500/30 hover:text-blue-400",
-  },
-  {
     value: "fail",
     label: "Fail",
-    activeClass: "bg-orange-500/20 border-orange-500/50 text-orange-400",
-    hoverClass: "hover:border-orange-500/30 hover:text-orange-400",
+    activeClass: "bg-red-500/20 border-red-500/50 text-red-400",
+    hoverClass: "hover:border-red-500/30 hover:text-red-400",
   },
 ];
 
