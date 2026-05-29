@@ -76,7 +76,7 @@ export function AnnotateButton({
         ✏ Annotate{mine ? ` · ${mine.rating}` : ""}
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-[340px] bg-bg-elevated border border-border rounded-lg shadow-2xl z-50">
+        <div className="absolute right-0 top-full mt-2 w-[340px] bg-bg-elevated border border-border/80 rounded-lg shadow-[0_20px_50px_-12px_rgba(0,0,0,0.8),0_8px_20px_-4px_rgba(0,0,0,0.4)] ring-1 ring-black/40 z-50 overflow-hidden before:content-[''] before:absolute before:-top-1.5 before:right-4 before:w-3 before:h-3 before:bg-bg-elevated before:border-t before:border-l before:border-border/80 before:rotate-45">
           <div className="flex items-center justify-between px-3 py-2 border-b border-border">
             <h3 className="text-xs font-semibold text-text uppercase tracking-wide">
               Annotate

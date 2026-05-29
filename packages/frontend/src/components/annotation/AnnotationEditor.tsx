@@ -271,7 +271,10 @@ export function AnnotationEditor({
     existingAnnotation?.comment ?? ""
   );
   const [tags, setTags] = useState<string[]>(existingAnnotation?.tags ?? []);
-  const [isSaving, setIsSaving] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">(
+    existingAnnotation ? "saved" : "idle"
+  );
+  const savedHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sync from outside when existingAnnotation reference changes
   const prevAnnotationRef = useRef<Annotation | null>(null);
@@ -294,19 +297,30 @@ export function AnnotationEditor({
       nextTags: string[]
     ) => {
       if (disabled) return;
-      setIsSaving(true);
+      if (savedHideTimerRef.current) {
+        clearTimeout(savedHideTimerRef.current);
+        savedHideTimerRef.current = null;
+      }
+      setSaveState("saving");
       try {
         await onUpsert({
           rating: nextRating,
           comment: nextComment || undefined,
           tags: nextTags,
         });
-      } finally {
-        setIsSaving(false);
+        setSaveState("saved");
+      } catch {
+        setSaveState("idle");
       }
     },
     [disabled, onUpsert]
   );
+
+  useEffect(() => {
+    return () => {
+      if (savedHideTimerRef.current) clearTimeout(savedHideTimerRef.current);
+    };
+  }, []);
 
   const handleRating = useCallback(
     (newRating: RatingValue) => {
@@ -380,12 +394,18 @@ export function AnnotationEditor({
           showConversation ? "border-t border-border" : ""
         }`}
       >
-        {/* Saving indicator (auto-saves on rating change + debounced on comment) */}
-        <div className="text-[10px] text-text-dim text-right">
-          {isSaving ? (
-            <span className="animate-pulse">Saving…</span>
-          ) : (
-            <span>Auto-saves</span>
+        {/* Save state indicator (auto-saves on rating change + debounced on comment) */}
+        <div className="flex items-center justify-end text-[11px]">
+          {saveState === "saving" && (
+            <span className="text-text-dim animate-pulse">Saving…</span>
+          )}
+          {saveState === "saved" && (
+            <span className="text-accent flex items-center gap-1">
+              <span aria-hidden>✓</span> Saved
+            </span>
+          )}
+          {saveState === "idle" && (
+            <span className="text-text-dim">Auto-saves on change</span>
           )}
         </div>
 
