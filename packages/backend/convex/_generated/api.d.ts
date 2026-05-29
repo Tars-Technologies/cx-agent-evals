@@ -13,6 +13,7 @@ import type * as agents_orchestration from "../agents/orchestration.js";
 import type * as agents_promptTemplate from "../agents/promptTemplate.js";
 import type * as annotations_crud from "../annotations/crud.js";
 import type * as annotations_migrations from "../annotations/migrations.js";
+import type * as config from "../config.js";
 import type * as conversationSim_actions from "../conversationSim/actions.js";
 import type * as conversationSim_anchorPrompt from "../conversationSim/anchorPrompt.js";
 import type * as conversationSim_evaluation from "../conversationSim/evaluation.js";
@@ -41,6 +42,7 @@ import type * as crud_knowledgeBasesActions from "../crud/knowledgeBasesActions.
 import type * as crud_questions from "../crud/questions.js";
 import type * as crud_retrievers from "../crud/retrievers.js";
 import type * as crud_users from "../crud/users.js";
+import type * as env from "../env.js";
 import type * as evaluator_actions from "../evaluator/actions.js";
 import type * as evaluator_crud from "../evaluator/crud.js";
 import type * as evaluator_metrics from "../evaluator/metrics.js";
@@ -88,6 +90,7 @@ declare const fullApi: ApiFromModules<{
   "agents/promptTemplate": typeof agents_promptTemplate;
   "annotations/crud": typeof annotations_crud;
   "annotations/migrations": typeof annotations_migrations;
+  config: typeof config;
   "conversationSim/actions": typeof conversationSim_actions;
   "conversationSim/anchorPrompt": typeof conversationSim_anchorPrompt;
   "conversationSim/evaluation": typeof conversationSim_evaluation;
@@ -116,6 +119,7 @@ declare const fullApi: ApiFromModules<{
   "crud/questions": typeof crud_questions;
   "crud/retrievers": typeof crud_retrievers;
   "crud/users": typeof crud_users;
+  env: typeof env;
   "evaluator/actions": typeof evaluator_actions;
   "evaluator/crud": typeof evaluator_crud;
   "evaluator/metrics": typeof evaluator_metrics;
