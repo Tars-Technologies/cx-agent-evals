@@ -344,7 +344,7 @@ export function AnnotationEditor({
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
-      setIsSaving(true);
+      setSaveState("saving");
       debounceTimerRef.current = setTimeout(() => {
         debounceTimerRef.current = null;
         void fireUpsert(rating, newComment, tags);
