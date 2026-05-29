@@ -2,14 +2,6 @@ import { defineTable } from "convex/server"
 import { v } from "convex/values"
 
 export const agentTables = {
-  // ─── Users (synced from Clerk) ───
-  users: defineTable({
-    clerkId: v.string(),
-    email: v.string(),
-    name: v.string(),
-    createdAt: v.number()
-  }).index("by_clerk_id", ["clerkId"]),
-
   // ── Livechat uploads ──
   livechatUploads: defineTable({
     orgId: v.string(),
