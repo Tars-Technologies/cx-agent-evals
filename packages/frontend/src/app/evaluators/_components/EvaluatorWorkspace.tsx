@@ -29,7 +29,7 @@ export function EvaluatorWorkspace({
 
   // Resolve experiment for context
   const experiment = useQuery(
-    api.experiments.orchestration.get,
+    api.kb.experiments.get,
     config?.experimentId ? { id: config.experimentId } : "skip"
   )
 

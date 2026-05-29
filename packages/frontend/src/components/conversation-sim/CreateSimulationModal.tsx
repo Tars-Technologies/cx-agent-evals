@@ -17,7 +17,7 @@ export function CreateSimulationModal({
   const startSimulation = useMutation(api.conversationSim.orchestration.start)
 
   // Load conversation_sim datasets (org-wide)
-  const datasets = useQuery(api.crud.datasets.list) ?? []
+  const datasets = useQuery(api.kb.datasets.list) ?? []
   const simDatasets = datasets.filter((d) => d.type === "conversation_sim")
 
   // Form state

@@ -45,13 +45,13 @@ function KBPageContent() {
   const [crawlJobId, setCrawlJobId] = useState<Id<"crawlJobs"> | null>(null)
 
   // --- Queries ---
-  const kbs = useQuery(api.crud.knowledgeBases.listWithDocCounts, {})
+  const kbs = useQuery(api.kb.core.listWithDocCounts, {})
   const {
     results: documents,
     status: docPaginationStatus,
     loadMore: loadMoreDocs
   } = usePaginatedQuery(
-    api.crud.documents.listByKb,
+    api.kb.documents.listByKb,
     selectedKbId ? { kbId: selectedKbId } : "skip",
     { initialNumItems: 50 }
   )
@@ -74,7 +74,7 @@ function KBPageContent() {
     return () => observer.disconnect()
   }, [docPaginationStatus, loadMoreDocs])
   const selectedDoc = useQuery(
-    api.crud.documents.get,
+    api.kb.documents.get,
     selectedDocId ? { id: selectedDocId } : "skip"
   )
   const crawlJob = useQuery(
@@ -83,13 +83,13 @@ function KBPageContent() {
   )
 
   // --- Mutations ---
-  const removeDoc = useMutation(api.crud.documents.remove)
+  const removeDoc = useMutation(api.kb.documents.remove)
   const cancelCrawl = useMutation(api.scraping.orchestration.cancelCrawl)
 
   // --- Search ---
   const searchTrimmed = docSearchQuery.trim()
   const searchResults = useQuery(
-    api.crud.documents.searchDocsByTitle,
+    api.kb.documents.searchDocsByTitle,
     selectedKbId && searchTrimmed
       ? { kbId: selectedKbId, query: searchTrimmed, limit: 50 }
       : "skip"

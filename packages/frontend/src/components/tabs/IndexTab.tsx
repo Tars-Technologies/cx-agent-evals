@@ -292,7 +292,7 @@ function DocumentListPanel({
     status,
     loadMore
   } = usePaginatedQuery(
-    api.crud.documents.listByKb,
+    api.kb.documents.listByKb,
     { kbId },
     { initialNumItems: 50 }
   )
@@ -921,7 +921,7 @@ export function IndexTab({ retriever, onStartIndexing }: IndexTabProps) {
   const [pagesLoaded, setPagesLoaded] = useState(0)
 
   const firstPage = useQuery(
-    api.retrieval.chunks.getChunksByRetrieverPage,
+    api.kb.chunks.getChunksByRetrieverPage,
     isReady && selectedDocId
       ? {
           kbId: retriever.kbId,
@@ -954,7 +954,7 @@ export function IndexTab({ retriever, onStartIndexing }: IndexTabProps) {
 
   // Auto-load subsequent pages
   const nextPage = useQuery(
-    api.retrieval.chunks.getChunksByRetrieverPage,
+    api.kb.chunks.getChunksByRetrieverPage,
     loadingMore && chunkCursor
       ? {
           kbId: retriever.kbId,
@@ -990,7 +990,7 @@ export function IndexTab({ retriever, onStartIndexing }: IndexTabProps) {
   // ---------------------------------------------------------------------------
 
   const docContent = useQuery(
-    api.crud.documents.getContent,
+    api.kb.documents.getContent,
     selectedDocId ? { id: selectedDocId } : "skip"
   )
 

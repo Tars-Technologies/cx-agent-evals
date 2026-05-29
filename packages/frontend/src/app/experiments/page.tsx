@@ -29,7 +29,7 @@ function ExperimentsPageContent() {
 
   // --- Datasets for selected KB ---
   const kbDatasets = useQuery(
-    api.crud.datasets.byKb,
+    api.kb.datasets.byKb,
     selectedKbId ? { kbId: selectedKbId } : "skip"
   )
   const questionDatasets = (kbDatasets ?? []).filter(
@@ -38,7 +38,7 @@ function ExperimentsPageContent() {
   const [selectedDatasetId, setSelectedDatasetId] =
     useState<Id<"datasets"> | null>(null)
   const selectedDataset = useQuery(
-    api.crud.datasets.get,
+    api.kb.datasets.get,
     selectedDatasetId ? { id: selectedDatasetId } : "skip"
   )
 
@@ -52,7 +52,7 @@ function ExperimentsPageContent() {
 
   // --- Retrievers for selected KB (ready only) ---
   const kbRetrievers = useQuery(
-    api.crud.retrievers.byKb,
+    api.kb.retrievers.byKb,
     selectedKbId ? { kbId: selectedKbId } : "skip"
   )
   const readyRetrievers = (kbRetrievers ?? []).filter(
@@ -76,11 +76,11 @@ function ExperimentsPageContent() {
 
   // --- Progressive experiment queries ---
   const kbExperiments = useQuery(
-    api.experiments.orchestration.byKb,
+    api.kb.experiments.byKb,
     selectedKbId ? { kbId: selectedKbId } : "skip"
   )
   const datasetExperiments = useQuery(
-    api.experiments.orchestration.byDataset,
+    api.kb.experiments.byDataset,
     selectedDatasetId ? { datasetId: selectedDatasetId } : "skip"
   )
 
@@ -113,7 +113,7 @@ function ExperimentsPageContent() {
   }, [selectedDatasetId])
 
   // --- Experiment execution ---
-  const startExperiment = useMutation(api.experiments.orchestration.start)
+  const startExperiment = useMutation(api.kb.experiments.start)
   const startAgentExperiment = useMutation(
     api.experiments.orchestration.startAgentExperiment
   )

@@ -117,13 +117,13 @@ function RetrieversPageContent() {
 
   // --- Fetch selected retriever ---
   const selectedRetriever = useQuery(
-    api.crud.retrievers.get,
+    api.kb.retrievers.get,
     selectedRetrieverId ? { id: selectedRetrieverId } : "skip"
   )
 
   // --- All retrievers for playground ---
   const allRetrievers = useQuery(
-    api.crud.retrievers.byKb,
+    api.kb.retrievers.byKb,
     selectedKbId ? { kbId: selectedKbId } : "skip"
   )
 
@@ -142,10 +142,8 @@ function RetrieversPageContent() {
     useState<Id<"experimentRuns"> | null>(null)
 
   // --- Actions & mutations ---
-  const createRetriever = useAction(api.retrieval.retrieverActions.create)
-  const startIndexingAction = useAction(
-    api.retrieval.retrieverActions.startIndexing
-  )
+  const createRetriever = useAction(api.kb.retrieveActions.create)
+  const startIndexingAction = useAction(api.kb.retrieveActions.startIndexing)
 
   const handleStartIndexing = useCallback(
     async (id: Id<"retrievers">) => {

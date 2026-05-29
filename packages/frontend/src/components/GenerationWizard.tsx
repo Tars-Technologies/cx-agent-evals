@@ -111,19 +111,17 @@ export function GenerationWizard({
   }, [])
 
   // KB metadata (for total doc count, emptiness check)
-  const kb = useQuery(api.crud.knowledgeBases.get, { id: kbId })
+  const kb = useQuery(api.kb.core.get, { id: kbId })
   const totalDocCount = kb?.documentCount ?? 0
 
   // Reactive list of docs the user has customized priority on. Server-side
   // bounded; the wizard never loads the full KB doc list.
-  const customizedDocs = useQuery(api.crud.documents.listCustomizedDocs, {
+  const customizedDocs = useQuery(api.kb.documents.listCustomizedDocs, {
     kbId
   })
 
-  const updatePriority = useMutation(api.crud.documents.updatePriority)
-  const startGeneration = useMutation(
-    api.generation.orchestration.startGeneration
-  )
+  const updatePriority = useMutation(api.kb.documents.updatePriority)
+  const startGeneration = useMutation(api.kb.generation.startGeneration)
 
   const handlePriorityChange = useCallback(
     async (documentId: Id<"documents">, priority: number) => {

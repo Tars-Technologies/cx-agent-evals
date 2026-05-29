@@ -32,7 +32,7 @@ function AnnotateContent() {
   const experimentId = params.id as Id<"experiments">
 
   // --- Data queries ---
-  const experiment = useQuery(api.experiments.orchestration.get, {
+  const experiment = useQuery(api.kb.experiments.get, {
     id: experimentId
   })
   const results = useQuery(api.experiments.agentResults.byExperiment, {
@@ -43,7 +43,7 @@ function AnnotateContent() {
   })
   const stats = useQuery(api.annotations.crud.stats, { experimentId })
   const questions = useQuery(
-    api.crud.questions.byDataset,
+    api.kb.questions.byDataset,
     experiment?.datasetId ? { datasetId: experiment.datasetId } : "skip"
   )
   const allTags = useQuery(api.annotations.crud.allTags, { experimentId })

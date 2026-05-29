@@ -35,7 +35,7 @@ export function EditQuestionModal({
   onClose,
   onSaved
 }: EditQuestionModalProps) {
-  const updateQuestion = useMutation(api.crud.questions.updateQuestion)
+  const updateQuestion = useMutation(api.kb.questions.updateQuestion)
 
   // Editable state
   const [queryText, setQueryText] = useState(question.queryText)
@@ -60,7 +60,7 @@ export function EditQuestionModal({
   }, [question.sourceDocId, spans])
 
   const resolvedDocs = useQuery(
-    api.crud.documents.getDocsByDocIds,
+    api.kb.documents.getDocsByDocIds,
     referencedDocIds.length > 0 ? { kbId, docIds: referencedDocIds } : "skip"
   )
 
@@ -369,7 +369,7 @@ function RightPanel({
   const [searchQuery, setSearchQuery] = useState("")
 
   const docContent = useQuery(
-    api.crud.documents.getContent,
+    api.kb.documents.getContent,
     selectedDocId ? { id: selectedDocId } : "skip"
   )
 
