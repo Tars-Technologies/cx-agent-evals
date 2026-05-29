@@ -1,4 +1,4 @@
-import { mutation, query, MutationCtx, QueryCtx } from "../_generated/server";
+import { mutation, query, internalQuery, MutationCtx, QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { getAuthContext } from "../lib/auth";
@@ -340,6 +340,13 @@ export const deleteAnalysis = mutation({
 
     await ctx.db.delete(id);
   },
+});
+
+// ─── Internal (no auth, for use by actions) ───
+
+export const getInternal = internalQuery({
+  args: { id: v.id("errorAnalyses") },
+  handler: async (ctx, { id }) => await ctx.db.get(id),
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────────

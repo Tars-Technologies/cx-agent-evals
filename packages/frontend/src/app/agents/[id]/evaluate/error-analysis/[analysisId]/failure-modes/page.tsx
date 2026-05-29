@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, usePathname } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
 import { FailureModeCard } from "@/components/errorAnalysis/FailureModeCard";
@@ -191,11 +191,31 @@ export default function FailureModesPage() {
     errorAnalysisId,
   });
   const spawnJudge = useMutation(api.evaluator.spawnJudge.fromFailureMode);
+  const recluster = useAction(api.errorAnalysis.clustering.recluster);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [clustering, setClustering] = useState(false);
+  const [clusterError, setClusterError] = useState<string | null>(null);
 
   const list = modes ?? [];
+
+  async function handleRecluster() {
+    if (clustering) return;
+    const ok = window.confirm(
+      "This will replace all existing failure modes for this analysis with a new LLM-generated set. Manual failure modes will also be deleted. Continue?",
+    );
+    if (!ok) return;
+    setClustering(true);
+    setClusterError(null);
+    try {
+      await recluster({ errorAnalysisId });
+    } catch (e) {
+      setClusterError(e instanceof Error ? e.message : "Re-cluster failed");
+    } finally {
+      setClustering(false);
+    }
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -210,12 +230,25 @@ export default function FailureModesPage() {
           {modes !== undefined &&
             `${list.length} failure mode${list.length === 1 ? "" : "s"}`}
         </div>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors"
-        >
-          + New failure mode
-        </button>
+        <div className="flex items-center gap-2">
+          {clusterError && (
+            <span className="text-[11px] text-red-400">{clusterError}</span>
+          )}
+          <button
+            onClick={handleRecluster}
+            disabled={clustering}
+            className="px-3 py-1.5 text-xs text-accent border border-accent/30 rounded hover:bg-accent/10 disabled:opacity-50 transition-colors"
+            title="Replace all failure modes with a new LLM-generated set"
+          >
+            {clustering ? "Clustering…" : "⟲ Re-cluster"}
+          </button>
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors"
+          >
+            + New failure mode
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3">

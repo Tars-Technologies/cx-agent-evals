@@ -325,6 +325,16 @@ export const bySourceInternal = internalQuery({
   },
 });
 
+export const byAnalysisInternal = internalQuery({
+  args: { errorAnalysisId: v.id("errorAnalyses") },
+  handler: async (ctx, { errorAnalysisId }) => {
+    return await ctx.db
+      .query("annotations")
+      .withIndex("by_analysis", (q) => q.eq("errorAnalysisId", errorAnalysisId))
+      .collect();
+  },
+});
+
 export const allForOrgInternal = internalQuery({
   args: { orgId: v.string() },
   handler: async (ctx, { orgId }) => {
