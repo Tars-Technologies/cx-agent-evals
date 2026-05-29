@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
-import { groupMessagesWithToolCalls } from "@/lib/messageDisplay";
-import { ToolCallGroup } from "@/components/conversation-sim/ToolCallGroup";
+import { MessageTranscript } from "@/components/conversation-sim/MessageTranscript";
 import { ScenarioSummaryBand } from "@/components/conversation-sim/ScenarioSummaryBand";
 import { ChatBubble } from "@/components/livechat/ChatBubble";
 
@@ -111,29 +110,7 @@ export function SimRunDetail({
           {/* Conversation transcript */}
           <div className="px-4 py-3">
             <h3 className="text-[11px] text-text-dim uppercase tracking-wider mb-2">Transcript</h3>
-            {groupMessagesWithToolCalls(messages).map((item) => {
-              if (item.type === "tool_group") {
-                return <ToolCallGroup key={item.key} calls={item.calls} isLive={false} />;
-              }
-              const msg = item.msg;
-              const isUser = msg.role === "user";
-              return (
-                <div key={msg._id} className={`flex ${isUser ? "justify-end" : "justify-start"} mb-1.5`}>
-                  <div
-                    className={`max-w-[70%] px-2.5 py-1.5 text-xs whitespace-pre-wrap text-white ${
-                      isUser
-                        ? "bg-accent-dim rounded-lg rounded-br-sm"
-                        : "bg-bg-surface border border-border rounded-lg rounded-bl-sm"
-                    }`}
-                  >
-                    <div className={`text-[9px] mb-0.5 ${isUser ? "text-white/50" : "text-text-dim"}`}>
-                      {isUser ? "User" : "Agent"}
-                    </div>
-                    {msg.content}
-                  </div>
-                </div>
-              );
-            })}
+            <MessageTranscript messages={messages} />
           </div>
 
           {/* Evaluation Results */}

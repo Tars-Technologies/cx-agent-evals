@@ -1,14 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
-import { AnnotationSidePanel } from "@/components/annotation/AnnotationSidePanel";
+import {
+  AnnotationEditor,
+  type Annotation,
+} from "@/components/annotation/AnnotationEditor";
+import { MessageTranscript } from "@/components/conversation-sim/MessageTranscript";
 import { ImportMoreModal } from "@/components/errorAnalysis/ImportMoreModal";
-import type { Turn } from "@/components/annotation/AnnotationEditor";
 
 const ORIGIN_LABEL: Record<string, string> = {
   simulation: "SIMULATION",
@@ -165,32 +168,7 @@ function ConversationCenter({
       {messages.length === 0 ? (
         <div className="text-xs text-text-dim italic">No messages.</div>
       ) : (
-        messages.map((msg) => {
-          const isUser = msg.role === "user";
-          return (
-            <div
-              key={msg._id}
-              className={`flex ${isUser ? "justify-end" : "justify-start"} mb-1.5`}
-            >
-              <div
-                className={`max-w-[70%] px-2.5 py-1.5 text-xs whitespace-pre-wrap ${
-                  isUser
-                    ? "bg-accent-dim text-white rounded-lg rounded-br-sm"
-                    : "bg-bg-surface text-text border border-border rounded-lg rounded-bl-sm"
-                }`}
-              >
-                <div
-                  className={`text-[9px] mb-0.5 ${
-                    isUser ? "text-white/50" : "text-text-dim"
-                  }`}
-                >
-                  {isUser ? "User" : msg.role === "assistant" ? "Agent" : msg.role}
-                </div>
-                {msg.content}
-              </div>
-            </div>
-          );
-        })
+        <MessageTranscript messages={messages} />
       )}
     </div>
   );
@@ -259,46 +237,6 @@ function TranscriptCenter({
   );
 }
 
-// Build a Turn[] for the annotation side panel. Falls back to empty when data is loading.
-function useTurnsForSelected(selected: Member | null): Turn[] {
-  const messages = useQuery(
-    api.crud.conversations.listMessages,
-    selected?.source.kind === "conversation"
-      ? { conversationId: selected.source.conversationId }
-      : "skip",
-  );
-  const transcript = useQuery(
-    api.livechat.orchestration.getConversation,
-    selected?.source.kind === "transcript"
-      ? { id: selected.source.transcriptId }
-      : "skip",
-  );
-
-  return useMemo<Turn[]>(() => {
-    if (!selected) return [];
-    if (selected.source.kind === "conversation") {
-      if (!messages) return [];
-      return messages
-        .filter((m) =>
-          ["user", "assistant", "tool_call", "tool_result", "system"].includes(
-            m.role,
-          ),
-        )
-        .map((m) => ({
-          role: m.role as Turn["role"],
-          content: m.content,
-        }));
-    }
-    if (!transcript) return [];
-    return transcript.messages
-      .filter((m) => m.role !== "workflow_input")
-      .map((m) => ({
-        role: (m.role === "user" ? "user" : "assistant") as Turn["role"],
-        content: m.text,
-      }));
-  }, [selected, messages, transcript]);
-}
-
 export default function AnnotatePage() {
   const { id, analysisId } = useParams<{ id: string; analysisId: string }>();
   const agentId = id as Id<"agents">;
@@ -329,8 +267,6 @@ export default function AnnotatePage() {
     sp.set("conv", memberKey(m));
     router.replace(`${pathname}?${sp.toString()}`);
   }
-
-  const turns = useTurnsForSelected(selected);
 
   const conversationRef = selected
     ? selected.source.kind === "conversation"
@@ -381,19 +317,14 @@ export default function AnnotatePage() {
           )}
         </div>
 
-        {/* Right: annotation side panel */}
+        {/* Right: minimal annotation panel (conversation lives in the center) */}
         <div className="w-1/4 min-w-[280px] border-l border-border overflow-hidden">
           {conversationRef ? (
-            <div className="h-full">
-              {/* Re-use AnnotationSidePanel as inline column rather than fixed overlay
-                  by wrapping in a styled container that overrides positioning. */}
-              <InlineAnnotationPanel
-                agentId={agentId}
-                conversationRef={conversationRef}
-                errorAnalysisId={errorAnalysisId}
-                turns={turns}
-              />
-            </div>
+            <MinimalAnnotationPanel
+              agentId={agentId}
+              conversationRef={conversationRef}
+              errorAnalysisId={errorAnalysisId}
+            />
           ) : (
             <div className="p-4 text-xs text-text-dim">
               Select a member to annotate.
@@ -414,33 +345,60 @@ export default function AnnotatePage() {
   );
 }
 
-// AnnotationSidePanel is `fixed` and intended as an overlay. Here we render it as
-// an inline column. We reproduce the inner contents minus the fixed positioning.
-function InlineAnnotationPanel({
+// Minimal in-flow annotation column: just Pass/Fail + tags + comment, no
+// duplicate transcript (the center panel already shows it) and no fixed
+// overlay chrome. Inherits the height of the surrounding panel row.
+function MinimalAnnotationPanel({
   agentId,
   conversationRef,
   errorAnalysisId,
-  turns,
 }: {
   agentId: Id<"agents">;
   conversationRef:
     | { kind: "conversation"; conversationId: Id<"conversations"> }
     | { kind: "transcript"; transcriptId: Id<"livechatConversations"> };
   errorAnalysisId: Id<"errorAnalyses">;
-  turns: Turn[];
 }) {
-  // Use AnnotationSidePanel directly; its `fixed right-0` styling will overlay
-  // the right edge, which is acceptable since our third column is also pinned right.
+  const existing = useQuery(api.annotations.crud.bySource, {
+    source: conversationRef,
+  });
+  const allTags = useQuery(api.annotations.crud.allTagsForOrg, {}) ?? [];
+  const upsert = useMutation(api.annotations.crud.upsertWithAutoContainer);
+
+  // bySource is org-scoped; each user has at most one annotation per
+  // conversation, so the first row is "mine".
+  const mine: Annotation | null =
+    existing && existing.length > 0
+      ? {
+          rating: existing[0].rating,
+          comment: existing[0].comment,
+          tags: existing[0].tags,
+        }
+      : null;
+
   return (
-    <AnnotationSidePanel
-      agentId={agentId}
-      conversationRef={conversationRef}
-      originHint={{ kind: "analysis", errorAnalysisId }}
-      conversation={{ turns }}
-      open={true}
-      onClose={() => {
-        /* always open in this layout */
-      }}
-    />
+    <div className="h-full flex flex-col min-h-0 overflow-y-auto">
+      <div className="px-4 py-2.5 border-b border-border flex-shrink-0">
+        <h2 className="text-xs font-semibold text-text uppercase tracking-wide">
+          Annotate
+        </h2>
+      </div>
+      <AnnotationEditor
+        conversation={{ turns: [] }}
+        showConversation={false}
+        existingAnnotation={mine}
+        allTags={allTags}
+        onUpsert={async ({ rating, comment, tags }) => {
+          await upsert({
+            agentId,
+            source: conversationRef,
+            hint: { kind: "analysis", errorAnalysisId },
+            rating,
+            comment,
+            tags,
+          });
+        }}
+      />
+    </div>
   );
 }
