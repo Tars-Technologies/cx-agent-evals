@@ -263,10 +263,36 @@ export const membersByAnalysis = query({
 
     return await Promise.all(
       members.map(async (m) => {
+        // Whether this member has been annotated (and its rating), independent
+        // of how it was added to the analysis. org-scoped; take the first row.
+        const annotations =
+          m.source.kind === "conversation"
+            ? await (() => {
+                const conversationId = m.source.conversationId;
+                return ctx.db
+                  .query("annotations")
+                  .withIndex("by_conversation", (q) =>
+                    q.eq("source.conversationId", conversationId),
+                  )
+                  .collect();
+              })()
+            : await (() => {
+                const transcriptId = m.source.transcriptId;
+                return ctx.db
+                  .query("annotations")
+                  .withIndex("by_transcript", (q) =>
+                    q.eq("source.transcriptId", transcriptId),
+                  )
+                  .collect();
+              })();
+        const annotationRating =
+          annotations.find((a) => a.orgId === orgId)?.rating ?? null;
+
         if (m.source.kind === "conversation") {
           const c = await ctx.db.get(m.source.conversationId);
           return {
             ...m,
+            annotationRating,
             conversation: c
               ? {
                   _id: c._id,
@@ -281,6 +307,7 @@ export const membersByAnalysis = query({
         const t = await ctx.db.get(m.source.transcriptId);
         return {
           ...m,
+          annotationRating,
           conversation: null,
           transcript: t
             ? {

@@ -85,6 +85,18 @@ type Member =
     ReturnType<typeof useQuery<typeof api.errorAnalysis.orchestration.membersByAnalysis>>
   >[number];
 
+// Maps an annotation rating to a colored dot + label for the member list.
+const RATING_DISPLAY: Record<
+  string,
+  { label: string; dot: string; text: string }
+> = {
+  pass: { label: "Pass", dot: "bg-accent", text: "text-accent" },
+  great: { label: "Great", dot: "bg-accent", text: "text-accent" },
+  good_enough: { label: "OK", dot: "bg-accent", text: "text-accent" },
+  fail: { label: "Fail", dot: "bg-red-400", text: "text-red-400" },
+  bad: { label: "Bad", dot: "bg-red-400", text: "text-red-400" },
+};
+
 function memberKey(m: Member): string {
   return m.source.kind === "conversation"
     ? `c:${m.source.conversationId}`
@@ -134,9 +146,19 @@ function MemberList({
                 <span className="uppercase tracking-wider">
                   {m.source.kind === "conversation" ? "Conv" : "Transcript"}
                 </span>
-                {m.addedVia === "annotation" && (
-                  <span className="px-1 rounded bg-accent/15 text-accent">
-                    annotated
+                {m.annotationRating && RATING_DISPLAY[m.annotationRating] && (
+                  <span
+                    className={`inline-flex items-center gap-1 ${
+                      RATING_DISPLAY[m.annotationRating].text
+                    }`}
+                    title={`Annotated: ${RATING_DISPLAY[m.annotationRating].label}`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        RATING_DISPLAY[m.annotationRating].dot
+                      }`}
+                    />
+                    {RATING_DISPLAY[m.annotationRating].label}
                   </span>
                 )}
               </div>
