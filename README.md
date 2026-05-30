@@ -1,11 +1,13 @@
-# RAG & Agent Evals
+# cx-agent-evals
 
 [![npm version](https://img.shields.io/npm/v/@tars-inc/eval-lib.svg)](https://www.npmjs.com/package/@tars-inc/eval-lib)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-A TypeScript framework for evaluating RAG retrieval pipelines, with a Convex
-backend and Next.js frontend. It does span-based (character-level) retrieval
-evaluation, synthetic question generation, and experiment tracking via LangSmith.
+> **RAG & Agent Evals**: a TypeScript framework for evaluating RAG retrieval
+> pipelines, with a Convex backend and Next.js frontend.
+
+It does span-based (character-level) retrieval evaluation, synthetic question
+generation, and experiment tracking via LangSmith.
 
 ## Repository structure
 
