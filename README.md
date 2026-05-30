@@ -13,7 +13,7 @@ generation, and experiment tracking via LangSmith.
 
 This is a pnpm workspace monorepo:
 
-```
+```text
 packages/
   eval-lib/     # Core evaluation library (@tars-inc/eval-lib)
   backend/      # Convex backend (schema, actions, jobs pipeline)

@@ -94,7 +94,7 @@ the backend.
 
 ## End-to-end picture
 
-```
+```text
  member pushes any branch
             │
             ▼

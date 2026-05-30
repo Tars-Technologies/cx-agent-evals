@@ -138,7 +138,7 @@ Visit [http://localhost:3000](http://localhost:3000). You should see the Clerk
 sign-in flow. After signing in and selecting an organization, you can:
 
 1. Create a knowledge base
-2. Upload markdown documents
+2. Upload Markdown documents
 3. Generate synthetic evaluation questions
 4. Run retrieval experiments
 5. View results with per-question metrics

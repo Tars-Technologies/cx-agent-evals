@@ -128,7 +128,7 @@ pnpm format                       # biome auto-format
 `@tars-inc/eval-lib` is published to npm via
 [Changesets](https://github.com/changesets/changesets). If your PR changes
 anything under `packages/eval-lib/src/`, add a changeset. A changeset is just a
-markdown file in `.changeset/` that records the bump type and a summary.
+Markdown file in `.changeset/` that records the bump type and a summary.
 
 The easiest way is the interactive CLI, which writes the file for you (with a
 random name):
