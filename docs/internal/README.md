@@ -11,12 +11,12 @@ documentation.
 
 ## Contents
 
-- `brainstorm.md` — early architecture brainstorm for the RAG evaluation framework
-- `implementation_plan.md` — original step-by-step implementation plan
-- `synthetic_data_gen.md` — synthetic question-generation strategy design
-- `plans/` — dated design and implementation plans
-- `implementation/` — implementation slice notes
-- `diagrams/` — Excalidraw workflow and layout diagrams
+- `brainstorm.md`: early architecture brainstorm for the RAG evaluation framework
+- `implementation_plan.md`: original step-by-step implementation plan
+- `synthetic_data_gen.md`: synthetic question-generation strategy design
+- `plans/`: dated design and implementation plans
+- `implementation/`: implementation slice notes
+- `diagrams/`: Excalidraw workflow and layout diagrams
 
 External contributors don't need anything in here to build, run, or contribute
 to the project.
