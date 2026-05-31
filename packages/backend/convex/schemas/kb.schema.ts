@@ -147,6 +147,96 @@ export const generationJobValidator = v.object({
 })
 export type GenerationJob = Infer<typeof generationJobValidator>
 
+// ─── Experiments (evaluation runs against a dataset) ───
+export const experimentValidator = v.object({
+  orgId: v.string(),
+  kbId: v.optional(v.id("knowledgeBases")),
+  datasetId: v.id("datasets"),
+  name: v.string(),
+  retrieverId: v.optional(v.id("retrievers")),
+  retrieverConfig: v.optional(v.any()),
+  experimentRunId: v.optional(v.id("experimentRuns")),
+  experimentType: v.optional(
+    v.union(v.literal("retriever"), v.literal("agent"))
+  ),
+  // Plain string, not v.id("agents"), so the KB schema closes without
+  // depending on an agent-domain table. Only agent experiments populate it;
+  // KB retriever experiments leave it undefined. Agent code casts to
+  // Id<"agents"> at read time. See followups.md (experiments-to-kb resolution).
+  agentId: v.optional(v.string()),
+  k: v.optional(v.number()),
+  metricNames: v.array(v.string()),
+  status: v.union(
+    v.literal("pending"),
+    v.literal("running"),
+    v.literal("completed"),
+    v.literal("completed_with_errors"),
+    v.literal("failed"),
+    v.literal("canceling"),
+    v.literal("canceled")
+  ),
+  phase: v.optional(
+    v.union(
+      v.literal("initializing"),
+      v.literal("indexing"),
+      v.literal("syncing"),
+      v.literal("evaluating"),
+      v.literal("done")
+    )
+  ),
+  totalQuestions: v.optional(v.number()),
+  processedQuestions: v.optional(v.number()),
+  failedQuestions: v.optional(v.number()),
+  skippedQuestions: v.optional(v.number()),
+  indexConfigHash: v.optional(v.string()),
+  langsmithSyncStatus: v.optional(v.string()),
+  workIds: v.optional(v.array(v.string())),
+  scores: v.optional(v.record(v.string(), v.number())),
+  // TODO: populate langsmithExperimentId from evaluate() result
+  langsmithExperimentId: v.optional(v.string()),
+  // TODO: populate langsmithUrl from evaluate() result (used in frontend for experiment links)
+  langsmithUrl: v.optional(v.string()),
+  error: v.optional(v.string()),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+  completedAt: v.optional(v.number())
+})
+export type Experiment = Infer<typeof experimentValidator>
+
+// ─── Experiment Runs (groups of retriever experiments) ───
+export const experimentRunValidator = v.object({
+  orgId: v.string(),
+  kbId: v.id("knowledgeBases"),
+  datasetId: v.id("datasets"),
+  name: v.string(),
+  retrieverIds: v.array(v.id("retrievers")),
+  metricNames: v.array(v.string()),
+  scoringWeights: v.object({
+    recall: v.number(),
+    precision: v.number()
+  }),
+  status: v.union(
+    v.literal("pending"),
+    v.literal("running"),
+    v.literal("completed"),
+    v.literal("completed_with_errors"),
+    v.literal("failed"),
+    v.literal("canceling"),
+    v.literal("canceled")
+  ),
+  totalRetrievers: v.number(),
+  completedRetrievers: v.number(),
+  failedRetrievers: v.number(),
+  winnerId: v.optional(v.id("retrievers")),
+  winnerName: v.optional(v.string()),
+  winnerScore: v.optional(v.number()),
+  error: v.optional(v.string()),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+  completedAt: v.optional(v.number())
+})
+export type ExperimentRun = Infer<typeof experimentRunValidator>
+
 // ─── Experiment Results ───
 export const experimentResultValidator = v.object({
   experimentId: v.id("experiments"),
@@ -251,6 +341,21 @@ export const kbTables = {
     .index("by_dataset", ["datasetId"])
     .index("by_org", ["orgId"])
     .index("by_status", ["orgId", "status"]),
+
+  // ─── Experiments (evaluation runs against a dataset) ───
+  experiments: defineTable(experimentValidator)
+    .index("by_org", ["orgId"])
+    .index("by_dataset", ["datasetId"])
+    .index("by_retriever", ["retrieverId"])
+    .index("by_kb", ["kbId"])
+    .index("by_agent", ["agentId"])
+    .index("by_run", ["experimentRunId"]),
+
+  // ─── Experiment Runs (groups of retriever experiments) ───
+  experimentRuns: defineTable(experimentRunValidator)
+    .index("by_org", ["orgId"])
+    .index("by_kb", ["kbId"])
+    .index("by_dataset", ["datasetId"]),
 
   // ─── Experiment Results (per-question evaluation results) ───
   experimentResults: defineTable(experimentResultValidator).index(

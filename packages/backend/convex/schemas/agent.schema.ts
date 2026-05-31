@@ -100,100 +100,10 @@ export const agentTables = {
     .index("by_upload_classification", ["uploadId", "classificationStatus"])
     .index("by_org", ["orgId"]),
 
-  // ─── Experiments (evaluation runs against a dataset) ───
-  experiments: defineTable({
-    orgId: v.string(),
-    kbId: v.optional(v.id("knowledgeBases")),
-    datasetId: v.id("datasets"),
-    name: v.string(),
-    retrieverId: v.optional(v.id("retrievers")),
-    retrieverConfig: v.optional(v.any()),
-    experimentRunId: v.optional(v.id("experimentRuns")),
-    experimentType: v.optional(
-      v.union(v.literal("retriever"), v.literal("agent"))
-    ),
-    agentId: v.optional(v.id("agents")),
-    k: v.optional(v.number()),
-    metricNames: v.array(v.string()),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("running"),
-      v.literal("completed"),
-      v.literal("completed_with_errors"),
-      v.literal("failed"),
-      v.literal("canceling"),
-      v.literal("canceled")
-    ),
-    phase: v.optional(
-      v.union(
-        v.literal("initializing"),
-        v.literal("indexing"),
-        v.literal("syncing"),
-        v.literal("evaluating"),
-        v.literal("done")
-      )
-    ),
-    totalQuestions: v.optional(v.number()),
-    processedQuestions: v.optional(v.number()),
-    failedQuestions: v.optional(v.number()),
-    skippedQuestions: v.optional(v.number()),
-    indexConfigHash: v.optional(v.string()),
-    langsmithSyncStatus: v.optional(v.string()),
-    workIds: v.optional(v.array(v.string())),
-    scores: v.optional(v.record(v.string(), v.number())),
-    // TODO: populate langsmithExperimentId from evaluate() result
-    langsmithExperimentId: v.optional(v.string()),
-    // TODO: populate langsmithUrl from evaluate() result (used in frontend for experiment links)
-    langsmithUrl: v.optional(v.string()),
-    error: v.optional(v.string()),
-    createdBy: v.id("users"),
-    createdAt: v.number(),
-    completedAt: v.optional(v.number())
-  })
-    .index("by_org", ["orgId"])
-    .index("by_dataset", ["datasetId"])
-    .index("by_retriever", ["retrieverId"])
-    .index("by_kb", ["kbId"])
-    .index("by_agent", ["agentId"])
-    .index("by_run", ["experimentRunId"]),
-
-  // ─── Experiment Runs (groups of retriever experiments) ───
-  experimentRuns: defineTable({
-    orgId: v.string(),
-    kbId: v.id("knowledgeBases"),
-    datasetId: v.id("datasets"),
-    name: v.string(),
-    retrieverIds: v.array(v.id("retrievers")),
-    metricNames: v.array(v.string()),
-    scoringWeights: v.object({
-      recall: v.number(),
-      precision: v.number()
-    }),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("running"),
-      v.literal("completed"),
-      v.literal("completed_with_errors"),
-      v.literal("failed"),
-      v.literal("canceling"),
-      v.literal("canceled")
-    ),
-    totalRetrievers: v.number(),
-    completedRetrievers: v.number(),
-    failedRetrievers: v.number(),
-    winnerId: v.optional(v.id("retrievers")),
-    winnerName: v.optional(v.string()),
-    winnerScore: v.optional(v.number()),
-    error: v.optional(v.string()),
-    createdBy: v.id("users"),
-    createdAt: v.number(),
-    completedAt: v.optional(v.number())
-  })
-    .index("by_org", ["orgId"])
-    .index("by_kb", ["kbId"])
-    .index("by_dataset", ["datasetId"]),
-
   // ─── Agent Experiment Results (per-question agent answers + tool calls) ───
+  // NOTE: experiments + experimentRuns tables moved to kb.schema.ts (they are
+  // KB-owned; agent eval depends on them). agentId on `experiments` is now a
+  // plain string there — cast to Id<"agents"> at read time below.
   agentExperimentResults: defineTable({
     experimentId: v.id("experiments"),
     questionId: v.id("questions"),
