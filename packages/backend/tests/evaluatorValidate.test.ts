@@ -1,7 +1,44 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { setupTest, seedUser, testIdentity, TEST_ORG_ID } from "./helpers";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+
+vi.mock("openai", () => {
+  return {
+    default: class {
+      chat = {
+        completions: {
+          create: async (args: any) => {
+            // The transcript under test lives in the user message; the system
+            // message carries the rubric + few-shot examples. Judge on the
+            // transcript only so few-shot pass examples don't leak the marker.
+            const transcript = args.messages
+              .filter((m: any) => m.role === "user")
+              .map((m: any) => m.content)
+              .join("\n");
+            const answer = transcript.includes("GOOD") ? "pass" : "fail";
+            return {
+              choices: [
+                { message: { content: JSON.stringify({ answer, reasoning: "mock" }) } },
+              ],
+            };
+          },
+        },
+      };
+    },
+  };
+});
+
+type Split = "train" | "dev" | "test";
+type ClassCounts = { pass: number; fail: number };
+
+interface SeedOpts {
+  dev: ClassCounts;
+  test: ClassCounts;
+  train: ClassCounts;
+  perfect?: boolean;
+  sourceKind?: "conversation" | "transcript";
+}
 
 async function seedAgent(
   t: ReturnType<typeof setupTest>,
@@ -17,7 +54,7 @@ async function seedAgent(
       },
       guardrails: {},
       responseStyle: {},
-      model: "claude-sonnet-4-20250514",
+      model: "gpt-4o-mini",
       enableReflection: false,
       retrieverIds: [],
       status: "ready",
@@ -26,232 +63,191 @@ async function seedAgent(
   );
 }
 
-async function seedConvWithAssistantMessage(
+async function seedJudgeWithLabels(
   t: ReturnType<typeof setupTest>,
-  agentId: Id<"agents">,
-  assistantText: string,
-): Promise<Id<"conversations">> {
-  const convId = await t.run(async (ctx) =>
-    ctx.db.insert("conversations", {
+  opts: SeedOpts,
+): Promise<{ agentId: Id<"agents">; evaluatorId: Id<"evaluators"> }> {
+  const userId = await seedUser(t);
+  const agentId = await seedAgent(t);
+  const sourceKind = opts.sourceKind ?? "conversation";
+  const perfect = opts.perfect ?? false;
+
+  const evaluatorId = await t.run(async (ctx) =>
+    ctx.db.insert("evaluators", {
       orgId: TEST_ORG_ID,
-      agentIds: [agentId],
-      status: "active" as const,
-      source: "playground" as const,
+      agentId,
+      name: "honest judge",
+      description: "",
+      type: "llm_judge" as const,
+      llmJudgeConfig: {
+        dimensions: [
+          {
+            name: "quality",
+            rubric: "respond well",
+            passExamples: [],
+            failExamples: [],
+          },
+        ],
+        outputFormat: "per_dimension" as const,
+        model: "gpt-4o-mini",
+        inputContext: ["transcript" as const],
+      },
+      source: { kind: "manual" as const },
+      status: "draft" as const,
+      tags: [],
       createdAt: Date.now(),
+      splitSeed: 42,
     }),
   );
-  await t.run(async (ctx) =>
-    ctx.db.insert("messages", {
-      conversationId: convId,
-      order: 0,
-      role: "assistant" as const,
-      content: assistantText,
-      status: "complete" as const,
-      createdAt: Date.now(),
-    }),
-  );
-  return convId;
-}
 
-describe("evaluator.validate", () => {
-  it("computes TPR/TNR and flips status to ready when thresholds met (code evaluator)", async () => {
-    const t = setupTest();
-    await seedUser(t);
-    const agentId = await seedAgent(t);
-
-    const evalId = await t
-      .withIdentity(testIdentity)
-      .mutation(api.evaluator.crud.create, {
-        agentId,
-        name: "must say hello",
-        description: "",
-        type: "code",
-        codeJudgeConfig: {
-          checkType: "string_contains",
-          params: { needle: "hello", expectPresent: true },
-        },
-        source: { kind: "manual" },
-        tags: [],
-      });
-
-    for (let i = 0; i < 10; i++) {
-      const containsHello = i < 5;
-      const convId = await seedConvWithAssistantMessage(
-        t,
-        agentId,
-        containsHello ? "hello world" : "goodbye world",
+  // For transcript sources we need a parent upload.
+  let uploadId: Id<"livechatUploads"> | undefined;
+  if (sourceKind === "transcript") {
+    uploadId = await t.run(async (ctx) => {
+      const csvStorageId = await ctx.storage.store(
+        new Blob(["csv"], { type: "text/csv" }),
       );
-      await t.withIdentity(testIdentity).mutation(api.evaluator.labels.upsert, {
-        evaluatorId: evalId,
-        source: { kind: "conversation", conversationId: convId },
-        humanLabel: containsHello ? "pass" : "fail",
-        splitAssignment: "dev",
-        origin: { kind: "calibration_pass" },
-      });
-    }
-
-    const result = await t
-      .withIdentity(testIdentity)
-      .action(api.evaluator.validate.run, {
-        evaluatorId: evalId,
-      });
-    expect(result.tpr).toBeCloseTo(1.0, 5);
-    expect(result.tnr).toBeCloseTo(1.0, 5);
-    expect(result.agreement).toBeCloseTo(1.0, 5);
-
-    const row = await t.run(async (ctx) => ctx.db.get(evalId));
-    expect(row?.status).toBe("ready");
-    expect(row?.devMetrics).toEqual({ tpr: 1.0, tnr: 1.0, agreement: 1.0 });
-  });
-
-  it("stays validated (not ready) when TPR below threshold", async () => {
-    const t = setupTest();
-    await seedUser(t);
-    const agentId = await seedAgent(t);
-
-    const evalId = await t
-      .withIdentity(testIdentity)
-      .mutation(api.evaluator.crud.create, {
-        agentId,
-        name: "must say hi",
-        description: "",
-        type: "code",
-        codeJudgeConfig: {
-          checkType: "string_contains",
-          params: { needle: "hi", expectPresent: true },
-        },
-        source: { kind: "manual" },
-        tags: [],
-      });
-
-    for (let i = 0; i < 5; i++) {
-      const convId = await seedConvWithAssistantMessage(t, agentId, "no greeting");
-      await t.withIdentity(testIdentity).mutation(api.evaluator.labels.upsert, {
-        evaluatorId: evalId,
-        source: { kind: "conversation", conversationId: convId },
-        humanLabel: "pass",
-        splitAssignment: "dev",
-        origin: { kind: "calibration_pass" },
-      });
-    }
-
-    const result = await t
-      .withIdentity(testIdentity)
-      .action(api.evaluator.validate.run, {
-        evaluatorId: evalId,
-      });
-    expect(result.tpr).toBe(0);
-
-    const row = await t.run(async (ctx) => ctx.db.get(evalId));
-    expect(row?.status).toBe("validated");
-  });
-
-  it("throws when no dev labels exist", async () => {
-    const t = setupTest();
-    await seedUser(t);
-    const agentId = await seedAgent(t);
-    const evalId = await t
-      .withIdentity(testIdentity)
-      .mutation(api.evaluator.crud.create, {
-        agentId,
-        name: "x",
-        description: "",
-        type: "code",
-        codeJudgeConfig: {
-          checkType: "string_contains",
-          params: { needle: "x" },
-        },
-        source: { kind: "manual" },
-        tags: [],
-      });
-
-    await expect(
-      t
-        .withIdentity(testIdentity)
-        .action(api.evaluator.validate.run, { evaluatorId: evalId }),
-    ).rejects.toThrow(/dev labels|calibrate/i);
-  });
-
-  it("only scores conversation-sourced labels (skips transcript labels until message fetcher is generalized)", async () => {
-    const t = setupTest();
-    await seedUser(t);
-    const agentId = await seedAgent(t);
-    const evalId = await t
-      .withIdentity(testIdentity)
-      .mutation(api.evaluator.crud.create, {
-        agentId,
-        name: "x",
-        description: "",
-        type: "code",
-        codeJudgeConfig: {
-          checkType: "string_contains",
-          params: { needle: "x" },
-        },
-        source: { kind: "manual" },
-        tags: [],
-      });
-    // One conversation-sourced label (will be scored)
-    const convId = await seedConvWithAssistantMessage(t, agentId, "x");
-    await t.withIdentity(testIdentity).mutation(api.evaluator.labels.upsert, {
-      evaluatorId: evalId,
-      source: { kind: "conversation", conversationId: convId },
-      humanLabel: "pass",
-      splitAssignment: "dev",
-      origin: { kind: "calibration_pass" },
-    });
-
-    // One transcript-sourced label (should be skipped)
-    const csvStorageId = await t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["csv"], { type: "text/csv" })),
-    );
-    const transcriptId = await t.run(async (ctx) => {
-      const userRow = await ctx.db
-        .query("users")
-        .withIndex("by_clerk_id", (q) => q.eq("clerkId", "user_test456"))
-        .unique();
-      const uploadId = await ctx.db.insert("livechatUploads", {
+      return ctx.db.insert("livechatUploads", {
         orgId: TEST_ORG_ID,
-        createdBy: userRow!._id,
+        createdBy: userId,
         filename: "t.csv",
         csvStorageId,
         status: "ready" as const,
         createdAt: Date.now(),
       });
-      return ctx.db.insert("livechatConversations", {
-        uploadId,
-        orgId: TEST_ORG_ID,
-        conversationId: "c1",
-        visitorId: "v1",
-        visitorName: "",
-        visitorPhone: "",
-        visitorEmail: "",
-        agentId: "",
-        agentName: "",
-        agentEmail: "",
-        inbox: "",
-        labels: [],
-        status: "",
-        messages: [],
-        metadata: {},
-        classificationStatus: "none" as const,
-        translationStatus: "none" as const,
-      });
     });
-    await t.withIdentity(testIdentity).mutation(api.evaluator.labels.upsert, {
-      evaluatorId: evalId,
-      source: { kind: "transcript", transcriptId },
-      humanLabel: "pass",
-      splitAssignment: "dev",
-      origin: { kind: "calibration_pass" },
-    });
+  }
 
-    const result = await t
-      .withIdentity(testIdentity)
-      .action(api.evaluator.validate.run, {
-        evaluatorId: evalId,
+  let counter = 0;
+  const makeLabel = async (split: Split, humanLabel: "pass" | "fail") => {
+    // Perfect judge: pass-labels contain GOOD, fail-labels do not.
+    const hasGood = perfect && humanLabel === "pass";
+    const text = hasGood ? "this is GOOD work" : "this is bad work";
+    const idx = counter++;
+
+    let source:
+      | { kind: "conversation"; conversationId: Id<"conversations"> }
+      | { kind: "transcript"; transcriptId: Id<"livechatConversations"> };
+
+    if (sourceKind === "conversation") {
+      const conversationId = await t.run(async (ctx) => {
+        const convId = await ctx.db.insert("conversations", {
+          orgId: TEST_ORG_ID,
+          agentIds: [agentId],
+          status: "active" as const,
+          source: "playground" as const,
+          createdAt: Date.now(),
+        });
+        await ctx.db.insert("messages", {
+          conversationId: convId,
+          order: 0,
+          role: "assistant" as const,
+          content: text,
+          status: "complete" as const,
+          createdAt: Date.now(),
+        });
+        return convId;
       });
-    expect(result).toBeDefined();
-    expect(result.skipped).toBe(1);
+      source = { kind: "conversation", conversationId };
+    } else {
+      const transcriptId = await t.run(async (ctx) =>
+        ctx.db.insert("livechatConversations", {
+          uploadId: uploadId!,
+          orgId: TEST_ORG_ID,
+          conversationId: `c${idx}`,
+          visitorId: "v1",
+          visitorName: "",
+          visitorPhone: "",
+          visitorEmail: "",
+          agentId: "",
+          agentName: "",
+          agentEmail: "",
+          inbox: "",
+          labels: [],
+          status: "",
+          messages: [{ id: 0, role: "human_agent" as const, text }],
+          metadata: {},
+          classificationStatus: "none" as const,
+          translationStatus: "none" as const,
+        }),
+      );
+      source = { kind: "transcript", transcriptId };
+    }
+
+    await t.run(async (ctx) =>
+      ctx.db.insert("evaluatorLabels", {
+        orgId: TEST_ORG_ID,
+        evaluatorId,
+        source,
+        humanLabel,
+        splitAssignment: split,
+        origin:
+          humanLabel === "pass"
+            ? { kind: "calibration_pass" as const }
+            : { kind: "inferred_negative" as const },
+        ratedBy: userId,
+        createdAt: Date.now(),
+      }),
+    );
+  };
+
+  const splits: Split[] = ["train", "dev", "test"];
+  for (const split of splits) {
+    const counts = opts[split];
+    for (let i = 0; i < counts.pass; i++) await makeLabel(split, "pass");
+    for (let i = 0; i < counts.fail; i++) await makeLabel(split, "fail");
+  }
+
+  return { agentId, evaluatorId };
+}
+
+describe("validate.run (honest)", () => {
+  it("reports calibrating + insufficient_labels when below MIN_PER_CLASS", async () => {
+    const t = setupTest();
+    const { evaluatorId } = await seedJudgeWithLabels(t, {
+      dev: { pass: 2, fail: 2 },
+      test: { pass: 0, fail: 0 },
+      train: { pass: 1, fail: 1 },
+      perfect: true,
+    });
+    const res = await t
+      .withIdentity(testIdentity)
+      .action(api.evaluator.validate.run, { evaluatorId });
+    expect(res.status).toBe("calibrating");
+    expect(res.reason).toBe("insufficient_labels");
+  });
+
+  it("confirms on the test split and marks ready when test metrics clear thresholds", async () => {
+    const t = setupTest();
+    const { evaluatorId } = await seedJudgeWithLabels(t, {
+      dev: { pass: 5, fail: 5 },
+      test: { pass: 5, fail: 5 },
+      train: { pass: 2, fail: 2 },
+      perfect: true,
+    });
+    const res = await t
+      .withIdentity(testIdentity)
+      .action(api.evaluator.validate.run, { evaluatorId });
+    expect(res.status).toBe("ready");
+    expect(res.testMetrics).not.toBeNull();
+    const ev = await t.run(async (ctx) => ctx.db.get(evaluatorId));
+    expect(ev!.testMetrics!.n).toBe(10);
+    expect(ev!.validatedAt).toBeGreaterThan(0);
+  });
+
+  it("scores transcript-sourced labels instead of skipping them", async () => {
+    const t = setupTest();
+    const { evaluatorId } = await seedJudgeWithLabels(t, {
+      dev: { pass: 5, fail: 5 },
+      test: { pass: 5, fail: 5 },
+      train: { pass: 2, fail: 2 },
+      perfect: true,
+      sourceKind: "transcript",
+    });
+    const res = await t
+      .withIdentity(testIdentity)
+      .action(api.evaluator.validate.run, { evaluatorId });
+    expect(res.devMetrics.agreement).toBeGreaterThan(0);
   });
 
   it("rejects validate for evaluator in a different org", async () => {
@@ -285,24 +281,14 @@ describe("evaluator.validate", () => {
 
   it("rejects validate without auth", async () => {
     const t = setupTest();
-    await seedUser(t);
-    const agentId = await seedAgent(t);
-    const evalId = await t
-      .withIdentity(testIdentity)
-      .mutation(api.evaluator.crud.create, {
-        agentId,
-        name: "x",
-        description: "",
-        type: "code",
-        codeJudgeConfig: {
-          checkType: "string_contains",
-          params: { needle: "x" },
-        },
-        source: { kind: "manual" },
-        tags: [],
-      });
+    const { evaluatorId } = await seedJudgeWithLabels(t, {
+      dev: { pass: 1, fail: 1 },
+      test: { pass: 0, fail: 0 },
+      train: { pass: 1, fail: 1 },
+      perfect: true,
+    });
     await expect(
-      t.action(api.evaluator.validate.run, { evaluatorId: evalId }),
+      t.action(api.evaluator.validate.run, { evaluatorId }),
     ).rejects.toThrow();
   });
 });

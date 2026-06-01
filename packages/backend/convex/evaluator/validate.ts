@@ -1,11 +1,23 @@
+"use node";
+import OpenAI from "openai";
 import { action } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
-import { scoreOne } from "./scoreOne";
 import { getAuthContext } from "../lib/auth";
+import { scoreOneAsync, type JudgeLlmClient } from "./llmJudge";
+import { computeTPRTNR, wilsonCI, type JudgmentPair } from "./metrics";
+import { selectFewShot, renderFewShotBlock, type FewShotExample } from "./fewShot";
 
 const TPR_THRESHOLD = 0.85;
 const TNR_THRESHOLD = 0.85;
+const MIN_PER_CLASS = 5;
+const FEWSHOT_TARGET = 4;
+
+type Metrics = { tpr: number; tnr: number; agreement: number };
+type CIPair = {
+  tpr: { lower: number; upper: number };
+  tnr: { lower: number; upper: number };
+};
 
 export const run = action({
   args: { evaluatorId: v.id("evaluators") },
@@ -13,17 +25,16 @@ export const run = action({
     ctx,
     { evaluatorId },
   ): Promise<{
-    tpr: number;
-    tnr: number;
-    agreement: number;
-    status: "ready" | "validated";
-    skipped: number;
+    status: "ready" | "validated" | "calibrating";
+    reason?: "insufficient_labels";
+    needed?: { pass: number; fail: number };
+    devMetrics: Metrics;
+    testMetrics: (Metrics & { n: number }) | null;
   }> => {
     const { orgId } = await getAuthContext(ctx);
-    const evaluator = await ctx.runQuery(
-      internal.evaluator.crud.getInternal,
-      { id: evaluatorId },
-    );
+    const evaluator = await ctx.runQuery(internal.evaluator.crud.getInternal, {
+      id: evaluatorId,
+    });
     if (!evaluator || evaluator.orgId !== orgId) {
       throw new Error("Evaluator not found");
     }
@@ -32,62 +43,122 @@ export const run = action({
       internal.evaluator.labels.byEvaluatorInternal,
       { evaluatorId },
     );
-    const devLabels = allLabels.filter(
-      (l: any) => l.splitAssignment === "dev",
+
+    const client = new OpenAI() as unknown as JudgeLlmClient;
+
+    // Build few-shot once from the TRAIN split.
+    const train = allLabels.filter((l: any) => l.splitAssignment === "train");
+    const trainPass = train.filter((l: any) => l.humanLabel === "pass");
+    const trainFail = train.filter((l: any) => l.humanLabel === "fail");
+    const byId = new Map<string, any>(train.map((l: any) => [l._id, l]));
+    const fewShotIds = selectFewShot(
+      trainPass.map((l: any) => l._id),
+      trainFail.map((l: any) => l._id),
+      FEWSHOT_TARGET,
+      evaluator.splitSeed ?? 42,
     );
-    if (devLabels.length === 0) {
+    const fewShotExamples: FewShotExample[] = [];
+    for (const id of fewShotIds) {
+      const lbl = byId.get(id);
+      if (!lbl) continue;
+      const messages = await ctx.runQuery(
+        internal.evaluator.sources.getMessagesForSource,
+        { source: lbl.source },
+      );
+      fewShotExamples.push({ label: lbl.humanLabel, messages });
+    }
+    const fewShot = renderFewShotBlock(fewShotExamples);
+
+    const scoreSplit = async (split: "dev" | "test"): Promise<JudgmentPair[]> => {
+      const labels = allLabels.filter((l: any) => l.splitAssignment === split);
+      const pairs: JudgmentPair[] = [];
+      for (const label of labels) {
+        const messages = await ctx.runQuery(
+          internal.evaluator.sources.getMessagesForSource,
+          { source: label.source },
+        );
+        const verdict = await scoreOneAsync(client, evaluator, messages, fewShot);
+        pairs.push({
+          humanLabel: label.humanLabel,
+          judgeVerdict: verdict.passed ? "pass" : "fail",
+        });
+      }
+      return pairs;
+    };
+
+    const devPairs = await scoreSplit("dev");
+    const testPairs = await scoreSplit("test");
+
+    if (devPairs.length === 0) {
       throw new Error("No dev labels — calibrate this evaluator first.");
     }
 
-    let tp = 0,
-      tn = 0,
-      fp = 0,
-      fn = 0,
-      skipped = 0;
+    const dev = computeTPRTNR(devPairs);
+    const test = testPairs.length > 0 ? computeTPRTNR(testPairs) : null;
 
-    for (const label of devLabels) {
-      if (label.source.kind !== "conversation") {
-        // Transcript-sourced labels don't yet have a unified message fetcher.
-        // Skip them entirely from the confusion-matrix math rather than
-        // running scoreOne against empty messages (which produces unreliable
-        // TP/FP counts).
-        skipped++;
-        continue;
-      }
-      const messages = await ctx.runQuery(
-        internal.crud.conversations.listMessagesInternal,
-        { conversationId: label.source.conversationId },
-      );
+    const ciFor = (m: typeof dev): CIPair => ({
+      tpr: wilsonCI(m.tp, m.tp + m.fn),
+      tnr: wilsonCI(m.tn, m.tn + m.fp),
+    });
+    const devCI = ciFor(dev);
+    const testCI = test ? ciFor(test) : undefined;
 
-      const verdict = scoreOne(evaluator, messages);
-      const predicted = verdict.passed ? "pass" : "fail";
+    const devMetrics: Metrics = { tpr: dev.tpr, tnr: dev.tnr, agreement: dev.accuracy };
+    const testMetrics =
+      test !== null
+        ? { tpr: test.tpr, tnr: test.tnr, agreement: test.accuracy, n: test.total }
+        : null;
 
-      if (predicted === "pass" && label.humanLabel === "pass") tp++;
-      else if (predicted === "fail" && label.humanLabel === "fail") tn++;
-      else if (predicted === "pass" && label.humanLabel === "fail") fp++;
-      else fn++;
+    const finalMatrix = test ?? dev;
+    const finalPass = finalMatrix.tp + finalMatrix.fn;
+    const finalFail = finalMatrix.tn + finalMatrix.fp;
+    const sufficient = finalPass >= MIN_PER_CLASS && finalFail >= MIN_PER_CLASS;
+
+    const labelCounts = {
+      passDev: dev.tp + dev.fn,
+      failDev: dev.tn + dev.fp,
+      passTest: test ? test.tp + test.fn : 0,
+      failTest: test ? test.tn + test.fp : 0,
+    };
+
+    if (!sufficient) {
+      await ctx.runMutation(internal.evaluator.crud.updateValidation, {
+        evaluatorId,
+        devMetrics,
+        testMetrics: testMetrics ?? undefined,
+        devMetricsCI: devCI,
+        testMetricsCI: testCI,
+        labelCounts,
+        status: "calibrating",
+      });
+      return {
+        status: "calibrating",
+        reason: "insufficient_labels",
+        needed: {
+          pass: Math.max(0, MIN_PER_CLASS - finalPass),
+          fail: Math.max(0, MIN_PER_CLASS - finalFail),
+        },
+        devMetrics,
+        testMetrics,
+      };
     }
 
-    const evaluated = devLabels.length - skipped;
-    if (evaluated === 0) {
-      throw new Error(
-        "No conversation-sourced dev labels — calibrate against playground or simulation conversations first.",
-      );
-    }
+    const status: "ready" | "validated" =
+      finalMatrix.tpr >= TPR_THRESHOLD && finalMatrix.tnr >= TNR_THRESHOLD
+        ? "ready"
+        : "validated";
 
-    const tpr = tp + fn === 0 ? 0 : tp / (tp + fn);
-    const tnr = tn + fp === 0 ? 0 : tn / (tn + fp);
-    const agreement = evaluated === 0 ? 0 : (tp + tn) / evaluated;
-
-    const newStatus =
-      tpr >= TPR_THRESHOLD && tnr >= TNR_THRESHOLD ? "ready" : "validated";
-
-    await ctx.runMutation(internal.evaluator.crud.updateMetrics, {
+    await ctx.runMutation(internal.evaluator.crud.updateValidation, {
       evaluatorId,
-      devMetrics: { tpr, tnr, agreement },
-      status: newStatus,
+      devMetrics,
+      testMetrics: testMetrics ?? undefined,
+      devMetricsCI: devCI,
+      testMetricsCI: testCI,
+      labelCounts,
+      status,
+      validatedAt: Date.now(),
     });
 
-    return { tpr, tnr, agreement, status: newStatus, skipped };
+    return { status, devMetrics, testMetrics };
   },
 });

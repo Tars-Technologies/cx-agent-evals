@@ -39,11 +39,10 @@ export default function ValidatePage() {
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<{
-    tpr: number;
-    tnr: number;
-    agreement: number;
     status: string;
-    skipped: number;
+    reason?: string;
+    devMetrics: { tpr: number; tnr: number; agreement: number };
+    testMetrics: { tpr: number; tnr: number; agreement: number; n: number } | null;
   } | null>(null);
 
   const labelsBase = `/agents/${agentId}/evaluate/evaluators/${evalId}?tab=labels`;
@@ -54,13 +53,7 @@ export default function ValidatePage() {
     setLastResult(null);
     try {
       const result = await runValidation({ evaluatorId: evalId });
-      setLastResult(result as {
-        tpr: number;
-        tnr: number;
-        agreement: number;
-        status: string;
-        skipped: number;
-      });
+      setLastResult(result);
     } catch (e: unknown) {
       setRunError(e instanceof Error ? e.message : "Validation failed");
     } finally {
@@ -125,17 +118,26 @@ export default function ValidatePage() {
               {lastResult.status}
             </span>
           </div>
-          <MetricBar label="TPR (true positive rate)" value={lastResult.tpr} />
-          <MetricBar label="TNR (true negative rate)" value={lastResult.tnr} />
-          <MetricBar label="Agreement" value={lastResult.agreement} />
-          {lastResult.skipped > 0 && (
-            <p className="text-[10px] text-text-dim">
-              {lastResult.skipped} transcript-sourced labels were skipped.
-            </p>
-          )}
+          {(() => {
+            const m = lastResult.testMetrics ?? lastResult.devMetrics;
+            const split = lastResult.testMetrics ? "test" : "dev";
+            return (
+              <>
+                <p className="text-[10px] text-text-dim">Measured on the {split} split.</p>
+                <MetricBar label="TPR (true positive rate)" value={m.tpr} />
+                <MetricBar label="TNR (true negative rate)" value={m.tnr} />
+                <MetricBar label="Agreement" value={m.agreement} />
+              </>
+            );
+          })()}
           {lastResult.status === "ready" ? (
             <p className="text-[10px] text-green-400">
               Thresholds met (TPR ≥ 85%, TNR ≥ 85%). Evaluator is ready.
+            </p>
+          ) : lastResult.reason === "insufficient_labels" ? (
+            <p className="text-[10px] text-yellow-400">
+              Not enough labels per class (need ≥ 5 pass and ≥ 5 fail). Add more
+              labels and calibrate, then re-validate.
             </p>
           ) : (
             <p className="text-[10px] text-yellow-400">
