@@ -7,22 +7,69 @@ import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
 import Link from "next/link";
 
-function MetricBar({ label, value }: { label: string; value: number }) {
-  const pct = Math.round(value * 100);
+type Metrics = { tpr: number; tnr: number; agreement: number };
+type CIPair = { tpr: { lower: number; upper: number }; tnr: { lower: number; upper: number } };
+
+const pct = (x: number) => `${Math.round(x * 100)}%`;
+const range = (c?: { lower: number; upper: number }) =>
+  c ? ` (${pct(c.lower)}–${pct(c.upper)})` : "";
+
+function MetricRow({
+  label,
+  value,
+  ci,
+}: {
+  label: string;
+  value: number;
+  ci?: { lower: number; upper: number };
+}) {
+  const p = Math.round(value * 100);
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs">
         <span className="text-text-dim">{label}</span>
-        <span className="font-mono text-text font-medium">{pct}%</span>
+        <span className="font-mono text-text font-medium">
+          {pct(value)}
+          {ci && <span className="text-text-dim font-normal">{range(ci)}</span>}
+        </span>
       </div>
       <div className="h-1.5 bg-bg-surface rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all ${
-            pct >= 85 ? "bg-green-400" : pct >= 70 ? "bg-yellow-400" : "bg-red-400"
+            p >= 85 ? "bg-green-400" : p >= 70 ? "bg-yellow-400" : "bg-red-400"
           }`}
-          style={{ width: `${pct}%` }}
+          style={{ width: `${p}%` }}
         />
       </div>
+    </div>
+  );
+}
+
+function MetricGroup({
+  title,
+  metrics,
+  ci,
+  emptyLabel,
+}: {
+  title: string;
+  metrics: Metrics | null | undefined;
+  ci?: CIPair;
+  emptyLabel: string;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="text-[10px] uppercase tracking-wide text-text-dim font-medium">
+        {title}
+      </div>
+      {!metrics ? (
+        <p className="text-xs text-text-dim">{emptyLabel}</p>
+      ) : (
+        <>
+          <MetricRow label="TPR (true positive rate)" value={metrics.tpr} ci={ci?.tpr} />
+          <MetricRow label="TNR (true negative rate)" value={metrics.tnr} ci={ci?.tnr} />
+          <MetricRow label="Agreement" value={metrics.agreement} />
+        </>
+      )}
     </div>
   );
 }
@@ -38,11 +85,12 @@ export default function ValidatePage() {
   const runValidation = useAction(api.evaluator.validate.run);
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
-  const [lastResult, setLastResult] = useState<{
-    status: string;
-    reason?: string;
-    devMetrics: { tpr: number; tnr: number; agreement: number };
-    testMetrics: { tpr: number; tnr: number; agreement: number; n: number } | null;
+  // We only keep the action return for the immediate calibrating/needed banner.
+  // Metrics + CIs are read reactively from the persisted evaluator doc.
+  const [lastRun, setLastRun] = useState<{
+    status: "ready" | "validated" | "calibrating";
+    reason?: "insufficient_labels";
+    needed?: { pass: number; fail: number };
   } | null>(null);
 
   const labelsBase = `/agents/${agentId}/evaluate/evaluators/${evalId}?tab=labels`;
@@ -50,10 +98,10 @@ export default function ValidatePage() {
   async function handleRun() {
     setRunning(true);
     setRunError(null);
-    setLastResult(null);
+    setLastRun(null);
     try {
       const result = await runValidation({ evaluatorId: evalId });
-      setLastResult(result);
+      setLastRun({ status: result.status, reason: result.reason, needed: result.needed });
     } catch (e: unknown) {
       setRunError(e instanceof Error ? e.message : "Validation failed");
     } finally {
@@ -72,82 +120,85 @@ export default function ValidatePage() {
   }
 
   const hasDevLabels = counts.dev > 0;
+  const status = evaluator.status;
+  const hasResult = Boolean(evaluator.devMetrics);
+  const calibrating =
+    lastRun?.status === "calibrating" && lastRun.reason === "insufficient_labels";
 
   return (
     <div className="max-w-md space-y-6">
       <div>
         <h3 className="text-sm font-semibold text-text mb-1">Validate evaluator</h3>
         <p className="text-xs text-text-dim">
-          Run the evaluator against dev-split labels to measure TPR, TNR, and agreement.
+          Score the evaluator against held-out labels to measure TPR, TNR, and agreement
+          on the dev (tuning) and test (held-out) splits.
         </p>
       </div>
 
-      {/* Existing metrics (from last validate run) */}
-      {evaluator.devMetrics && !lastResult && (
-        <div className="border border-border rounded-lg p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-text">Last validation result</p>
-            <span
-              className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                evaluator.status === "ready"
-                  ? "bg-green-500/15 text-green-400"
-                  : "bg-accent/15 text-accent"
-              }`}
-            >
-              {evaluator.status}
-            </span>
-          </div>
-          <MetricBar label="TPR (true positive rate)" value={evaluator.devMetrics.tpr} />
-          <MetricBar label="TNR (true negative rate)" value={evaluator.devMetrics.tnr} />
-          <MetricBar label="Agreement" value={evaluator.devMetrics.agreement} />
+      {/* Calibrating / insufficient labels banner */}
+      {calibrating && lastRun?.needed && (
+        <div className="border border-yellow-500/30 bg-yellow-500/10 rounded-lg p-4 space-y-2">
+          <p className="text-xs text-yellow-300 leading-relaxed">
+            Need {lastRun.needed.pass} more Pass and {lastRun.needed.fail} more Fail
+            label(s) on the final split before this judge can be marked ready.
+          </p>
+          <Link
+            href={labelsBase}
+            className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+          >
+            Go to Labels tab →
+          </Link>
         </div>
       )}
 
-      {/* Latest run result (reactive) */}
-      {lastResult && (
-        <div className="border border-border rounded-lg p-4 space-y-4">
+      {/* Persisted metrics (reactive from crud.get) */}
+      {hasResult && (
+        <div className="border border-border rounded-lg p-4 space-y-5">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-text">Validation result</p>
             <span
               className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                lastResult.status === "ready"
+                status === "ready"
                   ? "bg-green-500/15 text-green-400"
-                  : "bg-accent/15 text-accent"
+                  : status === "calibrating"
+                    ? "bg-yellow-500/15 text-yellow-400"
+                    : "bg-accent/15 text-accent"
               }`}
             >
-              {lastResult.status}
+              {status}
             </span>
           </div>
-          {(() => {
-            const m = lastResult.testMetrics ?? lastResult.devMetrics;
-            const split = lastResult.testMetrics ? "test" : "dev";
-            return (
-              <>
-                <p className="text-[10px] text-text-dim">Measured on the {split} split.</p>
-                <MetricBar label="TPR (true positive rate)" value={m.tpr} />
-                <MetricBar label="TNR (true negative rate)" value={m.tnr} />
-                <MetricBar label="Agreement" value={m.agreement} />
-              </>
-            );
-          })()}
-          {lastResult.status === "ready" ? (
+
+          <MetricGroup
+            title="Dev (tuning)"
+            metrics={evaluator.devMetrics}
+            ci={evaluator.devMetricsCI}
+            emptyLabel="No dev labels yet"
+          />
+
+          <div className="border-t border-border" />
+
+          <MetricGroup
+            title="Test (held-out)"
+            metrics={evaluator.testMetrics}
+            ci={evaluator.testMetricsCI}
+            emptyLabel="No test labels yet"
+          />
+
+          {status === "ready" && (
             <p className="text-[10px] text-green-400">
               Thresholds met (TPR ≥ 85%, TNR ≥ 85%). Evaluator is ready.
             </p>
-          ) : lastResult.reason === "insufficient_labels" ? (
+          )}
+          {status === "calibrating" && !calibrating && (
             <p className="text-[10px] text-yellow-400">
-              Not enough labels per class (need ≥ 5 pass and ≥ 5 fail). Add more
-              labels and calibrate, then re-validate.
-            </p>
-          ) : (
-            <p className="text-[10px] text-yellow-400">
-              Below threshold. Add more labels and calibrate, then re-validate.
+              Still calibrating — add more labels per class, then re-validate.
             </p>
           )}
         </div>
       )}
 
-      {/* Dev labels gate */}
+      {/* Dev labels gate / run button */}
       {!hasDevLabels ? (
         <div className="border border-border rounded-lg p-4 space-y-3">
           <p className="text-xs text-text-dim">
