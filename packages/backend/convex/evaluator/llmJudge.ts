@@ -93,7 +93,7 @@ export async function runLlmJudge(
   messages: any[],
   fewShot: string,
 ): Promise<Verdict> {
-  const { system, user } = buildJudgePrompt(evaluator as any, messages, fewShot);
+  const { system, user } = buildJudgePrompt(evaluator, messages, fewShot);
   const model = evaluator.llmJudgeConfig?.model ?? "gpt-4o-mini";
   const res = await client.chat.completions.create({
     model,

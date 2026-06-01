@@ -177,21 +177,6 @@ export const updateStatus = mutation({
   },
 });
 
-export const updateMetrics = internalMutation({
-  args: {
-    evaluatorId: v.id("evaluators"),
-    devMetrics: devMetricsValidator,
-    status: statusValidator,
-  },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.evaluatorId, {
-      devMetrics: args.devMetrics,
-      status: args.status,
-      updatedAt: Date.now(),
-    });
-  },
-});
-
 export const updateValidation = internalMutation({
   args: {
     evaluatorId: v.id("evaluators"),

@@ -4,12 +4,11 @@ export function scoreOne(evaluator: any, messages: any[]): Verdict {
   if (evaluator.type === "code" && evaluator.codeJudgeConfig) {
     return scoreCode(evaluator, messages);
   }
-  // TODO(future-phase): real LLM judge call. For Phase 1, stub.
-  return {
-    passed: true,
-    justification:
-      "[stub] llm_judge scoring pending — real LLM call will be wired in a follow-up phase",
-  };
+  // llm_judge scoring is async and goes through scoreOneAsync/runLlmJudge.
+  // The sync path is code-only — never silently pass an llm_judge here.
+  throw new Error(
+    "scoreOne is sync/code-only; use scoreOneAsync for llm_judge evaluators",
+  );
 }
 
 function scoreCode(ev: any, messages: any[]): Verdict {

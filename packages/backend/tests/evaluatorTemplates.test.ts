@@ -54,6 +54,13 @@ describe("evaluatorTemplates", () => {
         { role: "user", content: "hi" },
         { role: "assistant", content: '{"ok": true}' },
       ];
+      if (tpl.type === "llm_judge") {
+        // sync scoreOne is code-only; llm_judge must go through scoreOneAsync
+        expect(() => scoreOne(stubEval, messages)).toThrow(
+          /sync\/code-only/,
+        );
+        continue;
+      }
       const v = scoreOne(stubEval, messages);
       expect(typeof v.passed).toBe("boolean");
       expect(typeof v.justification).toBe("string");
