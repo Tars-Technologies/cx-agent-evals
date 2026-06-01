@@ -175,3 +175,80 @@ export function wilsonCI(
     upper: Math.min(1, center + margin),
   };
 }
+
+/**
+ * Bootstrap 95% CI for Score B (corrected agent pass rate).
+ *
+ * Unlike `bootstrapCI`, this propagates BOTH sources of uncertainty:
+ *   1. sampling uncertainty in the observed cohort pass rate (resample cohortPreds)
+ *   2. uncertainty in the judge's TPR/TNR (resample the validation test pairs)
+ * Each bootstrap draw recomputes the per-draw observed pass rate and TPR/TNR,
+ * then applies the Rogan-Gladen correction. Returns the 2.5/97.5 percentiles.
+ */
+export function scoreBCI(
+  cohortPreds: number[], // 0 = fail, 1 = pass (judge verdicts over the cohort)
+  testLabels: number[], // 0 = fail, 1 = pass (human labels on the test split)
+  testPreds: number[], // 0 = fail, 1 = pass (judge verdicts on the test split)
+  B: number = 20000,
+  seed: number = 42,
+): { lower: number; upper: number } {
+  const M = cohortPreds.length;
+  const N = testLabels.length;
+  if (M === 0 || N === 0) return { lower: 0, upper: 1 };
+
+  let rngState = seed | 0;
+  const rng = () => {
+    rngState = (rngState + 0x6d2b79f5) | 0;
+    let t = Math.imul(rngState ^ (rngState >>> 15), 1 | rngState);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
+  const samples: number[] = [];
+
+  for (let b = 0; b < B; b++) {
+    // 1) resample cohort → p_obs*
+    let passBoot = 0;
+    for (let i = 0; i < M; i++) {
+      const idx = Math.floor(rng() * M);
+      if (cohortPreds[idx] === 1) passBoot++;
+    }
+    const pObsStar = passBoot / M;
+
+    // 2) resample validation pairs → TPR*/TNR*
+    let pCount = 0;
+    let fCount = 0;
+    let tpBoot = 0;
+    let tnBoot = 0;
+    for (let i = 0; i < N; i++) {
+      const idx = Math.floor(rng() * N);
+      const lbl = testLabels[idx];
+      const pred = testPreds[idx];
+      if (lbl === 1) {
+        pCount++;
+        if (pred === 1) tpBoot++;
+      } else {
+        fCount++;
+        if (pred === 0) tnBoot++;
+      }
+    }
+    if (pCount === 0 || fCount === 0) continue;
+
+    const tprStar = tpBoot / pCount;
+    const tnrStar = tnBoot / fCount;
+    const denomStar = tprStar + tnrStar - 1;
+    if (denomStar <= 0) continue;
+
+    const thetaStar = (pObsStar + tnrStar - 1) / denomStar;
+    samples.push(Math.max(0, Math.min(1, thetaStar)));
+  }
+
+  if (samples.length === 0) return { lower: 0, upper: 1 };
+  samples.sort((a, b) => a - b);
+  const lowerIdx = Math.floor(0.025 * samples.length);
+  const upperIdx = Math.min(
+    Math.floor(0.975 * samples.length),
+    samples.length - 1,
+  );
+  return { lower: samples[lowerIdx], upper: samples[upperIdx] };
+}

@@ -4,6 +4,7 @@ import {
   correctedPassRate,
   bootstrapCI,
   wilsonCI,
+  scoreBCI,
   type JudgmentPair,
 } from "../convex/evaluator/metrics";
 
@@ -183,5 +184,36 @@ describe("wilsonCI", () => {
     const { lower, upper } = wilsonCI(10, 10); // p̂ = 1.0
     expect(lower).toBeGreaterThanOrEqual(0);
     expect(upper).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("scoreBCI", () => {
+  const perfectLabels = [1, 1, 1, 1, 1, 0, 0, 0, 0, 0];
+  const perfectPreds = [1, 1, 1, 1, 1, 0, 0, 0, 0, 0]; // TPR=TNR=1
+
+  it("brackets the corrected pass rate and is deterministic for a fixed seed", () => {
+    const cohortPreds = [1, 1, 1, 0]; // observed pass rate 0.75
+    const a = scoreBCI(cohortPreds, perfectLabels, perfectPreds, 2000, 7);
+    const b = scoreBCI(cohortPreds, perfectLabels, perfectPreds, 2000, 7);
+    expect(a).toEqual(b); // seeded determinism
+    expect(a.lower).toBeGreaterThanOrEqual(0);
+    expect(a.upper).toBeLessThanOrEqual(1);
+    expect(a.lower).toBeLessThanOrEqual(0.75);
+    expect(a.upper).toBeGreaterThanOrEqual(0.75);
+  });
+
+  it("returns [0,1] when the cohort is empty", () => {
+    expect(scoreBCI([], perfectLabels, perfectPreds, 2000, 7)).toEqual({
+      lower: 0,
+      upper: 1,
+    });
+  });
+
+  it("widens the interval when the validation set is noisier", () => {
+    const cohortPreds = [1, 1, 1, 0, 1, 0, 1, 1];
+    const noisyPreds = [1, 1, 0, 1, 1, 0, 1, 0, 0, 1]; // imperfect judge
+    const clean = scoreBCI(cohortPreds, perfectLabels, perfectPreds, 3000, 7);
+    const noisy = scoreBCI(cohortPreds, perfectLabels, noisyPreds, 3000, 7);
+    expect(noisy.upper - noisy.lower).toBeGreaterThan(clean.upper - clean.lower);
   });
 });
