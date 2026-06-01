@@ -2,11 +2,20 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter, usePathname } from "next/navigation";
+import {
+  useParams,
+  useRouter,
+  usePathname,
+  useSearchParams,
+} from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
-import { FailureModeCard } from "@/components/errorAnalysis/FailureModeCard";
+import {
+  FailureModeDetail,
+  type FailureModeWithCounts,
+  type AnalysisMember,
+} from "@/components/errorAnalysis/FailureModeDetail";
 import { ImportMoreModal } from "@/components/errorAnalysis/ImportMoreModal";
 
 const ORIGIN_LABEL: Record<string, string> = {
@@ -183,11 +192,16 @@ export default function FailureModesPage() {
   const agentId = id as Id<"agents">;
   const errorAnalysisId = analysisId as Id<"errorAnalyses">;
   const router = useRouter();
+  const pathname = usePathname() ?? "";
+  const searchParams = useSearchParams();
 
   const analysis = useQuery(api.errorAnalysis.orchestration.get, {
     id: errorAnalysisId,
   });
   const modes = useQuery(api.failureModes.crud.byAnalysisWithCounts, {
+    errorAnalysisId,
+  });
+  const members = useQuery(api.errorAnalysis.orchestration.membersByAnalysis, {
     errorAnalysisId,
   });
   const spawnJudge = useMutation(api.evaluator.spawnJudge.fromFailureMode);
@@ -200,18 +214,51 @@ export default function FailureModesPage() {
 
   const list = modes ?? [];
 
-  async function handleRecluster() {
-    if (clustering) return;
-    const ok = window.confirm(
-      "This will replace all existing failure modes for this analysis with a new LLM-generated set. Manual failure modes will also be deleted. Continue?",
-    );
-    if (!ok) return;
+  // Selected failure mode (URL-persisted via ?fm=, auto-select first).
+  const fmParam = searchParams.get("fm");
+  const selected =
+    list.find((m) => m._id === fmParam) ?? (list.length > 0 ? list[0] : null);
+  const selectedId = selected?._id ?? null;
+
+  const memberships = useQuery(
+    api.failureModes.memberships.byFailureMode,
+    selectedId ? { failureModeId: selectedId } : "skip",
+  );
+
+  function selectMode(modeId: Id<"failureModes">) {
+    const sp = new URLSearchParams(searchParams.toString());
+    sp.set("fm", modeId);
+    router.replace(`${pathname}?${sp.toString()}`);
+  }
+
+  async function handleSpawnJudge(failureModeId: Id<"failureModes">) {
+    const evalId = await spawnJudge({ failureModeId });
+    router.push(`/agents/${agentId}/evaluate/evaluators/${evalId}`);
+  }
+
+  // Clustering only uses failing annotations, so gate generation on having at
+  // least one. membersByAnalysis already carries each member's annotationRating.
+  const failingCount = (members ?? []).filter(
+    (m) => m.annotationRating === "fail" || m.annotationRating === "bad",
+  ).length;
+  const canGenerate = failingCount > 0;
+  const hasModes = list.length > 0;
+
+  async function handleGenerate() {
+    if (clustering || !canGenerate) return;
+    // Regenerating replaces existing modes (destructive) — confirm only then.
+    if (hasModes) {
+      const ok = window.confirm(
+        "This will replace all existing failure modes for this analysis with a new LLM-generated set. Manual failure modes will also be deleted. Continue?",
+      );
+      if (!ok) return;
+    }
     setClustering(true);
     setClusterError(null);
     try {
       await recluster({ errorAnalysisId });
     } catch (e) {
-      setClusterError(e instanceof Error ? e.message : "Re-cluster failed");
+      setClusterError(e instanceof Error ? e.message : "Failed to generate");
     } finally {
       setClustering(false);
     }
@@ -235,58 +282,114 @@ export default function FailureModesPage() {
             <span className="text-[11px] text-red-400">{clusterError}</span>
           )}
           <button
-            onClick={handleRecluster}
-            disabled={clustering}
-            className="px-3 py-1.5 text-xs text-accent border border-accent/30 rounded hover:bg-accent/10 disabled:opacity-50 transition-colors"
-            title="Replace all failure modes with a new LLM-generated set"
+            onClick={() => setCreateOpen(true)}
+            className="px-2.5 py-1.5 text-xs text-text-dim border border-border rounded hover:text-text hover:border-border-bright transition-colors"
+            title="Add a failure mode manually"
           >
-            {clustering ? "Clustering…" : "⟲ Re-cluster"}
+            + New
           </button>
           <button
-            onClick={() => setCreateOpen(true)}
-            className="px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors"
+            onClick={handleGenerate}
+            disabled={clustering || !canGenerate}
+            className="px-3 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title={
+              canGenerate
+                ? hasModes
+                  ? "Replace all failure modes with a new LLM-generated set"
+                  : "Cluster failing annotations into failure modes"
+                : "Annotate at least one conversation as Fail first."
+            }
           >
-            + New failure mode
+            {clustering
+              ? "Generating…"
+              : hasModes
+                ? "⟲ Regenerate"
+                : "✨ Generate failure modes"}
           </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3">
-        {modes === undefined ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="h-32 rounded bg-bg-elevated border border-border animate-pulse"
-              />
-            ))}
-          </div>
-        ) : list.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-center">
+      {modes === undefined ? (
+        <div className="flex-1 px-4 py-3">
+          <div className="h-32 rounded bg-bg-elevated border border-border animate-pulse" />
+        </div>
+      ) : list.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center min-h-[200px] text-center gap-3 px-4">
+          <div>
             <p className="text-sm text-text-dim">No failure modes yet.</p>
             <p className="text-xs text-text-muted mt-1">
-              Click &lsquo;+ New failure mode&rsquo; to add one.
+              Cluster your failing annotations into failure-mode buckets.
             </p>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {list.map((m) => (
-              <FailureModeCard
-                key={m._id}
-                failureMode={m}
-                memberCount={m.memberCount}
-                judgeCount={m.judgeCount}
-                onSpawnJudge={async () => {
-                  const evalId = await spawnJudge({ failureModeId: m._id });
-                  router.push(
-                    `/agents/${agentId}/evaluate/evaluators/${evalId}`,
-                  );
+          <button
+            onClick={handleGenerate}
+            disabled={clustering || !canGenerate}
+            className="px-4 py-2 text-sm bg-accent text-bg-elevated rounded hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {clustering ? "Generating…" : "✨ Generate failure modes"}
+          </button>
+          {!canGenerate && (
+            <p className="text-xs text-text-muted">
+              Annotate at least one conversation as{" "}
+              <span className="text-red-400">Fail</span>, then generate.
+            </p>
+          )}
+          {clusterError && (
+            <p className="text-xs text-red-400">{clusterError}</p>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 flex overflow-hidden">
+          {/* Left: failure mode list */}
+          <div className="w-1/4 min-w-[220px] border-r border-border overflow-y-auto">
+            <ul className="divide-y divide-border">
+              {list.map((m) => {
+                const active = m._id === selectedId;
+                return (
+                  <li key={m._id}>
+                    <button
+                      onClick={() => selectMode(m._id)}
+                      className={`w-full text-left px-3 py-2 transition-colors ${
+                        active
+                          ? "bg-accent/10 text-accent"
+                          : "text-text hover:bg-bg-elevated"
+                      }`}
+                    >
+                      <div className="text-xs font-medium truncate">
+                        {m.name}
+                      </div>
+                      <div className="text-[10px] text-text-dim mt-0.5">
+                        {m.memberCount} conv{m.memberCount === 1 ? "" : "s"}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          {/* Right: selected failure mode detail */}
+          <div className="flex-1 min-w-0 overflow-hidden">
+            {selected ? (
+              <FailureModeDetail
+                mode={selected as FailureModeWithCounts}
+                members={(members ?? []) as AnalysisMember[]}
+                memberships={memberships}
+                onSpawnJudge={() => handleSpawnJudge(selected._id)}
+                onDeleted={() => {
+                  const sp = new URLSearchParams(searchParams.toString());
+                  sp.delete("fm");
+                  router.replace(`${pathname}?${sp.toString()}`);
                 }}
               />
-            ))}
+            ) : (
+              <div className="h-full flex items-center justify-center text-xs text-text-dim">
+                Select a failure mode.
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <NewFailureModeModal
         agentId={agentId}
