@@ -158,3 +158,14 @@ export const getInternal = internalQuery({
   args: { id: v.id("conversationSimRuns") },
   handler: async (ctx, { id }) => ctx.db.get(id),
 });
+
+// All runs for a simulation (for actions — no auth)
+export const bySimulationInternal = internalQuery({
+  args: { simulationId: v.id("conversationSimulations") },
+  handler: async (ctx, { simulationId }) => {
+    return await ctx.db
+      .query("conversationSimRuns")
+      .withIndex("by_simulation", (q) => q.eq("simulationId", simulationId))
+      .collect();
+  },
+});

@@ -40,7 +40,9 @@ import type * as errorAnalysis_clusteringHelpers from "../errorAnalysis/clusteri
 import type * as errorAnalysis_members from "../errorAnalysis/members.js";
 import type * as errorAnalysis_orchestration from "../errorAnalysis/orchestration.js";
 import type * as evaluator_autoApply from "../evaluator/autoApply.js";
+import type * as evaluator_batchApply from "../evaluator/batchApply.js";
 import type * as evaluator_crud from "../evaluator/crud.js";
+import type * as evaluator_evaluationRuns from "../evaluator/evaluationRuns.js";
 import type * as evaluator_fewShot from "../evaluator/fewShot.js";
 import type * as evaluator_fewShotForEvaluator from "../evaluator/fewShotForEvaluator.js";
 import type * as evaluator_labels from "../evaluator/labels.js";
@@ -120,7 +122,9 @@ declare const fullApi: ApiFromModules<{
   "errorAnalysis/members": typeof errorAnalysis_members;
   "errorAnalysis/orchestration": typeof errorAnalysis_orchestration;
   "evaluator/autoApply": typeof evaluator_autoApply;
+  "evaluator/batchApply": typeof evaluator_batchApply;
   "evaluator/crud": typeof evaluator_crud;
+  "evaluator/evaluationRuns": typeof evaluator_evaluationRuns;
   "evaluator/fewShot": typeof evaluator_fewShot;
   "evaluator/fewShotForEvaluator": typeof evaluator_fewShotForEvaluator;
   "evaluator/labels": typeof evaluator_labels;
