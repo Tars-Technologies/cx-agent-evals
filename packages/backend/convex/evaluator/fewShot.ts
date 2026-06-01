@@ -5,7 +5,7 @@ export type FewShotExample = {
   messages: { role: string; content: string }[];
 };
 
-const MAX_LINES_PER_EXAMPLE = 16;
+const MAX_MESSAGES_PER_EXAMPLE = 16;
 
 /** Pure: render selected examples into a prompt block. Returns "" when empty. */
 export function renderFewShotBlock(examples: FewShotExample[]): string {
@@ -13,11 +13,11 @@ export function renderFewShotBlock(examples: FewShotExample[]): string {
   return examples
     .map((ex, i) => {
       const lines = ex.messages
-        .slice(0, MAX_LINES_PER_EXAMPLE)
+        .slice(0, MAX_MESSAGES_PER_EXAMPLE)
         .map((m) => `${m.role}: ${m.content}`)
         .join("\n");
       const truncated =
-        ex.messages.length > MAX_LINES_PER_EXAMPLE ? "\n…(truncated)" : "";
+        ex.messages.length > MAX_MESSAGES_PER_EXAMPLE ? "\n…(truncated)" : "";
       return `### Example ${i + 1}\n${lines}${truncated}\nVerdict: ${ex.label}`;
     })
     .join("\n\n");

@@ -9,6 +9,20 @@
  * - Bootstrap CI: 95% confidence interval via resampling
  */
 
+/**
+ * Mulberry32-style seeded PRNG. Deterministic for a given seed — used for
+ * reproducible bootstrap resampling. Returns a function yielding floats in [0, 1).
+ */
+function makeSeededRng(seed: number): () => number {
+  let rngState = seed | 0;
+  return () => {
+    rngState = (rngState + 0x6d2b79f5) | 0;
+    let t = Math.imul(rngState ^ (rngState >>> 15), 1 | rngState);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 export interface JudgmentPair {
   humanLabel: "pass" | "fail";
   judgeVerdict: "pass" | "fail";
@@ -94,13 +108,7 @@ export function bootstrapCI(
   if (N === 0) return { lower: 0, upper: 1 };
 
   // Simple seeded RNG for reproducible bootstrap
-  let rngState = seed | 0;
-  const rng = () => {
-    rngState = (rngState + 0x6d2b79f5) | 0;
-    let t = Math.imul(rngState ^ (rngState >>> 15), 1 | rngState);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  const rng = makeSeededRng(seed);
 
   const samples: number[] = [];
 
@@ -196,13 +204,7 @@ export function scoreBCI(
   const N = testLabels.length;
   if (M === 0 || N === 0) return { lower: 0, upper: 1 };
 
-  let rngState = seed | 0;
-  const rng = () => {
-    rngState = (rngState + 0x6d2b79f5) | 0;
-    let t = Math.imul(rngState ^ (rngState >>> 15), 1 | rngState);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  const rng = makeSeededRng(seed);
 
   const samples: number[] = [];
 
