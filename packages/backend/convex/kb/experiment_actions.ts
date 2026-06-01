@@ -312,18 +312,31 @@ export const runExperiment = internalAction({
   handler: async (ctx, args) => {
     try {
       // ── Step 0: Initialize ──
-      await ctx.runMutation(internal.kb.experiments.updateStatus, {
-        experimentId: args.experimentId,
-        status: "running",
-        phase: "initializing"
-      })
-
+      // The starter is scheduled before any workIds exist, so a cancel that
+      // lands while the experiment is still pending can't be caught by the
+      // WorkPool. Re-check status here and bail before doing any work.
       const experiment = await ctx.runQuery(
         internal.kb.experiments.getInternal,
         {
           id: args.experimentId
         }
       )
+      if (
+        experiment.status === "canceling" ||
+        experiment.status === "canceled"
+      ) {
+        await ctx.runMutation(internal.kb.experiments.updateStatus, {
+          experimentId: args.experimentId,
+          status: "canceled"
+        })
+        return
+      }
+
+      await ctx.runMutation(internal.kb.experiments.updateStatus, {
+        experimentId: args.experimentId,
+        status: "running",
+        phase: "initializing"
+      })
 
       let indexConfigHash: string
       let embeddingModel: string
