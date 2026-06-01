@@ -14,6 +14,7 @@ import { generateText, type LanguageModel, tool } from "ai"
 import { v } from "convex/values"
 import { z } from "zod"
 import { internal } from "../_generated/api"
+import type { Id } from "../_generated/dataModel"
 import { internalAction } from "../_generated/server"
 import { composeSystemPrompt } from "../agents/promptTemplate"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
@@ -105,10 +106,13 @@ export const runAgentExperimentSetup = internalAction({
       if (!experiment.agentId) {
         throw new Error("Agent experiment missing agentId")
       }
+      // experiments.agentId is stored as a plain string in kb.schema (so the KB
+      // schema stays agent-free); cast back to Id<"agents"> for agent-domain use.
+      const agentId = experiment.agentId as Id<"agents">
 
       // Verify agent exists and has ready retrievers
       const agent = await ctx.runQuery(internal.crud.agents.getInternal, {
-        id: experiment.agentId
+        id: agentId
       })
       if (!agent) throw new Error("Agent not found")
 
@@ -160,7 +164,7 @@ export const runAgentExperimentSetup = internalAction({
         {
           experimentId: args.experimentId,
           questionIds: questions.map((q: any) => q._id),
-          agentId: experiment.agentId,
+          agentId,
           kbId: args.kbId
         }
       )

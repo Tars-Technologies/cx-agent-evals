@@ -29,6 +29,7 @@ import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { internalAction } from "../_generated/server"
 import { tenantAction } from "../lib/auth/tenant"
+import { backendConfig } from "../config"
 
 async function loadCorpusFromKb(
   ctx: { runQuery: (ref: any, args: any) => Promise<any> },
@@ -145,7 +146,7 @@ export const generateRealWorldGrounded = internalAction({
     const { corpus } = await loadCorpusFromKb(ctx, args.kbId)
 
     const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
+      apiKey: backendConfig.ai.openaiApiKey
     })
     const embedder = new OpenAIEmbedder({
       model: (config.embeddingModel as string) ?? "text-embedding-3-small",
@@ -219,7 +220,7 @@ export const prepareGeneration = internalAction({
     let unmatchedQuestions: string[] = []
     const realWorldQuestions = config.realWorldQuestions as string[] | undefined
     if (realWorldQuestions?.length) {
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+      const openai = new OpenAI({ apiKey: backendConfig.ai.openaiApiKey })
       const embedder = new OpenAIEmbedder({
         model: (config.embeddingModel as string) ?? "text-embedding-3-small",
         client: openai

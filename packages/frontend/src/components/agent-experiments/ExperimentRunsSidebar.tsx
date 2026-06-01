@@ -7,7 +7,7 @@ interface ExperimentRunsSidebarProps {
     _id: Id<"experiments">
     name: string
     datasetId: Id<"datasets">
-    agentId?: Id<"agents">
+    agentId?: string
     status: string
     totalQuestions?: number
     processedQuestions?: number
