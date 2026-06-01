@@ -77,8 +77,13 @@ export function ScorecardPanel({
               >
                 <span className="text-text">{r.name}</span>
                 <span className="text-text-dim font-mono">
-                  {pct(r.correctedPassRate)} ({pct(r.ci.lower)}–{pct(r.ci.upper)}), n=
-                  {r.n}
+                  {/* Only show a CI range for corrected rows; uncorrected rows
+                      carry a vacuous {0,1} CI which would read as a real 0%–100%
+                      interval. */}
+                  {r.corrected
+                    ? `${pct(r.correctedPassRate)} (${pct(r.ci.lower)}–${pct(r.ci.upper)})`
+                    : pct(r.observedPassRate)}
+                  , n={r.n}
                   {!r.corrected && (
                     <span
                       className="ml-2 text-amber-400"
