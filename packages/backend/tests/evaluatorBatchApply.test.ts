@@ -309,4 +309,22 @@ describe("batchApply.runOnCohort (Score B)", () => {
     expect(res.runs[0].corrected).toBe(false);
     expect(res.runs[0].ci).toEqual({ lower: 0, upper: 1 });
   });
+
+  it("scorecardBySimulation returns per-evaluator rows + overall mean", async () => {
+    const t = setupTest();
+    const { simulationId, evaluatorId } = await seedCohortAndJudge(t, {
+      goodCount: 3, badCount: 1, validated: { tpr: 0.9, tnr: 0.9 },
+    });
+    await t.withIdentity(testIdentity).action(api.evaluator.batchApply.runOnCohort, {
+      evaluatorIds: [evaluatorId],
+      cohort: { kind: "simulation", simulationId },
+    });
+    const card = await t.withIdentity(testIdentity).query(
+      api.evaluator.evaluationRuns.scorecardBySimulation,
+      { simulationId },
+    );
+    expect(card.rows).toHaveLength(1);
+    expect(card.rows[0].evaluatorId).toBe(evaluatorId);
+    expect(typeof card.overall.correctedPassRate).toBe("number");
+  });
 });

@@ -70,3 +70,42 @@ export const bySimulation = query({
     return Array.from(latest.values());
   },
 });
+
+export const scorecardBySimulation = query({
+  args: { simulationId: v.id("conversationSimulations") },
+  handler: async (ctx, { simulationId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const rows = await ctx.db
+      .query("evaluationRuns")
+      .withIndex("by_simulation", (q) => q.eq("cohort.simulationId", simulationId))
+      .collect();
+    const mine = rows.filter((r) => r.orgId === orgId);
+
+    const latest = new Map<string, (typeof mine)[number]>();
+    for (const r of mine) {
+      const prev = latest.get(r.evaluatorId);
+      if (!prev || r.createdAt > prev.createdAt) latest.set(r.evaluatorId, r);
+    }
+
+    const out = [];
+    for (const r of latest.values()) {
+      const ev = await ctx.db.get(r.evaluatorId);
+      out.push({
+        evaluatorId: r.evaluatorId,
+        name: ev?.name ?? "(deleted)",
+        n: r.n,
+        observedPassRate: r.observedPassRate,
+        correctedPassRate: r.correctedPassRate,
+        ci: r.ci,
+        corrected: r.corrected,
+      });
+    }
+
+    const overall =
+      out.length > 0
+        ? out.reduce((s, r) => s + r.correctedPassRate, 0) / out.length
+        : 0;
+
+    return { rows: out, overall: { correctedPassRate: overall } };
+  },
+});
