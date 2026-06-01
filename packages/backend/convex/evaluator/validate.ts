@@ -2,6 +2,7 @@
 import OpenAI from "openai";
 import { action } from "../_generated/server";
 import { internal } from "../_generated/api";
+import type { Doc } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { getAuthContext } from "../lib/auth";
 import { scoreOneAsync, type JudgeLlmClient } from "./llmJudge";
@@ -48,8 +49,16 @@ export const run = action({
     // Build few-shot once from the TRAIN split.
     const fewShot = await buildFewShotForEvaluator(ctx, evaluator, allLabels);
 
-    const scoreSplit = async (split: "dev" | "test"): Promise<JudgmentPair[]> => {
-      const labels = allLabels.filter((l: any) => l.splitAssignment === split);
+    // Fail-fast (Slice 1): a judge error inside scoreOneAsync propagates out of
+    // scoreSplit and aborts the entire validation run. We intentionally do NOT
+    // partially score — an honest all-or-nothing confusion matrix is preferred
+    // over a matrix silently missing the rows that errored.
+    const scoreSplit = async (
+      split: "dev" | "test",
+    ): Promise<JudgmentPair[]> => {
+      const labels = allLabels.filter(
+        (l: Doc<"evaluatorLabels">) => l.splitAssignment === split,
+      );
       const pairs: JudgmentPair[] = [];
       for (const label of labels) {
         const messages = await ctx.runQuery(
