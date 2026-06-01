@@ -42,6 +42,7 @@ import type * as errorAnalysis_orchestration from "../errorAnalysis/orchestratio
 import type * as evaluator_autoApply from "../evaluator/autoApply.js";
 import type * as evaluator_crud from "../evaluator/crud.js";
 import type * as evaluator_fewShot from "../evaluator/fewShot.js";
+import type * as evaluator_fewShotForEvaluator from "../evaluator/fewShotForEvaluator.js";
 import type * as evaluator_labels from "../evaluator/labels.js";
 import type * as evaluator_llmJudge from "../evaluator/llmJudge.js";
 import type * as evaluator_metrics from "../evaluator/metrics.js";
@@ -121,6 +122,7 @@ declare const fullApi: ApiFromModules<{
   "evaluator/autoApply": typeof evaluator_autoApply;
   "evaluator/crud": typeof evaluator_crud;
   "evaluator/fewShot": typeof evaluator_fewShot;
+  "evaluator/fewShotForEvaluator": typeof evaluator_fewShotForEvaluator;
   "evaluator/labels": typeof evaluator_labels;
   "evaluator/llmJudge": typeof evaluator_llmJudge;
   "evaluator/metrics": typeof evaluator_metrics;

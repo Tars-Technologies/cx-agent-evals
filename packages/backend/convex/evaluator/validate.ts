@@ -6,12 +6,11 @@ import { v } from "convex/values";
 import { getAuthContext } from "../lib/auth";
 import { scoreOneAsync, type JudgeLlmClient } from "./llmJudge";
 import { computeTPRTNR, wilsonCI, type JudgmentPair } from "./metrics";
-import { selectFewShot, renderFewShotBlock, type FewShotExample } from "./fewShot";
+import { buildFewShotForEvaluator } from "./fewShotForEvaluator";
 
 const TPR_THRESHOLD = 0.85;
 const TNR_THRESHOLD = 0.85;
 const MIN_PER_CLASS = 5;
-const FEWSHOT_TARGET = 4;
 
 type Metrics = { tpr: number; tnr: number; agreement: number };
 type CIPair = {
@@ -47,27 +46,7 @@ export const run = action({
     const client = new OpenAI() as unknown as JudgeLlmClient;
 
     // Build few-shot once from the TRAIN split.
-    const train = allLabels.filter((l: any) => l.splitAssignment === "train");
-    const trainPass = train.filter((l: any) => l.humanLabel === "pass");
-    const trainFail = train.filter((l: any) => l.humanLabel === "fail");
-    const byId = new Map<string, any>(train.map((l: any) => [l._id, l]));
-    const fewShotIds = selectFewShot(
-      trainPass.map((l: any) => l._id),
-      trainFail.map((l: any) => l._id),
-      FEWSHOT_TARGET,
-      evaluator.splitSeed ?? 42,
-    );
-    const fewShotExamples: FewShotExample[] = [];
-    for (const id of fewShotIds) {
-      const lbl = byId.get(id);
-      if (!lbl) continue;
-      const messages = await ctx.runQuery(
-        internal.evaluator.sources.getMessagesForSource,
-        { source: lbl.source },
-      );
-      fewShotExamples.push({ label: lbl.humanLabel, messages });
-    }
-    const fewShot = renderFewShotBlock(fewShotExamples);
+    const fewShot = await buildFewShotForEvaluator(ctx, evaluator, allLabels);
 
     const scoreSplit = async (split: "dev" | "test"): Promise<JudgmentPair[]> => {
       const labels = allLabels.filter((l: any) => l.splitAssignment === split);

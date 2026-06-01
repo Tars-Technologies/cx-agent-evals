@@ -5,7 +5,7 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { scoreOneAsync, type JudgeLlmClient } from "./llmJudge";
-import { selectFewShot, renderFewShotBlock, type FewShotExample } from "./fewShot";
+import { buildFewShotForEvaluator } from "./fewShotForEvaluator";
 
 type EvaluatorResult = {
   evaluatorId: Id<"evaluators">;
@@ -39,32 +39,7 @@ export const applyReadyEvaluatorsToSimRun = internalAction({
     const results: EvaluatorResult[] = [];
 
     for (const ev of ready as any[]) {
-      let fewShot = "";
-      if (ev.type === "llm_judge") {
-        const labels = await ctx.runQuery(
-          internal.evaluator.labels.byEvaluatorInternal,
-          { evaluatorId: ev._id },
-        );
-        const train = labels.filter((l: any) => l.splitAssignment === "train");
-        const byId = new Map<string, any>(train.map((l: any) => [l._id, l]));
-        const ids = selectFewShot(
-          train.filter((l: any) => l.humanLabel === "pass").map((l: any) => l._id),
-          train.filter((l: any) => l.humanLabel === "fail").map((l: any) => l._id),
-          4,
-          ev.splitSeed ?? 42,
-        );
-        const examples: FewShotExample[] = [];
-        for (const id of ids) {
-          const lbl = byId.get(id);
-          if (!lbl) continue;
-          const m = await ctx.runQuery(
-            internal.evaluator.sources.getMessagesForSource,
-            { source: lbl.source },
-          );
-          examples.push({ label: lbl.humanLabel, messages: m });
-        }
-        fewShot = renderFewShotBlock(examples);
-      }
+      const fewShot = await buildFewShotForEvaluator(ctx, ev);
 
       const verdict = await scoreOneAsync(client, ev, messages, fewShot);
       results.push({
