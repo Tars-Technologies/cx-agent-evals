@@ -98,7 +98,7 @@ export const insertRetriever = internalMutation({
       v.literal("error")
     ),
     chunkCount: v.optional(v.number()),
-    createdBy: v.id("users")
+    createdBy: v.string()
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("retrievers", {

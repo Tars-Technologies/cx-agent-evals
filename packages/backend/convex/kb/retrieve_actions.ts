@@ -238,12 +238,6 @@ export const create = tenantAction({
       return { retrieverId: existing._id, existing: true }
     }
 
-    // Look up user record
-    const user = await ctx.runQuery(internal.crud.users.getByClerkId, {
-      clerkId: userId
-    })
-    if (!user) throw new Error("User not found")
-
     const name = config.name ?? `retriever-${retrieverConfigHash.slice(0, 8)}`
 
     const retrieverId = await ctx.runMutation(
@@ -257,7 +251,7 @@ export const create = tenantAction({
         retrieverConfigHash,
         defaultK: k,
         status: "configuring",
-        createdBy: user._id
+        createdBy: userId
       }
     )
 
@@ -316,12 +310,6 @@ export const startIndexing = tenantAction({
             embeddingModel
           }
 
-    // Look up user record
-    const user = await ctx.runQuery(internal.crud.users.getByClerkId, {
-      clerkId: userId
-    })
-    if (!user) throw new Error("User not found")
-
     // Trigger indexing
     const indexResult = await ctx.runMutation(
       internal.kb.indexing.startIndexing,
@@ -330,7 +318,7 @@ export const startIndexing = tenantAction({
         kbId: retriever.kbId,
         indexConfigHash: retriever.indexConfigHash,
         indexConfig,
-        createdBy: user._id
+        createdBy: userId
       }
     )
 

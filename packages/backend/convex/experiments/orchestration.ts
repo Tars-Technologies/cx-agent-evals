@@ -67,12 +67,6 @@ export const startAgentExperiment = tenantMutation({
       )
     }
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", userId))
-      .unique()
-    if (!user) throw new Error("User not found")
-
     const experimentId = await ctx.db.insert("experiments", {
       orgId,
       kbId: dataset.kbId,
@@ -82,7 +76,7 @@ export const startAgentExperiment = tenantMutation({
       agentId: args.agentId,
       metricNames: ["recall", "precision", "iou", "f1"],
       status: "pending",
-      createdBy: user._id,
+      createdBy: userId,
       createdAt: Date.now()
     })
 

@@ -67,7 +67,7 @@ export const startIndexing = internalMutation({
     kbId: v.id("knowledgeBases"),
     indexConfigHash: v.string(),
     indexConfig: v.any(),
-    createdBy: v.id("users"),
+    createdBy: v.string(),
     tier: v.optional(v.string()),
     force: v.optional(v.boolean())
   },

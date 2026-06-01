@@ -3,7 +3,6 @@
  */
 import { v } from "convex/values"
 import { internalMutation, internalQuery } from "../_generated/server"
-import { lookupUser } from "../lib/auth"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 
 export const list = tenantQuery({
@@ -121,7 +120,6 @@ export const createSimDataset = tenantMutation({
     const { orgId, userId } = ctx
     const kb = await ctx.db.get(kbId)
     if (!kb || kb.orgId !== orgId) throw new Error("KB not found")
-    const user = await lookupUser(ctx, userId)
     return ctx.db.insert("datasets", {
       orgId,
       kbId,
@@ -132,7 +130,7 @@ export const createSimDataset = tenantMutation({
       questionCount: 0,
       scenarioCount: 0,
       metadata: {},
-      createdBy: user._id,
+      createdBy: userId,
       createdAt: Date.now()
     })
   }

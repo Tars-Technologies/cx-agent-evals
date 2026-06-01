@@ -74,12 +74,6 @@ export const startGeneration = tenantMutation({
       )
     }
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", userId))
-      .unique()
-    if (!user) throw new Error("User not found")
-
     // Create dataset record
     const datasetId = await ctx.db.insert("datasets", {
       orgId,
@@ -89,7 +83,7 @@ export const startGeneration = tenantMutation({
       strategyConfig: args.strategyConfig,
       questionCount: 0,
       metadata: {},
-      createdBy: user._id,
+      createdBy: userId,
       createdAt: Date.now()
     })
 
@@ -121,7 +115,7 @@ export const startGeneration = tenantMutation({
       processedItems: 0,
       failedItems: 0,
       skippedItems: 0,
-      createdBy: user._id,
+      createdBy: userId,
       createdAt: Date.now()
     })
 

@@ -44,12 +44,6 @@ export const start = tenantMutation({
       throw new Error("Dataset not found")
     }
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", userId))
-      .unique()
-    if (!user) throw new Error("User not found")
-
     // Validate: must provide either retrieverId or retrieverConfig
     if (!args.retrieverId && !args.retrieverConfig) {
       throw new Error("Must provide either retrieverId or retrieverConfig")
@@ -83,7 +77,7 @@ export const start = tenantMutation({
       k: args.k,
       metricNames: args.metricNames,
       status: "pending",
-      createdBy: user._id,
+      createdBy: userId,
       createdAt: Date.now()
     })
 

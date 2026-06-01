@@ -59,13 +59,6 @@ export const create = tenantMutation({
         )
     }
 
-    // Look up user record
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", userId))
-      .unique()
-    if (!user) throw new Error("User not found")
-
     // Create parent run
     const runId = await ctx.db.insert("experimentRuns", {
       orgId,
@@ -79,7 +72,7 @@ export const create = tenantMutation({
       totalRetrievers: args.retrieverIds.length,
       completedRetrievers: 0,
       failedRetrievers: 0,
-      createdBy: user._id,
+      createdBy: userId,
       createdAt: Date.now()
     })
 
@@ -94,7 +87,7 @@ export const create = tenantMutation({
         retrieverId,
         metricNames: args.metricNames,
         status: "pending",
-        createdBy: user._id,
+        createdBy: userId,
         createdAt: Date.now()
       })
 

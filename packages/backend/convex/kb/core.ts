@@ -21,15 +21,6 @@ export const create = tenantMutation({
   handler: async (ctx, args) => {
     const { orgId, userId } = ctx
 
-    // Look up or create the user record
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", userId))
-      .unique()
-    if (!user) {
-      throw new Error("User not found. Please sign in again.")
-    }
-
     return await ctx.db.insert("knowledgeBases", {
       orgId,
       name: args.name,
@@ -41,7 +32,7 @@ export const create = tenantMutation({
       entityType: args.entityType,
       sourceUrl: args.sourceUrl,
       tags: args.tags,
-      createdBy: user._id,
+      createdBy: userId,
       createdAt: Date.now()
     })
   }

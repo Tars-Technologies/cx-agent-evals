@@ -15,7 +15,7 @@ export const knowledgeBaseValidator = v.object({
   sourceUrl: v.optional(v.string()),
   tags: v.optional(v.array(v.string())),
   documentCount: v.optional(v.number()),
-  createdBy: v.id("users"),
+  createdBy: v.string(),
   createdAt: v.number()
 })
 export type KnowledgeBase = Infer<typeof knowledgeBaseValidator>
@@ -54,7 +54,7 @@ export const datasetValidator = v.object({
     v.union(v.literal("questions"), v.literal("conversation_sim"))
   ),
   scenarioCount: v.optional(v.number()),
-  createdBy: v.id("users"),
+  createdBy: v.string(),
   createdAt: v.number()
 })
 export type Dataset = Infer<typeof datasetValidator>
@@ -90,7 +90,7 @@ export const retrieverValidator = v.object({
   ),
   chunkCount: v.optional(v.number()),
   error: v.optional(v.string()),
-  createdBy: v.id("users"),
+  createdBy: v.string(),
   createdAt: v.number()
 })
 export type Retriever = Infer<typeof retrieverValidator>
@@ -132,7 +132,7 @@ export const generationJobValidator = v.object({
       skippedItems: v.number()
     })
   ),
-  createdBy: v.id("users"),
+  createdBy: v.string(),
   createdAt: v.number(),
   completedAt: v.optional(v.number()),
   totalDocs: v.optional(v.number()),
@@ -197,7 +197,7 @@ export const experimentValidator = v.object({
   // TODO: populate langsmithUrl from evaluate() result (used in frontend for experiment links)
   langsmithUrl: v.optional(v.string()),
   error: v.optional(v.string()),
-  createdBy: v.id("users"),
+  createdBy: v.string(),
   createdAt: v.number(),
   completedAt: v.optional(v.number())
 })
@@ -231,7 +231,7 @@ export const experimentRunValidator = v.object({
   winnerName: v.optional(v.string()),
   winnerScore: v.optional(v.number()),
   error: v.optional(v.string()),
-  createdBy: v.id("users"),
+  createdBy: v.string(),
   createdAt: v.number(),
   completedAt: v.optional(v.number())
 })
@@ -291,7 +291,7 @@ export const indexingJobValidator = v.object({
       })
     )
   ),
-  createdBy: v.id("users"),
+  createdBy: v.string(),
   createdAt: v.number(),
   completedAt: v.optional(v.number())
 })
