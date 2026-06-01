@@ -7,13 +7,8 @@ import {
 import { v } from "convex/values"
 import { components, internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
-import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query
-} from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { internalMutation, internalQuery } from "../_generated/server"
+import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 
 // ─── WorkPool Instance ───
 
@@ -29,7 +24,7 @@ const pool = new Workpool(components.scrapingPool, {
 
 // ─── Start Crawl ───
 
-export const startCrawl = mutation({
+export const startCrawl = tenantMutation({
   args: {
     kbId: v.id("knowledgeBases"),
     startUrl: v.string(),
@@ -47,7 +42,7 @@ export const startCrawl = mutation({
     )
   },
   handler: async (ctx, args) => {
-    const { orgId, userId } = await getAuthContext(ctx)
+    const { orgId, userId } = ctx
 
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) {
@@ -115,10 +110,10 @@ export const startCrawl = mutation({
 
 // ─── Cancel Crawl ───
 
-export const cancelCrawl = mutation({
+export const cancelCrawl = tenantMutation({
   args: { jobId: v.id("crawlJobs") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     const job = await ctx.db.get(args.jobId)
     if (!job || job.orgId !== orgId) {
       throw new Error("Crawl job not found")
@@ -132,20 +127,20 @@ export const cancelCrawl = mutation({
 
 // ─── Public Queries ───
 
-export const getJob = query({
+export const getJob = tenantQuery({
   args: { jobId: v.id("crawlJobs") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     const job = await ctx.db.get(args.jobId)
     if (!job || job.orgId !== orgId) return null
     return job
   }
 })
 
-export const listByKb = query({
+export const listByKb = tenantQuery({
   args: { kbId: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) {
       throw new Error("Knowledge base not found")

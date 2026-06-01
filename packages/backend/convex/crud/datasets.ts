@@ -1,16 +1,12 @@
 import { v } from "convex/values"
-import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query
-} from "../_generated/server"
-import { getAuthContext, lookupUser } from "../lib/auth"
+import { internalMutation, internalQuery } from "../_generated/server"
+import { lookupUser } from "../lib/auth"
+import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 
-export const list = query({
+export const list = tenantQuery({
   args: {},
   handler: async (ctx) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     return await ctx.db
       .query("datasets")
@@ -20,10 +16,10 @@ export const list = query({
   }
 })
 
-export const byKb = query({
+export const byKb = tenantQuery({
   args: { kbId: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) {
@@ -38,10 +34,10 @@ export const byKb = query({
   }
 })
 
-export const get = query({
+export const get = tenantQuery({
   args: { id: v.id("datasets") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const dataset = await ctx.db.get(args.id)
     if (!dataset || dataset.orgId !== orgId) {
@@ -113,13 +109,13 @@ export const clearLangsmithSync = internalMutation({
   }
 })
 
-export const createSimDataset = mutation({
+export const createSimDataset = tenantMutation({
   args: {
     kbId: v.id("knowledgeBases"),
     name: v.string()
   },
   handler: async (ctx, { kbId, name }) => {
-    const { orgId, userId } = await getAuthContext(ctx)
+    const { orgId, userId } = ctx
     const kb = await ctx.db.get(kbId)
     if (!kb || kb.orgId !== orgId) throw new Error("KB not found")
     const user = await lookupUser(ctx, userId)
@@ -165,10 +161,10 @@ export const updateQuestionCount = internalMutation({
  * Delete a dataset and all its questions.
  * Guards against deletion if experiments reference this dataset.
  */
-export const deleteDataset = mutation({
+export const deleteDataset = tenantMutation({
   args: { id: v.id("datasets") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const dataset = await ctx.db.get(args.id)
     if (!dataset || dataset.orgId !== orgId) {

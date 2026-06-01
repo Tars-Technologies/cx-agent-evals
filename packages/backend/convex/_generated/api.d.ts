@@ -63,6 +63,7 @@ import type * as langsmith_sync from "../langsmith/sync.js";
 import type * as langsmith_syncRetry from "../langsmith/syncRetry.js";
 import type * as lib_agentLoop from "../lib/agentLoop.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_auth_tenant from "../lib/auth/tenant.js";
 import type * as lib_docId from "../lib/docId.js";
 import type * as lib_labels from "../lib/labels.js";
 import type * as lib_validators from "../lib/validators.js";
@@ -140,6 +141,7 @@ declare const fullApi: ApiFromModules<{
   "langsmith/syncRetry": typeof langsmith_syncRetry;
   "lib/agentLoop": typeof lib_agentLoop;
   "lib/auth": typeof lib_auth;
+  "lib/auth/tenant": typeof lib_auth_tenant;
   "lib/docId": typeof lib_docId;
   "lib/labels": typeof lib_labels;
   "lib/validators": typeof lib_validators;

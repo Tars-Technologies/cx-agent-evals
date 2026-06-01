@@ -1,13 +1,8 @@
 import { paginationOptsValidator } from "convex/server"
 import { v } from "convex/values"
 import type { Doc } from "../_generated/dataModel"
-import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query
-} from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { internalMutation, internalQuery } from "../_generated/server"
+import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 import { computeDocId } from "../lib/docId"
 
 type DocSummary = Pick<
@@ -40,15 +35,15 @@ const MAX_TITLE_SEARCH_LIMIT = 100
 // just cap. Revisit if a customer customizes more than 100 docs.
 const MAX_CUSTOMIZED_DOCS_LIMIT = 100
 
-export const generateUploadUrl = mutation({
+export const generateUploadUrl = tenantMutation({
   args: {},
   handler: async (ctx) => {
-    await getAuthContext(ctx) // Require auth
+    // Auth required — enforced by tenantMutation wrapper
     return await ctx.storage.generateUploadUrl()
   }
 })
 
-export const create = mutation({
+export const create = tenantMutation({
   args: {
     kbId: v.id("knowledgeBases"),
     storageId: v.id("_storage"),
@@ -56,7 +51,7 @@ export const create = mutation({
     content: v.string()
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     // Verify KB belongs to org
     const kb = await ctx.db.get(args.kbId)
@@ -88,13 +83,13 @@ export const create = mutation({
   }
 })
 
-export const listByKb = query({
+export const listByKb = tenantQuery({
   args: {
     kbId: v.id("knowledgeBases"),
     paginationOpts: paginationOptsValidator
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     // Verify KB belongs to org
     const kb = await ctx.db.get(args.kbId)
@@ -123,10 +118,10 @@ export const listByKb = query({
   }
 })
 
-export const get = query({
+export const get = tenantQuery({
   args: { id: v.id("documents") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const doc = await ctx.db.get(args.id)
     if (!doc || doc.orgId !== orgId) {
@@ -141,13 +136,13 @@ export const get = query({
  * editor / dataset page to resolve span references without loading the whole
  * KB doc list. Order matches input where possible; missing docs are omitted.
  */
-export const getDocsByDocIds = query({
+export const getDocsByDocIds = tenantQuery({
   args: {
     kbId: v.id("knowledgeBases"),
     docIds: v.array(v.string())
   },
   handler: async (ctx, args): Promise<DocSummary[]> => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) return []
 
@@ -169,14 +164,14 @@ export const getDocsByDocIds = query({
 /**
  * Server-side title search within a KB. Empty/whitespace query returns [].
  */
-export const searchDocsByTitle = query({
+export const searchDocsByTitle = tenantQuery({
   args: {
     kbId: v.id("knowledgeBases"),
     query: v.string(),
     limit: v.optional(v.number())
   },
   handler: async (ctx, args): Promise<DocSummary[]> => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) return []
 
@@ -200,13 +195,13 @@ export const searchDocsByTitle = query({
  * compound index so only customized rows are read — scanning by_kb alone
  * would read every doc's full content and re-hit the 16MB limit on large KBs.
  */
-export const listCustomizedDocs = query({
+export const listCustomizedDocs = tenantQuery({
   args: {
     kbId: v.id("knowledgeBases"),
     limit: v.optional(v.number())
   },
   handler: async (ctx, args): Promise<DocSummary[]> => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) return []
 
@@ -230,10 +225,10 @@ export const listCustomizedDocs = query({
  * Public query that returns a document's content fields with auth check.
  * Used by the Index tab to display document source text alongside chunks.
  */
-export const getContent = query({
+export const getContent = tenantQuery({
   args: { id: v.id("documents") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     const doc = await ctx.db.get(args.id)
     if (!doc) throw new Error("Document not found")
     // Verify org access via KB
@@ -248,10 +243,10 @@ export const getContent = query({
   }
 })
 
-export const remove = mutation({
+export const remove = tenantMutation({
   args: { id: v.id("documents") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     const doc = await ctx.db.get(args.id)
     if (!doc || doc.orgId !== orgId) {
       throw new Error("Document not found")
@@ -305,13 +300,13 @@ export const getInternal = internalQuery({
   }
 })
 
-export const updatePriority = mutation({
+export const updatePriority = tenantMutation({
   args: {
     documentId: v.id("documents"),
     priority: v.number()
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     const doc = await ctx.db.get(args.documentId)
     if (!doc || doc.orgId !== orgId) throw new Error("Document not found")
     if (args.priority < 1 || args.priority > 5)
