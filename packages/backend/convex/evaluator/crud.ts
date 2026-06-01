@@ -58,6 +58,25 @@ const devMetricsValidator = v.object({
   agreement: v.number(),
 });
 
+const ciPairValidator = v.object({
+  tpr: v.object({ lower: v.number(), upper: v.number() }),
+  tnr: v.object({ lower: v.number(), upper: v.number() }),
+});
+
+const testMetricsValidator = v.object({
+  tpr: v.number(),
+  tnr: v.number(),
+  agreement: v.number(),
+  n: v.number(),
+});
+
+const labelCountsValidator = v.object({
+  passDev: v.number(),
+  failDev: v.number(),
+  passTest: v.number(),
+  failTest: v.number(),
+});
+
 // ─── Mutations ───
 
 export const create = mutation({
@@ -170,6 +189,25 @@ export const updateMetrics = internalMutation({
       status: args.status,
       updatedAt: Date.now(),
     });
+  },
+});
+
+export const updateValidation = internalMutation({
+  args: {
+    evaluatorId: v.id("evaluators"),
+    devMetrics: devMetricsValidator,
+    testMetrics: v.optional(testMetricsValidator),
+    devMetricsCI: v.optional(ciPairValidator),
+    testMetricsCI: v.optional(ciPairValidator),
+    labelCounts: v.optional(labelCountsValidator),
+    status: statusValidator,
+    validatedAt: v.optional(v.number()),
+  },
+  handler: async (ctx, { evaluatorId, ...patch }) => {
+    const filtered = Object.fromEntries(
+      Object.entries(patch).filter(([, val]) => val !== undefined),
+    );
+    await ctx.db.patch(evaluatorId, { ...filtered, updatedAt: Date.now() });
   },
 });
 

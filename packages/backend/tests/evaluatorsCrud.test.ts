@@ -34,6 +34,33 @@ const llmJudgeConfig = (name = "tone", rubric = "polite") => ({
   inputContext: ["transcript" as const],
 });
 
+async function seedEvaluatorForCrud(
+  t: ReturnType<typeof setupTest>,
+): Promise<{ agentId: Id<"agents">; evaluatorId: Id<"evaluators"> }> {
+  const userId = await seedUser(t);
+  const agentId = await seedAgent(t, userId);
+  const evaluatorId = await t.run(async (ctx) =>
+    ctx.db.insert("evaluators", {
+      orgId: TEST_ORG_ID,
+      agentId,
+      name: "tone",
+      description: "tone judge",
+      type: "llm_judge" as const,
+      llmJudgeConfig: {
+        dimensions: [],
+        outputFormat: "per_dimension" as const,
+        model: "gpt-4o-mini",
+        inputContext: ["transcript" as const],
+      },
+      source: { kind: "manual" as const },
+      status: "draft" as const,
+      tags: [],
+      createdAt: Date.now(),
+    }),
+  );
+  return { agentId, evaluatorId };
+}
+
 describe("evaluators CRUD (rev 3 shape)", () => {
   it("create manual llm_judge: status=draft, source.kind=manual", async () => {
     const t = setupTest();
@@ -228,5 +255,30 @@ describe("evaluators CRUD (rev 3 shape)", () => {
         llmJudgeConfig: llmJudgeConfig(), source: { kind: "manual" }, tags: [],
       })
     ).rejects.toThrow();
+  });
+});
+
+describe("updateValidation", () => {
+  it("persists dev+test metrics, CIs, counts, status and validatedAt", async () => {
+    const t = setupTest();
+    const { evaluatorId } = await seedEvaluatorForCrud(t);
+
+    await t.mutation(internal.evaluator.crud.updateValidation, {
+      evaluatorId,
+      devMetrics: { tpr: 0.9, tnr: 0.88, agreement: 0.89 },
+      testMetrics: { tpr: 0.86, tnr: 0.87, agreement: 0.86, n: 12 },
+      devMetricsCI: { tpr: { lower: 0.7, upper: 0.97 }, tnr: { lower: 0.6, upper: 0.96 } },
+      testMetricsCI: { tpr: { lower: 0.6, upper: 0.95 }, tnr: { lower: 0.6, upper: 0.95 } },
+      labelCounts: { passDev: 6, failDev: 6, passTest: 6, failTest: 6 },
+      status: "ready",
+      validatedAt: 1000,
+    });
+
+    const ev = await t.run(async (ctx) => ctx.db.get(evaluatorId));
+    expect(ev!.status).toBe("ready");
+    expect(ev!.testMetrics!.n).toBe(12);
+    expect(ev!.devMetricsCI!.tpr.upper).toBeCloseTo(0.97);
+    expect(ev!.labelCounts!.passTest).toBe(6);
+    expect(ev!.validatedAt).toBe(1000);
   });
 });
