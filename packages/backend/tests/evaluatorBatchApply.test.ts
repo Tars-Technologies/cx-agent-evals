@@ -221,6 +221,10 @@ async function seedCohortAndJudge(
                     agreement: (validated.tpr + validated.tnr) / 2,
                     n: 10,
                   },
+                  // Exercise the exact-counts path in reconstructPairs. With a
+                  // 5/5 test split these match round(n/2), so the existing
+                  // assertions (n=4, observed 0.75, corrected true/false) hold.
+                  labelCounts: { passDev: 5, failDev: 5, passTest: 5, failTest: 5 },
                 }),
           }
         : {}),

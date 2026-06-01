@@ -20,19 +20,31 @@ type RunSummary = {
 
 /**
  * Reconstruct representative (label,pred) arrays from stored test confusion metrics.
- * CAVEAT: assumes a ~50/50 pass/fail test split, so the resulting CI is approximate
- * (not exact). The exact fix is to persist raw tp/tn/fp/fn on testMetrics.
+ * Uses the EXACT per-class test counts from `evaluator.labelCounts` (passTest/failTest)
+ * when present, making the resulting bootstrap CI exact. Only falls back to the
+ * approximate ~50/50 pass/fail split assumption when those counts are absent.
  */
-function reconstructPairs(testMetrics?: { tpr: number; tnr: number; n: number }): {
+function reconstructPairs(
+  testMetrics?: { tpr: number; tnr: number; n: number },
+  counts?: { passTest: number; failTest: number },
+): {
   testLabels: number[];
   testPreds: number[];
 } {
   const testLabels: number[] = [];
   const testPreds: number[] = [];
   if (!testMetrics) return { testLabels, testPreds };
-  const n = testMetrics.n ?? 0;
-  const nPass = Math.round(n / 2);
-  const nFail = n - nPass;
+  // Prefer exact per-class counts; fall back to an even split only if absent.
+  let nPass: number;
+  let nFail: number;
+  if (counts && counts.passTest + counts.failTest > 0) {
+    nPass = counts.passTest;
+    nFail = counts.failTest;
+  } else {
+    const n = testMetrics.n ?? 0;
+    nPass = Math.round(n / 2);
+    nFail = n - nPass;
+  }
   const tp = Math.round(testMetrics.tpr * nPass);
   const tn = Math.round(testMetrics.tnr * nFail);
   for (let i = 0; i < tp; i++) { testLabels.push(1); testPreds.push(1); }
@@ -124,7 +136,7 @@ export const runOnCohort = action({
       if (canCorrect && tm) {
         corrected = correctedPassRate(observed, tm.tpr, tm.tnr);
         const cohortPreds = resultRows.map((r) => (r.passed ? 1 : 0));
-        const { testLabels, testPreds } = reconstructPairs(tm);
+        const { testLabels, testPreds } = reconstructPairs(tm, evaluator.labelCounts);
         ci = scoreBCI(cohortPreds, testLabels, testPreds, 20000, evaluator.splitSeed ?? 42);
       }
 
