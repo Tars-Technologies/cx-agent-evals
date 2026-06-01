@@ -30,8 +30,8 @@ import { OpenAIPipelineLLM } from "@tars-inc/eval-lib/pipeline/llm-openai"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
-import { type ActionCtx, action } from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import type { ActionCtx } from "../_generated/server"
+import { tenantAction } from "../lib/auth/tenant"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
 
 // ─── Helpers ───
@@ -204,7 +204,7 @@ async function tryCreateRerankerForRetriever(): Promise<Reranker | undefined> {
  * Does NOT trigger indexing — use startIndexing separately.
  * Dedup: returns existing retriever if (kbId, retrieverConfigHash) already exists.
  */
-export const create = action({
+export const create = tenantAction({
   args: {
     kbId: v.id("knowledgeBases"),
     retrieverConfig: v.any()
@@ -213,7 +213,7 @@ export const create = action({
     ctx,
     args
   ): Promise<{ retrieverId: Id<"retrievers">; existing: boolean }> => {
-    const { orgId, userId } = await getAuthContext(ctx)
+    const { orgId, userId } = ctx
 
     const config = args.retrieverConfig as PipelineConfig & { k?: number }
     const k = config.k ?? 5
@@ -265,12 +265,12 @@ export const create = action({
  * Start indexing for a retriever. Triggers the indexing pipeline and updates
  * the retriever status to "indexing" (or "ready" if already indexed).
  */
-export const startIndexing = action({
+export const startIndexing = tenantAction({
   args: {
     retrieverId: v.id("retrievers")
   },
   handler: async (ctx, args): Promise<{ status: string }> => {
-    const { orgId, userId } = await getAuthContext(ctx)
+    const { orgId, userId } = ctx
 
     const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
       id: args.retrieverId
@@ -362,7 +362,7 @@ export const startIndexing = action({
  * Standalone retrieval: given a retriever ID and query, return ranked chunks.
  * Used by the playground and future production consumers.
  */
-export const retrieve = action({
+export const retrieve = tenantAction({
   args: {
     retrieverId: v.id("retrievers"),
     query: v.string(),
@@ -382,7 +382,7 @@ export const retrieve = action({
       metadata: Record<string, unknown>
     }[]
   > => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     // Load retriever
     const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {

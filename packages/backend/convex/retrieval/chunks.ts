@@ -1,6 +1,6 @@
 import { v } from "convex/values"
-import { internalMutation, internalQuery, query } from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { internalMutation, internalQuery } from "../_generated/server"
+import { tenantQuery } from "../lib/auth/tenant"
 
 // ─── Batch Mutations (new — for two-phase indexing) ───
 
@@ -235,7 +235,7 @@ export const getChunksByDocConfigPage = internalQuery({
  * Public paginated query for Index tab — fetches chunks by (kbId, indexConfigHash, documentId?).
  * Optionally filters by documentId for narrower browsing.
  */
-export const getChunksByRetrieverPage = query({
+export const getChunksByRetrieverPage = tenantQuery({
   args: {
     kbId: v.id("knowledgeBases"),
     indexConfigHash: v.string(),
@@ -244,11 +244,9 @@ export const getChunksByRetrieverPage = query({
     pageSize: v.optional(v.number())
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
-
     // Verify KB belongs to org
     const kb = await ctx.db.get(args.kbId)
-    if (!kb || kb.orgId !== orgId) throw new Error("KB not found")
+    if (!kb || kb.orgId !== ctx.orgId) throw new Error("KB not found")
 
     const numItems = args.pageSize ?? 50
 

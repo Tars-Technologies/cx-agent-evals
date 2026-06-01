@@ -8,13 +8,8 @@ import type { JobStatus } from "@tars-inc/eval-lib/shared"
 import { v } from "convex/values"
 import { components, internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
-import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query
-} from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { internalMutation, internalQuery } from "../_generated/server"
+import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 import { applyResult, counterPatch } from "../lib/workpool"
 
 // ─── WorkPool Instance ───
@@ -31,7 +26,7 @@ const pool = new Workpool(components.generationPool, {
 
 // ─── Start Generation ───
 
-export const startGeneration = mutation({
+export const startGeneration = tenantMutation({
   args: {
     kbId: v.id("knowledgeBases"),
     name: v.string(),
@@ -39,7 +34,7 @@ export const startGeneration = mutation({
     strategyConfig: v.any()
   },
   handler: async (ctx, args) => {
-    const { orgId, userId } = await getAuthContext(ctx)
+    const { orgId, userId } = ctx
 
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) {
@@ -652,10 +647,10 @@ export const updateDocProgress = internalMutation({
 
 // ─── Cancel Generation ───
 
-export const cancelGeneration = mutation({
+export const cancelGeneration = tenantMutation({
   args: { jobId: v.id("generationJobs") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     const job = await ctx.db.get(args.jobId)
     if (!job || job.orgId !== orgId) {
       throw new Error("Generation job not found")
@@ -677,10 +672,10 @@ export const cancelGeneration = mutation({
 
 // ─── Queries ───
 
-export const getJob = query({
+export const getJob = tenantQuery({
   args: { jobId: v.id("generationJobs") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     const job = await ctx.db.get(args.jobId)
     if (!job || job.orgId !== orgId) return null
 
@@ -690,13 +685,13 @@ export const getJob = query({
   }
 })
 
-export const listJobs = query({
+export const listJobs = tenantQuery({
   args: {
     kbId: v.optional(v.id("knowledgeBases")),
     datasetId: v.optional(v.id("datasets"))
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     if (args.datasetId) {
       const jobs = await ctx.db
@@ -732,10 +727,10 @@ export const getJobInternal = internalQuery({
  * Filters out stale jobs (>2 hours old) to prevent permanent blocking.
  * If kbId is provided, only returns active jobs for that KB.
  */
-export const getActiveJob = query({
+export const getActiveJob = tenantQuery({
   args: { kbId: v.optional(v.id("knowledgeBases")) },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const running = await ctx.db
       .query("generationJobs")

@@ -9,13 +9,8 @@ import type { PaginationResult } from "convex/server"
 import { v } from "convex/values"
 import { components, internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
-import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query
-} from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { internalMutation, internalQuery } from "../_generated/server"
+import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 
 // ─── WorkPool Instance ───
 
@@ -318,12 +313,11 @@ export const onDocumentIndexed = internalMutation({
 /**
  * Get an indexing job with computed pendingDocs count.
  */
-export const getJob = query({
+export const getJob = tenantQuery({
   args: { jobId: v.id("indexingJobs") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
     const job = await ctx.db.get(args.jobId)
-    if (!job || job.orgId !== orgId) return null
+    if (!job || job.orgId !== ctx.orgId) return null
 
     const pendingDocs =
       job.totalDocs - job.processedDocs - job.failedDocs - job.skippedDocs
@@ -334,7 +328,7 @@ export const getJob = query({
 /**
  * Check if a (kbId, indexConfigHash) has a completed indexing job.
  */
-export const isIndexed = query({
+export const isIndexed = tenantQuery({
   args: {
     kbId: v.id("knowledgeBases"),
     indexConfigHash: v.string()
@@ -359,15 +353,14 @@ export const isIndexed = query({
 /**
  * List all indexing jobs for the current org, newest first.
  */
-export const listJobs = query({
+export const listJobs = tenantQuery({
   args: {
     kbId: v.optional(v.id("knowledgeBases"))
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
     const jobs = await ctx.db
       .query("indexingJobs")
-      .withIndex("by_org", (q) => q.eq("orgId", orgId))
+      .withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
       .order("desc")
       .collect()
     if (args.kbId) {
@@ -385,12 +378,11 @@ export const listJobs = query({
  * finish normally. The job transitions to "canceled" once all in-progress
  * documents complete.
  */
-export const cancelIndexing = mutation({
+export const cancelIndexing = tenantMutation({
   args: { jobId: v.id("indexingJobs") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
     const job = await ctx.db.get(args.jobId)
-    if (!job || job.orgId !== orgId) {
+    if (!job || job.orgId !== ctx.orgId) {
       throw new Error("Indexing job not found")
     }
     if (job.status !== "running" && job.status !== "pending") {
@@ -411,16 +403,15 @@ export const cancelIndexing = mutation({
  * Schedule cleanup of all chunks for a (kbId, indexConfigHash).
  * Delegates to the cleanupAction for paginated deletion.
  */
-export const cleanupIndex = mutation({
+export const cleanupIndex = tenantMutation({
   args: {
     kbId: v.id("knowledgeBases"),
     indexConfigHash: v.string(),
     deleteDocuments: v.optional(v.boolean())
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
     const kb = await ctx.db.get(args.kbId)
-    if (!kb || kb.orgId !== orgId) {
+    if (!kb || kb.orgId !== ctx.orgId) {
       throw new Error("Knowledge base not found")
     }
 

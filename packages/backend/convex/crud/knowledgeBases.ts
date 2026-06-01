@@ -1,13 +1,8 @@
 import { v } from "convex/values"
-import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query
-} from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { internalMutation, internalQuery } from "../_generated/server"
+import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 
-export const create = mutation({
+export const create = tenantMutation({
   args: {
     name: v.string(),
     description: v.optional(v.string()),
@@ -20,7 +15,7 @@ export const create = mutation({
     tags: v.optional(v.array(v.string()))
   },
   handler: async (ctx, args) => {
-    const { orgId, userId } = await getAuthContext(ctx)
+    const { orgId, userId } = ctx
 
     // Look up or create the user record
     const user = await ctx.db
@@ -48,10 +43,10 @@ export const create = mutation({
   }
 })
 
-export const list = query({
+export const list = tenantQuery({
   args: {},
   handler: async (ctx) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     return await ctx.db
       .query("knowledgeBases")
@@ -61,10 +56,10 @@ export const list = query({
   }
 })
 
-export const listByIndustry = query({
+export const listByIndustry = tenantQuery({
   args: { industry: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     if (args.industry) {
       return await ctx.db
         .query("knowledgeBases")
@@ -82,10 +77,10 @@ export const listByIndustry = query({
   }
 })
 
-export const listWithDocCounts = query({
+export const listWithDocCounts = tenantQuery({
   args: { industry: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     let kbs
     if (args.industry) {
       kbs = await ctx.db
@@ -160,10 +155,10 @@ export const listKbsMissingCount = internalQuery({
   }
 })
 
-export const get = query({
+export const get = tenantQuery({
   args: { id: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const kb = await ctx.db.get(args.id)
     if (!kb || kb.orgId !== orgId) {

@@ -7,13 +7,8 @@ import {
 import { v } from "convex/values"
 import { components, internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
-import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query
-} from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { internalMutation, internalQuery } from "../_generated/server"
+import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 
 // ─── WorkPool Instance ───
 
@@ -26,7 +21,7 @@ const pool = new Workpool(components.experimentPool, {
 
 // ─── Start Experiment ───
 
-export const start = mutation({
+export const start = tenantMutation({
   args: {
     datasetId: v.id("datasets"),
     name: v.string(),
@@ -36,7 +31,7 @@ export const start = mutation({
     metricNames: v.array(v.string())
   },
   handler: async (ctx, args) => {
-    const { orgId, userId } = await getAuthContext(ctx)
+    const { orgId, userId } = ctx
 
     const dataset = await ctx.db.get(args.datasetId)
     if (!dataset || dataset.orgId !== orgId) {
@@ -115,14 +110,14 @@ const agentPool = new Workpool(components.agentExperimentPool, {
 
 // ─── Start Agent Experiment ───
 
-export const startAgentExperiment = mutation({
+export const startAgentExperiment = tenantMutation({
   args: {
     datasetId: v.id("datasets"),
     agentId: v.id("agents"),
     name: v.string()
   },
   handler: async (ctx, args) => {
-    const { orgId, userId } = await getAuthContext(ctx)
+    const { orgId, userId } = ctx
 
     const dataset = await ctx.db.get(args.datasetId)
     if (!dataset || dataset.orgId !== orgId) {
@@ -325,10 +320,10 @@ export const onAgentQuestionComplete = internalMutation({
 
 // ─── Cancel Agent Experiment ───
 
-export const cancelAgentExperiment = mutation({
+export const cancelAgentExperiment = tenantMutation({
   args: { experimentId: v.id("experiments") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     const experiment = await ctx.db.get(args.experimentId)
     if (!experiment || experiment.orgId !== orgId) {
       throw new Error("Experiment not found")
@@ -437,10 +432,10 @@ export const onExperimentComplete = internalMutation({
 
 // ─── Cancel Experiment ───
 
-export const cancelExperiment = mutation({
+export const cancelExperiment = tenantMutation({
   args: { experimentId: v.id("experiments") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     const experiment = await ctx.db.get(args.experimentId)
     if (!experiment || experiment.orgId !== orgId) {
       throw new Error("Experiment not found")
@@ -554,10 +549,10 @@ export const updateStatus = internalMutation({
 
 // ─── Public Queries ───
 
-export const byDataset = query({
+export const byDataset = tenantQuery({
   args: { datasetId: v.id("datasets") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const dataset = await ctx.db.get(args.datasetId)
     if (!dataset || dataset.orgId !== orgId) {
@@ -572,10 +567,10 @@ export const byDataset = query({
   }
 })
 
-export const byOrg = query({
+export const byOrg = tenantQuery({
   args: {},
   handler: async (ctx) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
     return await ctx.db
       .query("experiments")
       .withIndex("by_org", (q) => q.eq("orgId", orgId))
@@ -584,10 +579,10 @@ export const byOrg = query({
   }
 })
 
-export const byKb = query({
+export const byKb = tenantQuery({
   args: { kbId: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) {
@@ -602,10 +597,10 @@ export const byKb = query({
   }
 })
 
-export const get = query({
+export const get = tenantQuery({
   args: { id: v.id("experiments") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const exp = await ctx.db.get(args.id)
     // Return null instead of throwing — query is used by useQuery which

@@ -1,19 +1,14 @@
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
-import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query
-} from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { internalMutation, internalQuery } from "../_generated/server"
+import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 
 // ─── Queries ───
 
-export const byKb = query({
+export const byKb = tenantQuery({
   args: { kbId: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) {
@@ -28,7 +23,7 @@ export const byKb = query({
   }
 })
 
-export const byOrg = query({
+export const byOrg = tenantQuery({
   args: {
     status: v.optional(
       v.union(
@@ -40,7 +35,7 @@ export const byOrg = query({
     )
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const all = await ctx.db
       .query("retrievers")
@@ -55,10 +50,10 @@ export const byOrg = query({
   }
 })
 
-export const get = query({
+export const get = tenantQuery({
   args: { id: v.id("retrievers") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const retriever = await ctx.db.get(args.id)
     if (!retriever || retriever.orgId !== orgId) {
@@ -167,10 +162,10 @@ export const findByConfigHash = internalQuery({
 
 // ─── Mutations ───
 
-export const remove = mutation({
+export const remove = tenantMutation({
   args: { id: v.id("retrievers") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const retriever = await ctx.db.get(args.id)
     if (!retriever || retriever.orgId !== orgId) {
@@ -215,10 +210,10 @@ export const remove = mutation({
  * Reset retriever status after indexing is canceled.
  * Called from frontend after indexing.cancelIndexing completes.
  */
-export const resetAfterCancel = mutation({
+export const resetAfterCancel = tenantMutation({
   args: { id: v.id("retrievers") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const retriever = await ctx.db.get(args.id)
     if (!retriever || retriever.orgId !== orgId) {
@@ -240,10 +235,10 @@ export const resetAfterCancel = mutation({
  * Delete only the index (chunks) for a retriever, resetting it to "configuring".
  * Preserves the retriever record itself.
  */
-export const deleteIndex = mutation({
+export const deleteIndex = tenantMutation({
   args: { id: v.id("retrievers") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const retriever = await ctx.db.get(args.id)
     if (!retriever || retriever.orgId !== orgId) {

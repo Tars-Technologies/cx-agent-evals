@@ -134,6 +134,9 @@ describe("knowledgeBases: listWithDocCounts", () => {
     await seedDocument(t, kb1, { title: "Doc 1" })
     await seedDocument(t, kb1, { title: "Doc 2" })
     await seedDocument(t, kb1, { title: "Doc 3" })
+    // documentCount is a denormalized field updated by backfillOneKb in production;
+    // set it directly here so the query returns the correct count.
+    await t.run(async (ctx) => ctx.db.patch(kb1, { documentCount: 3 }))
 
     const authedT = t.withIdentity(testIdentity)
     const results = await authedT.query(

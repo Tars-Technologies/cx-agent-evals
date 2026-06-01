@@ -15,8 +15,8 @@ import { v } from "convex/values"
 import MiniSearch from "minisearch"
 import { api, internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
-import { type ActionCtx, action } from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import type { ActionCtx } from "../_generated/server"
+import { tenantAction } from "../lib/auth/tenant"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
 
 // ---------------------------------------------------------------------------
@@ -213,19 +213,17 @@ function dispatchQueryStrategy(
  *
  * Returns the strategy name, original query, rewritten queries, and latency.
  */
-export const rewriteQuery = action({
+export const rewriteQuery = tenantAction({
   args: {
     retrieverId: v.id("retrievers"),
     query: v.string()
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
-
     const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
       id: args.retrieverId
     })
 
-    if (retriever.orgId !== orgId) {
+    if (retriever.orgId !== ctx.orgId) {
       throw new Error("Retriever not found")
     }
 
@@ -653,7 +651,7 @@ async function searchSingleQuery(
  * Returns per-query results plus fused results with search config metadata
  * and latency.
  */
-export const searchWithQueries = action({
+export const searchWithQueries = tenantAction({
   args: {
     retrieverId: v.id("retrievers"),
     queries: v.array(v.string()),
@@ -661,14 +659,13 @@ export const searchWithQueries = action({
   },
   handler: async (ctx, args) => {
     const start = performance.now()
-    const { orgId } = await getAuthContext(ctx)
 
     // Load retriever
     const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
       id: args.retrieverId
     })
 
-    if (retriever.orgId !== orgId) {
+    if (retriever.orgId !== ctx.orgId) {
       throw new Error("Retriever not found")
     }
 
@@ -1041,7 +1038,7 @@ async function runRefinementStage(
  *
  * Returns per-stage details and the final refined chunks.
  */
-export const refine = action({
+export const refine = tenantAction({
   args: {
     retrieverId: v.id("retrievers"),
     query: v.string(),
@@ -1059,14 +1056,12 @@ export const refine = action({
     k: v.optional(v.number())
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
-
     // Load and validate retriever
     const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
       id: args.retrieverId
     })
 
-    if (retriever.orgId !== orgId) {
+    if (retriever.orgId !== ctx.orgId) {
       throw new Error("Retriever not found")
     }
 
@@ -1282,7 +1277,7 @@ async function executeRefinement(
  *
  * Returns: `{ rewriting, search, refinement, finalChunks, totalLatencyMs }`.
  */
-export const retrieveWithTrace = action({
+export const retrieveWithTrace = tenantAction({
   args: {
     retrieverId: v.id("retrievers"),
     query: v.string(),
@@ -1290,14 +1285,13 @@ export const retrieveWithTrace = action({
   },
   handler: async (ctx, args) => {
     const totalStart = performance.now()
-    const { orgId } = await getAuthContext(ctx)
 
     // Load and validate retriever
     const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
       id: args.retrieverId
     })
 
-    if (retriever.orgId !== orgId) {
+    if (retriever.orgId !== ctx.orgId) {
       throw new Error("Retriever not found")
     }
 
