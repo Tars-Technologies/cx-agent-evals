@@ -64,7 +64,7 @@ export function ScorecardPanel({
       {card && card.rows.length > 0 ? (
         <div className="space-y-2">
           <div className="text-sm text-text">
-            Overall:{" "}
+            Overall (corrected):{" "}
             <span className="font-semibold font-mono">
               {pct(card.overall.correctedPassRate)}
             </span>
