@@ -3,6 +3,7 @@ import {
   computeTPRTNR,
   correctedPassRate,
   bootstrapCI,
+  wilsonCI,
   type JudgmentPair,
 } from "../convex/evaluator/metrics";
 
@@ -156,5 +157,31 @@ describe("bootstrapCI", () => {
     expect(ci.lower).toBeLessThanOrEqual(ci.upper);
     expect(ci.lower).toBeGreaterThanOrEqual(0);
     expect(ci.upper).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("wilsonCI", () => {
+  it("returns [0,1]-bounded interval straddling the point estimate", () => {
+    const { lower, upper } = wilsonCI(8, 10); // p̂ = 0.8
+    expect(lower).toBeGreaterThan(0);
+    expect(upper).toBeLessThanOrEqual(1);
+    expect(lower).toBeLessThan(0.8);
+    expect(upper).toBeGreaterThan(0.8);
+  });
+
+  it("is wider for smaller n at the same proportion", () => {
+    const small = wilsonCI(4, 5); // 0.8, n=5
+    const large = wilsonCI(40, 50); // 0.8, n=50
+    expect(small.upper - small.lower).toBeGreaterThan(large.upper - large.lower);
+  });
+
+  it("returns the full [0,1] interval when n is 0", () => {
+    expect(wilsonCI(0, 0)).toEqual({ lower: 0, upper: 1 });
+  });
+
+  it("clamps within [0,1] at the extremes", () => {
+    const { lower, upper } = wilsonCI(10, 10); // p̂ = 1.0
+    expect(lower).toBeGreaterThanOrEqual(0);
+    expect(upper).toBeLessThanOrEqual(1);
   });
 });

@@ -152,3 +152,26 @@ export function bootstrapCI(
     upper: samples[upperIdx],
   };
 }
+
+/**
+ * Wilson score interval (95%) for a binomial proportion.
+ * More reliable than the normal approximation at small n and extreme p̂.
+ * Returns the full [0, 1] interval when n === 0.
+ */
+export function wilsonCI(
+  successes: number,
+  n: number,
+): { lower: number; upper: number } {
+  if (n === 0) return { lower: 0, upper: 1 };
+  const z = 1.959963984540054; // 95% two-sided
+  const z2 = z * z;
+  const phat = successes / n;
+  const denom = 1 + z2 / n;
+  const center = (phat + z2 / (2 * n)) / denom;
+  const margin =
+    (z * Math.sqrt((phat * (1 - phat)) / n + z2 / (4 * n * n))) / denom;
+  return {
+    lower: Math.max(0, center - margin),
+    upper: Math.min(1, center + margin),
+  };
+}
