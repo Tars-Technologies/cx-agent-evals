@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 
-export default async function TranscriptRedirect({
+export default async function KbEvaluatePage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  redirect(`/conversations?tab=transcripts&id=${id}`);
+  redirect(`/kb/${id}/evaluate/datasets`);
 }

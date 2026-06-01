@@ -1,19 +1,28 @@
 import { TabsLayout } from "@/components/shell/TabsLayout";
-import { StubPanel } from "@/components/shell/StubPanel";
+import { RealConversationsPane } from "@/components/conversations/RealConversationsPane";
+import { TranscriptsPane } from "@/components/conversations/TranscriptsPane";
 
-export default function ConversationsRealPage() {
+export default async function ConversationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; id?: string }>;
+}) {
+  const { tab, id } = await searchParams;
+  const activeTab = tab === "transcripts" ? "transcripts" : "real";
+
   return (
     <TabsLayout
       title="Conversations"
       tabs={[
-        { label: "Real conversations", href: "/conversations" },
-        { label: "Transcripts", href: "/conversations/transcripts" },
+        { label: "Real conversations", value: "real" },
+        { label: "Transcripts", value: "transcripts" },
       ]}
     >
-      <StubPanel
-        title="Real conversations"
-        note="Live agent chat sessions will appear here. Moves over in the Conversations section PR."
-      />
+      {activeTab === "real" ? (
+        <RealConversationsPane selectedId={id} />
+      ) : (
+        <TranscriptsPane selectedId={id} />
+      )}
     </TabsLayout>
   );
 }
