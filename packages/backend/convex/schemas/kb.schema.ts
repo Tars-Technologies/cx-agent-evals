@@ -1,0 +1,383 @@
+import { defineTable } from "convex/server"
+import { type Infer, v } from "convex/values"
+import { spanValidator } from "../lib/validators"
+
+// ─── Knowledge Bases ───
+export const knowledgeBaseValidator = v.object({
+  orgId: v.string(),
+  name: v.string(),
+  description: v.optional(v.string()),
+  metadata: v.any(),
+  industry: v.optional(v.string()),
+  subIndustry: v.optional(v.string()),
+  company: v.optional(v.string()),
+  entityType: v.optional(v.string()),
+  sourceUrl: v.optional(v.string()),
+  tags: v.optional(v.array(v.string())),
+  documentCount: v.optional(v.number()),
+  createdBy: v.id("users"),
+  createdAt: v.number()
+})
+export type KnowledgeBase = Infer<typeof knowledgeBaseValidator>
+
+// ─── Documents ───
+export const documentValidator = v.object({
+  orgId: v.string(),
+  kbId: v.id("knowledgeBases"),
+  docId: v.string(),
+  title: v.string(),
+  content: v.string(),
+  fileId: v.optional(v.id("_storage")),
+  contentLength: v.number(),
+  metadata: v.any(),
+  sourceUrl: v.optional(v.string()),
+  sourceType: v.optional(v.string()),
+  priority: v.optional(v.number()), // 1-5, default 3
+  createdAt: v.number()
+})
+export type Document = Infer<typeof documentValidator>
+
+// ─── Datasets ───
+export const datasetValidator = v.object({
+  orgId: v.string(),
+  kbId: v.id("knowledgeBases"),
+  name: v.string(),
+  strategy: v.string(),
+  strategyConfig: v.any(),
+  questionCount: v.number(),
+  langsmithDatasetId: v.optional(v.string()),
+  langsmithUrl: v.optional(v.string()),
+  langsmithSyncStatus: v.optional(v.string()),
+  metadata: v.any(),
+  realWorldQuestionCount: v.optional(v.number()),
+  type: v.optional(
+    v.union(v.literal("questions"), v.literal("conversation_sim"))
+  ),
+  scenarioCount: v.optional(v.number()),
+  createdBy: v.id("users"),
+  createdAt: v.number()
+})
+export type Dataset = Infer<typeof datasetValidator>
+
+// ─── Questions ───
+export const questionValidator = v.object({
+  datasetId: v.id("datasets"),
+  queryId: v.string(),
+  queryText: v.string(),
+  sourceDocId: v.string(),
+  relevantSpans: v.array(spanValidator),
+  langsmithExampleId: v.optional(v.string()),
+  metadata: v.any(),
+  source: v.optional(v.string())
+})
+export type Question = Infer<typeof questionValidator>
+
+// ─── Retrievers ───
+export const retrieverValidator = v.object({
+  orgId: v.string(),
+  kbId: v.id("knowledgeBases"),
+  name: v.string(),
+  retrieverConfig: v.any(),
+  indexConfigHash: v.string(),
+  retrieverConfigHash: v.string(),
+  defaultK: v.number(),
+  indexingJobId: v.optional(v.id("indexingJobs")),
+  status: v.union(
+    v.literal("configuring"),
+    v.literal("indexing"),
+    v.literal("ready"),
+    v.literal("error")
+  ),
+  chunkCount: v.optional(v.number()),
+  error: v.optional(v.string()),
+  createdBy: v.id("users"),
+  createdAt: v.number()
+})
+export type Retriever = Infer<typeof retrieverValidator>
+
+// ─── Generation Jobs ───
+export const generationJobValidator = v.object({
+  orgId: v.string(),
+  kbId: v.id("knowledgeBases"),
+  datasetId: v.id("datasets"),
+  strategy: v.string(),
+  status: v.union(
+    v.literal("pending"),
+    v.literal("running"),
+    v.literal("completed"),
+    v.literal("completed_with_errors"),
+    v.literal("failed"),
+    v.literal("canceling"),
+    v.literal("canceled")
+  ),
+  phase: v.string(),
+  totalItems: v.number(),
+  processedItems: v.number(),
+  failedItems: v.number(),
+  skippedItems: v.number(),
+  error: v.optional(v.string()),
+  failedItemDetails: v.optional(
+    v.array(
+      v.object({
+        itemKey: v.string(),
+        error: v.string()
+      })
+    )
+  ),
+  workIds: v.optional(v.array(v.string())),
+  phase1Stats: v.optional(
+    v.object({
+      processedItems: v.number(),
+      failedItems: v.number(),
+      skippedItems: v.number()
+    })
+  ),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+  completedAt: v.optional(v.number()),
+  totalDocs: v.optional(v.number()),
+  docsProcessed: v.optional(v.number()),
+  currentDocName: v.optional(v.string()),
+  // Shared generation plan data — stored once, read by per-doc actions
+  generationPlan: v.optional(v.any()),
+  questionsGenerated: v.optional(v.number()),
+  missedQuestions: v.optional(v.number()),
+  pass2Enriched: v.optional(v.number()),
+  pass2Unchanged: v.optional(v.number())
+})
+export type GenerationJob = Infer<typeof generationJobValidator>
+
+// ─── Experiments (evaluation runs against a dataset) ───
+export const experimentValidator = v.object({
+  orgId: v.string(),
+  kbId: v.optional(v.id("knowledgeBases")),
+  datasetId: v.id("datasets"),
+  name: v.string(),
+  retrieverId: v.optional(v.id("retrievers")),
+  retrieverConfig: v.optional(v.any()),
+  experimentRunId: v.optional(v.id("experimentRuns")),
+  experimentType: v.optional(
+    v.union(v.literal("retriever"), v.literal("agent"))
+  ),
+  // Plain string, not v.id("agents"), so the KB schema closes without
+  // depending on an agent-domain table. Only agent experiments populate it;
+  // KB retriever experiments leave it undefined. Agent code casts to
+  // Id<"agents"> at read time. See followups.md (experiments-to-kb resolution).
+  agentId: v.optional(v.string()),
+  k: v.optional(v.number()),
+  metricNames: v.array(v.string()),
+  status: v.union(
+    v.literal("pending"),
+    v.literal("running"),
+    v.literal("completed"),
+    v.literal("completed_with_errors"),
+    v.literal("failed"),
+    v.literal("canceling"),
+    v.literal("canceled")
+  ),
+  phase: v.optional(
+    v.union(
+      v.literal("initializing"),
+      v.literal("indexing"),
+      v.literal("syncing"),
+      v.literal("evaluating"),
+      v.literal("done")
+    )
+  ),
+  totalQuestions: v.optional(v.number()),
+  processedQuestions: v.optional(v.number()),
+  failedQuestions: v.optional(v.number()),
+  skippedQuestions: v.optional(v.number()),
+  indexConfigHash: v.optional(v.string()),
+  langsmithSyncStatus: v.optional(v.string()),
+  workIds: v.optional(v.array(v.string())),
+  scores: v.optional(v.record(v.string(), v.number())),
+  // TODO: populate langsmithExperimentId from evaluate() result
+  langsmithExperimentId: v.optional(v.string()),
+  // TODO: populate langsmithUrl from evaluate() result (used in frontend for experiment links)
+  langsmithUrl: v.optional(v.string()),
+  error: v.optional(v.string()),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+  completedAt: v.optional(v.number())
+})
+export type Experiment = Infer<typeof experimentValidator>
+
+// ─── Experiment Runs (groups of retriever experiments) ───
+export const experimentRunValidator = v.object({
+  orgId: v.string(),
+  kbId: v.id("knowledgeBases"),
+  datasetId: v.id("datasets"),
+  name: v.string(),
+  retrieverIds: v.array(v.id("retrievers")),
+  metricNames: v.array(v.string()),
+  scoringWeights: v.object({
+    recall: v.number(),
+    precision: v.number()
+  }),
+  status: v.union(
+    v.literal("pending"),
+    v.literal("running"),
+    v.literal("completed"),
+    v.literal("completed_with_errors"),
+    v.literal("failed"),
+    v.literal("canceling"),
+    v.literal("canceled")
+  ),
+  totalRetrievers: v.number(),
+  completedRetrievers: v.number(),
+  failedRetrievers: v.number(),
+  winnerId: v.optional(v.id("retrievers")),
+  winnerName: v.optional(v.string()),
+  winnerScore: v.optional(v.number()),
+  error: v.optional(v.string()),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+  completedAt: v.optional(v.number())
+})
+export type ExperimentRun = Infer<typeof experimentRunValidator>
+
+// ─── Experiment Results ───
+export const experimentResultValidator = v.object({
+  experimentId: v.id("experiments"),
+  questionId: v.id("questions"),
+  retrievedSpans: v.array(spanValidator),
+  scores: v.record(v.string(), v.number()),
+  metadata: v.any()
+})
+export type ExperimentResult = Infer<typeof experimentResultValidator>
+
+// ─── Document Chunks ───
+export const documentChunkValidator = v.object({
+  documentId: v.id("documents"),
+  kbId: v.id("knowledgeBases"),
+  indexConfigHash: v.optional(v.string()),
+  chunkId: v.string(),
+  content: v.string(),
+  start: v.number(),
+  end: v.number(),
+  embedding: v.optional(v.array(v.float64())),
+  metadata: v.any()
+})
+export type DocumentChunk = Infer<typeof documentChunkValidator>
+
+// ─── Indexing Jobs ───
+export const indexingJobValidator = v.object({
+  orgId: v.string(),
+  kbId: v.id("knowledgeBases"),
+  indexConfigHash: v.string(),
+  indexConfig: v.any(),
+  status: v.union(
+    v.literal("pending"),
+    v.literal("running"),
+    v.literal("completed"),
+    v.literal("completed_with_errors"),
+    v.literal("failed"),
+    v.literal("canceling"),
+    v.literal("canceled")
+  ),
+  totalDocs: v.number(),
+  processedDocs: v.number(),
+  failedDocs: v.number(),
+  skippedDocs: v.number(),
+  totalChunks: v.number(),
+  workIds: v.optional(v.array(v.string())),
+  error: v.optional(v.string()),
+  failedDocDetails: v.optional(
+    v.array(
+      v.object({
+        documentId: v.id("documents"),
+        error: v.string()
+      })
+    )
+  ),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+  completedAt: v.optional(v.number())
+})
+export type IndexingJob = Infer<typeof indexingJobValidator>
+
+export const kbTables = {
+  // ─── Knowledge Bases (org-scoped, replaces "corpora") ───
+  knowledgeBases: defineTable(knowledgeBaseValidator)
+    .index("by_org", ["orgId"])
+    .index("by_org_industry", ["orgId", "industry"])
+    .index("by_org_company", ["orgId", "company"]),
+
+  // ─── Documents (markdown files in a knowledge base) ───
+  documents: defineTable(documentValidator)
+    .index("by_kb", ["kbId"])
+    .index("by_kb_doc_id", ["kbId", "docId"])
+    .index("by_kb_priority", ["kbId", "priority"])
+    .index("by_org", ["orgId"])
+    .searchIndex("search_content", {
+      searchField: "content",
+      filterFields: ["kbId"]
+    })
+    .searchIndex("search_title", {
+      searchField: "title",
+      filterFields: ["kbId"]
+    }),
+
+  // ─── Datasets (sets of generated questions) ───
+  datasets: defineTable(datasetValidator)
+    .index("by_org", ["orgId"])
+    .index("by_kb", ["kbId"])
+    .index("by_sync_status", ["langsmithSyncStatus"]),
+
+  // ─── Questions (individual questions within a dataset) ───
+  questions: defineTable(questionValidator)
+    .index("by_dataset", ["datasetId"])
+    .index("by_source_doc", ["datasetId", "sourceDocId"]),
+
+  // ─── Retrievers (pipeline-configured retrievers on a KB) ───
+  retrievers: defineTable(retrieverValidator)
+    .index("by_org", ["orgId"])
+    .index("by_kb", ["kbId"])
+    .index("by_kb_config_hash", ["kbId", "retrieverConfigHash"]),
+
+  // ─── Generation Jobs (WorkPool-based question generation tracking) ───
+  generationJobs: defineTable(generationJobValidator)
+    .index("by_dataset", ["datasetId"])
+    .index("by_org", ["orgId"])
+    .index("by_status", ["orgId", "status"]),
+
+  // ─── Experiments (evaluation runs against a dataset) ───
+  experiments: defineTable(experimentValidator)
+    .index("by_org", ["orgId"])
+    .index("by_dataset", ["datasetId"])
+    .index("by_retriever", ["retrieverId"])
+    .index("by_kb", ["kbId"])
+    .index("by_agent", ["agentId"])
+    .index("by_run", ["experimentRunId"]),
+
+  // ─── Experiment Runs (groups of retriever experiments) ───
+  experimentRuns: defineTable(experimentRunValidator)
+    .index("by_org", ["orgId"])
+    .index("by_kb", ["kbId"])
+    .index("by_dataset", ["datasetId"]),
+
+  // ─── Experiment Results (per-question evaluation results) ───
+  experimentResults: defineTable(experimentResultValidator).index(
+    "by_experiment",
+    ["experimentId"]
+  ),
+
+  // ─── Document Chunks (position-aware, with vector embeddings) ───
+  documentChunks: defineTable(documentChunkValidator)
+    .index("by_document", ["documentId"])
+    .index("by_kb", ["kbId"])
+    .index("by_kb_config", ["kbId", "indexConfigHash"])
+    .index("by_doc_config", ["documentId", "indexConfigHash"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+      filterFields: ["kbId", "indexConfigHash"]
+    }),
+
+  // ─── Indexing Jobs (WorkPool-based KB indexing tracking) ───
+  indexingJobs: defineTable(indexingJobValidator)
+    .index("by_kb_config", ["kbId", "indexConfigHash"])
+    .index("by_org", ["orgId"])
+    .index("by_status", ["orgId", "status"])
+}
