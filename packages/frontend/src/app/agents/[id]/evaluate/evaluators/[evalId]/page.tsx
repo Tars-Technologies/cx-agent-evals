@@ -227,17 +227,32 @@ function ConfigureTab({ evaluator }: { evaluator: Evaluator }) {
           <div>
             <label className="block text-xs text-text-dim mb-2">Input context</label>
             <div className="flex flex-wrap gap-3">
-              {inputContextAll.map((ctx) => (
-                <label key={ctx} className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={inputContext.includes(ctx)}
-                    onChange={() => toggleContext(ctx)}
-                    className="accent-accent"
-                  />
-                  <span className="text-xs text-text">{ctx}</span>
-                </label>
-              ))}
+              {inputContextAll.map((ctx) => {
+                // KB documents are not yet wired into the judge prompt builder
+                // (deferred to a later slice — llmJudge.renderMessages ignores
+                // kb_documents). Disable so it can't be selected as a no-op.
+                const disabled = ctx === "kb_documents";
+                return (
+                  <label
+                    key={ctx}
+                    className={`flex items-center gap-1.5 ${
+                      disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                    }`}
+                    title={disabled ? "Not yet supported" : undefined}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={disabled}
+                      checked={!disabled && inputContext.includes(ctx)}
+                      onChange={() => !disabled && toggleContext(ctx)}
+                      className="accent-accent"
+                    />
+                    <span className="text-xs text-text">
+                      {disabled ? `${ctx} (coming soon)` : ctx}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           </div>
           {(evaluator.llmJudgeConfig?.dimensions.length ?? 0) > 1 && (

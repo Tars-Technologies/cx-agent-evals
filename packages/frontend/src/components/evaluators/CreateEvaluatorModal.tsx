@@ -15,10 +15,17 @@ type PathChoice = "blank" | "template" | null;
 type EvaluatorType = "code" | "llm_judge";
 type InputContextOption = "transcript" | "tool_calls" | "kb_documents";
 
-const INPUT_CONTEXT_OPTIONS: { value: InputContextOption; label: string }[] = [
+const INPUT_CONTEXT_OPTIONS: {
+  value: InputContextOption;
+  label: string;
+  disabled?: boolean;
+}[] = [
   { value: "transcript", label: "Transcript" },
   { value: "tool_calls", label: "Tool calls" },
-  { value: "kb_documents", label: "KB documents" },
+  // KB documents are not yet wired into the judge prompt builder (deferred to a
+  // later slice — llmJudge.renderMessages ignores kb_documents). Disable the
+  // control so users aren't misled into selecting a no-op.
+  { value: "kb_documents", label: "KB documents (coming soon)", disabled: true },
 ];
 
 // ─── Path A: Blank form ───
@@ -220,12 +227,19 @@ function BlankForm({
               Input context
             </label>
             <div className="flex gap-4 flex-wrap">
-              {INPUT_CONTEXT_OPTIONS.map(({ value, label }) => (
-                <label key={value} className="flex items-center gap-1.5 cursor-pointer">
+              {INPUT_CONTEXT_OPTIONS.map(({ value, label, disabled }) => (
+                <label
+                  key={value}
+                  className={`flex items-center gap-1.5 ${
+                    disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                  }`}
+                  title={disabled ? "Not yet supported" : undefined}
+                >
                   <input
                     type="checkbox"
-                    checked={inputContext.includes(value)}
-                    onChange={() => toggleContext(value)}
+                    disabled={disabled}
+                    checked={!disabled && inputContext.includes(value)}
+                    onChange={() => !disabled && toggleContext(value)}
                     className="accent-accent"
                   />
                   <span className="text-xs text-text">{label}</span>
