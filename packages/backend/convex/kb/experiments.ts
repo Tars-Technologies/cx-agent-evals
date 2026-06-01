@@ -44,9 +44,14 @@ export const start = tenantMutation({
       throw new Error("Dataset not found")
     }
 
-    // Validate: must provide either retrieverId or retrieverConfig
+    // Validate: must provide exactly one of retrieverId or retrieverConfig
     if (!args.retrieverId && !args.retrieverConfig) {
       throw new Error("Must provide either retrieverId or retrieverConfig")
+    }
+    if (args.retrieverId && args.retrieverConfig) {
+      throw new Error(
+        "Provide either retrieverId or retrieverConfig, not both"
+      )
     }
 
     // If using retrieverId, verify the retriever is ready and KB matches
