@@ -1,20 +1,20 @@
-"use client";
+"use client"
 
-import { ConvexProviderWithClerk } from "convex/react-clerk";
-import { ConvexReactClient } from "convex/react";
-import { ClerkProvider, useAuth } from "@clerk/nextjs";
-import { dark } from "@clerk/themes";
-import { ReactNode } from "react";
+import { ClerkProvider, useAuth } from "@clerk/nextjs"
+import { dark } from "@clerk/themes"
+import { ConvexReactClient } from "convex/react"
+import { ConvexProviderWithClerk } from "convex/react-clerk"
+import type { ReactNode } from "react"
 
-const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL
+const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
-const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
+const convex = convexUrl ? new ConvexReactClient(convexUrl) : null
 
 export default function ConvexClientProvider({
-  children,
+  children
 }: {
-  children: ReactNode;
+  children: ReactNode
 }) {
   // If Convex or Clerk aren't configured, render children without providers
   if (!convex || !clerkKey) {
@@ -24,19 +24,28 @@ export default function ConvexClientProvider({
           <h2 className="text-lg font-semibold">Setup Required</h2>
           <div className="text-sm text-text-muted space-y-2">
             {!convexUrl && (
-              <p>Set <code className="text-accent">NEXT_PUBLIC_CONVEX_URL</code> in .env</p>
+              <p>
+                Set <code className="text-accent">NEXT_PUBLIC_CONVEX_URL</code>{" "}
+                in .env
+              </p>
             )}
             {!clerkKey && (
-              <p>Set <code className="text-accent">NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY</code> in .env</p>
+              <p>
+                Set{" "}
+                <code className="text-accent">
+                  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+                </code>{" "}
+                in .env
+              </p>
             )}
           </div>
           <p className="text-xs text-text-dim">
-            Run <code>npx convex dev</code> in packages/backend/ to get the Convex URL.
-            Get Clerk keys from dashboard.clerk.com.
+            Run <code>npx convex dev</code> in packages/backend/ to get the
+            Convex URL. Get Clerk keys from dashboard.clerk.com.
           </p>
         </div>
       </div>
-    );
+    )
   }
 
   return (
@@ -52,13 +61,13 @@ export default function ConvexClientProvider({
           colorTextSecondary: "#8888a0",
           colorTextOnPrimaryBackground: "#0c0c0f",
           colorInputText: "#e8e8ed",
-          colorNeutral: "#8888a0",
-        },
+          colorNeutral: "#8888a0"
+        }
       }}
     >
       <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
         {children}
       </ConvexProviderWithClerk>
     </ClerkProvider>
-  );
+  )
 }

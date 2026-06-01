@@ -1,59 +1,59 @@
-import type { PipelineConfig } from "../retrievers/pipeline/config.js";
+import type { PipelineConfig } from "../retrievers/pipeline/config.js"
 
 /** A single selectable value in a dropdown/radio group */
 export interface Choice {
   /** Machine value stored in config */
-  readonly value: string;
+  readonly value: string
   /** Human-readable label */
-  readonly label: string;
+  readonly label: string
   /** Optional description shown when this choice is selected */
-  readonly description?: string;
+  readonly description?: string
 }
 
 /** A configurable option exposed in the UI */
 export interface OptionDef {
   /** Field name matching the config key, e.g., "model" */
-  readonly key: string;
+  readonly key: string
   /** Display label, e.g., "Model" */
-  readonly label: string;
+  readonly label: string
   /** 1-2 sentence explanation of what this option does */
-  readonly description: string;
+  readonly description: string
   /** Input type */
-  readonly type: "select" | "number" | "boolean" | "string";
+  readonly type: "select" | "number" | "boolean" | "string"
   /** Available choices for type: "select" */
-  readonly choices?: readonly Choice[];
+  readonly choices?: readonly Choice[]
   /** Default value */
-  readonly default: unknown;
+  readonly default: unknown
   /** Constraints for type: "number" */
   readonly constraints?: {
-    readonly min?: number;
-    readonly max?: number;
-    readonly step?: number;
-  };
+    readonly min?: number
+    readonly max?: number
+    readonly step?: number
+  }
   /** If true, hidden under an "Advanced" toggle in the wizard */
-  readonly advanced?: boolean;
+  readonly advanced?: boolean
 }
 
 /** A registry entry for a provider, strategy, or component */
 export interface RegistryEntry {
   /** Machine key, e.g., "cohere" */
-  readonly id: string;
+  readonly id: string
   /** Display name, e.g., "Cohere" */
-  readonly name: string;
+  readonly name: string
   /** 1-2 sentence explanation */
-  readonly description: string;
+  readonly description: string
   /**
    * Implementation status:
    * - "available": fully implemented, selectable in the wizard
    * - "coming-soon": shown in UI but disabled with "Coming soon" badge
    */
-  readonly status: "available" | "coming-soon";
+  readonly status: "available" | "coming-soon"
   /** Filterable tags, e.g., ["multilingual", "fast"] */
-  readonly tags?: readonly string[];
+  readonly tags?: readonly string[]
   /** Configurable fields for this entry */
-  readonly options: readonly OptionDef[];
+  readonly options: readonly OptionDef[]
   /** Default values for all options (keyed by OptionDef.key) */
-  readonly defaults: Readonly<Record<string, unknown>>;
+  readonly defaults: Readonly<Record<string, unknown>>
 }
 
 /**
@@ -62,18 +62,18 @@ export interface RegistryEntry {
  */
 export interface PresetEntry extends RegistryEntry {
   /** The actual PipelineConfig object this preset produces */
-  readonly config: PipelineConfig;
+  readonly config: PipelineConfig
   /** Complexity level for filtering/badges */
-  readonly complexity: "basic" | "intermediate" | "advanced";
+  readonly complexity: "basic" | "intermediate" | "advanced"
   /** Whether this preset requires an LLM (for query/index strategies) */
-  readonly requiresLLM: boolean;
+  readonly requiresLLM: boolean
   /** Whether this preset requires a reranker (for refinement steps) */
-  readonly requiresReranker: boolean;
+  readonly requiresReranker: boolean
   /** Human-readable summary of what each stage does */
   readonly stages: {
-    readonly index: string;
-    readonly query: string;
-    readonly search: string;
-    readonly refinement: string;
-  };
+    readonly index: string
+    readonly query: string
+    readonly search: string
+    readonly refinement: string
+  }
 }

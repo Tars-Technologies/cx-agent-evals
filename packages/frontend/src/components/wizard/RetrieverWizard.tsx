@@ -1,14 +1,14 @@
-"use client";
+"use client"
 
-import { useState, useCallback, useEffect } from "react";
-import { PRESET_REGISTRY } from "@tars-inc/eval-lib/registry";
-import { WizardNav } from "./WizardNav";
-import { ChoosePresetStep } from "./steps/ChoosePresetStep";
-import { IndexStep } from "./steps/IndexStep";
-import { QueryStep } from "./steps/QueryStep";
-import { SearchStep } from "./steps/SearchStep";
-import { RefinementStep } from "./steps/RefinementStep";
-import { ReviewStep } from "./steps/ReviewStep";
+import { PRESET_REGISTRY } from "@tars-inc/eval-lib/registry"
+import { useCallback, useEffect, useState } from "react"
+import { ChoosePresetStep } from "./steps/ChoosePresetStep"
+import { IndexStep } from "./steps/IndexStep"
+import { QueryStep } from "./steps/QueryStep"
+import { RefinementStep } from "./steps/RefinementStep"
+import { ReviewStep } from "./steps/ReviewStep"
+import { SearchStep } from "./steps/SearchStep"
+import { WizardNav } from "./WizardNav"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,39 +16,44 @@ import { ReviewStep } from "./steps/ReviewStep";
 
 interface RetrieverWizardProps {
   initialConfig?: {
-    name: string;
-    indexStrategy?: string;
-    chunkerType?: string;
-    chunkerOptions?: Record<string, unknown>;
-    embedderProvider?: string;
-    embedderOptions?: Record<string, unknown>;
-    queryStrategy?: string;
-    searchStrategy?: string;
-    searchOptions?: Record<string, unknown>;
-    k?: number;
-    refinementSteps?: Array<{ type: string; [key: string]: unknown }>;
-    rerankerProvider?: string;
-    rerankerOptions?: Record<string, unknown>;
-  };
-  basePreset?: string;
-  onCreate: (config: BuiltConfig, name: string) => void;
-  onClose: () => void;
+    name: string
+    indexStrategy?: string
+    chunkerType?: string
+    chunkerOptions?: Record<string, unknown>
+    embedderProvider?: string
+    embedderOptions?: Record<string, unknown>
+    queryStrategy?: string
+    searchStrategy?: string
+    searchOptions?: Record<string, unknown>
+    k?: number
+    refinementSteps?: Array<{ type: string; [key: string]: unknown }>
+    rerankerProvider?: string
+    rerankerOptions?: Record<string, unknown>
+  }
+  basePreset?: string
+  onCreate: (config: BuiltConfig, name: string) => void
+  onClose: () => void
 }
 
 interface BuiltConfig {
-  name: string;
-  index?: { strategy: string; chunkSize?: number; chunkOverlap?: number; [key: string]: unknown };
-  query?: { strategy: string; [key: string]: unknown };
-  search?: { strategy: string; [key: string]: unknown };
-  refinement?: Array<{ type: string; [key: string]: unknown }>;
-  k?: number;
+  name: string
+  index?: {
+    strategy: string
+    chunkSize?: number
+    chunkOverlap?: number
+    [key: string]: unknown
+  }
+  query?: { strategy: string; [key: string]: unknown }
+  search?: { strategy: string; [key: string]: unknown }
+  refinement?: Array<{ type: string; [key: string]: unknown }>
+  k?: number
 }
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 6
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -56,11 +61,11 @@ const TOTAL_STEPS = 6;
 
 /** Extract search options from a config.search object, stripping the strategy field */
 function extractSearchOptions(
-  search: Record<string, unknown> | undefined,
+  search: Record<string, unknown> | undefined
 ): Record<string, unknown> {
-  if (!search) return {};
-  const { strategy: _, ...options } = search;
-  return options;
+  if (!search) return {}
+  const { strategy: _, ...options } = search
+  return options
 }
 
 /**
@@ -70,63 +75,63 @@ function extractSearchOptions(
 function buildAutoName(presetId: string | null, config: BuiltConfig): string {
   // If a preset is selected and name matches, use the preset id
   if (presetId) {
-    const preset = PRESET_REGISTRY.find((p) => p.id === presetId);
-    if (preset) return presetId;
+    const preset = PRESET_REGISTRY.find((p) => p.id === presetId)
+    if (preset) return presetId
   }
 
-  const parts: string[] = [];
+  const parts: string[] = []
 
   // Chunking prefix (only if non-default)
-  const chunkSize = config.index?.chunkSize;
-  const strategy = config.index?.strategy;
+  const chunkSize = config.index?.chunkSize
+  const strategy = config.index?.strategy
   if (strategy === "parent-child") {
-    parts.push("Parent-child,");
+    parts.push("Parent-child,")
   } else if (chunkSize && chunkSize !== 1000) {
-    parts.push(`Recursive-${chunkSize},`);
+    parts.push(`Recursive-${chunkSize},`)
   }
 
   // Search strategy (always — this is the lead)
-  const searchStrategy = config.search?.strategy ?? "dense";
+  const searchStrategy = config.search?.strategy ?? "dense"
   const searchLabel =
-    searchStrategy.charAt(0).toUpperCase() + searchStrategy.slice(1);
-  parts.push(`${searchLabel} search`);
+    searchStrategy.charAt(0).toUpperCase() + searchStrategy.slice(1)
+  parts.push(`${searchLabel} search`)
 
   // Query rewriting (if non-default)
-  const queryStrategy = config.query?.strategy;
+  const queryStrategy = config.query?.strategy
   if (queryStrategy && queryStrategy !== "identity") {
-    const queryLabel = queryStrategy.replace(/_/g, " ");
-    parts.push(`${queryLabel} rewriting`);
+    const queryLabel = queryStrategy.replace(/_/g, " ")
+    parts.push(`${queryLabel} rewriting`)
   }
 
   // Refinement
-  const refinement = config.refinement;
+  const refinement = config.refinement
   if (refinement && refinement.length > 0) {
-    const types = refinement.map((s) => s.type);
+    const types = refinement.map((s) => s.type)
     if (types.length === 1) {
-      parts.push(`with ${types[0]}`);
+      parts.push(`with ${types[0]}`)
     } else {
-      parts.push(`with ${types.join(" + ")}`);
+      parts.push(`with ${types.join(" + ")}`)
     }
   }
 
   // k value
-  const k = config.k ?? 5;
-  parts.push(`(k=${k})`);
+  const k = config.k ?? 5
+  parts.push(`(k=${k})`)
 
   // Join with appropriate separators
   // "Dense search with reranking (k=5)"
   // "Parent-child, Hybrid search, HyDE rewriting, with rerank + threshold (k=10)"
-  let name = parts[0];
+  let name = parts[0]
   for (let i = 1; i < parts.length; i++) {
-    const part = parts[i];
+    const part = parts[i]
     if (part.startsWith("with ") || part.startsWith("(")) {
-      name += ` ${part}`;
+      name += ` ${part}`
     } else {
-      name += `, ${part}`;
+      name += `, ${part}`
     }
   }
 
-  return name;
+  return name
 }
 
 // ---------------------------------------------------------------------------
@@ -137,228 +142,227 @@ export function RetrieverWizard({
   initialConfig,
   basePreset,
   onCreate,
-  onClose,
+  onClose
 }: RetrieverWizardProps) {
   // ---- Navigation ----
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentStep, setCurrentStep] = useState(0)
 
   // ---- Preset ----
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(
-    basePreset ?? null,
-  );
+    basePreset ?? null
+  )
 
   // ---- Name ----
-  const [name, setName] = useState(initialConfig?.name ?? "");
-  const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
+  const [name, setName] = useState(initialConfig?.name ?? "")
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
 
   // ---- Index ----
   const [indexStrategy, setIndexStrategy] = useState(
-    initialConfig?.indexStrategy ?? "plain",
-  );
+    initialConfig?.indexStrategy ?? "plain"
+  )
   const [chunkerType, setChunkerType] = useState(
-    initialConfig?.chunkerType ?? "recursive-character",
-  );
+    initialConfig?.chunkerType ?? "recursive-character"
+  )
   const [chunkerOptions, setChunkerOptions] = useState<Record<string, unknown>>(
-    initialConfig?.chunkerOptions ?? { chunkSize: 1000, chunkOverlap: 200 },
-  );
+    initialConfig?.chunkerOptions ?? { chunkSize: 1000, chunkOverlap: 200 }
+  )
   const [embedderProvider, setEmbedderProvider] = useState(
-    initialConfig?.embedderProvider ?? "openai",
-  );
-  const [embedderOptions, setEmbedderOptions] = useState<Record<string, unknown>>(
-    initialConfig?.embedderOptions ?? { model: "text-embedding-3-small" },
-  );
+    initialConfig?.embedderProvider ?? "openai"
+  )
+  const [embedderOptions, setEmbedderOptions] = useState<
+    Record<string, unknown>
+  >(initialConfig?.embedderOptions ?? { model: "text-embedding-3-small" })
 
   // ---- Query ----
   const [queryStrategy, setQueryStrategy] = useState(
-    initialConfig?.queryStrategy ?? "identity",
-  );
+    initialConfig?.queryStrategy ?? "identity"
+  )
 
   // ---- Search ----
   const [searchStrategy, setSearchStrategy] = useState(
-    initialConfig?.searchStrategy ?? "dense",
-  );
+    initialConfig?.searchStrategy ?? "dense"
+  )
   const [searchOptions, setSearchOptions] = useState<Record<string, unknown>>(
-    initialConfig?.searchOptions ?? {},
-  );
-  const [k, setK] = useState(initialConfig?.k ?? 5);
+    initialConfig?.searchOptions ?? {}
+  )
+  const [k, setK] = useState(initialConfig?.k ?? 5)
 
   // ---- Refinement ----
   const [refinementSteps, setRefinementSteps] = useState<
     Array<{ type: string; [key: string]: unknown }>
-  >(initialConfig?.refinementSteps ?? []);
+  >(initialConfig?.refinementSteps ?? [])
   const [rerankerProvider, setRerankerProvider] = useState(
-    initialConfig?.rerankerProvider ?? "cohere",
-  );
-  const [rerankerOptions, setRerankerOptions] = useState<Record<string, unknown>>(
-    initialConfig?.rerankerOptions ?? { model: "rerank-english-v3.0" },
-  );
+    initialConfig?.rerankerProvider ?? "cohere"
+  )
+  const [rerankerOptions, setRerankerOptions] = useState<
+    Record<string, unknown>
+  >(initialConfig?.rerankerOptions ?? { model: "rerank-english-v3.0" })
 
   // ---- Build config ----
   const buildConfig = useCallback((): BuiltConfig => {
-    const config: BuiltConfig = { name };
+    const config: BuiltConfig = { name }
 
     // Index
-    config.index = { strategy: indexStrategy, ...chunkerOptions };
+    config.index = { strategy: indexStrategy, ...chunkerOptions }
 
     // Query
     if (queryStrategy !== "identity") {
-      config.query = { strategy: queryStrategy };
+      config.query = { strategy: queryStrategy }
     }
 
     // Search
-    config.search = { strategy: searchStrategy, ...searchOptions };
+    config.search = { strategy: searchStrategy, ...searchOptions }
 
     // Refinement
     if (refinementSteps.length > 0) {
-      config.refinement = refinementSteps;
+      config.refinement = refinementSteps
     }
 
-    config.k = k;
-    return config;
-  }, [name, indexStrategy, chunkerOptions, queryStrategy, searchStrategy, searchOptions, refinementSteps, k]);
+    config.k = k
+    return config
+  }, [
+    name,
+    indexStrategy,
+    chunkerOptions,
+    queryStrategy,
+    searchStrategy,
+    searchOptions,
+    refinementSteps,
+    k
+  ])
 
   // ---- Auto-naming ----
   useEffect(() => {
-    if (nameManuallyEdited) return;
-    const config = buildConfig();
-    setName(buildAutoName(selectedPresetId, config));
-  }, [
-    nameManuallyEdited,
-    selectedPresetId,
-    buildConfig,
-  ]);
+    if (nameManuallyEdited) return
+    const config = buildConfig()
+    setName(buildAutoName(selectedPresetId, config))
+  }, [nameManuallyEdited, selectedPresetId, buildConfig])
 
   // ---- Preset selection logic ----
   const handlePresetSelect = useCallback(
     (presetId: string | null) => {
-      setSelectedPresetId(presetId);
+      setSelectedPresetId(presetId)
 
       if (presetId === null) {
         // Start from scratch — reset to defaults
-        setIndexStrategy("plain");
-        setChunkerType("recursive-character");
-        setChunkerOptions({ chunkSize: 1000, chunkOverlap: 200 });
-        setEmbedderProvider("openai");
-        setEmbedderOptions({ model: "text-embedding-3-small" });
-        setQueryStrategy("identity");
-        setSearchStrategy("dense");
-        setSearchOptions({});
-        setK(5);
-        setRefinementSteps([]);
-        setRerankerProvider("cohere");
-        setRerankerOptions({ model: "rerank-english-v3.0" });
+        setIndexStrategy("plain")
+        setChunkerType("recursive-character")
+        setChunkerOptions({ chunkSize: 1000, chunkOverlap: 200 })
+        setEmbedderProvider("openai")
+        setEmbedderOptions({ model: "text-embedding-3-small" })
+        setQueryStrategy("identity")
+        setSearchStrategy("dense")
+        setSearchOptions({})
+        setK(5)
+        setRefinementSteps([])
+        setRerankerProvider("cohere")
+        setRerankerOptions({ model: "rerank-english-v3.0" })
         if (!nameManuallyEdited) {
-          setName("");
+          setName("")
         }
-        setCurrentStep(1); // Advance to Index step
-        return;
+        setCurrentStep(1) // Advance to Index step
+        return
       }
 
-      const preset = PRESET_REGISTRY.find((p) => p.id === presetId);
-      if (!preset) return;
+      const preset = PRESET_REGISTRY.find((p) => p.id === presetId)
+      if (!preset) return
 
-      const cfg = preset.config as unknown as Record<string, unknown>;
-      const indexCfg = cfg.index as Record<string, unknown> | undefined;
-      const searchCfg = cfg.search as Record<string, unknown> | undefined;
-      const queryCfg = cfg.query as Record<string, unknown> | undefined;
+      const cfg = preset.config as unknown as Record<string, unknown>
+      const indexCfg = cfg.index as Record<string, unknown> | undefined
+      const searchCfg = cfg.search as Record<string, unknown> | undefined
+      const queryCfg = cfg.query as Record<string, unknown> | undefined
       const refinementCfg = cfg.refinement as
         | Array<{ type: string; [key: string]: unknown }>
-        | undefined;
+        | undefined
 
       // Pre-fill state from preset config
-      setIndexStrategy(
-        (indexCfg?.strategy as string) ?? "plain",
-      );
+      setIndexStrategy((indexCfg?.strategy as string) ?? "plain")
 
       // Extract chunker options from index config (chunkSize, chunkOverlap, etc.)
       if (indexCfg) {
-        const { strategy: _, ...indexOpts } = indexCfg;
+        const { strategy: _, ...indexOpts } = indexCfg
         if (Object.keys(indexOpts).length > 0) {
           setChunkerOptions({
             chunkSize: 1000,
             chunkOverlap: 200,
-            ...indexOpts,
-          });
+            ...indexOpts
+          })
         } else {
-          setChunkerOptions({ chunkSize: 1000, chunkOverlap: 200 });
+          setChunkerOptions({ chunkSize: 1000, chunkOverlap: 200 })
         }
       }
 
-      setQueryStrategy(
-        (queryCfg?.strategy as string) ?? "identity",
-      );
+      setQueryStrategy((queryCfg?.strategy as string) ?? "identity")
 
-      setSearchStrategy(
-        (searchCfg?.strategy as string) ?? "dense",
-      );
-      setSearchOptions(extractSearchOptions(searchCfg));
+      setSearchStrategy((searchCfg?.strategy as string) ?? "dense")
+      setSearchOptions(extractSearchOptions(searchCfg))
 
-      setRefinementSteps(refinementCfg ?? []);
+      setRefinementSteps(refinementCfg ?? [])
 
       if (!nameManuallyEdited) {
-        setName(presetId);
+        setName(presetId)
       }
 
       // Auto-advance to Review step
-      setCurrentStep(5);
+      setCurrentStep(5)
     },
-    [nameManuallyEdited],
-  );
+    [nameManuallyEdited]
+  )
 
   // ---- Name change handler ----
   const handleNameChange = useCallback((newName: string) => {
-    setName(newName);
-    setNameManuallyEdited(true);
-  }, []);
+    setName(newName)
+    setNameManuallyEdited(true)
+  }, [])
 
   // ---- Chunker change handler ----
   const handleChunkerChange = useCallback(
     (type: string, options: Record<string, unknown>) => {
-      setChunkerType(type);
-      setChunkerOptions(options);
+      setChunkerType(type)
+      setChunkerOptions(options)
     },
-    [],
-  );
+    []
+  )
 
   // ---- Embedder change handler ----
   const handleEmbedderChange = useCallback(
     (provider: string, options: Record<string, unknown>) => {
-      setEmbedderProvider(provider);
-      setEmbedderOptions(options);
+      setEmbedderProvider(provider)
+      setEmbedderOptions(options)
     },
-    [],
-  );
+    []
+  )
 
   // ---- Search change handler ----
   const handleSearchChange = useCallback(
     (strategy: string, options: Record<string, unknown>) => {
-      setSearchStrategy(strategy);
-      setSearchOptions(options);
+      setSearchStrategy(strategy)
+      setSearchOptions(options)
     },
-    [],
-  );
+    []
+  )
 
   // ---- Reranker change handler ----
   const handleRerankerChange = useCallback(
     (provider: string, options: Record<string, unknown>) => {
-      setRerankerProvider(provider);
-      setRerankerOptions(options);
+      setRerankerProvider(provider)
+      setRerankerOptions(options)
     },
-    [],
-  );
+    []
+  )
 
   // ---- ReviewStep edit handler (maps section index to wizard step) ----
   const handleEditStep = useCallback((sectionIndex: number) => {
     // ReviewStep sections: 0=Index, 1=Query, 2=Search, 3=Refinement
     // Wizard steps: 0=Preset, 1=Index, 2=Query, 3=Search, 4=Refinement, 5=Review
-    setCurrentStep(sectionIndex + 1);
-  }, []);
+    setCurrentStep(sectionIndex + 1)
+  }, [])
 
   // ---- Create handler ----
   const handleCreate = useCallback(() => {
-    const config = buildConfig();
-    onCreate(config, name);
-  }, [buildConfig, name, onCreate]);
+    const config = buildConfig()
+    onCreate(config, name)
+  }, [buildConfig, name, onCreate])
 
   // ---- Render ----
   return (
@@ -448,7 +452,7 @@ export function RetrieverWizard({
               k,
               refinementSteps,
               rerankerProvider,
-              rerankerOptions,
+              rerankerOptions
             }}
             basePreset={selectedPresetId}
             onNameChange={handleNameChange}
@@ -486,5 +490,5 @@ export function RetrieverWizard({
         )}
       </div>
     </div>
-  );
+  )
 }

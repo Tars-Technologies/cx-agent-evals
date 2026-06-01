@@ -1,9 +1,9 @@
-"use client";
+"use client"
 
-import { StrategyType, Dimension } from "@/lib/types";
-import { StrategySelector } from "./StrategySelector";
-import { DimensionSummary } from "./DimensionSummary";
-import { TotalQuestionsSlider } from "./TotalQuestionsSlider";
+import type { Dimension, StrategyType } from "@/lib/types"
+import { DimensionSummary } from "./DimensionSummary"
+import { StrategySelector } from "./StrategySelector"
+import { TotalQuestionsSlider } from "./TotalQuestionsSlider"
 
 export function GenerateConfig({
   onGenerate,
@@ -18,28 +18,28 @@ export function GenerateConfig({
   onOpenWizard,
   realWorldQuestions,
   onOpenRealWorldModal,
-  numDocs,
+  numDocs
 }: {
-  onGenerate: () => void;
-  disabled: boolean;
-  generating: boolean;
-  disabledReason?: string;
-  strategy: StrategyType;
-  onStrategyChange: (strategy: StrategyType) => void;
-  dimensions: Dimension[];
-  totalQuestions: number;
-  onTotalQuestionsChange: (n: number) => void;
-  onOpenWizard: () => void;
-  realWorldQuestions: string[];
-  onOpenRealWorldModal: () => void;
-  numDocs: number;
+  onGenerate: () => void
+  disabled: boolean
+  generating: boolean
+  disabledReason?: string
+  strategy: StrategyType
+  onStrategyChange: (strategy: StrategyType) => void
+  dimensions: Dimension[]
+  totalQuestions: number
+  onTotalQuestionsChange: (n: number) => void
+  onOpenWizard: () => void
+  realWorldQuestions: string[]
+  onOpenRealWorldModal: () => void
+  numDocs: number
 }) {
-  const dimensionsConfigured = dimensions.length > 0;
-  const realWorldConfigured = realWorldQuestions.length > 0;
+  const dimensionsConfigured = dimensions.length > 0
+  const realWorldConfigured = realWorldQuestions.length > 0
   const canGenerate =
     strategy === "simple" ||
     (strategy === "dimension-driven" && dimensionsConfigured) ||
-    (strategy === "real-world-grounded" && realWorldConfigured);
+    (strategy === "real-world-grounded" && realWorldConfigured)
 
   return (
     <div className="animate-fade-in">
@@ -81,7 +81,8 @@ export function GenerateConfig({
               {realWorldConfigured ? (
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] text-text">
-                    {realWorldQuestions.length} question{realWorldQuestions.length !== 1 ? "s" : ""} loaded
+                    {realWorldQuestions.length} question
+                    {realWorldQuestions.length !== 1 ? "s" : ""} loaded
                   </span>
                   <button
                     onClick={onOpenRealWorldModal}
@@ -124,5 +125,5 @@ export function GenerateConfig({
         )}
       </button>
     </div>
-  );
+  )
 }

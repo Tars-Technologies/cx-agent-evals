@@ -4,16 +4,20 @@
  */
 
 function extractVerdict(parsed: unknown): {
-  verdict: "pass" | "fail";
-  reasoning: string;
+  verdict: "pass" | "fail"
+  reasoning: string
 } | null {
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const p = parsed as Record<string, unknown>;
-  const answer = String(p.answer ?? p.verdict ?? "").toLowerCase().trim();
-  const reasoning = String(p.reasoning ?? p.explanation ?? p.reason ?? "");
-  if (answer === "pass" || answer === "yes") return { verdict: "pass", reasoning };
-  if (answer === "fail" || answer === "no") return { verdict: "fail", reasoning };
-  return null;
+  if (typeof parsed !== "object" || parsed === null) return null
+  const p = parsed as Record<string, unknown>
+  const answer = String(p.answer ?? p.verdict ?? "")
+    .toLowerCase()
+    .trim()
+  const reasoning = String(p.reasoning ?? p.explanation ?? p.reason ?? "")
+  if (answer === "pass" || answer === "yes")
+    return { verdict: "pass", reasoning }
+  if (answer === "fail" || answer === "no")
+    return { verdict: "fail", reasoning }
+  return null
 }
 
 /**
@@ -31,29 +35,25 @@ function extractVerdict(parsed: unknown): {
  * verdict.
  */
 export function parseJudgeResponse(content: string): {
-  verdict: "pass" | "fail";
-  reasoning: string;
+  verdict: "pass" | "fail"
+  reasoning: string
 } {
   try {
-    const extracted = extractVerdict(JSON.parse(content));
-    if (extracted) return extracted;
+    const extracted = extractVerdict(JSON.parse(content))
+    if (extracted) return extracted
   } catch {
     // fall through to fragment extraction
   }
 
-  const match = content.match(
-    /\{[\s\S]*?"(?:answer|verdict)"[\s\S]*?\}/,
-  );
+  const match = content.match(/\{[\s\S]*?"(?:answer|verdict)"[\s\S]*?\}/)
   if (match) {
     try {
-      const extracted = extractVerdict(JSON.parse(match[0]));
-      if (extracted) return extracted;
+      const extracted = extractVerdict(JSON.parse(match[0]))
+      if (extracted) return extracted
     } catch {
       // fall through
     }
   }
 
-  throw new Error(
-    `Unparseable judge response: ${content.slice(0, 300)}`,
-  );
+  throw new Error(`Unparseable judge response: ${content.slice(0, 300)}`)
 }

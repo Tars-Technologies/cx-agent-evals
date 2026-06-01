@@ -1,5 +1,5 @@
-import { mutation, query, internalQuery } from "../_generated/server";
-import { v } from "convex/values";
+import { v } from "convex/values"
+import { internalQuery, mutation, query } from "../_generated/server"
 
 /**
  * Get or create a user record from Clerk identity.
@@ -8,28 +8,28 @@ import { v } from "convex/values";
 export const getOrCreate = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await ctx.auth.getUserIdentity()
     if (!identity) {
-      throw new Error("Unauthenticated");
+      throw new Error("Unauthenticated")
     }
 
     const existing = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
+      .unique()
 
     if (existing) {
-      return existing._id;
+      return existing._id
     }
 
     return await ctx.db.insert("users", {
       clerkId: identity.subject,
       email: identity.email ?? "",
       name: identity.name ?? "",
-      createdAt: Date.now(),
-    });
-  },
-});
+      createdAt: Date.now()
+    })
+  }
+})
 
 /**
  * Internal query: look up user by Clerk ID (for use in actions).
@@ -40,9 +40,9 @@ export const getByClerkId = internalQuery({
     return await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
-      .unique();
-  },
-});
+      .unique()
+  }
+})
 
 /**
  * Get the current user's record by their Clerk ID.
@@ -50,14 +50,14 @@ export const getByClerkId = internalQuery({
 export const me = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await ctx.auth.getUserIdentity()
     if (!identity) {
-      return null;
+      return null
     }
 
     return await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
-  },
-});
+      .unique()
+  }
+})

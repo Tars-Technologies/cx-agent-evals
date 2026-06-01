@@ -1,4 +1,4 @@
-import { defineConfig } from "tsup";
+import { defineConfig } from "tsup"
 
 export default defineConfig({
   entry: [
@@ -19,7 +19,7 @@ export default defineConfig({
     "src/file-processing/index.ts",
     "src/scraper/index.ts",
     "src/registry/index.ts",
-    "src/data-analysis/index.ts",
+    "src/data-analysis/index.ts"
   ],
   format: ["esm", "cjs"],
   dts: true,
@@ -39,6 +39,6 @@ export default defineConfig({
     "turndown",
     "unpdf",
     "@anthropic-ai/sdk",
-    "csv-parse",
-  ],
-});
+    "csv-parse"
+  ]
+})

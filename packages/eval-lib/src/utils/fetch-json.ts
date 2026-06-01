@@ -1,20 +1,20 @@
-import { withRetry } from "./retry.js";
+import { withRetry } from "./retry.js"
 
 /**
  * Options for {@link postJSON}.
  */
 export interface PostJSONOptions {
   /** Full endpoint URL. */
-  readonly url: string;
+  readonly url: string
 
   /** JSON-serialisable request body. */
-  readonly body: unknown;
+  readonly body: unknown
 
   /**
    * Human-readable provider name used in error messages
    * (e.g. "Voyage", "Jina Rerank").
    */
-  readonly provider: string;
+  readonly provider: string
 
   /**
    * HTTP headers merged on top of the default `Content-Type: application/json`.
@@ -24,13 +24,13 @@ export interface PostJSONOptions {
    * headers: { Authorization: `Bearer ${apiKey}` }
    * ```
    */
-  readonly headers?: Readonly<Record<string, string>>;
+  readonly headers?: Readonly<Record<string, string>>
 
   /**
    * Retry configuration forwarded to {@link withRetry}.
    * Set `maxRetries: 0` to disable retries.
    */
-  readonly retry?: { maxRetries?: number; backoffMs?: number };
+  readonly retry?: { maxRetries?: number; backoffMs?: number }
 }
 
 /**
@@ -43,25 +43,25 @@ export interface PostJSONOptions {
  *   HTTP status, and the raw response body for debuggability.
  */
 export async function postJSON<T>(options: PostJSONOptions): Promise<T> {
-  const { url, body, provider, headers = {}, retry } = options;
+  const { url, body, provider, headers = {}, retry } = options
 
   return withRetry(async () => {
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...headers,
+        ...headers
       },
-      body: JSON.stringify(body),
-    });
+      body: JSON.stringify(body)
+    })
 
     if (!response.ok) {
-      const text = await response.text();
+      const text = await response.text()
       throw new Error(
-        `${provider} API error: ${response.status} ${response.statusText} — ${text}`,
-      );
+        `${provider} API error: ${response.status} ${response.statusText} — ${text}`
+      )
     }
 
-    return (await response.json()) as T;
-  }, retry);
+    return (await response.json()) as T
+  }, retry)
 }

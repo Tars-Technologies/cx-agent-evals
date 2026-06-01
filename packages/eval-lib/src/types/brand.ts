@@ -6,6 +6,6 @@
  *   type DocumentId = Brand<"DocumentId", string>;
  *   const docId = "test.md" as DocumentId;
  */
-declare const __brand: unique symbol;
+declare const __brand: unique symbol
 
-export type Brand<K extends string, T> = T & { readonly [__brand]: K };
+export type Brand<K extends string, T> = T & { readonly [__brand]: K }

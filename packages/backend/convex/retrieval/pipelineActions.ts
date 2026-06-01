@@ -1,51 +1,52 @@
-"use node";
+"use node"
 
-import { action, ActionCtx } from "../_generated/server";
-import { api, internal } from "../_generated/api";
-import { v } from "convex/values";
 import type {
-  PipelineConfig,
-  QueryConfig,
-  SearchConfig,
   HydeQueryConfig,
   MultiQueryConfig,
-  StepBackQueryConfig,
-  RewriteQueryConfig,
+  PipelineConfig,
+  QueryConfig,
   RefinementStepConfig,
-} from "@tars-inc/eval-lib";
-import { createLLMClient, createEmbedder } from "@tars-inc/eval-lib/llm";
-import { getAuthContext } from "../lib/auth";
-import { vectorSearchWithFilter } from "../lib/vectorSearch";
-import type { Id } from "../_generated/dataModel";
-import MiniSearch from "minisearch";
+  RewriteQueryConfig,
+  SearchConfig,
+  StepBackQueryConfig
+} from "@tars-inc/eval-lib"
+import { createEmbedder, createLLMClient } from "@tars-inc/eval-lib/llm"
+import { v } from "convex/values"
+import MiniSearch from "minisearch"
+import { api, internal } from "../_generated/api"
+import type { Id } from "../_generated/dataModel"
+import type { ActionCtx } from "../_generated/server"
+import { tenantAction } from "../lib/auth/tenant"
+import { backendConfig } from "../config"
+import { vectorSearchWithFilter } from "../lib/vectorSearch"
 
 // ---------------------------------------------------------------------------
 // Shared types
 // ---------------------------------------------------------------------------
 
 interface ChunkResult {
-  readonly chunkId: string;
-  readonly content: string;
-  readonly docId: string;
-  readonly start: number;
-  readonly end: number;
-  readonly score: number;
-  readonly metadata: Record<string, unknown>;
+  readonly chunkId: string
+  readonly content: string
+  readonly docId: string
+  readonly start: number
+  readonly end: number
+  readonly score: number
+  readonly metadata: Record<string, unknown>
 }
 
 // ---------------------------------------------------------------------------
 // LLM helper
 // ---------------------------------------------------------------------------
 
-const QUERY_MODEL = "gpt-4o-mini";
+const QUERY_MODEL = "gpt-4o-mini"
 
 async function llmComplete(prompt: string, temperature = 0.7): Promise<string> {
-  const client = createLLMClient();
+  const client = createLLMClient()
   const result = await client.complete({
     model: QUERY_MODEL,
-    messages: [{ role: "user", content: prompt }],
-  });
-  return result;
+    messages: [{ role: "user", content: prompt }]
+  })
+  return result
 }
 
 // ---------------------------------------------------------------------------
@@ -53,27 +54,27 @@ async function llmComplete(prompt: string, temperature = 0.7): Promise<string> {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_HYDE_PROMPT =
-  "Write a short passage (100-200 words) that would answer the following question. Do not include the question itself, just the answer passage.\n\nQuestion: ";
+  "Write a short passage (100-200 words) that would answer the following question. Do not include the question itself, just the answer passage.\n\nQuestion: "
 
 const DEFAULT_MULTI_QUERY_PROMPT =
-  "Generate {n} different search queries that would help find information to answer the following question. Return one query per line, no numbering.\n\nQuestion: ";
+  "Generate {n} different search queries that would help find information to answer the following question. Return one query per line, no numbering.\n\nQuestion: "
 
 const DEFAULT_STEP_BACK_PROMPT =
-  "Given the following question, generate a more general, abstract version that would retrieve broader background knowledge. Return only the abstract question.\n\nOriginal question: ";
+  "Given the following question, generate a more general, abstract version that would retrieve broader background knowledge. Return only the abstract question.\n\nOriginal question: "
 
 const DEFAULT_REWRITE_PROMPT =
-  "Rewrite the following question to be more precise and optimized for document retrieval. Return only the rewritten question.\n\nOriginal question: ";
+  "Rewrite the following question to be more precise and optimized for document retrieval. Return only the rewritten question.\n\nOriginal question: "
 
 // ---------------------------------------------------------------------------
 // Strategy executors
 // ---------------------------------------------------------------------------
 
 interface RewriteResult {
-  readonly strategy: string;
-  readonly original: string;
-  readonly rewrittenQueries: string[];
-  readonly hypotheticalAnswer?: string;
-  readonly latencyMs: number;
+  readonly strategy: string
+  readonly original: string
+  readonly rewrittenQueries: string[]
+  readonly hypotheticalAnswer?: string
+  readonly latencyMs: number
 }
 
 async function executeIdentity(query: string): Promise<RewriteResult> {
@@ -81,93 +82,94 @@ async function executeIdentity(query: string): Promise<RewriteResult> {
     strategy: "identity",
     original: query,
     rewrittenQueries: [query],
-    latencyMs: 0,
-  };
+    latencyMs: 0
+  }
 }
 
 async function executeMultiQuery(
   query: string,
-  config: MultiQueryConfig,
+  config: MultiQueryConfig
 ): Promise<RewriteResult> {
-  const n = config.numQueries ?? 3;
-  const prompt = (config.generationPrompt ?? DEFAULT_MULTI_QUERY_PROMPT)
-    .replace("{n}", String(n));
+  const n = config.numQueries ?? 3
+  const prompt = (
+    config.generationPrompt ?? DEFAULT_MULTI_QUERY_PROMPT
+  ).replace("{n}", String(n))
 
-  const start = performance.now();
-  const raw = await llmComplete(prompt + query);
-  const latencyMs = Math.round(performance.now() - start);
+  const start = performance.now()
+  const raw = await llmComplete(prompt + query)
+  const latencyMs = Math.round(performance.now() - start)
 
   const queries = raw
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+    .filter((line) => line.length > 0)
 
   return {
     strategy: "multi-query",
     original: query,
     rewrittenQueries: queries,
-    latencyMs,
-  };
+    latencyMs
+  }
 }
 
 async function executeHyde(
   query: string,
-  config: HydeQueryConfig,
+  config: HydeQueryConfig
 ): Promise<RewriteResult> {
-  const prompt = config.hydePrompt ?? DEFAULT_HYDE_PROMPT;
+  const prompt = config.hydePrompt ?? DEFAULT_HYDE_PROMPT
 
-  const start = performance.now();
-  const hypotheticalAnswer = await llmComplete(prompt + query);
-  const latencyMs = Math.round(performance.now() - start);
+  const start = performance.now()
+  const hypotheticalAnswer = await llmComplete(prompt + query)
+  const latencyMs = Math.round(performance.now() - start)
 
   return {
     strategy: "hyde",
     original: query,
     rewrittenQueries: [hypotheticalAnswer],
     hypotheticalAnswer,
-    latencyMs,
-  };
+    latencyMs
+  }
 }
 
 async function executeStepBack(
   query: string,
-  config: StepBackQueryConfig,
+  config: StepBackQueryConfig
 ): Promise<RewriteResult> {
-  const prompt = config.stepBackPrompt ?? DEFAULT_STEP_BACK_PROMPT;
-  const includeOriginal = config.includeOriginal ?? true;
+  const prompt = config.stepBackPrompt ?? DEFAULT_STEP_BACK_PROMPT
+  const includeOriginal = config.includeOriginal ?? true
 
-  const start = performance.now();
-  const stepBackQuery = (await llmComplete(prompt + query)).trim();
-  const latencyMs = Math.round(performance.now() - start);
+  const start = performance.now()
+  const stepBackQuery = (await llmComplete(prompt + query)).trim()
+  const latencyMs = Math.round(performance.now() - start)
 
   const rewrittenQueries = includeOriginal
     ? [query, stepBackQuery]
-    : [stepBackQuery];
+    : [stepBackQuery]
 
   return {
     strategy: "step-back",
     original: query,
     rewrittenQueries,
-    latencyMs,
-  };
+    latencyMs
+  }
 }
 
 async function executeRewrite(
   query: string,
-  config: RewriteQueryConfig,
+  config: RewriteQueryConfig
 ): Promise<RewriteResult> {
-  const prompt = config.rewritePrompt ?? DEFAULT_REWRITE_PROMPT;
+  const prompt = config.rewritePrompt ?? DEFAULT_REWRITE_PROMPT
 
-  const start = performance.now();
-  const rewritten = (await llmComplete(prompt + query)).trim();
-  const latencyMs = Math.round(performance.now() - start);
+  const start = performance.now()
+  const rewritten = (await llmComplete(prompt + query)).trim()
+  const latencyMs = Math.round(performance.now() - start)
 
   return {
     strategy: "rewrite",
     original: query,
     rewrittenQueries: [rewritten],
-    latencyMs,
-  };
+    latencyMs
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -176,25 +178,25 @@ async function executeRewrite(
 
 function dispatchQueryStrategy(
   query: string,
-  queryConfig: QueryConfig | undefined,
+  queryConfig: QueryConfig | undefined
 ): Promise<RewriteResult> {
   if (!queryConfig || queryConfig.strategy === "identity") {
-    return executeIdentity(query);
+    return executeIdentity(query)
   }
 
   switch (queryConfig.strategy) {
     case "multi-query":
-      return executeMultiQuery(query, queryConfig);
+      return executeMultiQuery(query, queryConfig)
     case "hyde":
-      return executeHyde(query, queryConfig);
+      return executeHyde(query, queryConfig)
     case "step-back":
-      return executeStepBack(query, queryConfig);
+      return executeStepBack(query, queryConfig)
     case "rewrite":
-      return executeRewrite(query, queryConfig);
+      return executeRewrite(query, queryConfig)
     default: {
       // Exhaustive check — TypeScript will error if a strategy is unhandled
-      const _exhaustive: never = queryConfig;
-      return executeIdentity(query);
+      const _exhaustive: never = queryConfig
+      return executeIdentity(query)
     }
   }
 }
@@ -212,37 +214,34 @@ function dispatchQueryStrategy(
  *
  * Returns the strategy name, original query, rewritten queries, and latency.
  */
-export const rewriteQuery = action({
+export const rewriteQuery = tenantAction({
   args: {
     retrieverId: v.id("retrievers"),
-    query: v.string(),
+    query: v.string()
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
+    const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
+      id: args.retrieverId
+    })
 
-    const retriever = await ctx.runQuery(
-      internal.crud.retrievers.getInternal,
-      { id: args.retrieverId },
-    );
-
-    if (retriever.orgId !== orgId) {
-      throw new Error("Retriever not found");
+    if (retriever.orgId !== ctx.orgId) {
+      throw new Error("Retriever not found")
     }
 
     if (retriever.status !== "ready") {
       throw new Error(
-        `Retriever is not ready (status: ${retriever.status}). Index the KB first.`,
-      );
+        `Retriever is not ready (status: ${retriever.status}). Index the KB first.`
+      )
     }
 
-    const config = retriever.retrieverConfig as PipelineConfig;
-    const queryConfig = config.query as QueryConfig | undefined;
+    const config = retriever.retrieverConfig as PipelineConfig
+    const queryConfig = config.query as QueryConfig | undefined
 
-    const result = await dispatchQueryStrategy(args.query, queryConfig);
+    const result = await dispatchQueryStrategy(args.query, queryConfig)
 
-    return result;
-  },
-});
+    return result
+  }
+})
 
 // ===========================================================================
 // Search With Queries
@@ -259,53 +258,55 @@ export const rewriteQuery = action({
 async function loadAllChunks(
   ctx: ActionCtx,
   kbId: Id<"knowledgeBases">,
-  indexConfigHash: string,
+  indexConfigHash: string
 ): Promise<
   Array<{
-    _id: string;
-    chunkId: string;
-    documentId: string;
-    content: string;
-    start: number;
-    end: number;
-    metadata: Record<string, unknown>;
+    _id: string
+    chunkId: string
+    documentId: string
+    content: string
+    start: number
+    end: number
+    metadata: Record<string, unknown>
   }>
 > {
   const allChunks: Array<{
-    _id: string;
-    chunkId: string;
-    documentId: string;
-    content: string;
-    start: number;
-    end: number;
-    metadata: Record<string, unknown>;
-  }> = [];
-  let cursor: string | null = null;
-  let isDone = false;
+    _id: string
+    chunkId: string
+    documentId: string
+    content: string
+    start: number
+    end: number
+    metadata: Record<string, unknown>
+  }> = []
+  let cursor: string | null = null
+  let isDone = false
 
   while (!isDone) {
     const page: {
       chunks: Array<{
-        _id: string;
-        chunkId: string;
-        documentId: string;
-        content: string;
-        start: number;
-        end: number;
-        metadata: Record<string, unknown>;
-      }>;
-      isDone: boolean;
-      continueCursor: string;
-    } = await ctx.runQuery(
-      api.retrieval.chunks.getChunksByRetrieverPage,
-      { kbId, indexConfigHash, cursor, pageSize: 100 },
-    );
-    allChunks.push(...page.chunks);
-    isDone = page.isDone;
-    cursor = page.continueCursor;
+        _id: string
+        chunkId: string
+        documentId: string
+        content: string
+        start: number
+        end: number
+        metadata: Record<string, unknown>
+      }>
+      isDone: boolean
+      continueCursor: string
+    } = await ctx.runQuery(api.retrieval.chunks.getChunksByRetrieverPage, {
+      kbId,
+      indexConfigHash,
+      cursor,
+      pageSize: 100
+    })
+    allChunks.push(...page.chunks)
+    isDone = page.isDone
+    cursor = page.continueCursor
   }
 
-  return allChunks;
+  return allChunks
 }
 
 // ---------------------------------------------------------------------------
@@ -318,17 +319,17 @@ async function denseSearch(
   kbId: Id<"knowledgeBases">,
   indexConfigHash: string,
   embeddingModel: string,
-  topK: number,
+  topK: number
 ): Promise<ChunkResult[]> {
-  const embedder = createEmbedder(embeddingModel);
-  const queryEmbedding = await embedder.embedQuery(queryText);
+  const embedder = createEmbedder(embeddingModel)
+  const queryEmbedding = await embedder.embedQuery(queryText)
 
   const { chunks, scoreMap } = await vectorSearchWithFilter(ctx, {
     queryEmbedding,
     kbId,
     indexConfigHash,
-    topK,
-  });
+    topK
+  })
 
   return chunks.map((c: any) => ({
     chunkId: c.chunkId as string,
@@ -337,8 +338,8 @@ async function denseSearch(
     start: c.start as number,
     end: c.end as number,
     score: scoreMap.get(c._id.toString()) ?? 0,
-    metadata: (c.metadata ?? {}) as Record<string, unknown>,
-  }));
+    metadata: (c.metadata ?? {}) as Record<string, unknown>
+  }))
 }
 
 // ---------------------------------------------------------------------------
@@ -346,18 +347,18 @@ async function denseSearch(
 // ---------------------------------------------------------------------------
 
 interface BM25Index {
-  miniSearch: MiniSearch;
+  miniSearch: MiniSearch
   chunkMap: Map<
     string,
     {
-      chunkId: string;
-      content: string;
-      docId: string;
-      start: number;
-      end: number;
-      metadata: Record<string, unknown>;
+      chunkId: string
+      content: string
+      docId: string
+      start: number
+      end: number
+      metadata: Record<string, unknown>
     }
-  >;
+  >
 }
 
 /**
@@ -367,45 +368,45 @@ interface BM25Index {
 async function buildBM25Index(
   ctx: ActionCtx,
   kbId: Id<"knowledgeBases">,
-  indexConfigHash: string,
+  indexConfigHash: string
 ): Promise<BM25Index> {
-  const allChunks = await loadAllChunks(ctx, kbId, indexConfigHash);
+  const allChunks = await loadAllChunks(ctx, kbId, indexConfigHash)
 
   const chunkMap = new Map<
     string,
     {
-      chunkId: string;
-      content: string;
-      docId: string;
-      start: number;
-      end: number;
-      metadata: Record<string, unknown>;
+      chunkId: string
+      content: string
+      docId: string
+      start: number
+      end: number
+      metadata: Record<string, unknown>
     }
-  >();
+  >()
 
-  const docs: Array<{ id: string; content: string }> = [];
+  const docs: Array<{ id: string; content: string }> = []
 
   for (const c of allChunks) {
-    const id = c._id;
+    const id = c._id
     chunkMap.set(id, {
       chunkId: c.chunkId,
       content: c.content,
       docId: c.documentId,
       start: c.start,
       end: c.end,
-      metadata: c.metadata,
-    });
-    docs.push({ id, content: c.content });
+      metadata: c.metadata
+    })
+    docs.push({ id, content: c.content })
   }
 
   const miniSearch = new MiniSearch({
     fields: ["content"],
     storeFields: ["content"],
-    idField: "id",
-  });
-  miniSearch.addAll(docs);
+    idField: "id"
+  })
+  miniSearch.addAll(docs)
 
-  return { miniSearch, chunkMap };
+  return { miniSearch, chunkMap }
 }
 
 function bm25Search(
@@ -413,15 +414,15 @@ function bm25Search(
   queryText: string,
   topK: number,
   k1 = 1.2,
-  b = 0.75,
+  b = 0.75
 ): ChunkResult[] {
   const results = index.miniSearch.search(queryText, {
     boost: { content: 1 },
-    bm25: { k: k1, b, d: 0.5 },
-  });
+    bm25: { k: k1, b, d: 0.5 }
+  })
 
   return results.slice(0, topK).map((r) => {
-    const chunk = index.chunkMap.get(r.id)!;
+    const chunk = index.chunkMap.get(r.id)!
     return {
       chunkId: chunk.chunkId,
       content: chunk.content,
@@ -429,9 +430,9 @@ function bm25Search(
       start: chunk.start,
       end: chunk.end,
       score: r.score,
-      metadata: chunk.metadata,
-    };
-  });
+      metadata: chunk.metadata
+    }
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -443,25 +444,25 @@ function bm25Search(
  * `score = sum(1 / (k + rank + 1))` across all lists.
  */
 function rrfFuse(resultLists: ChunkResult[][], rrfK = 60): ChunkResult[] {
-  const scores = new Map<string, { chunk: ChunkResult; score: number }>();
+  const scores = new Map<string, { chunk: ChunkResult; score: number }>()
 
   for (const results of resultLists) {
     for (let i = 0; i < results.length; i++) {
-      const chunk = results[i];
-      const key = chunk.chunkId;
-      const rrfContribution = 1 / (rrfK + i + 1);
-      const existing = scores.get(key);
+      const chunk = results[i]
+      const key = chunk.chunkId
+      const rrfContribution = 1 / (rrfK + i + 1)
+      const existing = scores.get(key)
       if (existing) {
-        existing.score += rrfContribution;
+        existing.score += rrfContribution
       } else {
-        scores.set(key, { chunk, score: rrfContribution });
+        scores.set(key, { chunk, score: rrfContribution })
       }
     }
   }
 
   return [...scores.values()]
     .sort((a, b) => b.score - a.score)
-    .map(({ chunk, score }) => ({ ...chunk, score }));
+    .map(({ chunk, score }) => ({ ...chunk, score }))
 }
 
 /**
@@ -472,32 +473,40 @@ function weightedScoreFuse(
   denseResults: ChunkResult[],
   sparseResults: ChunkResult[],
   denseWeight: number,
-  sparseWeight: number,
+  sparseWeight: number
 ): ChunkResult[] {
   const scores = new Map<
     string,
     { chunk: ChunkResult; denseScore: number; sparseScore: number }
-  >();
+  >()
 
   for (const chunk of denseResults) {
-    scores.set(chunk.chunkId, { chunk, denseScore: chunk.score, sparseScore: 0 });
+    scores.set(chunk.chunkId, {
+      chunk,
+      denseScore: chunk.score,
+      sparseScore: 0
+    })
   }
 
   for (const chunk of sparseResults) {
-    const existing = scores.get(chunk.chunkId);
+    const existing = scores.get(chunk.chunkId)
     if (existing) {
-      existing.sparseScore = chunk.score;
+      existing.sparseScore = chunk.score
     } else {
-      scores.set(chunk.chunkId, { chunk, denseScore: 0, sparseScore: chunk.score });
+      scores.set(chunk.chunkId, {
+        chunk,
+        denseScore: 0,
+        sparseScore: chunk.score
+      })
     }
   }
 
   return [...scores.values()]
     .map(({ chunk, denseScore, sparseScore }) => ({
       ...chunk,
-      score: denseWeight * denseScore + sparseWeight * sparseScore,
+      score: denseWeight * denseScore + sparseWeight * sparseScore
     }))
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score)
 }
 
 // ---------------------------------------------------------------------------
@@ -513,36 +522,45 @@ async function hybridSearch(
   bm25Index: BM25Index,
   topK: number,
   config: {
-    denseWeight: number;
-    sparseWeight: number;
-    fusionMethod: "weighted" | "rrf";
-    candidateMultiplier: number;
-    k1: number;
-    b: number;
-    rrfK: number;
-  },
+    denseWeight: number
+    sparseWeight: number
+    fusionMethod: "weighted" | "rrf"
+    candidateMultiplier: number
+    k1: number
+    b: number
+    rrfK: number
+  }
 ): Promise<ChunkResult[]> {
-  const candidateK = topK * config.candidateMultiplier;
+  const candidateK = topK * config.candidateMultiplier
 
   // Run dense and BM25 in parallel
   const [denseResults, sparseResults] = await Promise.all([
-    denseSearch(ctx, queryText, kbId, indexConfigHash, embeddingModel, candidateK),
-    Promise.resolve(bm25Search(bm25Index, queryText, candidateK, config.k1, config.b)),
-  ]);
+    denseSearch(
+      ctx,
+      queryText,
+      kbId,
+      indexConfigHash,
+      embeddingModel,
+      candidateK
+    ),
+    Promise.resolve(
+      bm25Search(bm25Index, queryText, candidateK, config.k1, config.b)
+    )
+  ])
 
-  let fused: ChunkResult[];
+  let fused: ChunkResult[]
   if (config.fusionMethod === "rrf") {
-    fused = rrfFuse([denseResults, sparseResults], config.rrfK);
+    fused = rrfFuse([denseResults, sparseResults], config.rrfK)
   } else {
     fused = weightedScoreFuse(
       denseResults,
       sparseResults,
       config.denseWeight,
-      config.sparseWeight,
-    );
+      config.sparseWeight
+    )
   }
 
-  return fused.slice(0, topK);
+  return fused.slice(0, topK)
 }
 
 // ---------------------------------------------------------------------------
@@ -557,39 +575,62 @@ async function searchSingleQuery(
   embeddingModel: string,
   searchConfig: SearchConfig,
   topK: number,
-  bm25Index: BM25Index | null,
+  bm25Index: BM25Index | null
 ): Promise<ChunkResult[]> {
   switch (searchConfig.strategy) {
     case "dense":
-      return denseSearch(ctx, queryText, kbId, indexConfigHash, embeddingModel, topK);
+      return denseSearch(
+        ctx,
+        queryText,
+        kbId,
+        indexConfigHash,
+        embeddingModel,
+        topK
+      )
 
     case "bm25": {
       if (!bm25Index) {
-        throw new Error("BM25 index not initialized");
+        throw new Error("BM25 index not initialized")
       }
-      const k1 = searchConfig.k1 ?? 1.2;
-      const b = searchConfig.b ?? 0.75;
-      return bm25Search(bm25Index, queryText, topK, k1, b);
+      const k1 = searchConfig.k1 ?? 1.2
+      const b = searchConfig.b ?? 0.75
+      return bm25Search(bm25Index, queryText, topK, k1, b)
     }
 
     case "hybrid": {
       if (!bm25Index) {
-        throw new Error("BM25 index not initialized");
+        throw new Error("BM25 index not initialized")
       }
-      return hybridSearch(ctx, queryText, kbId, indexConfigHash, embeddingModel, bm25Index, topK, {
-        denseWeight: searchConfig.denseWeight ?? 0.7,
-        sparseWeight: searchConfig.sparseWeight ?? 0.3,
-        fusionMethod: searchConfig.fusionMethod ?? "rrf",
-        candidateMultiplier: searchConfig.candidateMultiplier ?? 3,
-        k1: searchConfig.k1 ?? 1.2,
-        b: searchConfig.b ?? 0.75,
-        rrfK: searchConfig.rrfK ?? 60,
-      });
+      return hybridSearch(
+        ctx,
+        queryText,
+        kbId,
+        indexConfigHash,
+        embeddingModel,
+        bm25Index,
+        topK,
+        {
+          denseWeight: searchConfig.denseWeight ?? 0.7,
+          sparseWeight: searchConfig.sparseWeight ?? 0.3,
+          fusionMethod: searchConfig.fusionMethod ?? "rrf",
+          candidateMultiplier: searchConfig.candidateMultiplier ?? 3,
+          k1: searchConfig.k1 ?? 1.2,
+          b: searchConfig.b ?? 0.75,
+          rrfK: searchConfig.rrfK ?? 60
+        }
+      )
     }
 
     default: {
-      const _exhaustive: never = searchConfig;
-      return denseSearch(ctx, queryText, kbId, indexConfigHash, embeddingModel, topK);
+      const _exhaustive: never = searchConfig
+      return denseSearch(
+        ctx,
+        queryText,
+        kbId,
+        indexConfigHash,
+        embeddingModel,
+        topK
+      )
     }
   }
 }
@@ -611,59 +652,62 @@ async function searchSingleQuery(
  * Returns per-query results plus fused results with search config metadata
  * and latency.
  */
-export const searchWithQueries = action({
+export const searchWithQueries = tenantAction({
   args: {
     retrieverId: v.id("retrievers"),
     queries: v.array(v.string()),
-    k: v.optional(v.number()),
+    k: v.optional(v.number())
   },
   handler: async (ctx, args) => {
-    const start = performance.now();
-    const { orgId } = await getAuthContext(ctx);
+    const start = performance.now()
 
     // Load retriever
-    const retriever = await ctx.runQuery(
-      internal.crud.retrievers.getInternal,
-      { id: args.retrieverId },
-    );
+    const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
+      id: args.retrieverId
+    })
 
-    if (retriever.orgId !== orgId) {
-      throw new Error("Retriever not found");
+    if (retriever.orgId !== ctx.orgId) {
+      throw new Error("Retriever not found")
     }
 
     if (retriever.status !== "ready") {
       throw new Error(
-        `Retriever is not ready (status: ${retriever.status}). Index the KB first.`,
-      );
+        `Retriever is not ready (status: ${retriever.status}). Index the KB first.`
+      )
     }
 
     if (args.queries.length === 0) {
-      throw new Error("At least one query is required");
+      throw new Error("At least one query is required")
     }
 
-    const config = retriever.retrieverConfig as PipelineConfig;
-    const searchConfig: SearchConfig = (config.search as SearchConfig | undefined) ?? {
-      strategy: "dense",
-    };
-    const topK = args.k ?? retriever.defaultK;
+    const config = retriever.retrieverConfig as PipelineConfig
+    const searchConfig: SearchConfig = (config.search as
+      | SearchConfig
+      | undefined) ?? {
+      strategy: "dense"
+    }
+    const topK = args.k ?? retriever.defaultK
 
     // Resolve embedding model from index config
-    const indexSettings = (config.index ?? {}) as Record<string, unknown>;
+    const indexSettings = (config.index ?? {}) as Record<string, unknown>
     const embeddingModel =
-      (indexSettings.embeddingModel as string) ?? "text-embedding-3-small";
+      (indexSettings.embeddingModel as string) ?? "text-embedding-3-small"
 
     // Pre-build BM25 index if needed (reused across all queries)
-    let bm25Index: BM25Index | null = null;
-    if (searchConfig.strategy === "bm25" || searchConfig.strategy === "hybrid") {
+    let bm25Index: BM25Index | null = null
+    if (
+      searchConfig.strategy === "bm25" ||
+      searchConfig.strategy === "hybrid"
+    ) {
       bm25Index = await buildBM25Index(
         ctx,
         retriever.kbId,
-        retriever.indexConfigHash,
-      );
+        retriever.indexConfigHash
+      )
     }
 
     // Execute search for each query
-    const perQueryResults: Array<{ query: string; chunks: ChunkResult[] }> = [];
+    const perQueryResults: Array<{ query: string; chunks: ChunkResult[] }> = []
 
     for (const queryText of args.queries) {
       const chunks = await searchSingleQuery(
@@ -674,42 +718,43 @@ export const searchWithQueries = action({
         embeddingModel,
         searchConfig,
         topK,
-        bm25Index,
-      );
-      perQueryResults.push({ query: queryText, chunks });
+        bm25Index
+      )
+      perQueryResults.push({ query: queryText, chunks })
     }
 
     // Fuse across queries if multiple
-    let fusedResults: ChunkResult[];
+    let fusedResults: ChunkResult[]
     if (perQueryResults.length === 1) {
-      fusedResults = perQueryResults[0].chunks;
+      fusedResults = perQueryResults[0].chunks
     } else {
-      const allChunkLists = perQueryResults.map((r) => r.chunks);
-      fusedResults = rrfFuse(allChunkLists).slice(0, topK);
+      const allChunkLists = perQueryResults.map((r) => r.chunks)
+      fusedResults = rrfFuse(allChunkLists).slice(0, topK)
     }
 
-    const latencyMs = Math.round(performance.now() - start);
+    const latencyMs = Math.round(performance.now() - start)
 
     // Build search config metadata for the response
     const searchConfigMeta: Record<string, unknown> = {
       strategy: searchConfig.strategy,
-      k: topK,
-    };
+      k: topK
+    }
     if (searchConfig.strategy === "hybrid") {
-      searchConfigMeta.denseWeight = searchConfig.denseWeight ?? 0.7;
-      searchConfigMeta.sparseWeight = searchConfig.sparseWeight ?? 0.3;
-      searchConfigMeta.fusionMethod = searchConfig.fusionMethod ?? "rrf";
-      searchConfigMeta.candidateMultiplier = searchConfig.candidateMultiplier ?? 3;
+      searchConfigMeta.denseWeight = searchConfig.denseWeight ?? 0.7
+      searchConfigMeta.sparseWeight = searchConfig.sparseWeight ?? 0.3
+      searchConfigMeta.fusionMethod = searchConfig.fusionMethod ?? "rrf"
+      searchConfigMeta.candidateMultiplier =
+        searchConfig.candidateMultiplier ?? 3
     }
 
     return {
       searchConfig: searchConfigMeta,
       perQueryResults,
       fusedResults,
-      latencyMs,
-    };
-  },
-});
+      latencyMs
+    }
+  }
+})
 
 // ===========================================================================
 // Refine (Stage 4 — post-retrieval refinement)
@@ -724,43 +769,46 @@ export const searchWithQueries = action({
  * same document. Returns 0 when chunks are from different documents.
  */
 function computeOverlapRatio(a: ChunkResult, b: ChunkResult): number {
-  if (a.docId !== b.docId) return 0;
-  const overlapStart = Math.max(a.start, b.start);
-  const overlapEnd = Math.min(a.end, b.end);
-  const overlap = Math.max(0, overlapEnd - overlapStart);
-  const minLen = Math.min(a.end - a.start, b.end - b.start);
-  return minLen === 0 ? 0 : overlap / minLen;
+  if (a.docId !== b.docId) return 0
+  const overlapStart = Math.max(a.start, b.start)
+  const overlapEnd = Math.min(a.end, b.end)
+  const overlap = Math.max(0, overlapEnd - overlapStart)
+  const minLen = Math.min(a.end - a.start, b.end - b.start)
+  return minLen === 0 ? 0 : overlap / minLen
 }
 
-function applyThreshold(chunks: ChunkResult[], minScore: number): ChunkResult[] {
-  return chunks.filter((c) => c.score >= minScore);
+function applyThreshold(
+  chunks: ChunkResult[],
+  minScore: number
+): ChunkResult[] {
+  return chunks.filter((c) => c.score >= minScore)
 }
 
 function applyDedup(
   chunks: ChunkResult[],
   method: "exact" | "overlap",
-  threshold: number,
+  threshold: number
 ): ChunkResult[] {
   if (method === "exact") {
-    const seen = new Set<string>();
+    const seen = new Set<string>()
     return chunks.filter((c) => {
-      if (seen.has(c.content)) return false;
-      seen.add(c.content);
-      return true;
-    });
+      if (seen.has(c.content)) return false
+      seen.add(c.content)
+      return true
+    })
   }
 
   // Overlap method: greedily keep chunks that don't overlap with already-kept ones
-  const kept: ChunkResult[] = [];
+  const kept: ChunkResult[] = []
   for (const chunk of chunks) {
     const isDuplicate = kept.some(
       (existing) =>
         existing.docId === chunk.docId &&
-        computeOverlapRatio(existing, chunk) >= threshold,
-    );
-    if (!isDuplicate) kept.push(chunk);
+        computeOverlapRatio(existing, chunk) >= threshold
+    )
+    if (!isDuplicate) kept.push(chunk)
   }
-  return kept;
+  return kept
 }
 
 /**
@@ -770,38 +818,38 @@ function applyDedup(
 function applyMmr(
   chunks: ChunkResult[],
   k: number,
-  lambda: number,
+  lambda: number
 ): ChunkResult[] {
-  if (chunks.length === 0) return [];
+  if (chunks.length === 0) return []
 
-  const candidates = [...chunks];
-  const selected: ChunkResult[] = [];
+  const candidates = [...chunks]
+  const selected: ChunkResult[] = []
 
   while (selected.length < k && candidates.length > 0) {
-    let bestIdx = 0;
-    let bestScore = -Infinity;
+    let bestIdx = 0
+    let bestScore = -Infinity
 
     for (let i = 0; i < candidates.length; i++) {
-      const c = candidates[i];
-      const relevance = c.score;
+      const c = candidates[i]
+      const relevance = c.score
 
-      let maxSim = 0;
+      let maxSim = 0
       for (const s of selected) {
-        const sim = computeOverlapRatio(s, c);
-        if (sim > maxSim) maxSim = sim;
+        const sim = computeOverlapRatio(s, c)
+        if (sim > maxSim) maxSim = sim
       }
 
-      const mmrScore = lambda * relevance - (1 - lambda) * maxSim;
+      const mmrScore = lambda * relevance - (1 - lambda) * maxSim
       if (mmrScore > bestScore) {
-        bestScore = mmrScore;
-        bestIdx = i;
+        bestScore = mmrScore
+        bestIdx = i
       }
     }
 
-    selected.push(candidates.splice(bestIdx, 1)[0]);
+    selected.push(candidates.splice(bestIdx, 1)[0])
   }
 
-  return selected;
+  return selected
 }
 
 /**
@@ -811,42 +859,42 @@ function applyMmr(
 async function applyRerank(
   query: string,
   chunks: ChunkResult[],
-  topK: number,
+  topK: number
 ): Promise<ChunkResult[]> {
-  const apiKey = process.env.COHERE_API_KEY;
+  const apiKey = backendConfig.ai.cohereApiKey
   if (!apiKey) {
     throw new Error(
-      "COHERE_API_KEY not set — required for the rerank refinement step",
-    );
+      "COHERE_API_KEY not set — required for the rerank refinement step"
+    )
   }
 
   const response = await fetch("https://api.cohere.com/v1/rerank", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+      "Content-Type": "application/json"
     },
     body: JSON.stringify({
       model: "rerank-english-v3.0",
       query,
       documents: chunks.map((c) => c.content),
-      top_n: topK,
-    }),
-  });
+      top_n: topK
+    })
+  })
 
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Cohere rerank failed (${response.status}): ${body}`);
+    const body = await response.text()
+    throw new Error(`Cohere rerank failed (${response.status}): ${body}`)
   }
 
   const data = (await response.json()) as {
-    results: Array<{ index: number; relevance_score: number }>;
-  };
+    results: Array<{ index: number; relevance_score: number }>
+  }
 
   return data.results.map((r) => ({
     ...chunks[r.index],
-    score: r.relevance_score,
-  }));
+    score: r.relevance_score
+  }))
 }
 
 /**
@@ -859,34 +907,34 @@ async function applyExpandContext(
   ctx: ActionCtx,
   chunks: ChunkResult[],
   kbId: Id<"knowledgeBases">,
-  windowChars: number,
+  windowChars: number
 ): Promise<ChunkResult[]> {
   // Fetch all documents in the KB so we can look up content by docId
   const docs: Array<{ docId: string; content: string }> = await ctx.runQuery(
     internal.crud.documents.listByKbInternal,
-    { kbId },
-  );
+    { kbId }
+  )
 
-  const docContentMap = new Map<string, string>();
+  const docContentMap = new Map<string, string>()
   for (const doc of docs) {
-    docContentMap.set(doc.docId, doc.content);
+    docContentMap.set(doc.docId, doc.content)
   }
 
   return chunks.map((chunk) => {
-    const fullContent = docContentMap.get(chunk.docId);
-    if (!fullContent) return chunk; // Document not found — return unchanged
+    const fullContent = docContentMap.get(chunk.docId)
+    if (!fullContent) return chunk // Document not found — return unchanged
 
-    const newStart = Math.max(0, chunk.start - windowChars);
-    const newEnd = Math.min(fullContent.length, chunk.end + windowChars);
-    const expandedContent = fullContent.slice(newStart, newEnd);
+    const newStart = Math.max(0, chunk.start - windowChars)
+    const newEnd = Math.min(fullContent.length, chunk.end + windowChars)
+    const expandedContent = fullContent.slice(newStart, newEnd)
 
     return {
       ...chunk,
       content: expandedContent,
       start: newStart,
-      end: newEnd,
-    };
-  });
+      end: newEnd
+    }
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -894,12 +942,12 @@ async function applyExpandContext(
 // ---------------------------------------------------------------------------
 
 interface StageResult {
-  readonly name: string;
-  readonly config: Record<string, unknown>;
-  readonly inputCount: number;
-  readonly outputCount: number;
-  readonly outputChunks: ChunkResult[];
-  readonly latencyMs: number;
+  readonly name: string
+  readonly config: Record<string, unknown>
+  readonly inputCount: number
+  readonly outputCount: number
+  readonly outputChunks: ChunkResult[]
+  readonly latencyMs: number
 }
 
 /**
@@ -911,57 +959,61 @@ async function runRefinementStage(
   chunks: ChunkResult[],
   query: string,
   kbId: Id<"knowledgeBases">,
-  k: number,
+  k: number
 ): Promise<StageResult> {
-  const inputCount = chunks.length;
-  const start = performance.now();
-  let outputChunks: ChunkResult[];
-  let config: Record<string, unknown>;
+  const inputCount = chunks.length
+  const start = performance.now()
+  let outputChunks: ChunkResult[]
+  let config: Record<string, unknown>
 
   switch (step.type) {
     case "threshold": {
-      config = { type: "threshold", minScore: step.minScore };
-      outputChunks = applyThreshold(chunks, step.minScore);
-      break;
+      config = { type: "threshold", minScore: step.minScore }
+      outputChunks = applyThreshold(chunks, step.minScore)
+      break
     }
 
     case "dedup": {
-      const method = step.method ?? "overlap";
-      const overlapThreshold = step.overlapThreshold ?? 0.5;
-      config = { type: "dedup", method, overlapThreshold };
-      outputChunks = applyDedup(chunks, method, overlapThreshold);
-      break;
+      const method = step.method ?? "overlap"
+      const overlapThreshold = step.overlapThreshold ?? 0.5
+      config = { type: "dedup", method, overlapThreshold }
+      outputChunks = applyDedup(chunks, method, overlapThreshold)
+      break
     }
 
     case "mmr": {
-      const lambda = step.lambda ?? 0.7;
-      config = { type: "mmr", lambda, k };
-      outputChunks = applyMmr(chunks, k, lambda);
-      break;
+      const lambda = step.lambda ?? 0.7
+      config = { type: "mmr", lambda, k }
+      outputChunks = applyMmr(chunks, k, lambda)
+      break
     }
 
     case "rerank": {
-      const rerankTopN = step.topN ?? k;
-      config = { type: "rerank", model: "rerank-english-v3.0", topK: rerankTopN };
-      outputChunks = await applyRerank(query, chunks, rerankTopN);
-      break;
+      const rerankTopN = step.topN ?? k
+      config = {
+        type: "rerank",
+        model: "rerank-english-v3.0",
+        topK: rerankTopN
+      }
+      outputChunks = await applyRerank(query, chunks, rerankTopN)
+      break
     }
 
     case "expand-context": {
-      const windowChars = step.windowChars ?? 500;
-      config = { type: "expand-context", windowChars };
-      outputChunks = await applyExpandContext(ctx, chunks, kbId, windowChars);
-      break;
+      const windowChars = step.windowChars ?? 500
+      config = { type: "expand-context", windowChars }
+      outputChunks = await applyExpandContext(ctx, chunks, kbId, windowChars)
+      break
     }
 
     default: {
-      const _exhaustive: never = step;
-      config = { type: "unknown" };
-      outputChunks = chunks;
+      const _exhaustive: never = step
+      config = { type: "unknown" }
+      outputChunks = chunks
     }
   }
 
-  const latencyMs = Math.round(performance.now() - start);
+  const latencyMs = Math.round(performance.now() - start)
 
   return {
     name: step.type,
@@ -969,8 +1021,8 @@ async function runRefinementStage(
     inputCount,
     outputCount: outputChunks.length,
     outputChunks,
-    latencyMs,
-  };
+    latencyMs
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -987,7 +1039,7 @@ async function runRefinementStage(
  *
  * Returns per-stage details and the final refined chunks.
  */
-export const refine = action({
+export const refine = tenantAction({
   args: {
     retrieverId: v.id("retrievers"),
     query: v.string(),
@@ -999,35 +1051,32 @@ export const refine = action({
         start: v.number(),
         end: v.number(),
         score: v.number(),
-        metadata: v.any(),
-      }),
+        metadata: v.any()
+      })
     ),
-    k: v.optional(v.number()),
+    k: v.optional(v.number())
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-
     // Load and validate retriever
-    const retriever = await ctx.runQuery(
-      internal.crud.retrievers.getInternal,
-      { id: args.retrieverId },
-    );
+    const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
+      id: args.retrieverId
+    })
 
-    if (retriever.orgId !== orgId) {
-      throw new Error("Retriever not found");
+    if (retriever.orgId !== ctx.orgId) {
+      throw new Error("Retriever not found")
     }
 
     if (retriever.status !== "ready") {
       throw new Error(
-        `Retriever is not ready (status: ${retriever.status}). Index the KB first.`,
-      );
+        `Retriever is not ready (status: ${retriever.status}). Index the KB first.`
+      )
     }
 
-    const config = retriever.retrieverConfig as PipelineConfig;
+    const config = retriever.retrieverConfig as PipelineConfig
     const refinementSteps =
-      (config.refinement as RefinementStepConfig[] | undefined) ?? [];
+      (config.refinement as RefinementStepConfig[] | undefined) ?? []
 
-    const k = args.k ?? retriever.defaultK;
+    const k = args.k ?? retriever.defaultK
 
     // Cast input chunks to ChunkResult (validator guarantees shape)
     let currentChunks: ChunkResult[] = args.chunks.map((c) => ({
@@ -1037,19 +1086,19 @@ export const refine = action({
       start: c.start,
       end: c.end,
       score: c.score,
-      metadata: (c.metadata ?? {}) as Record<string, unknown>,
-    }));
+      metadata: (c.metadata ?? {}) as Record<string, unknown>
+    }))
 
     // No refinement configured — return input unchanged
     if (refinementSteps.length === 0) {
       return {
         stages: [] as StageResult[],
-        finalChunks: currentChunks,
-      };
+        finalChunks: currentChunks
+      }
     }
 
     // Run each refinement stage sequentially
-    const stages: StageResult[] = [];
+    const stages: StageResult[] = []
     for (const step of refinementSteps) {
       const stageResult = await runRefinementStage(
         ctx,
@@ -1057,18 +1106,18 @@ export const refine = action({
         currentChunks,
         args.query,
         retriever.kbId,
-        k,
-      );
-      stages.push(stageResult);
-      currentChunks = stageResult.outputChunks;
+        k
+      )
+      stages.push(stageResult)
+      currentChunks = stageResult.outputChunks
     }
 
     return {
       stages,
-      finalChunks: currentChunks,
-    };
-  },
-});
+      finalChunks: currentChunks
+    }
+  }
+})
 
 // ===========================================================================
 // Retrieve With Trace (full pipeline — single action)
@@ -1080,19 +1129,19 @@ export const refine = action({
 
 interface SearchTraceResult {
   readonly searchConfig: {
-    readonly strategy: string;
-    readonly denseWeight?: number;
-    readonly sparseWeight?: number;
-    readonly fusionMethod?: string;
-    readonly candidateMultiplier?: number;
-    readonly k: number;
-  };
+    readonly strategy: string
+    readonly denseWeight?: number
+    readonly sparseWeight?: number
+    readonly fusionMethod?: string
+    readonly candidateMultiplier?: number
+    readonly k: number
+  }
   readonly perQueryResults: ReadonlyArray<{
-    readonly query: string;
-    readonly chunks: ChunkResult[];
-  }>;
-  readonly fusedResults: ChunkResult[];
-  readonly latencyMs: number;
+    readonly query: string
+    readonly chunks: ChunkResult[]
+  }>
+  readonly fusedResults: ChunkResult[]
+  readonly latencyMs: number
 }
 
 /**
@@ -1107,18 +1156,18 @@ async function executeSearch(
   indexConfigHash: string,
   embeddingModel: string,
   searchConfig: SearchConfig,
-  topK: number,
+  topK: number
 ): Promise<SearchTraceResult> {
-  const start = performance.now();
+  const start = performance.now()
 
   // Pre-build BM25 index if needed (reused across all queries)
-  let bm25Index: BM25Index | null = null;
+  let bm25Index: BM25Index | null = null
   if (searchConfig.strategy === "bm25" || searchConfig.strategy === "hybrid") {
-    bm25Index = await buildBM25Index(ctx, kbId, indexConfigHash);
+    bm25Index = await buildBM25Index(ctx, kbId, indexConfigHash)
   }
 
   // Execute search for each query
-  const perQueryResults: Array<{ query: string; chunks: ChunkResult[] }> = [];
+  const perQueryResults: Array<{ query: string; chunks: ChunkResult[] }> = []
 
   for (const queryText of queries) {
     const chunks = await searchSingleQuery(
@@ -1129,47 +1178,47 @@ async function executeSearch(
       embeddingModel,
       searchConfig,
       topK,
-      bm25Index,
-    );
-    perQueryResults.push({ query: queryText, chunks });
+      bm25Index
+    )
+    perQueryResults.push({ query: queryText, chunks })
   }
 
   // Fuse across queries if multiple
-  let fusedResults: ChunkResult[];
+  let fusedResults: ChunkResult[]
   if (perQueryResults.length === 1) {
-    fusedResults = perQueryResults[0].chunks;
+    fusedResults = perQueryResults[0].chunks
   } else {
-    const allChunkLists = perQueryResults.map((r) => r.chunks);
-    fusedResults = rrfFuse(allChunkLists).slice(0, topK);
+    const allChunkLists = perQueryResults.map((r) => r.chunks)
+    fusedResults = rrfFuse(allChunkLists).slice(0, topK)
   }
 
-  const latencyMs = Math.round(performance.now() - start);
+  const latencyMs = Math.round(performance.now() - start)
 
   // Build search config metadata
   const searchConfigMeta: {
-    strategy: string;
-    denseWeight?: number;
-    sparseWeight?: number;
-    fusionMethod?: string;
-    candidateMultiplier?: number;
-    k: number;
+    strategy: string
+    denseWeight?: number
+    sparseWeight?: number
+    fusionMethod?: string
+    candidateMultiplier?: number
+    k: number
   } = {
     strategy: searchConfig.strategy,
-    k: topK,
-  };
+    k: topK
+  }
   if (searchConfig.strategy === "hybrid") {
-    searchConfigMeta.denseWeight = searchConfig.denseWeight ?? 0.7;
-    searchConfigMeta.sparseWeight = searchConfig.sparseWeight ?? 0.3;
-    searchConfigMeta.fusionMethod = searchConfig.fusionMethod ?? "rrf";
-    searchConfigMeta.candidateMultiplier = searchConfig.candidateMultiplier ?? 3;
+    searchConfigMeta.denseWeight = searchConfig.denseWeight ?? 0.7
+    searchConfigMeta.sparseWeight = searchConfig.sparseWeight ?? 0.3
+    searchConfigMeta.fusionMethod = searchConfig.fusionMethod ?? "rrf"
+    searchConfigMeta.candidateMultiplier = searchConfig.candidateMultiplier ?? 3
   }
 
   return {
     searchConfig: searchConfigMeta,
     perQueryResults,
     fusedResults,
-    latencyMs,
-  };
+    latencyMs
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1177,8 +1226,8 @@ async function executeSearch(
 // ---------------------------------------------------------------------------
 
 interface RefinementTraceResult {
-  readonly stages: StageResult[];
-  readonly finalChunks: ChunkResult[];
+  readonly stages: StageResult[]
+  readonly finalChunks: ChunkResult[]
 }
 
 /**
@@ -1191,15 +1240,15 @@ async function executeRefinement(
   refinementSteps: RefinementStepConfig[],
   query: string,
   kbId: Id<"knowledgeBases">,
-  k: number,
+  k: number
 ): Promise<RefinementTraceResult> {
-  let currentChunks = chunks;
+  let currentChunks = chunks
 
   if (refinementSteps.length === 0) {
-    return { stages: [], finalChunks: currentChunks };
+    return { stages: [], finalChunks: currentChunks }
   }
 
-  const stages: StageResult[] = [];
+  const stages: StageResult[] = []
   for (const step of refinementSteps) {
     const stageResult = await runRefinementStage(
       ctx,
@@ -1207,13 +1256,13 @@ async function executeRefinement(
       currentChunks,
       query,
       kbId,
-      k,
-    );
-    stages.push(stageResult);
-    currentChunks = stageResult.outputChunks;
+      k
+    )
+    stages.push(stageResult)
+    currentChunks = stageResult.outputChunks
   }
 
-  return { stages, finalChunks: currentChunks };
+  return { stages, finalChunks: currentChunks }
 }
 
 // ---------------------------------------------------------------------------
@@ -1229,46 +1278,46 @@ async function executeRefinement(
  *
  * Returns: `{ rewriting, search, refinement, finalChunks, totalLatencyMs }`.
  */
-export const retrieveWithTrace = action({
+export const retrieveWithTrace = tenantAction({
   args: {
     retrieverId: v.id("retrievers"),
     query: v.string(),
-    k: v.optional(v.number()),
+    k: v.optional(v.number())
   },
   handler: async (ctx, args) => {
-    const totalStart = performance.now();
-    const { orgId } = await getAuthContext(ctx);
+    const totalStart = performance.now()
 
     // Load and validate retriever
-    const retriever = await ctx.runQuery(
-      internal.crud.retrievers.getInternal,
-      { id: args.retrieverId },
-    );
+    const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
+      id: args.retrieverId
+    })
 
-    if (retriever.orgId !== orgId) {
-      throw new Error("Retriever not found");
+    if (retriever.orgId !== ctx.orgId) {
+      throw new Error("Retriever not found")
     }
 
     if (retriever.status !== "ready") {
       throw new Error(
-        `Retriever is not ready (status: ${retriever.status}). Index the KB first.`,
-      );
+        `Retriever is not ready (status: ${retriever.status}). Index the KB first.`
+      )
     }
 
-    const config = retriever.retrieverConfig as PipelineConfig;
-    const k = args.k ?? retriever.defaultK;
+    const config = retriever.retrieverConfig as PipelineConfig
+    const k = args.k ?? retriever.defaultK
 
     // ----- Step 1: Query rewriting -----
-    const queryConfig = config.query as QueryConfig | undefined;
-    const rewriting = await dispatchQueryStrategy(args.query, queryConfig);
+    const queryConfig = config.query as QueryConfig | undefined
+    const rewriting = await dispatchQueryStrategy(args.query, queryConfig)
 
     // ----- Step 2: Search -----
-    const searchConfig: SearchConfig = (config.search as SearchConfig | undefined) ?? {
-      strategy: "dense",
-    };
-    const indexSettings = (config.index ?? {}) as Record<string, unknown>;
+    const searchConfig: SearchConfig = (config.search as
+      | SearchConfig
+      | undefined) ?? {
+      strategy: "dense"
+    }
+    const indexSettings = (config.index ?? {}) as Record<string, unknown>
     const embeddingModel =
-      (indexSettings.embeddingModel as string) ?? "text-embedding-3-small";
+      (indexSettings.embeddingModel as string) ?? "text-embedding-3-small"
 
     const search = await executeSearch(
       ctx,
@@ -1277,25 +1326,25 @@ export const retrieveWithTrace = action({
       retriever.indexConfigHash,
       embeddingModel,
       searchConfig,
-      k,
-    );
+      k
+    )
 
     // ----- Step 3: Refinement -----
     const refinementSteps =
-      (config.refinement as RefinementStepConfig[] | undefined) ?? [];
+      (config.refinement as RefinementStepConfig[] | undefined) ?? []
 
-    const refinementStart = performance.now();
+    const refinementStart = performance.now()
     const refinementResult = await executeRefinement(
       ctx,
       search.fusedResults,
       refinementSteps,
       args.query,
       retriever.kbId,
-      k,
-    );
-    const refinementLatencyMs = Math.round(performance.now() - refinementStart);
+      k
+    )
+    const refinementLatencyMs = Math.round(performance.now() - refinementStart)
 
-    const totalLatencyMs = Math.round(performance.now() - totalStart);
+    const totalLatencyMs = Math.round(performance.now() - totalStart)
 
     return {
       rewriting,
@@ -1303,10 +1352,10 @@ export const retrieveWithTrace = action({
       refinement: {
         stages: refinementResult.stages,
         finalChunks: refinementResult.finalChunks,
-        latencyMs: refinementLatencyMs,
+        latencyMs: refinementLatencyMs
       },
       finalChunks: refinementResult.finalChunks,
-      totalLatencyMs,
-    };
-  },
-});
+      totalLatencyMs
+    }
+  }
+})

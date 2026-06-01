@@ -1,15 +1,16 @@
 import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query,
-} from "../_generated/server";
-import { components, internal } from "../_generated/api";
-import { v } from "convex/values";
-import { Workpool, WorkId, vOnCompleteArgs, type RunResult } from "@convex-dev/workpool";
-import { getAuthContext } from "../lib/auth";
-import { Id } from "../_generated/dataModel";
-import type { JobStatus } from "@tars-inc/eval-lib/shared";
+  type RunResult,
+  vOnCompleteArgs,
+  type WorkId,
+  Workpool
+} from "@convex-dev/workpool"
+import type { JobStatus } from "@tars-inc/eval-lib/shared"
+import type { PaginationResult } from "convex/server"
+import { v } from "convex/values"
+import { components, internal } from "../_generated/api"
+import type { Doc, Id } from "../_generated/dataModel"
+import { internalMutation, internalQuery } from "../_generated/server"
+import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 
 // ─── WorkPool Instance ───
 
@@ -19,17 +20,32 @@ const pool = new Workpool(components.indexingPool, {
   defaultRetryBehavior: {
     maxAttempts: 5,
     initialBackoffMs: 2000,
-    base: 2,
-  },
-});
+    base: 2
+  }
+})
 
 // ─── Tier-based Parallelism ───
 
 const TIER_PARALLELISM: Record<string, number> = {
   free: 3,
   pro: 10,
-  enterprise: 20,
-};
+  enterprise: 20
+}
+
+// ─── Document Page Query ───
+
+export const getDocumentPage = internalQuery({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    cursor: v.union(v.string(), v.null())
+  },
+  handler: async (ctx, args) => {
+    return ctx.db
+      .query("documents")
+      .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
+      .paginate({ numItems: 100, cursor: args.cursor })
+  }
+})
 
 // ─── Start Indexing ───
 
@@ -47,64 +63,64 @@ export const startIndexing = internalMutation({
     indexConfig: v.any(),
     createdBy: v.id("users"),
     tier: v.optional(v.string()),
-    force: v.optional(v.boolean()),
+    force: v.optional(v.boolean())
   },
   handler: async (ctx, args) => {
     // Dedup: reject if a running/pending job already exists for this config
     const existingJob = await ctx.db
       .query("indexingJobs")
       .withIndex("by_kb_config", (q) =>
-        q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash),
+        q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash)
       )
       .filter((q) =>
         q.or(
           q.eq(q.field("status"), "pending"),
-          q.eq(q.field("status"), "running"),
-        ),
+          q.eq(q.field("status"), "running")
+        )
       )
-      .first();
+      .first()
 
     if (existingJob) {
-      return { jobId: existingJob._id, alreadyRunning: true };
+      return { jobId: existingJob._id, alreadyRunning: true }
     }
 
     // Check if already fully indexed
     const completedJob = await ctx.db
       .query("indexingJobs")
       .withIndex("by_kb_config", (q) =>
-        q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash),
+        q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash)
       )
       .filter((q) =>
         q.or(
           q.eq(q.field("status"), "completed"),
-          q.eq(q.field("status"), "completed_with_errors"),
-        ),
+          q.eq(q.field("status"), "completed_with_errors")
+        )
       )
-      .first();
+      .first()
 
     if (completedJob && !args.force) {
-      return { jobId: completedJob._id, alreadyCompleted: true };
+      return { jobId: completedJob._id, alreadyCompleted: true }
     }
 
     // Force re-index: delete the old completed job record
     if (completedJob && args.force) {
-      await ctx.db.delete(completedJob._id);
+      await ctx.db.delete(completedJob._id)
     }
 
     // Use denormalized count for totalDocs and emptiness check.
-    const kb = await ctx.db.get(args.kbId);
-    if (!kb) throw new Error("Knowledge base not found");
-    const totalDocs = kb.documentCount ?? 0;
+    const kb = await ctx.db.get(args.kbId)
+    if (!kb) throw new Error("Knowledge base not found")
+    const totalDocs = kb.documentCount ?? 0
     if (totalDocs === 0) {
-      throw new Error("No documents in knowledge base to index");
+      throw new Error("No documents in knowledge base to index")
     }
 
     // Set tier-based parallelism
-    const tier = args.tier ?? "free";
-    const parallelism = TIER_PARALLELISM[tier] ?? TIER_PARALLELISM.free;
+    const tier = args.tier ?? "free"
+    const parallelism = TIER_PARALLELISM[tier] ?? TIER_PARALLELISM.free
     await ctx.runMutation(components.indexingPool.config.update, {
-      maxParallelism: parallelism,
-    });
+      maxParallelism: parallelism
+    })
 
     // Create job record
     const jobId = await ctx.db.insert("indexingJobs", {
@@ -119,21 +135,22 @@ export const startIndexing = internalMutation({
       skippedDocs: 0,
       totalChunks: 0,
       createdBy: args.createdBy,
-      createdAt: Date.now(),
-    });
+      createdAt: Date.now()
+    })
 
     // Extract chunking/embedding config
-    const indexConfig = args.indexConfig as Record<string, any>;
+    const indexConfig = args.indexConfig as Record<string, any>
 
-    // Enqueue one action per document. Paginate to avoid 16MB read limit;
-    // only doc._id is needed here — content is read later by the action.
-    const workIds: WorkId[] = [];
-    let cursor: string | null = null;
+    // Enqueue one action per document. Use ctx.runQuery per page so each
+    // paginate() call is its own function invocation (Convex allows only one
+    // paginated query per invocation).
+    const workIds: WorkId[] = []
+    let cursor: string | null = null
     while (true) {
-      const page = await ctx.db
-        .query("documents")
-        .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
-        .paginate({ numItems: 100, cursor });
+      const page: PaginationResult<Doc<"documents">> = await ctx.runQuery(
+        internal.retrieval.indexing.getDocumentPage,
+        { kbId: args.kbId, cursor }
+      )
       for (const doc of page.page) {
         const wId = await pool.enqueueAction(
           ctx,
@@ -150,25 +167,25 @@ export const startIndexing = internalMutation({
             childChunkSize: indexConfig.childChunkSize,
             parentChunkSize: indexConfig.parentChunkSize,
             childOverlap: indexConfig.childOverlap,
-            parentOverlap: indexConfig.parentOverlap,
+            parentOverlap: indexConfig.parentOverlap
           },
           {
             context: { jobId, documentId: doc._id },
-            onComplete: internal.retrieval.indexing.onDocumentIndexed,
-          },
-        );
-        workIds.push(wId);
+            onComplete: internal.retrieval.indexing.onDocumentIndexed
+          }
+        )
+        workIds.push(wId)
       }
-      if (page.isDone) break;
-      cursor = page.continueCursor;
+      if (page.isDone) break
+      cursor = page.continueCursor
     }
 
     // Store workIds on the job for selective cancellation
-    await ctx.db.patch(jobId, { workIds: workIds as string[] });
+    await ctx.db.patch(jobId, { workIds: workIds as string[] })
 
-    return { jobId, alreadyRunning: false, totalDocs };
-  },
-});
+    return { jobId, alreadyRunning: false, totalDocs }
+  }
+})
 
 // ─── WorkPool onComplete Callback ───
 
@@ -183,71 +200,79 @@ export const onDocumentIndexed = internalMutation({
   args: vOnCompleteArgs(
     v.object({
       jobId: v.id("indexingJobs"),
-      documentId: v.id("documents"),
-    }),
+      documentId: v.id("documents")
+    })
   ),
-  handler: async (ctx, { context, result }: {
-    workId: string;
-    context: { jobId: Id<"indexingJobs">; documentId: Id<"documents"> };
-    result: RunResult;
-  }) => {
-    const job = await ctx.db.get(context.jobId);
-    if (!job) return;
+  handler: async (
+    ctx,
+    {
+      context,
+      result
+    }: {
+      workId: string
+      context: { jobId: Id<"indexingJobs">; documentId: Id<"documents"> }
+      result: RunResult
+    }
+  ) => {
+    const job = await ctx.db.get(context.jobId)
+    if (!job) return
 
     // Already fully canceled — nothing to update
     if (job.status === "canceled") {
-      return;
+      return
     }
 
-    let processedDocs = job.processedDocs;
-    let failedDocs = job.failedDocs;
-    let skippedDocs = job.skippedDocs;
-    let totalChunks = job.totalChunks;
-    let failedDocDetails: Array<{ documentId: Id<"documents">; error: string }> =
-      [...(job.failedDocDetails ?? [])];
+    let processedDocs = job.processedDocs
+    let failedDocs = job.failedDocs
+    let skippedDocs = job.skippedDocs
+    let totalChunks = job.totalChunks
+    const failedDocDetails: Array<{
+      documentId: Id<"documents">
+      error: string
+    }> = [...(job.failedDocDetails ?? [])]
 
     if (result.kind === "success") {
       const returnValue = result.returnValue as {
-        skipped: boolean;
-        chunksInserted: number;
-        chunksEmbedded: number;
-      };
-      if (returnValue.skipped) {
-        skippedDocs++;
-      } else {
-        processedDocs++;
+        skipped: boolean
+        chunksInserted: number
+        chunksEmbedded: number
       }
-      totalChunks += returnValue.chunksInserted;
+      if (returnValue.skipped) {
+        skippedDocs++
+      } else {
+        processedDocs++
+      }
+      totalChunks += returnValue.chunksInserted
     } else if (result.kind === "failed") {
-      failedDocs++;
+      failedDocs++
       failedDocDetails.push({
         documentId: context.documentId,
-        error: result.error,
-      });
+        error: result.error
+      })
     } else if (result.kind === "canceled") {
-      skippedDocs++;
+      skippedDocs++
     }
 
     // Check if all documents have been handled
-    const totalHandled = processedDocs + failedDocs + skippedDocs;
-    const isComplete = totalHandled >= job.totalDocs;
+    const totalHandled = processedDocs + failedDocs + skippedDocs
+    const isComplete = totalHandled >= job.totalDocs
 
-    let status: JobStatus = job.status;
-    let completedAt: number | undefined;
+    let status: JobStatus = job.status
+    let completedAt: number | undefined
 
     if (job.status === "canceling" && isComplete) {
       // All in-progress docs finished — finalize cancellation
-      status = "canceled";
-      completedAt = Date.now();
+      status = "canceled"
+      completedAt = Date.now()
     } else if (isComplete && job.status === "running") {
       if (failedDocs === 0) {
-        status = "completed";
+        status = "completed"
       } else if (failedDocs === job.totalDocs) {
-        status = "failed";
+        status = "failed"
       } else {
-        status = "completed_with_errors";
+        status = "completed_with_errors"
       }
-      completedAt = Date.now();
+      completedAt = Date.now()
     }
 
     await ctx.db.patch(context.jobId, {
@@ -258,15 +283,15 @@ export const onDocumentIndexed = internalMutation({
       failedDocDetails:
         failedDocDetails.length > 0 ? failedDocDetails : undefined,
       status,
-      ...(completedAt !== undefined ? { completedAt } : {}),
-    });
+      ...(completedAt !== undefined ? { completedAt } : {})
+    })
 
     // If job just completed, sync any retrievers that reference this indexing job
     if (isComplete) {
       const retrievers = await ctx.db
         .query("retrievers")
         .withIndex("by_kb", (q) => q.eq("kbId", job.kbId))
-        .collect();
+        .collect()
 
       for (const retriever of retrievers) {
         if (
@@ -275,76 +300,75 @@ export const onDocumentIndexed = internalMutation({
         ) {
           await ctx.runMutation(
             internal.crud.retrievers.syncStatusFromIndexingJob,
-            { retrieverId: retriever._id },
-          );
+            { retrieverId: retriever._id }
+          )
         }
       }
     }
-  },
-});
+  }
+})
 
 // ─── Queries ───
 
 /**
  * Get an indexing job with computed pendingDocs count.
  */
-export const getJob = query({
+export const getJob = tenantQuery({
   args: { jobId: v.id("indexingJobs") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-    const job = await ctx.db.get(args.jobId);
-    if (!job || job.orgId !== orgId) return null;
+    const job = await ctx.db.get(args.jobId)
+    if (!job || job.orgId !== ctx.orgId) return null
 
-    const pendingDocs = job.totalDocs - job.processedDocs - job.failedDocs - job.skippedDocs;
-    return { ...job, pendingDocs };
-  },
-});
+    const pendingDocs =
+      job.totalDocs - job.processedDocs - job.failedDocs - job.skippedDocs
+    return { ...job, pendingDocs }
+  }
+})
 
 /**
  * Check if a (kbId, indexConfigHash) has a completed indexing job.
  */
-export const isIndexed = query({
+export const isIndexed = tenantQuery({
   args: {
     kbId: v.id("knowledgeBases"),
-    indexConfigHash: v.string(),
+    indexConfigHash: v.string()
   },
   handler: async (ctx, args) => {
     const job = await ctx.db
       .query("indexingJobs")
       .withIndex("by_kb_config", (q) =>
-        q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash),
+        q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash)
       )
       .filter((q) =>
         q.or(
           q.eq(q.field("status"), "completed"),
-          q.eq(q.field("status"), "completed_with_errors"),
-        ),
+          q.eq(q.field("status"), "completed_with_errors")
+        )
       )
-      .first();
-    return job !== null;
-  },
-});
+      .first()
+    return job !== null
+  }
+})
 
 /**
  * List all indexing jobs for the current org, newest first.
  */
-export const listJobs = query({
+export const listJobs = tenantQuery({
   args: {
-    kbId: v.optional(v.id("knowledgeBases")),
+    kbId: v.optional(v.id("knowledgeBases"))
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
     const jobs = await ctx.db
       .query("indexingJobs")
-      .withIndex("by_org", (q) => q.eq("orgId", orgId))
+      .withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
       .order("desc")
-      .collect();
+      .collect()
     if (args.kbId) {
-      return jobs.filter((j) => j.kbId === args.kbId);
+      return jobs.filter((j) => j.kbId === args.kbId)
     }
-    return jobs;
-  },
-});
+    return jobs
+  }
+})
 
 // ─── Mutations ───
 
@@ -354,63 +378,65 @@ export const listJobs = query({
  * finish normally. The job transitions to "canceled" once all in-progress
  * documents complete.
  */
-export const cancelIndexing = mutation({
+export const cancelIndexing = tenantMutation({
   args: { jobId: v.id("indexingJobs") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-    const job = await ctx.db.get(args.jobId);
-    if (!job || job.orgId !== orgId) {
-      throw new Error("Indexing job not found");
+    const job = await ctx.db.get(args.jobId)
+    if (!job || job.orgId !== ctx.orgId) {
+      throw new Error("Indexing job not found")
     }
     if (job.status !== "running" && job.status !== "pending") {
-      throw new Error(`Cannot cancel job in status: ${job.status}`);
+      throw new Error(`Cannot cancel job in status: ${job.status}`)
     }
 
     // Set status to "canceling" first so in-flight callbacks see the updated state
-    await ctx.db.patch(args.jobId, { status: "canceling" });
+    await ctx.db.patch(args.jobId, { status: "canceling" })
 
     // Cancel only this job's work items, not the entire pool
     for (const wId of job.workIds ?? []) {
-      await pool.cancel(ctx, wId as WorkId);
+      await pool.cancel(ctx, wId as WorkId)
     }
-  },
-});
+  }
+})
 
 /**
  * Schedule cleanup of all chunks for a (kbId, indexConfigHash).
  * Delegates to the cleanupAction for paginated deletion.
  */
-export const cleanupIndex = mutation({
+export const cleanupIndex = tenantMutation({
   args: {
     kbId: v.id("knowledgeBases"),
     indexConfigHash: v.string(),
-    deleteDocuments: v.optional(v.boolean()),
+    deleteDocuments: v.optional(v.boolean())
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-    const kb = await ctx.db.get(args.kbId);
-    if (!kb || kb.orgId !== orgId) {
-      throw new Error("Knowledge base not found");
+    const kb = await ctx.db.get(args.kbId)
+    if (!kb || kb.orgId !== ctx.orgId) {
+      throw new Error("Knowledge base not found")
     }
 
     // Find associated indexing job (if any)
     const job = await ctx.db
       .query("indexingJobs")
       .withIndex("by_kb_config", (q) =>
-        q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash),
+        q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash)
       )
-      .first();
+      .first()
 
-    await ctx.scheduler.runAfter(0, internal.retrieval.indexingActions.cleanupAction, {
-      kbId: args.kbId,
-      indexConfigHash: args.indexConfigHash,
-      jobId: job?._id,
-      deleteDocuments: args.deleteDocuments,
-    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.retrieval.indexingActions.cleanupAction,
+      {
+        kbId: args.kbId,
+        indexConfigHash: args.indexConfigHash,
+        jobId: job?._id,
+        deleteDocuments: args.deleteDocuments
+      }
+    )
 
-    return { scheduled: true };
-  },
-});
+    return { scheduled: true }
+  }
+})
 
 // ─── Internal Helpers ───
 
@@ -420,9 +446,9 @@ export const cleanupIndex = mutation({
 export const getJobInternal = internalQuery({
   args: { jobId: v.id("indexingJobs") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.jobId);
-  },
-});
+    return await ctx.db.get(args.jobId)
+  }
+})
 
 /**
  * Delete an indexing job record. Used by cleanupAction after
@@ -431,6 +457,6 @@ export const getJobInternal = internalQuery({
 export const deleteJob = internalMutation({
   args: { jobId: v.id("indexingJobs") },
   handler: async (ctx, args) => {
-    await ctx.db.delete(args.jobId);
-  },
-});
+    await ctx.db.delete(args.jobId)
+  }
+})

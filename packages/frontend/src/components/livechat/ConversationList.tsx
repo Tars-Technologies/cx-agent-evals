@@ -1,16 +1,16 @@
-"use client";
+"use client"
 
-import { useState } from "react";
+import { useState } from "react"
 
 interface ConversationRow {
-  _id: string;
-  conversationId: string;
-  visitorName: string;
-  agentName: string;
-  messages: Array<{ id: number; role: string; text: string }>;
-  classificationStatus?: string;
-  translationStatus?: string;
-  messageTypes?: any;
+  _id: string
+  conversationId: string
+  visitorName: string
+  agentName: string
+  messages: Array<{ id: number; role: string; text: string }>
+  classificationStatus?: string
+  translationStatus?: string
+  messageTypes?: any
 }
 
 export function ConversationList({
@@ -22,29 +22,29 @@ export function ConversationList({
   selectedIds,
   onToggleSelect,
   maxSelected,
-  showStatusDots,
+  showStatusDots
 }: {
-  conversations: ConversationRow[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  renderBadges?: (conv: ConversationRow) => React.ReactNode;
-  selectionMode?: boolean;
-  selectedIds?: Set<string>;
-  onToggleSelect?: (id: string) => void;
-  maxSelected?: boolean;
-  showStatusDots?: boolean;
+  conversations: ConversationRow[]
+  selectedId: string | null
+  onSelect: (id: string) => void
+  renderBadges?: (conv: ConversationRow) => React.ReactNode
+  selectionMode?: boolean
+  selectedIds?: Set<string>
+  onToggleSelect?: (id: string) => void
+  maxSelected?: boolean
+  showStatusDots?: boolean
 }) {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState("")
 
   const filtered = conversations.filter((conv) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
+    if (!search) return true
+    const q = search.toLowerCase()
     return (
       conv.visitorName.toLowerCase().includes(q) ||
       conv.conversationId.includes(q) ||
       conv.agentName.toLowerCase().includes(q)
-    );
-  });
+    )
+  })
 
   return (
     <div className="flex flex-col h-full">
@@ -59,27 +59,27 @@ export function ConversationList({
       </div>
       <div className="flex-1 overflow-y-auto p-1">
         {filtered.map((conv) => {
-          const isChecked = selectedIds?.has(conv._id) ?? false;
-          const isDisabled = selectionMode && maxSelected && !isChecked;
+          const isChecked = selectedIds?.has(conv._id) ?? false
+          const isDisabled = selectionMode && maxSelected && !isChecked
 
           // Compute message type badge counts
-          const typeCounts = (conv.messageTypes as any[] || []).reduce(
+          const typeCounts = ((conv.messageTypes as any[]) || []).reduce(
             (acc: Record<string, number>, mt: any) => {
               const key =
                 mt.type === "question"
                   ? "Q"
                   : mt.type === "request"
-                  ? "R"
-                  : mt.type === "identity_info"
-                  ? "ID"
-                  : mt.type === "confirmation"
-                  ? "C"
-                  : null;
-              if (key) acc[key] = (acc[key] || 0) + 1;
-              return acc;
+                    ? "R"
+                    : mt.type === "identity_info"
+                      ? "ID"
+                      : mt.type === "confirmation"
+                        ? "C"
+                        : null
+              if (key) acc[key] = (acc[key] || 0) + 1
+              return acc
             },
             {}
-          );
+          )
 
           return (
             <button
@@ -87,10 +87,10 @@ export function ConversationList({
               onClick={() => {
                 if (selectionMode) {
                   if (!isDisabled && onToggleSelect) {
-                    onToggleSelect(conv._id);
+                    onToggleSelect(conv._id)
                   }
                 } else {
-                  onSelect(conv._id);
+                  onSelect(conv._id)
                 }
               }}
               disabled={!!isDisabled}
@@ -98,8 +98,8 @@ export function ConversationList({
                 selectedId === conv._id
                   ? "bg-bg-surface border-l-2 border-accent"
                   : isDisabled
-                  ? "opacity-40 cursor-not-allowed"
-                  : "hover:bg-bg-hover"
+                    ? "opacity-40 cursor-not-allowed"
+                    : "hover:bg-bg-hover"
               }`}
             >
               <div className="flex items-center gap-1.5">
@@ -110,7 +110,7 @@ export function ConversationList({
                     disabled={!!isDisabled}
                     onChange={() => {
                       if (!isDisabled && onToggleSelect) {
-                        onToggleSelect(conv._id);
+                        onToggleSelect(conv._id)
                       }
                     }}
                     onClick={(e) => e.stopPropagation()}
@@ -147,20 +147,25 @@ export function ConversationList({
                   <div className="text-text-dim text-[10px] mt-0.5 flex items-center gap-1 flex-wrap">
                     <span>
                       {conv.agentName} ·{" "}
-                      {conv.messages.filter((m) => m.role !== "workflow_input").length} msgs
+                      {
+                        conv.messages.filter((m) => m.role !== "workflow_input")
+                          .length
+                      }{" "}
+                      msgs
                     </span>
-                    {conv.messageTypes && Object.keys(typeCounts).length > 0 && (
-                      <span className="flex items-center gap-0.5">
-                        {Object.entries(typeCounts).map(([key, count]) => (
-                          <span
-                            key={key}
-                            className="px-1 rounded bg-bg-hover text-text-dim text-[9px]"
-                          >
-                            {key}×{count}
-                          </span>
-                        ))}
-                      </span>
-                    )}
+                    {conv.messageTypes &&
+                      Object.keys(typeCounts).length > 0 && (
+                        <span className="flex items-center gap-0.5">
+                          {Object.entries(typeCounts).map(([key, count]) => (
+                            <span
+                              key={key}
+                              className="px-1 rounded bg-bg-hover text-text-dim text-[9px]"
+                            >
+                              {key}×{count}
+                            </span>
+                          ))}
+                        </span>
+                      )}
                   </div>
                   {renderBadges && (
                     <div className="mt-1">{renderBadges(conv)}</div>
@@ -168,7 +173,7 @@ export function ConversationList({
                 </div>
               </div>
             </button>
-          );
+          )
         })}
         {filtered.length === 0 && (
           <div className="text-text-dim text-xs p-3 text-center">
@@ -177,5 +182,5 @@ export function ConversationList({
         )}
       </div>
     </div>
-  );
+  )
 }

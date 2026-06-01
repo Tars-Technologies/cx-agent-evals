@@ -1,61 +1,83 @@
-"use client";
+"use client"
 
-import { useMemo } from "react";
+import { useMemo } from "react"
 import {
   type DetailQuestionRow,
   type QuestionStatus,
-  STATUS_COLORS,
-} from "./types";
+  STATUS_COLORS
+} from "./types"
 
-export type StatusFilter = "all" | QuestionStatus;
+export type StatusFilter = "all" | QuestionStatus
 
 interface QuestionListPaneProps {
-  questions: DetailQuestionRow[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  filter: StatusFilter;
-  onFilterChange: (f: StatusFilter) => void;
+  questions: DetailQuestionRow[]
+  selectedId: string | null
+  onSelect: (id: string) => void
+  filter: StatusFilter
+  onFilterChange: (f: StatusFilter) => void
 }
 
 const FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "miss", label: "Miss" },
   { value: "partial", label: "Partial" },
-  { value: "hit", label: "Hit" },
-];
+  { value: "hit", label: "Hit" }
+]
 
 export function QuestionListPane({
   questions,
   selectedId,
   onSelect,
   filter,
-  onFilterChange,
+  onFilterChange
 }: QuestionListPaneProps) {
   const counts = useMemo(() => {
-    const c: Record<StatusFilter, number> = { all: 0, hit: 0, partial: 0, miss: 0 };
-    c.all = questions.length;
-    for (const q of questions) c[q.status] += 1;
-    return c;
-  }, [questions]);
+    const c: Record<StatusFilter, number> = {
+      all: 0,
+      hit: 0,
+      partial: 0,
+      miss: 0
+    }
+    c.all = questions.length
+    for (const q of questions) c[q.status] += 1
+    return c
+  }, [questions])
 
   const filtered = useMemo(
-    () => (filter === "all" ? questions : questions.filter((q) => q.status === filter)),
-    [questions, filter],
-  );
+    () =>
+      filter === "all"
+        ? questions
+        : questions.filter((q) => q.status === filter),
+    [questions, filter]
+  )
 
   return (
     <div
       className="h-full flex flex-col overflow-hidden"
-      style={{ borderRight: "1px solid var(--color-border)", background: "var(--color-bg-elevated)" }}
+      style={{
+        borderRight: "1px solid var(--color-border)",
+        background: "var(--color-bg-elevated)"
+      }}
     >
       <div
         className="px-4 py-2.5 flex items-center justify-between"
         style={{ borderBottom: "1px solid var(--color-border)" }}
       >
-        <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        <span
+          style={{
+            fontSize: "10px",
+            fontWeight: 600,
+            color: "var(--color-text-dim)",
+            textTransform: "uppercase",
+            letterSpacing: "0.05em"
+          }}
+        >
           Questions
         </span>
-        <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }} className="tabular-nums">
+        <span
+          style={{ fontSize: "11px", color: "var(--color-text-muted)" }}
+          className="tabular-nums"
+        >
           {filtered.length}
           {filter !== "all" ? ` / ${counts.all}` : ""}
         </span>
@@ -66,8 +88,9 @@ export function QuestionListPane({
         style={{ borderBottom: "1px solid var(--color-border)" }}
       >
         {FILTER_OPTIONS.map((opt) => {
-          const isActive = filter === opt.value;
-          const dotColor = opt.value === "all" ? null : STATUS_COLORS[opt.value].dot;
+          const isActive = filter === opt.value
+          const dotColor =
+            opt.value === "all" ? null : STATUS_COLORS[opt.value].dot
           return (
             <button
               key={opt.value}
@@ -76,9 +99,13 @@ export function QuestionListPane({
               style={{
                 fontSize: "11px",
                 fontWeight: 500,
-                color: isActive ? "var(--color-text)" : "var(--color-text-muted)",
-                background: isActive ? "var(--color-bg-surface)" : "transparent",
-                border: `1px solid ${isActive ? "var(--color-border)" : "transparent"}`,
+                color: isActive
+                  ? "var(--color-text)"
+                  : "var(--color-text-muted)",
+                background: isActive
+                  ? "var(--color-bg-surface)"
+                  : "transparent",
+                border: `1px solid ${isActive ? "var(--color-border)" : "transparent"}`
               }}
             >
               {dotColor && (
@@ -95,20 +122,25 @@ export function QuestionListPane({
                 {counts[opt.value]}
               </span>
             </button>
-          );
+          )
         })}
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
-          <div className="px-4 py-6 text-center" style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-            {questions.length === 0 ? "No results yet." : "No questions match this filter."}
+          <div
+            className="px-4 py-6 text-center"
+            style={{ fontSize: "12px", color: "var(--color-text-muted)" }}
+          >
+            {questions.length === 0
+              ? "No results yet."
+              : "No questions match this filter."}
           </div>
         ) : (
           filtered.map((q) => {
-            const isSelected = selectedId === q.resultId;
-            const status = STATUS_COLORS[q.status];
-            const recall = q.scores.recall ?? 0;
+            const isSelected = selectedId === q.resultId
+            const status = STATUS_COLORS[q.status]
+            const recall = q.scores.recall ?? 0
             return (
               <button
                 key={q.resultId}
@@ -116,10 +148,12 @@ export function QuestionListPane({
                 className="w-full text-left flex items-start gap-2.5 px-4 py-2.5 transition-colors cursor-pointer"
                 style={{
                   borderBottom: "1px solid var(--color-border)",
-                  background: isSelected ? "var(--color-bg-surface)" : "transparent",
+                  background: isSelected
+                    ? "var(--color-bg-surface)"
+                    : "transparent",
                   borderLeft: isSelected
                     ? "2px solid var(--color-accent)"
-                    : "2px solid transparent",
+                    : "2px solid transparent"
                 }}
               >
                 <span
@@ -131,8 +165,10 @@ export function QuestionListPane({
                   className="flex-1 line-clamp-2"
                   style={{
                     fontSize: "12px",
-                    color: isSelected ? "var(--color-text)" : "var(--color-text-muted)",
-                    lineHeight: 1.4,
+                    color: isSelected
+                      ? "var(--color-text)"
+                      : "var(--color-text-muted)",
+                    lineHeight: 1.4
                   }}
                 >
                   {q.queryText}
@@ -141,17 +177,19 @@ export function QuestionListPane({
                   className="tabular-nums flex-shrink-0"
                   style={{
                     fontSize: "11px",
-                    color: isSelected ? "var(--color-text)" : "var(--color-text-dim)",
-                    fontWeight: 500,
+                    color: isSelected
+                      ? "var(--color-text)"
+                      : "var(--color-text-dim)",
+                    fontWeight: 500
                   }}
                 >
                   {(recall * 100).toFixed(0)}%
                 </span>
               </button>
-            );
+            )
           })
         )}
       </div>
     </div>
-  );
+  )
 }

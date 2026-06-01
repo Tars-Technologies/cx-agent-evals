@@ -1,31 +1,28 @@
-"use client";
+"use client"
 
-import { useState, type ComponentPropsWithoutRef } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import { type ComponentPropsWithoutRef, useState } from "react"
+import ReactMarkdown, { type Components } from "react-markdown"
+import rehypeRaw from "rehype-raw"
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize"
+import remarkGfm from "remark-gfm"
 
 /** Strip non-standard tags (e.g. <last>, <party>) while preserving standard HTML.
  *  Extends defaultSchema with elements not in the GitHub-style allowlist. */
 const sanitizeSchema = {
   ...defaultSchema,
-  tagNames: [
-    ...(defaultSchema.tagNames ?? []),
-    "mark", "abbr", "sub", "sup",
-  ],
-};
-
-interface MarkdownViewerProps {
-  content: string;
-  className?: string;
-  /** If true, show the raw/rendered toggle. Default: true */
-  showToggle?: boolean;
-  /** Override the default mode. Default: "rendered" */
-  defaultMode?: "raw" | "rendered";
+  tagNames: [...(defaultSchema.tagNames ?? []), "mark", "abbr", "sub", "sup"]
 }
 
-type Mode = "raw" | "rendered";
+interface MarkdownViewerProps {
+  content: string
+  className?: string
+  /** If true, show the raw/rendered toggle. Default: true */
+  showToggle?: boolean
+  /** Override the default mode. Default: "rendered" */
+  defaultMode?: "raw" | "rendered"
+}
+
+type Mode = "raw" | "rendered"
 
 const markdownComponents: Components = {
   h1: ({ children, ...props }: ComponentPropsWithoutRef<"h1">) => (
@@ -50,26 +47,17 @@ const markdownComponents: Components = {
     </h3>
   ),
   h4: ({ children, ...props }: ComponentPropsWithoutRef<"h4">) => (
-    <h4
-      className="text-sm font-semibold text-text mt-3 mb-1.5"
-      {...props}
-    >
+    <h4 className="text-sm font-semibold text-text mt-3 mb-1.5" {...props}>
       {children}
     </h4>
   ),
   h5: ({ children, ...props }: ComponentPropsWithoutRef<"h5">) => (
-    <h5
-      className="text-xs font-semibold text-text-muted mt-3 mb-1"
-      {...props}
-    >
+    <h5 className="text-xs font-semibold text-text-muted mt-3 mb-1" {...props}>
       {children}
     </h5>
   ),
   h6: ({ children, ...props }: ComponentPropsWithoutRef<"h6">) => (
-    <h6
-      className="text-xs font-semibold text-text-dim mt-2 mb-1"
-      {...props}
-    >
+    <h6 className="text-xs font-semibold text-text-dim mt-2 mb-1" {...props}>
       {children}
     </h6>
   ),
@@ -126,10 +114,7 @@ const markdownComponents: Components = {
     </ul>
   ),
   ol: ({ children, ...props }: ComponentPropsWithoutRef<"ol">) => (
-    <ol
-      className="list-decimal list-outside pl-5 mb-3 space-y-1"
-      {...props}
-    >
+    <ol className="list-decimal list-outside pl-5 mb-3 space-y-1" {...props}>
       {children}
     </ol>
   ),
@@ -206,7 +191,8 @@ const markdownComponents: Components = {
   }: ComponentPropsWithoutRef<"code">) => {
     // Fenced code blocks get a className like "language-js" from react-markdown.
     // Inline code does not receive a className.
-    const isBlock = typeof className === "string" && className.startsWith("language-");
+    const isBlock =
+      typeof className === "string" && className.startsWith("language-")
 
     if (isBlock) {
       return (
@@ -216,7 +202,7 @@ const markdownComponents: Components = {
         >
           {children}
         </code>
-      );
+      )
     }
 
     return (
@@ -226,7 +212,7 @@ const markdownComponents: Components = {
       >
         {children}
       </code>
-    );
+    )
   },
 
   input: ({ type, checked, ...props }: ComponentPropsWithoutRef<"input">) => {
@@ -239,18 +225,18 @@ const markdownComponents: Components = {
           className="mr-2 accent-accent"
           {...props}
         />
-      );
+      )
     }
-    return <input type={type} {...props} />;
-  },
-};
+    return <input type={type} {...props} />
+  }
+}
 
 function TogglePill({
   mode,
-  onToggle,
+  onToggle
 }: {
-  mode: Mode;
-  onToggle: (next: Mode) => void;
+  mode: Mode
+  onToggle: (next: Mode) => void
 }) {
   return (
     <div className="inline-flex items-center bg-elevated border border-border rounded-full text-[10px] overflow-hidden">
@@ -277,16 +263,16 @@ function TogglePill({
         Rendered
       </button>
     </div>
-  );
+  )
 }
 
 export function MarkdownViewer({
   content,
   className,
   showToggle = true,
-  defaultMode = "rendered",
+  defaultMode = "rendered"
 }: MarkdownViewerProps) {
-  const [mode, setMode] = useState<Mode>(defaultMode);
+  const [mode, setMode] = useState<Mode>(defaultMode)
 
   return (
     <div className={`relative ${className ?? ""}`}>
@@ -312,5 +298,5 @@ export function MarkdownViewer({
         </div>
       )}
     </div>
-  );
+  )
 }

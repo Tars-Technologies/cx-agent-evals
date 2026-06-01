@@ -1,26 +1,26 @@
-import { withRetry } from "../utils/retry.js";
+import { withRetry } from "../utils/retry.js"
 
 export interface LLMClient {
-  readonly name: string;
+  readonly name: string
   complete(params: {
-    model: string;
-    messages: ReadonlyArray<{ role: string; content: string }>;
-    responseFormat?: "json" | "text";
-  }): Promise<string>;
+    model: string
+    messages: ReadonlyArray<{ role: string; content: string }>
+    responseFormat?: "json" | "text"
+  }): Promise<string>
 }
 
 export function openAIClientAdapter(client: {
   chat: {
     completions: {
       create(params: {
-        model: string;
-        messages: Array<{ role: string; content: string }>;
-        response_format?: { type: string };
+        model: string
+        messages: Array<{ role: string; content: string }>
+        response_format?: { type: string }
       }): Promise<{
-        choices: Array<{ message: { content: string | null } }>;
-      }>;
-    };
-  };
+        choices: Array<{ message: { content: string | null } }>
+      }>
+    }
+  }
 }): LLMClient {
   return {
     name: "OpenAI",
@@ -32,11 +32,11 @@ export function openAIClientAdapter(client: {
             messages: [...params.messages],
             ...(params.responseFormat === "json"
               ? { response_format: { type: "json_object" } }
-              : {}),
+              : {})
           }),
-        { maxRetries: 3, backoffMs: 1000 },
-      );
-      return response.choices[0].message.content ?? "";
-    },
-  };
+        { maxRetries: 3, backoffMs: 1000 }
+      )
+      return response.choices[0].message.content ?? ""
+    }
+  }
 }

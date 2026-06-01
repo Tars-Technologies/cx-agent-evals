@@ -1,20 +1,20 @@
-import type { PositionAwareChunker } from "../chunkers/chunker.interface.js";
-import type { Embedder } from "../embedders/embedder.interface.js";
-import type { VectorStore } from "../vector-stores/vector-store.interface.js";
-import type { Reranker } from "../rerankers/reranker.interface.js";
-import type { PipelineLLM } from "../retrievers/pipeline/llm.interface.js";
-import type { PipelineConfig } from "../retrievers/pipeline/config.js";
-import { PipelineRetriever } from "../retrievers/pipeline/pipeline-retriever.js";
-import { PRESET_REGISTRY } from "../registry/presets.js";
+import type { PositionAwareChunker } from "../chunkers/chunker.interface.js"
+import type { Embedder } from "../embedders/embedder.interface.js"
+import { PRESET_REGISTRY } from "../registry/presets.js"
+import type { Reranker } from "../rerankers/reranker.interface.js"
+import type { PipelineConfig } from "../retrievers/pipeline/config.js"
+import type { PipelineLLM } from "../retrievers/pipeline/llm.interface.js"
+import { PipelineRetriever } from "../retrievers/pipeline/pipeline-retriever.js"
+import type { VectorStore } from "../vector-stores/vector-store.interface.js"
 
 // --- Shared deps interface ---
 
 export interface PipelinePresetDeps {
-  readonly chunker: PositionAwareChunker;
-  readonly embedder: Embedder;
-  readonly vectorStore?: VectorStore;
-  readonly reranker?: Reranker;
-  readonly llm?: PipelineLLM;
+  readonly chunker: PositionAwareChunker
+  readonly embedder: Embedder
+  readonly vectorStore?: VectorStore
+  readonly reranker?: Reranker
+  readonly llm?: PipelineLLM
 }
 
 // --- Preset configs ---
@@ -22,14 +22,14 @@ export interface PipelinePresetDeps {
 export const BASELINE_VECTOR_RAG_CONFIG: PipelineConfig = {
   name: "baseline-vector-rag",
   index: { strategy: "plain" },
-  search: { strategy: "dense" },
-};
+  search: { strategy: "dense" }
+}
 
 export const BM25_CONFIG: PipelineConfig = {
   name: "bm25",
   index: { strategy: "plain" },
-  search: { strategy: "bm25" },
-};
+  search: { strategy: "bm25" }
+}
 
 export const HYBRID_CONFIG: PipelineConfig = {
   name: "hybrid",
@@ -39,9 +39,9 @@ export const HYBRID_CONFIG: PipelineConfig = {
     denseWeight: 0.7,
     sparseWeight: 0.3,
     fusionMethod: "weighted",
-    candidateMultiplier: 4,
-  },
-};
+    candidateMultiplier: 4
+  }
+}
 
 export const HYBRID_RERANKED_CONFIG: PipelineConfig = {
   name: "hybrid-reranked",
@@ -51,68 +51,69 @@ export const HYBRID_RERANKED_CONFIG: PipelineConfig = {
     denseWeight: 0.7,
     sparseWeight: 0.3,
     fusionMethod: "weighted",
-    candidateMultiplier: 4,
+    candidateMultiplier: 4
   },
-  refinement: [{ type: "rerank" }],
-};
+  refinement: [{ type: "rerank" }]
+}
 
 // --- Registry-backed factory ---
 
 const AVAILABLE_PRESET_MAP = new Map(
-  PRESET_REGISTRY
-    .filter((p) => p.status === "available")
-    .map((p) => [p.id, p.config]),
-);
+  PRESET_REGISTRY.filter((p) => p.status === "available").map((p) => [
+    p.id,
+    p.config
+  ])
+)
 
 /** Union of all available preset names, derived from the registry. */
-export type PresetName = string & {};
+export type PresetName = string & {}
 
 export function createPresetRetriever(
   presetName: string,
   deps: PipelinePresetDeps,
-  overrides?: Partial<PipelineConfig>,
+  overrides?: Partial<PipelineConfig>
 ): PipelineRetriever {
-  const base = AVAILABLE_PRESET_MAP.get(presetName);
+  const base = AVAILABLE_PRESET_MAP.get(presetName)
   if (!base) {
-    throw new Error(`Unknown or unavailable preset: "${presetName}"`);
+    throw new Error(`Unknown or unavailable preset: "${presetName}"`)
   }
   const config: PipelineConfig = {
     ...base,
     ...overrides,
-    name: overrides?.name ?? base.name,
-  };
-  return new PipelineRetriever(config, deps);
+    name: overrides?.name ?? base.name
+  }
+  return new PipelineRetriever(config, deps)
 }
 
 // --- Named convenience wrappers (backward compat) ---
 
 /** @deprecated Use `PipelinePresetDeps` instead */
-export type BaselineVectorRagPresetDeps = PipelinePresetDeps;
+export type BaselineVectorRagPresetDeps = PipelinePresetDeps
 /** @deprecated Use `PipelinePresetDeps` instead */
-export type BM25PresetDeps = PipelinePresetDeps;
+export type BM25PresetDeps = PipelinePresetDeps
 /** @deprecated Use `PipelinePresetDeps` instead */
-export type HybridPresetDeps = PipelinePresetDeps;
+export type HybridPresetDeps = PipelinePresetDeps
 /** @deprecated Use `PipelinePresetDeps` with required `reranker` instead */
 export interface HybridRerankedPresetDeps extends PipelinePresetDeps {
-  readonly reranker: Reranker;
+  readonly reranker: Reranker
 }
 
 export const createBaselineVectorRagRetriever = (
   deps: PipelinePresetDeps,
-  overrides?: Partial<PipelineConfig>,
-) => createPresetRetriever("baseline-vector-rag", deps, overrides);
+  overrides?: Partial<PipelineConfig>
+) => createPresetRetriever("baseline-vector-rag", deps, overrides)
 
 export const createBM25Retriever = (
   deps: PipelinePresetDeps,
-  overrides?: Partial<PipelineConfig>,
-) => createPresetRetriever("bm25", deps, overrides);
+  overrides?: Partial<PipelineConfig>
+) => createPresetRetriever("bm25", deps, overrides)
 
 export const createHybridRetriever = (
   deps: PipelinePresetDeps,
-  overrides?: Partial<PipelineConfig>,
-) => createPresetRetriever("hybrid", deps, overrides);
+  overrides?: Partial<PipelineConfig>
+) => createPresetRetriever("hybrid", deps, overrides)
 
 export const createHybridRerankedRetriever = (
   deps: HybridRerankedPresetDeps,
-  overrides?: Partial<PipelineConfig>,
-) => createPresetRetriever("hybrid-reranked", deps, overrides);
+  overrides?: Partial<PipelineConfig>
+) => createPresetRetriever("hybrid-reranked", deps, overrides)

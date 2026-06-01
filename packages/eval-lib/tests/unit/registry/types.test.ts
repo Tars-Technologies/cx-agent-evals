@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest"
 import type {
-  RegistryEntry,
-  OptionDef,
   Choice,
+  OptionDef,
   PresetEntry,
-} from "../../../src/registry/types.js";
+  RegistryEntry
+} from "../../../src/registry/types.js"
 
 describe("Registry types", () => {
   it("RegistryEntry is structurally valid", () => {
@@ -14,11 +14,11 @@ describe("Registry types", () => {
       description: "A test entry",
       status: "available",
       options: [],
-      defaults: {},
-    };
-    expect(entry.id).toBe("test");
-    expect(entry.status).toBe("available");
-  });
+      defaults: {}
+    }
+    expect(entry.id).toBe("test")
+    expect(entry.status).toBe("available")
+  })
 
   it("RegistryEntry supports coming-soon status", () => {
     const entry: RegistryEntry = {
@@ -28,11 +28,11 @@ describe("Registry types", () => {
       status: "coming-soon",
       tags: ["experimental"],
       options: [],
-      defaults: {},
-    };
-    expect(entry.status).toBe("coming-soon");
-    expect(entry.tags).toContain("experimental");
-  });
+      defaults: {}
+    }
+    expect(entry.status).toBe("coming-soon")
+    expect(entry.tags).toContain("experimental")
+  })
 
   it("OptionDef supports all field types", () => {
     const selectOpt: OptionDef = {
@@ -42,11 +42,11 @@ describe("Registry types", () => {
       type: "select",
       choices: [
         { value: "a", label: "A" },
-        { value: "b", label: "B", description: "The B model" },
+        { value: "b", label: "B", description: "The B model" }
       ],
-      default: "a",
-    };
-    expect(selectOpt.choices).toHaveLength(2);
+      default: "a"
+    }
+    expect(selectOpt.choices).toHaveLength(2)
 
     const numberOpt: OptionDef = {
       key: "size",
@@ -54,18 +54,18 @@ describe("Registry types", () => {
       description: "Chunk size",
       type: "number",
       default: 1000,
-      constraints: { min: 100, max: 10000, step: 100 },
-    };
-    expect(numberOpt.constraints?.min).toBe(100);
+      constraints: { min: 100, max: 10000, step: 100 }
+    }
+    expect(numberOpt.constraints?.min).toBe(100)
 
     const boolOpt: OptionDef = {
       key: "merge",
       label: "Merge",
       description: "Merge small sections",
       type: "boolean",
-      default: true,
-    };
-    expect(boolOpt.default).toBe(true);
+      default: true
+    }
+    expect(boolOpt.default).toBe(true)
 
     const advancedOpt: OptionDef = {
       key: "prompt",
@@ -73,10 +73,10 @@ describe("Registry types", () => {
       description: "Custom prompt",
       type: "string",
       default: "",
-      advanced: true,
-    };
-    expect(advancedOpt.advanced).toBe(true);
-  });
+      advanced: true
+    }
+    expect(advancedOpt.advanced).toBe(true)
+  })
 
   it("PresetEntry extends RegistryEntry with config metadata", () => {
     const preset: PresetEntry = {
@@ -92,12 +92,12 @@ describe("Registry types", () => {
         index: "Plain (1000 chars, 200 overlap)",
         query: "Identity (passthrough)",
         search: "Dense vector search",
-        refinement: "None",
+        refinement: "None"
       },
       options: [],
-      defaults: {},
-    };
-    expect(preset.complexity).toBe("basic");
-    expect(preset.config.name).toBe("test-preset");
-  });
-});
+      defaults: {}
+    }
+    expect(preset.complexity).toBe("basic")
+    expect(preset.config.name).toBe("test-preset")
+  })
+})

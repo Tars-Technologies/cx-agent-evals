@@ -1,17 +1,14 @@
-"use client";
+"use client"
 
 interface ComplexityBadgeProps {
-  complexity: "basic" | "intermediate" | "advanced";
+  complexity: "basic" | "intermediate" | "advanced"
 }
 
-const COMPLEXITY_STYLES: Record<
-  ComplexityBadgeProps["complexity"],
-  string
-> = {
+const COMPLEXITY_STYLES: Record<ComplexityBadgeProps["complexity"], string> = {
   basic: "text-accent bg-accent/10 border-accent/20",
   intermediate: "text-warn bg-warn/10 border-warn/20",
-  advanced: "text-error bg-error/10 border-error/20",
-};
+  advanced: "text-error bg-error/10 border-error/20"
+}
 
 export function ComplexityBadge({ complexity }: ComplexityBadgeProps) {
   return (
@@ -20,5 +17,5 @@ export function ComplexityBadge({ complexity }: ComplexityBadgeProps) {
     >
       {complexity}
     </span>
-  );
+  )
 }

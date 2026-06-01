@@ -1,13 +1,13 @@
-"use client";
+"use client"
 
-import { StrategyType } from "@/lib/types";
+import type { StrategyType } from "@/lib/types"
 
 export function StrategySelector({
   value,
-  onChange,
+  onChange
 }: {
-  value: StrategyType;
-  onChange: (strategy: StrategyType) => void;
+  value: StrategyType
+  onChange: (strategy: StrategyType) => void
 }) {
   return (
     <div className="animate-fade-in">
@@ -37,19 +37,19 @@ export function StrategySelector({
         />
       </div>
     </div>
-  );
+  )
 }
 
 function StrategyCard({
   label,
   description,
   selected,
-  onClick,
+  onClick
 }: {
-  label: string;
-  description: string;
-  selected: boolean;
-  onClick: () => void;
+  label: string
+  description: string
+  selected: boolean
+  onClick: () => void
 }) {
   return (
     <button
@@ -71,5 +71,5 @@ function StrategyCard({
         {description}
       </span>
     </button>
-  );
+  )
 }

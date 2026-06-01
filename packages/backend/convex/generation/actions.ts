@@ -1,40 +1,43 @@
-"use node";
+"use node"
 
-import { internalAction } from "../_generated/server";
-import { v } from "convex/values";
-import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
 import {
-  SimpleStrategy,
-  DimensionDrivenStrategy,
-  RealWorldGroundedStrategy,
-  GroundTruthAssigner,
-  OpenAIEmbedder,
-  createCorpusFromDocuments,
-  parseDimensions,
   calculateQuotas,
-  matchRealWorldQuestions,
+  createCorpusFromDocuments,
+  DimensionDrivenStrategy,
   filterCombinations,
-  generateForDocument,
   findCitationSpan,
-} from "@tars-inc/eval-lib";
-import { createLLMClient, getModel } from "@tars-inc/eval-lib/llm";
-import { QUESTION_INSERT_BATCH_SIZE } from "@tars-inc/eval-lib/shared";
-import OpenAI from "openai";
+  GroundTruthAssigner,
+  generateForDocument,
+  matchRealWorldQuestions,
+  OpenAIEmbedder,
+  parseDimensions,
+  RealWorldGroundedStrategy,
+  SimpleStrategy
+} from "@tars-inc/eval-lib"
+import { createLLMClient, getModel } from "@tars-inc/eval-lib/llm"
+import { discoverDimensions as discoverDimensionsFn } from "@tars-inc/eval-lib/pipeline/internals"
+import { QUESTION_INSERT_BATCH_SIZE } from "@tars-inc/eval-lib/shared"
+import { v } from "convex/values"
+import OpenAI from "openai"
+import { internal } from "../_generated/api"
+import type { Id } from "../_generated/dataModel"
+import { internalAction } from "../_generated/server"
+import { tenantAction } from "../lib/auth/tenant"
+import { backendConfig } from "../config"
 
 async function loadCorpusFromKb(
   ctx: { runQuery: (ref: any, args: any) => Promise<any> },
-  kbId: Id<"knowledgeBases">,
+  kbId: Id<"knowledgeBases">
 ) {
   const docs = await ctx.runQuery(internal.crud.documents.listByKbInternal, {
-    kbId,
-  });
+    kbId
+  })
   return {
     corpus: createCorpusFromDocuments(
-      docs.map((d: any) => ({ id: d.docId, content: d.content })),
+      docs.map((d: any) => ({ id: d.docId, content: d.content }))
     ),
-    docs,
-  };
+    docs
+  }
 }
 
 // ─── Whole-Corpus Generation (Simple Strategy) ───
@@ -43,22 +46,22 @@ export const generateSimple = internalAction({
   args: {
     datasetId: v.id("datasets"),
     kbId: v.id("knowledgeBases"),
-    strategyConfig: v.any(),
+    strategyConfig: v.any()
   },
   handler: async (ctx, args) => {
-    const config = args.strategyConfig as Record<string, unknown>;
-    const totalQuestions = (config.totalQuestions as number) ?? 30;
-    const model = getModel(config);
-    const llmClient = createLLMClient();
+    const config = args.strategyConfig as Record<string, unknown>
+    const totalQuestions = (config.totalQuestions as number) ?? 30
+    const model = getModel(config)
+    const llmClient = createLLMClient()
 
-    const { corpus } = await loadCorpusFromKb(ctx, args.kbId);
+    const { corpus } = await loadCorpusFromKb(ctx, args.kbId)
 
-    const strategy = new SimpleStrategy({ totalQuestions });
-    const queries = await strategy.generate({ corpus, llmClient, model });
+    const strategy = new SimpleStrategy({ totalQuestions })
+    const queries = await strategy.generate({ corpus, llmClient, model })
 
     if (queries.length > 0) {
       for (let i = 0; i < queries.length; i += QUESTION_INSERT_BATCH_SIZE) {
-        const batch = queries.slice(i, i + QUESTION_INSERT_BATCH_SIZE);
+        const batch = queries.slice(i, i + QUESTION_INSERT_BATCH_SIZE)
         await ctx.runMutation(internal.crud.questions.insertBatch, {
           datasetId: args.datasetId,
           questions: batch.map((q, idx) => ({
@@ -66,15 +69,15 @@ export const generateSimple = internalAction({
             queryText: q.query,
             sourceDocId: q.targetDocId,
             relevantSpans: [],
-            metadata: q.metadata,
-          })),
-        });
+            metadata: q.metadata
+          }))
+        })
       }
     }
 
-    return { questionsGenerated: queries.length };
-  },
-});
+    return { questionsGenerated: queries.length }
+  }
+})
 
 // ─── Whole-Corpus Generation (Dimension-Driven) ───
 
@@ -82,28 +85,28 @@ export const generateDimensionDriven = internalAction({
   args: {
     datasetId: v.id("datasets"),
     kbId: v.id("knowledgeBases"),
-    strategyConfig: v.any(),
+    strategyConfig: v.any()
   },
   handler: async (ctx, args) => {
-    const config = args.strategyConfig as Record<string, unknown>;
-    const model = getModel(config);
-    const llmClient = createLLMClient();
+    const config = args.strategyConfig as Record<string, unknown>
+    const model = getModel(config)
+    const llmClient = createLLMClient()
 
-    const { corpus } = await loadCorpusFromKb(ctx, args.kbId);
+    const { corpus } = await loadCorpusFromKb(ctx, args.kbId)
 
-    const dimensions = parseDimensions(config.dimensions);
-    const totalQuestions = (config.totalQuestions as number) ?? 50;
+    const dimensions = parseDimensions(config.dimensions)
+    const totalQuestions = (config.totalQuestions as number) ?? 50
 
     const strategy = new DimensionDrivenStrategy({
       dimensions,
-      totalQuestions,
-    });
+      totalQuestions
+    })
 
-    const queries = await strategy.generate({ corpus, llmClient, model });
+    const queries = await strategy.generate({ corpus, llmClient, model })
 
     if (queries.length > 0) {
       for (let i = 0; i < queries.length; i += QUESTION_INSERT_BATCH_SIZE) {
-        const batch = queries.slice(i, i + QUESTION_INSERT_BATCH_SIZE);
+        const batch = queries.slice(i, i + QUESTION_INSERT_BATCH_SIZE)
         await ctx.runMutation(internal.crud.questions.insertBatch, {
           datasetId: args.datasetId,
           questions: batch.map((q, idx) => ({
@@ -111,15 +114,15 @@ export const generateDimensionDriven = internalAction({
             queryText: q.query,
             sourceDocId: q.targetDocId,
             relevantSpans: [],
-            metadata: q.metadata,
-          })),
-        });
+            metadata: q.metadata
+          }))
+        })
       }
     }
 
-    return { questionsGenerated: queries.length };
-  },
-});
+    return { questionsGenerated: queries.length }
+  }
+})
 
 // ─── Whole-Corpus Generation (Real-World-Grounded) ───
 
@@ -127,43 +130,40 @@ export const generateRealWorldGrounded = internalAction({
   args: {
     datasetId: v.id("datasets"),
     kbId: v.id("knowledgeBases"),
-    strategyConfig: v.any(),
+    strategyConfig: v.any()
   },
   handler: async (ctx, args) => {
-    const config = args.strategyConfig as Record<string, unknown>;
-    const model = getModel(config);
-    const llmClient = createLLMClient();
+    const config = args.strategyConfig as Record<string, unknown>
+    const model = getModel(config)
+    const llmClient = createLLMClient()
 
-    const { corpus } = await loadCorpusFromKb(ctx, args.kbId);
+    const { corpus } = await loadCorpusFromKb(ctx, args.kbId)
 
     const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+      apiKey: backendConfig.ai.openaiApiKey
+    })
     const embedder = new OpenAIEmbedder({
       model: (config.embeddingModel as string) ?? "text-embedding-3-small",
-      client: openai,
-    });
+      client: openai
+    })
 
     const strategy = new RealWorldGroundedStrategy({
       questions: (config.questions as string[]) ?? [],
-      totalSyntheticQuestions:
-        (config.totalSyntheticQuestions as number) ?? 50,
+      totalSyntheticQuestions: (config.totalSyntheticQuestions as number) ?? 50,
       matchThreshold: config.matchThreshold as number | undefined,
-      fewShotExamplesPerDoc: config.fewShotExamplesPerDoc as
-        | number
-        | undefined,
-    });
+      fewShotExamplesPerDoc: config.fewShotExamplesPerDoc as number | undefined
+    })
 
     const queries = await strategy.generate({
       corpus,
       llmClient,
       model,
-      embedder,
-    });
+      embedder
+    })
 
     if (queries.length > 0) {
       for (let i = 0; i < queries.length; i += QUESTION_INSERT_BATCH_SIZE) {
-        const batch = queries.slice(i, i + QUESTION_INSERT_BATCH_SIZE);
+        const batch = queries.slice(i, i + QUESTION_INSERT_BATCH_SIZE)
         await ctx.runMutation(internal.crud.questions.insertBatch, {
           datasetId: args.datasetId,
           questions: batch.map((q, idx) => ({
@@ -171,15 +171,15 @@ export const generateRealWorldGrounded = internalAction({
             queryText: q.query,
             sourceDocId: q.targetDocId,
             relevantSpans: [],
-            metadata: q.metadata,
-          })),
-        });
+            metadata: q.metadata
+          }))
+        })
       }
     }
 
-    return { questionsGenerated: queries.length };
-  },
-});
+    return { questionsGenerated: queries.length }
+  }
+})
 
 // ─── Unified Pipeline: Phase 1 — Prepare Generation Plan ───
 
@@ -188,89 +188,86 @@ export const prepareGeneration = internalAction({
     jobId: v.id("generationJobs"),
     datasetId: v.id("datasets"),
     kbId: v.id("knowledgeBases"),
-    strategyConfig: v.any(),
+    strategyConfig: v.any()
   },
   handler: async (ctx, args) => {
-    const config = args.strategyConfig as Record<string, unknown>;
-    const { corpus, docs } = await loadCorpusFromKb(ctx, args.kbId);
-    const llmClient = createLLMClient();
-    const model = getModel(config);
+    const config = args.strategyConfig as Record<string, unknown>
+    const { corpus, docs } = await loadCorpusFromKb(ctx, args.kbId)
+    const llmClient = createLLMClient()
+    const model = getModel(config)
 
     // Read document priorities
     const docPriorities = docs.map((d: any) => ({
       id: d.docId as string,
-      priority: (d.priority as number) ?? 3,
-    }));
+      priority: (d.priority as number) ?? 3
+    }))
 
     // Quota allocation
-    const totalQuestions = (config.totalQuestions as number) ?? 30;
+    const totalQuestions = (config.totalQuestions as number) ?? 30
     const overrides = config.allocationOverrides as
       | Record<string, number>
-      | undefined;
-    const quotas = calculateQuotas(docPriorities, totalQuestions, overrides);
+      | undefined
+    const quotas = calculateQuotas(docPriorities, totalQuestions, overrides)
 
     // Real-world question matching (if provided)
-    let matchedByDoc: Record<string, any[]> = {};
-    let unmatchedQuestions: string[] = [];
-    const realWorldQuestions = config.realWorldQuestions as
-      | string[]
-      | undefined;
+    let matchedByDoc: Record<string, any[]> = {}
+    let unmatchedQuestions: string[] = []
+    const realWorldQuestions = config.realWorldQuestions as string[] | undefined
     if (realWorldQuestions?.length) {
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const openai = new OpenAI({ apiKey: backendConfig.ai.openaiApiKey })
       const embedder = new OpenAIEmbedder({
-        model:
-          (config.embeddingModel as string) ?? "text-embedding-3-small",
-        client: openai,
-      });
+        model: (config.embeddingModel as string) ?? "text-embedding-3-small",
+        client: openai
+      })
       const result = await matchRealWorldQuestions(
         corpus,
         realWorldQuestions,
-        embedder,
-      );
-      matchedByDoc = result.matchedByDoc;
-      unmatchedQuestions = result.unmatchedQuestions;
+        embedder
+      )
+      matchedByDoc = result.matchedByDoc
+      unmatchedQuestions = result.unmatchedQuestions
     }
 
     // Dimension filtering (if provided)
-    let validCombos: Record<string, string>[] = [];
-    const dimensions = config.dimensions as any[] | undefined;
+    let validCombos: Record<string, string>[] = []
+    const dimensions = config.dimensions as any[] | undefined
     if (dimensions?.length) {
-      const parsed = parseDimensions(dimensions);
-      validCombos = await filterCombinations(parsed, llmClient, model);
+      const parsed = parseDimensions(dimensions)
+      validCombos = await filterCombinations(parsed, llmClient, model)
     }
 
     // Truncate arrays to stay within Convex's 8192 array element limit
-    const MAX_STYLE_EXAMPLES = 50;
-    const MAX_COMBOS = 200;
-    const MAX_UNMATCHED = 500;
+    const MAX_STYLE_EXAMPLES = 50
+    const MAX_COMBOS = 200
+    const MAX_UNMATCHED = 500
 
     // Build doc-level plan data — limit matched questions to doc's quota
     const docPlans = docs.map((d: any) => {
-      const docQuota = quotas.get(d.docId as string) ?? 0;
-      const matched = matchedByDoc[d.docId as string] ?? [];
+      const docQuota = quotas.get(d.docId as string) ?? 0
+      const matched = matchedByDoc[d.docId as string] ?? []
       return {
         docConvexId: d._id as string,
         docId: d.docId as string,
         title: d.title as string,
         quota: docQuota,
-        matchedQuestions: matched.slice(0, Math.max(docQuota, 10)),
-      };
-    });
+        matchedQuestions: matched.slice(0, Math.max(docQuota, 10))
+      }
+    })
 
     // Collect global style examples (capped)
     const globalStyleExamples = Object.values(matchedByDoc)
       .flat()
       .map((m: any) => m.question as string)
-      .slice(0, MAX_STYLE_EXAMPLES);
+      .slice(0, MAX_STYLE_EXAMPLES)
 
-    const truncatedCombos = validCombos.slice(0, MAX_COMBOS);
-    const truncatedUnmatched = unmatchedQuestions.slice(0, MAX_UNMATCHED);
+    const truncatedCombos = validCombos.slice(0, MAX_COMBOS)
+    const truncatedUnmatched = unmatchedQuestions.slice(0, MAX_UNMATCHED)
 
     const preferences = (config.promptPreferences as any) ?? {
       questionTypes: ["factoid", "procedural", "conditional"],
       tone: "professional but accessible",
-      focusAreas: "",
-    };
+      focusAreas: ""
+    }
 
     // Step 1: Store shared plan data on the job record (avoids duplicating
     // large arrays in every per-doc action call)
@@ -282,10 +279,10 @@ export const prepareGeneration = internalAction({
           validCombos: truncatedCombos,
           globalStyleExamples,
           preferences,
-          model,
-        },
-      },
-    );
+          model
+        }
+      }
+    )
 
     // Step 2: Enqueue per-doc actions with only doc-specific data
     await ctx.runMutation(
@@ -299,17 +296,17 @@ export const prepareGeneration = internalAction({
           quotas: Object.fromEntries(quotas),
           unmatchedQuestions: truncatedUnmatched,
           docPlans,
-          model,
-        },
-      },
-    );
+          model
+        }
+      }
+    )
 
     return {
       phase: "prepared",
-      totalDocs: docPlans.filter((d: { quota: number }) => d.quota > 0).length,
-    };
-  },
-});
+      totalDocs: docPlans.filter((d: { quota: number }) => d.quota > 0).length
+    }
+  }
+})
 
 // ─── Unified Pipeline: Phase 2 — Generate Questions for a Single Document ───
 
@@ -321,55 +318,60 @@ export const generateForDoc = internalAction({
     docId: v.string(),
     quota: v.number(),
     matchedQuestions: v.any(),
-    model: v.string(),
+    model: v.string()
   },
   handler: async (ctx, args) => {
-    if (args.quota === 0) return { questionsGenerated: 0, failedCitations: 0, missedQuestions: 0 };
+    if (args.quota === 0)
+      return { questionsGenerated: 0, failedCitations: 0, missedQuestions: 0 }
 
     // Read shared plan data from job record (stored once, not passed per-doc)
     const job = await ctx.runQuery(
       internal.generation.orchestration.getJobInternal,
-      { jobId: args.jobId },
-    );
+      { jobId: args.jobId }
+    )
     const sharedPlan = (job?.generationPlan ?? {}) as {
-      validCombos?: Record<string, string>[];
-      globalStyleExamples?: string[];
-      preferences?: any;
-    };
+      validCombos?: Record<string, string>[]
+      globalStyleExamples?: string[]
+      preferences?: any
+    }
 
     const doc = await ctx.runQuery(internal.crud.documents.getInternal, {
-      id: args.docConvexId,
-    });
-    const llmClient = createLLMClient();
+      id: args.docConvexId
+    })
+    const llmClient = createLLMClient()
 
     // Determine scenario for retry eligibility
-    const matchedCount = (args.matchedQuestions ?? []).length;
-    const isScenario1 = matchedCount >= args.quota;
+    const matchedCount = (args.matchedQuestions ?? []).length
+    const isScenario1 = matchedCount >= args.quota
 
     const allValidated: Array<{
-      queryId: string;
-      queryText: string;
-      sourceDocId: string;
-      relevantSpans: Array<{ docId: string; start: number; end: number; text: string }>;
-      metadata: Record<string, unknown>;
-      source: string | undefined;
-    }> = [];
-    let totalFailedCitations = 0;
-    const MAX_RETRIES = 4;
+      queryId: string
+      queryText: string
+      sourceDocId: string
+      relevantSpans: Array<{
+        docId: string
+        start: number
+        end: number
+        text: string
+      }>
+      metadata: Record<string, unknown>
+      source: string | undefined
+    }> = []
+    let totalFailedCitations = 0
+    const MAX_RETRIES = 4
 
     for (let round = 0; round <= MAX_RETRIES; round++) {
-      const remaining = args.quota - allValidated.length;
-      if (remaining <= 0) break;
+      const remaining = args.quota - allValidated.length
+      if (remaining <= 0) break
 
       // Skip retry loop for scenario 1 (direct reuse only — fixed question set)
-      if (round > 0 && isScenario1) break;
+      if (round > 0 && isScenario1) break
       // For retries, request shortfall + 2 buffer
-      if (round > 0 && remaining <= 0) break;
+      if (round > 0 && remaining <= 0) break
 
-      const requestCount = round === 0 ? args.quota : remaining + 2;
-      const excludeQuestions = round === 0
-        ? undefined
-        : allValidated.map((q) => q.queryText);
+      const requestCount = round === 0 ? args.quota : remaining + 2
+      const excludeQuestions =
+        round === 0 ? undefined : allValidated.map((q) => q.queryText)
 
       const rawQuestions = await generateForDocument({
         docId: args.docId,
@@ -380,49 +382,54 @@ export const generateForDoc = internalAction({
         preferences: sharedPlan.preferences ?? {
           questionTypes: ["factoid", "procedural", "conditional"],
           tone: "professional but accessible",
-          focusAreas: "",
+          focusAreas: ""
         },
         llmClient,
         model: args.model,
-        excludeQuestions,
-      });
+        excludeQuestions
+      })
 
       // Validate citations
       for (const q of rawQuestions) {
-        if (allValidated.length >= args.quota) break;
+        if (allValidated.length >= args.quota) break
 
-        const span = findCitationSpan(doc.content, q.citation);
+        const span = findCitationSpan(doc.content, q.citation)
         if (span) {
           allValidated.push({
             queryId: `unified_${args.docId}_q${allValidated.length}`,
             queryText: q.question,
             sourceDocId: args.docId,
             relevantSpans: [
-              { docId: args.docId, start: span.start, end: span.end, text: span.text },
+              {
+                docId: args.docId,
+                start: span.start,
+                end: span.end,
+                text: span.text
+              }
             ],
             metadata: {
               source: q.source,
               profile: q.profile ?? "",
-              citation: span.text,
+              citation: span.text
             },
-            source: q.source === "real-world" ? "real-world" : undefined,
-          });
+            source: q.source === "real-world" ? "real-world" : undefined
+          })
         } else {
-          totalFailedCitations++;
+          totalFailedCitations++
         }
       }
     }
 
-    const missedQuestions = args.quota - allValidated.length;
+    const missedQuestions = args.quota - allValidated.length
 
     // Pass 2: Enrich with multi-span ground truth
-    const assigner = new GroundTruthAssigner();
+    const assigner = new GroundTruthAssigner()
     const singleDocCorpus = createCorpusFromDocuments([
-      { id: args.docId, content: doc.content },
-    ]);
+      { id: args.docId, content: doc.content }
+    ])
 
-    let pass2Enriched = 0;
-    let pass2Unchanged = 0;
+    let pass2Enriched = 0
+    let pass2Unchanged = 0
 
     for (const question of allValidated) {
       try {
@@ -431,54 +438,58 @@ export const generateForDoc = internalAction({
             {
               query: question.queryText,
               targetDocId: question.sourceDocId,
-              metadata: (question.metadata ?? {}) as Record<string, string>,
-            },
+              metadata: (question.metadata ?? {}) as Record<string, string>
+            }
           ],
-          { corpus: singleDocCorpus, llmClient, model: args.model },
-        );
+          { corpus: singleDocCorpus, llmClient, model: args.model }
+        )
 
         if (results.length > 0 && results[0].relevantSpans.length > 1) {
           question.relevantSpans = results[0].relevantSpans.map((s) => ({
             docId: String(s.docId),
             start: s.start,
             end: s.end,
-            text: s.text,
-          }));
-          pass2Enriched++;
+            text: s.text
+          }))
+          pass2Enriched++
         } else {
-          pass2Unchanged++;
+          pass2Unchanged++
         }
       } catch {
-        pass2Unchanged++;
+        pass2Unchanged++
       }
     }
 
     // Insert questions in batches
     if (allValidated.length > 0) {
-      for (let i = 0; i < allValidated.length; i += QUESTION_INSERT_BATCH_SIZE) {
-        const batch = allValidated.slice(i, i + QUESTION_INSERT_BATCH_SIZE);
+      for (
+        let i = 0;
+        i < allValidated.length;
+        i += QUESTION_INSERT_BATCH_SIZE
+      ) {
+        const batch = allValidated.slice(i, i + QUESTION_INSERT_BATCH_SIZE)
         await ctx.runMutation(internal.crud.questions.insertBatch, {
           datasetId: args.datasetId,
-          questions: batch,
-        });
+          questions: batch
+        })
       }
     }
 
     // Report progress (once, after all retries)
-    await ctx.runMutation(
-      internal.generation.orchestration.updateDocProgress,
-      { jobId: args.jobId, docName: doc.title },
-    );
+    await ctx.runMutation(internal.generation.orchestration.updateDocProgress, {
+      jobId: args.jobId,
+      docName: doc.title
+    })
 
     return {
       questionsGenerated: allValidated.length,
       failedCitations: totalFailedCitations,
       missedQuestions: missedQuestions > 0 ? missedQuestions : 0,
       pass2Enriched,
-      pass2Unchanged,
-    };
-  },
-});
+      pass2Unchanged
+    }
+  }
+})
 
 // ─── Per-Question Ground Truth Assignment ───
 
@@ -486,50 +497,77 @@ export const assignGroundTruthForQuestion = internalAction({
   args: {
     questionId: v.id("questions"),
     kbId: v.id("knowledgeBases"),
-    datasetId: v.id("datasets"),
+    datasetId: v.id("datasets")
   },
   handler: async (ctx, args) => {
     const question = await ctx.runQuery(internal.crud.questions.getInternal, {
-      id: args.questionId,
-    });
+      id: args.questionId
+    })
 
-    const { corpus } = await loadCorpusFromKb(ctx, args.kbId);
+    const { corpus } = await loadCorpusFromKb(ctx, args.kbId)
 
     const dataset = await ctx.runQuery(internal.crud.datasets.getInternal, {
-      id: args.datasetId,
-    });
-    const config = dataset.strategyConfig as Record<string, unknown>;
-    const model = getModel(config);
-    const llmClient = createLLMClient();
-    const assigner = new GroundTruthAssigner();
+      id: args.datasetId
+    })
+    const config = dataset.strategyConfig as Record<string, unknown>
+    const model = getModel(config)
+    const llmClient = createLLMClient()
+    const assigner = new GroundTruthAssigner()
 
     const results = await assigner.assign(
       [
         {
           query: question.queryText,
           targetDocId: question.sourceDocId,
-          metadata: (question.metadata ?? {}) as Record<string, string>,
-        },
+          metadata: (question.metadata ?? {}) as Record<string, string>
+        }
       ],
-      { corpus, llmClient, model },
-    );
+      { corpus, llmClient, model }
+    )
 
     if (results.length > 0 && results[0].relevantSpans.length > 0) {
       const spans = results[0].relevantSpans.map((s) => ({
         docId: String(s.docId),
         start: s.start,
         end: s.end,
-        text: s.text,
-      }));
+        text: s.text
+      }))
 
       await ctx.runMutation(internal.crud.questions.updateSpans, {
         questionId: args.questionId,
-        relevantSpans: spans,
-      });
+        relevantSpans: spans
+      })
 
-      return { spansFound: spans.length };
+      return { spansFound: spans.length }
     }
 
-    return { spansFound: 0 };
+    return { spansFound: 0 }
+  }
+})
+
+// ─── Dimension Discovery ───
+
+export const discoverDimensions = tenantAction({
+  args: {
+    url: v.string()
   },
-});
+  handler: async (_ctx, args) => {
+    const url = args.url.trim()
+    if (!url) throw new Error("url is required")
+    try {
+      new URL(url)
+    } catch {
+      throw new Error("url must be a valid URL")
+    }
+
+    const llmClient = createLLMClient()
+    const model = getModel({})
+    try {
+      return await discoverDimensionsFn({ url, llmClient, model })
+    } catch (error) {
+      throw new Error(
+        error instanceof Error ? error.message : "Dimension discovery failed"
+      )
+    }
+  }
+})

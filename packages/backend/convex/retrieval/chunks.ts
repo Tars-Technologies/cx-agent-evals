@@ -1,6 +1,6 @@
-import { internalMutation, internalQuery, query } from "../_generated/server";
-import { v } from "convex/values";
-import { getAuthContext } from "../lib/auth";
+import { v } from "convex/values"
+import { internalMutation, internalQuery } from "../_generated/server"
+import { tenantQuery } from "../lib/auth/tenant"
 
 // ─── Batch Mutations (new — for two-phase indexing) ───
 
@@ -19,19 +19,19 @@ export const insertChunkBatch = internalMutation({
         content: v.string(),
         start: v.number(),
         end: v.number(),
-        metadata: v.any(),
-      }),
-    ),
+        metadata: v.any()
+      })
+    )
   },
   handler: async (ctx, args) => {
-    const ids = [];
+    const ids = []
     for (const chunk of args.chunks) {
-      const id = await ctx.db.insert("documentChunks", chunk);
-      ids.push(id);
+      const id = await ctx.db.insert("documentChunks", chunk)
+      ids.push(id)
     }
-    return { inserted: ids.length, ids };
-  },
-});
+    return { inserted: ids.length, ids }
+  }
+})
 
 /**
  * Patch embedding vectors onto existing chunk records.
@@ -42,32 +42,32 @@ export const patchChunkEmbeddings = internalMutation({
     patches: v.array(
       v.object({
         chunkId: v.id("documentChunks"),
-        embedding: v.array(v.float64()),
-      }),
-    ),
+        embedding: v.array(v.float64())
+      })
+    )
   },
   handler: async (ctx, args) => {
     for (const patch of args.patches) {
-      await ctx.db.patch(patch.chunkId, { embedding: patch.embedding });
+      await ctx.db.patch(patch.chunkId, { embedding: patch.embedding })
     }
-    return { patched: args.patches.length };
-  },
-});
+    return { patched: args.patches.length }
+  }
+})
 
 /**
  * Delete multiple chunks by ID in one transaction.
  */
 export const deleteChunkBatch = internalMutation({
   args: {
-    ids: v.array(v.id("documentChunks")),
+    ids: v.array(v.id("documentChunks"))
   },
   handler: async (ctx, args) => {
     for (const id of args.ids) {
-      await ctx.db.delete(id);
+      await ctx.db.delete(id)
     }
-    return { deleted: args.ids.length };
-  },
-});
+    return { deleted: args.ids.length }
+  }
+})
 
 /**
  * Paginated deletion by (kbId, indexConfigHash).
@@ -77,23 +77,23 @@ export const deleteKbConfigChunks = internalMutation({
   args: {
     kbId: v.id("knowledgeBases"),
     indexConfigHash: v.string(),
-    limit: v.optional(v.number()),
+    limit: v.optional(v.number())
   },
   handler: async (ctx, args) => {
-    const batchSize = args.limit ?? 500;
+    const batchSize = args.limit ?? 500
     const chunks = await ctx.db
       .query("documentChunks")
       .withIndex("by_kb_config", (q) =>
-        q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash),
+        q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash)
       )
-      .take(batchSize);
+      .take(batchSize)
 
     for (const chunk of chunks) {
-      await ctx.db.delete(chunk._id);
+      await ctx.db.delete(chunk._id)
     }
-    return { deleted: chunks.length, hasMore: chunks.length === batchSize };
-  },
-});
+    return { deleted: chunks.length, hasMore: chunks.length === batchSize }
+  }
+})
 
 // ─── Queries (KB-level, paginated — for BM25 / hybrid search) ───
 
@@ -112,26 +112,26 @@ export const getChunksByKbConfigPage = internalQuery({
     kbId: v.id("knowledgeBases"),
     indexConfigHash: v.string(),
     cursor: v.union(v.string(), v.null()),
-    pageSize: v.optional(v.number()),
+    pageSize: v.optional(v.number())
   },
   handler: async (ctx, args) => {
-    const numItems = args.pageSize ?? 500;
+    const numItems = args.pageSize ?? 500
     const page = await ctx.db
       .query("documentChunks")
       .withIndex("by_kb_config", (q) =>
-        q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash),
+        q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash)
       )
-      .paginate({ numItems, cursor: args.cursor as any ?? null });
+      .paginate({ numItems, cursor: (args.cursor as any) ?? null })
 
     // Join docId and strip embedding in one pass
-    const docCache = new Map<string, string>();
-    const chunks = [];
+    const docCache = new Map<string, string>()
+    const chunks = []
     for (const c of page.page) {
-      let docId = docCache.get(c.documentId);
+      let docId = docCache.get(c.documentId)
       if (docId === undefined) {
-        const doc = await ctx.db.get(c.documentId);
-        docId = doc?.docId ?? "";
-        docCache.set(c.documentId, docId);
+        const doc = await ctx.db.get(c.documentId)
+        docId = doc?.docId ?? ""
+        docCache.set(c.documentId, docId)
       }
       chunks.push({
         chunkId: c.chunkId,
@@ -139,17 +139,17 @@ export const getChunksByKbConfigPage = internalQuery({
         docId,
         start: c.start,
         end: c.end,
-        metadata: c.metadata ?? {},
-      });
+        metadata: c.metadata ?? {}
+      })
     }
 
     return {
       chunks,
       isDone: page.isDone,
-      continueCursor: page.continueCursor,
-    };
-  },
-});
+      continueCursor: page.continueCursor
+    }
+  }
+})
 
 // ─── Queries (new — for two-phase indexing) ───
 
@@ -159,7 +159,7 @@ export const getChunksByKbConfigPage = internalQuery({
 export const getChunksByDocConfig = internalQuery({
   args: {
     documentId: v.id("documents"),
-    indexConfigHash: v.string(),
+    indexConfigHash: v.string()
   },
   handler: async (ctx, args) => {
     return await ctx.db
@@ -167,11 +167,11 @@ export const getChunksByDocConfig = internalQuery({
       .withIndex("by_doc_config", (q) =>
         q
           .eq("documentId", args.documentId)
-          .eq("indexConfigHash", args.indexConfigHash),
+          .eq("indexConfigHash", args.indexConfigHash)
       )
-      .collect();
-  },
-});
+      .collect()
+  }
+})
 
 /**
  * Check if any chunks exist for a (documentId, indexConfigHash).
@@ -180,7 +180,7 @@ export const getChunksByDocConfig = internalQuery({
 export const hasChunksForDocConfig = internalQuery({
   args: {
     documentId: v.id("documents"),
-    indexConfigHash: v.string(),
+    indexConfigHash: v.string()
   },
   handler: async (ctx, args) => {
     const first = await ctx.db
@@ -188,12 +188,12 @@ export const hasChunksForDocConfig = internalQuery({
       .withIndex("by_doc_config", (q) =>
         q
           .eq("documentId", args.documentId)
-          .eq("indexConfigHash", args.indexConfigHash),
+          .eq("indexConfigHash", args.indexConfigHash)
       )
-      .first();
-    return { exists: first !== null };
-  },
-});
+      .first()
+    return { exists: first !== null }
+  }
+})
 
 /**
  * Read one page of chunks for a (documentId, indexConfigHash).
@@ -210,47 +210,45 @@ export const getChunksByDocConfigPage = internalQuery({
     documentId: v.id("documents"),
     indexConfigHash: v.string(),
     cursor: v.union(v.string(), v.null()),
-    pageSize: v.optional(v.number()),
+    pageSize: v.optional(v.number())
   },
   handler: async (ctx, args) => {
-    const numItems = args.pageSize ?? 100;
+    const numItems = args.pageSize ?? 100
     const page = await ctx.db
       .query("documentChunks")
       .withIndex("by_doc_config", (q) =>
         q
           .eq("documentId", args.documentId)
-          .eq("indexConfigHash", args.indexConfigHash),
+          .eq("indexConfigHash", args.indexConfigHash)
       )
-      .paginate({ numItems, cursor: args.cursor as any ?? null });
+      .paginate({ numItems, cursor: (args.cursor as any) ?? null })
 
     return {
       chunks: page.page,
       isDone: page.isDone,
-      continueCursor: page.continueCursor,
-    };
-  },
-});
+      continueCursor: page.continueCursor
+    }
+  }
+})
 
 /**
  * Public paginated query for Index tab — fetches chunks by (kbId, indexConfigHash, documentId?).
  * Optionally filters by documentId for narrower browsing.
  */
-export const getChunksByRetrieverPage = query({
+export const getChunksByRetrieverPage = tenantQuery({
   args: {
     kbId: v.id("knowledgeBases"),
     indexConfigHash: v.string(),
     documentId: v.optional(v.id("documents")),
     cursor: v.union(v.string(), v.null()),
-    pageSize: v.optional(v.number()),
+    pageSize: v.optional(v.number())
   },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx);
-
     // Verify KB belongs to org
-    const kb = await ctx.db.get(args.kbId);
-    if (!kb || kb.orgId !== orgId) throw new Error("KB not found");
+    const kb = await ctx.db.get(args.kbId)
+    if (!kb || kb.orgId !== ctx.orgId) throw new Error("KB not found")
 
-    const numItems = args.pageSize ?? 50;
+    const numItems = args.pageSize ?? 50
 
     const baseQuery = args.documentId
       ? ctx.db
@@ -258,20 +256,18 @@ export const getChunksByRetrieverPage = query({
           .withIndex("by_doc_config", (q) =>
             q
               .eq("documentId", args.documentId!)
-              .eq("indexConfigHash", args.indexConfigHash),
+              .eq("indexConfigHash", args.indexConfigHash)
           )
       : ctx.db
           .query("documentChunks")
           .withIndex("by_kb_config", (q) =>
-            q
-              .eq("kbId", args.kbId)
-              .eq("indexConfigHash", args.indexConfigHash),
-          );
+            q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash)
+          )
 
     const page = await baseQuery.paginate({
       numItems,
-      cursor: args.cursor as any ?? null,
-    });
+      cursor: (args.cursor as any) ?? null
+    })
 
     return {
       chunks: page.page.map((c) => ({
@@ -281,13 +277,13 @@ export const getChunksByRetrieverPage = query({
         content: c.content,
         start: c.start,
         end: c.end,
-        metadata: c.metadata ?? {},
+        metadata: c.metadata ?? {}
       })),
       isDone: page.isDone,
-      continueCursor: page.continueCursor,
-    };
-  },
-});
+      continueCursor: page.continueCursor
+    }
+  }
+})
 
 /**
  * Get chunks for a (documentId, indexConfigHash) where embedding is not set.
@@ -301,7 +297,7 @@ export const getChunksByRetrieverPage = query({
 export const getUnembeddedChunks = internalQuery({
   args: {
     documentId: v.id("documents"),
-    indexConfigHash: v.string(),
+    indexConfigHash: v.string()
   },
   handler: async (ctx, args) => {
     const allChunks = await ctx.db
@@ -309,12 +305,12 @@ export const getUnembeddedChunks = internalQuery({
       .withIndex("by_doc_config", (q) =>
         q
           .eq("documentId", args.documentId)
-          .eq("indexConfigHash", args.indexConfigHash),
+          .eq("indexConfigHash", args.indexConfigHash)
       )
-      .collect();
-    return allChunks.filter((c) => c.embedding === undefined);
-  },
-});
+      .collect()
+    return allChunks.filter((c) => c.embedding === undefined)
+  }
+})
 
 /**
  * Delete all chunks for a document.
@@ -325,14 +321,14 @@ export const deleteDocumentChunks = internalMutation({
     const chunks = await ctx.db
       .query("documentChunks")
       .withIndex("by_document", (q) => q.eq("documentId", args.documentId))
-      .collect();
+      .collect()
 
     for (const chunk of chunks) {
-      await ctx.db.delete(chunk._id);
+      await ctx.db.delete(chunk._id)
     }
-    return { chunksDeleted: chunks.length };
-  },
-});
+    return { chunksDeleted: chunks.length }
+  }
+})
 
 // ─── Queries (existing, updated) ───
 
@@ -343,28 +339,26 @@ export const deleteDocumentChunks = internalMutation({
 export const isIndexed = internalQuery({
   args: {
     kbId: v.id("knowledgeBases"),
-    indexConfigHash: v.optional(v.string()),
+    indexConfigHash: v.optional(v.string())
   },
   handler: async (ctx, args) => {
     if (args.indexConfigHash) {
       const chunks = await ctx.db
         .query("documentChunks")
         .withIndex("by_kb_config", (q) =>
-          q
-            .eq("kbId", args.kbId)
-            .eq("indexConfigHash", args.indexConfigHash!),
+          q.eq("kbId", args.kbId).eq("indexConfigHash", args.indexConfigHash!)
         )
-        .take(1);
-      return chunks.length > 0 && chunks[0].embedding !== undefined;
+        .take(1)
+      return chunks.length > 0 && chunks[0].embedding !== undefined
     }
     // Fallback: any chunks for this KB (backward compat)
     const first = await ctx.db
       .query("documentChunks")
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
-      .first();
-    return first !== null;
-  },
-});
+      .first()
+    return first !== null
+  }
+})
 
 /**
  * Fetch chunk records by IDs WITHOUT touching the documents table.
@@ -375,14 +369,14 @@ export const isIndexed = internalQuery({
 export const fetchChunksByIds = internalQuery({
   args: { ids: v.array(v.id("documentChunks")) },
   handler: async (ctx, args) => {
-    const chunks = [];
+    const chunks = []
     for (const id of args.ids) {
-      const chunk = await ctx.db.get(id);
-      if (chunk) chunks.push(chunk);
+      const chunk = await ctx.db.get(id)
+      if (chunk) chunks.push(chunk)
     }
-    return chunks;
-  },
-});
+    return chunks
+  }
+})
 
 /**
  * Map documentId → external docId. Caller must deduplicate ids before calling.
@@ -392,11 +386,11 @@ export const fetchChunksByIds = internalQuery({
 export const fetchDocIdMap = internalQuery({
   args: { documentIds: v.array(v.id("documents")) },
   handler: async (ctx, args) => {
-    const map: Record<string, string> = {};
+    const map: Record<string, string> = {}
     for (const id of args.documentIds) {
-      const doc = await ctx.db.get(id);
-      if (doc) map[id.toString()] = doc.docId;
+      const doc = await ctx.db.get(id)
+      if (doc) map[id.toString()] = doc.docId
     }
-    return map;
-  },
-});
+    return map
+  }
+})

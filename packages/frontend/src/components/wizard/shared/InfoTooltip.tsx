@@ -1,7 +1,7 @@
-"use client";
+"use client"
 
 interface InfoTooltipProps {
-  text: string;
+  text: string
 }
 
 export function InfoTooltip({ text }: InfoTooltipProps) {
@@ -20,5 +20,5 @@ export function InfoTooltip({ text }: InfoTooltipProps) {
         {text}
       </span>
     </span>
-  );
+  )
 }

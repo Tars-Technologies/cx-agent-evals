@@ -1,22 +1,22 @@
-"use client";
+"use client"
 
-import { SEARCH_STRATEGY_REGISTRY } from "@tars-inc/eval-lib/registry";
-import { StrategyCard } from "../shared/StrategyCard";
-import { OptionGroup } from "../shared/OptionGroup";
-import { IndexSearchNote } from "@/components/tabs/QuerySearchTab";
+import { SEARCH_STRATEGY_REGISTRY } from "@tars-inc/eval-lib/registry"
+import { IndexSearchNote } from "@/components/tabs/QuerySearchTab"
+import { OptionGroup } from "../shared/OptionGroup"
+import { StrategyCard } from "../shared/StrategyCard"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface SearchStepProps {
-  searchStrategy: string;
-  searchOptions: Record<string, unknown>;
-  k: number;
-  onSearchChange: (strategy: string, options: Record<string, unknown>) => void;
-  onKChange: (k: number) => void;
-  indexStrategy?: string;
-  indexConfig?: Record<string, unknown>;
+  searchStrategy: string
+  searchOptions: Record<string, unknown>
+  k: number
+  onSearchChange: (strategy: string, options: Record<string, unknown>) => void
+  onKChange: (k: number) => void
+  indexStrategy?: string
+  indexConfig?: Record<string, unknown>
 }
 
 // ---------------------------------------------------------------------------
@@ -30,22 +30,22 @@ export function SearchStep({
   onSearchChange,
   onKChange,
   indexStrategy,
-  indexConfig,
+  indexConfig
 }: SearchStepProps) {
   const selectedEntry = SEARCH_STRATEGY_REGISTRY.find(
-    (e) => e.id === searchStrategy,
-  );
+    (e) => e.id === searchStrategy
+  )
 
   const handleStrategySelect = (id: string) => {
-    const entry = SEARCH_STRATEGY_REGISTRY.find((e) => e.id === id);
+    const entry = SEARCH_STRATEGY_REGISTRY.find((e) => e.id === id)
     if (entry) {
-      onSearchChange(id, { ...entry.defaults });
+      onSearchChange(id, { ...entry.defaults })
     }
-  };
+  }
 
   const handleOptionChange = (key: string, value: unknown) => {
-    onSearchChange(searchStrategy, { ...searchOptions, [key]: value });
-  };
+    onSearchChange(searchStrategy, { ...searchOptions, [key]: value })
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -70,7 +70,10 @@ export function SearchStep({
 
       {/* Index→search interaction note */}
       {indexStrategy && indexStrategy !== "plain" && (
-        <IndexSearchNote indexStrategy={indexStrategy} indexConfig={indexConfig ?? {}} />
+        <IndexSearchNote
+          indexStrategy={indexStrategy}
+          indexConfig={indexConfig ?? {}}
+        />
       )}
 
       {/* Strategy options */}
@@ -103,9 +106,9 @@ export function SearchStep({
             max={100}
             step={1}
             onChange={(e) => {
-              const val = parseInt(e.target.value, 10);
+              const val = parseInt(e.target.value, 10)
               if (!isNaN(val)) {
-                onKChange(val);
+                onKChange(val)
               }
             }}
             className="
@@ -119,5 +122,5 @@ export function SearchStep({
         </div>
       </section>
     </div>
-  );
+  )
 }

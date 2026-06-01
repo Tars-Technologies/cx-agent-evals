@@ -1,15 +1,15 @@
-"use client";
+"use client"
 
 import {
-  INDEX_STRATEGY_REGISTRY,
-  QUERY_STRATEGY_REGISTRY,
-  SEARCH_STRATEGY_REGISTRY,
-  REFINEMENT_STEP_REGISTRY,
   CHUNKER_REGISTRY,
   EMBEDDER_REGISTRY,
-  RERANKER_REGISTRY,
+  INDEX_STRATEGY_REGISTRY,
   PRESET_REGISTRY,
-} from "@tars-inc/eval-lib/registry";
+  QUERY_STRATEGY_REGISTRY,
+  REFINEMENT_STEP_REGISTRY,
+  RERANKER_REGISTRY,
+  SEARCH_STRATEGY_REGISTRY
+} from "@tars-inc/eval-lib/registry"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,23 +17,23 @@ import {
 
 interface ReviewStepProps {
   config: {
-    name: string;
-    indexStrategy: string;
-    chunkerType: string;
-    chunkerOptions: Record<string, unknown>;
-    embedderProvider: string;
-    embedderOptions: Record<string, unknown>;
-    queryStrategy: string;
-    searchStrategy: string;
-    searchOptions: Record<string, unknown>;
-    k: number;
-    refinementSteps: Array<{ type: string; [key: string]: unknown }>;
-    rerankerProvider: string;
-    rerankerOptions: Record<string, unknown>;
-  };
-  basePreset: string | null;
-  onNameChange: (name: string) => void;
-  onEditStep: (stepIndex: number) => void;
+    name: string
+    indexStrategy: string
+    chunkerType: string
+    chunkerOptions: Record<string, unknown>
+    embedderProvider: string
+    embedderOptions: Record<string, unknown>
+    queryStrategy: string
+    searchStrategy: string
+    searchOptions: Record<string, unknown>
+    k: number
+    refinementSteps: Array<{ type: string; [key: string]: unknown }>
+    rerankerProvider: string
+    rerankerOptions: Record<string, unknown>
+  }
+  basePreset: string | null
+  onNameChange: (name: string) => void
+  onEditStep: (stepIndex: number) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -42,26 +42,26 @@ interface ReviewStepProps {
 
 function lookupName(
   registry: readonly { id: string; name: string }[],
-  id: string,
+  id: string
 ): string {
-  return registry.find((e) => e.id === id)?.name ?? id;
+  return registry.find((e) => e.id === id)?.name ?? id
 }
 
 /** Format an options record as "key: value" lines, skipping empties */
 function formatOptions(opts: Record<string, unknown>): string[] {
   return Object.entries(opts)
     .filter(([, v]) => v !== "" && v !== undefined && v !== null)
-    .map(([k, v]) => `${k}: ${String(v)}`);
+    .map(([k, v]) => `${k}: ${String(v)}`)
 }
 
 function SectionHeader({
   title,
   stepIndex,
-  onEdit,
+  onEdit
 }: {
-  title: string;
-  stepIndex: number;
-  onEdit: (stepIndex: number) => void;
+  title: string
+  stepIndex: number
+  onEdit: (stepIndex: number) => void
 }) {
   return (
     <div className="flex items-center justify-between mb-2">
@@ -76,7 +76,7 @@ function SectionHeader({
         Edit
       </button>
     </div>
-  );
+  )
 }
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
@@ -85,7 +85,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
       <span className="text-xs text-text-dim w-28 shrink-0">{label}</span>
       <span className="text-xs text-text">{value}</span>
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -96,16 +96,16 @@ export function ReviewStep({
   config,
   basePreset,
   onNameChange,
-  onEditStep,
+  onEditStep
 }: ReviewStepProps) {
   const presetName = basePreset
-    ? PRESET_REGISTRY.find((p) => p.id === basePreset)?.name ?? basePreset
-    : null;
+    ? (PRESET_REGISTRY.find((p) => p.id === basePreset)?.name ?? basePreset)
+    : null
 
-  const chunkerOpts = formatOptions(config.chunkerOptions);
-  const embedderOpts = formatOptions(config.embedderOptions);
-  const searchOpts = formatOptions(config.searchOptions);
-  const rerankerOpts = formatOptions(config.rerankerOptions);
+  const chunkerOpts = formatOptions(config.chunkerOptions)
+  const embedderOpts = formatOptions(config.embedderOptions)
+  const searchOpts = formatOptions(config.searchOptions)
+  const rerankerOpts = formatOptions(config.rerankerOptions)
 
   return (
     <div className="flex flex-col gap-5">
@@ -126,9 +126,7 @@ export function ReviewStep({
           "
         />
         {presetName && (
-          <p className="mt-1 text-xs text-text-muted">
-            Based on: {presetName}
-          </p>
+          <p className="mt-1 text-xs text-text-muted">Based on: {presetName}</p>
         )}
       </div>
 
@@ -209,7 +207,6 @@ export function ReviewStep({
           </div>
         )}
       </section>
-
     </div>
-  );
+  )
 }

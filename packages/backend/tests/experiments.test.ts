@@ -1,15 +1,15 @@
-import { convexTest } from "convex-test";
-import { describe, it, expect, beforeEach } from "vitest";
-import { internal } from "../convex/_generated/api";
-import { Id } from "../convex/_generated/dataModel";
+import type { convexTest } from "convex-test"
+import { beforeEach, describe, expect, it } from "vitest"
+import { internal } from "../convex/_generated/api"
+import type { Id } from "../convex/_generated/dataModel"
 import {
-  TEST_ORG_ID,
-  testIdentity,
-  setupTest,
-  seedUser,
-  seedKB,
   seedDataset,
-} from "./helpers";
+  seedKB,
+  seedUser,
+  setupTest,
+  TEST_ORG_ID,
+  testIdentity
+} from "./helpers"
 
 // ─── Domain-Specific Seeders ───
 
@@ -18,11 +18,11 @@ async function seedExperiment(
   userId: Id<"users">,
   datasetId: Id<"datasets">,
   overrides: Partial<{
-    status: string;
-    phase: string;
-    totalQuestions: number;
-    processedQuestions: number;
-  }> = {},
+    status: string
+    phase: string
+    totalQuestions: number
+    processedQuestions: number
+  }> = {}
 ) {
   return await t.run(async (ctx) => {
     return await ctx.db.insert("experiments", {
@@ -35,111 +35,111 @@ async function seedExperiment(
       totalQuestions: overrides.totalQuestions ?? 3,
       processedQuestions: overrides.processedQuestions ?? 0,
       createdBy: userId,
-      createdAt: Date.now(),
-    });
-  });
+      createdAt: Date.now()
+    })
+  })
 }
 
 // ─── Tests ───
 
 describe("experiments: onExperimentComplete", () => {
-  let t: ReturnType<typeof convexTest>;
+  let t: ReturnType<typeof convexTest>
 
   beforeEach(() => {
-    t = setupTest();
-  });
+    t = setupTest()
+  })
 
   it("does nothing on success (action marks experiment complete)", async () => {
-    const userId = await seedUser(t);
-    const kbId = await seedKB(t, userId);
-    const datasetId = await seedDataset(t, userId, kbId);
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const datasetId = await seedDataset(t, userId, kbId)
     const experimentId = await seedExperiment(t, userId, datasetId, {
       status: "completed",
-      phase: "done",
-    });
+      phase: "done"
+    })
 
     await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
-      result: { kind: "success", returnValue: {} },
-    });
+      result: { kind: "success", returnValue: {} }
+    })
 
-    const exp = await t.run(async (ctx) => ctx.db.get(experimentId));
+    const exp = await t.run(async (ctx) => ctx.db.get(experimentId))
     // Status should remain "completed" — action already handled it
-    expect(exp!.status).toBe("completed");
-  });
+    expect(exp!.status).toBe("completed")
+  })
 
   it("marks experiment as failed when action fails", async () => {
-    const userId = await seedUser(t);
-    const kbId = await seedKB(t, userId);
-    const datasetId = await seedDataset(t, userId, kbId);
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const datasetId = await seedDataset(t, userId, kbId)
     const experimentId = await seedExperiment(t, userId, datasetId, {
-      status: "running",
-    });
+      status: "running"
+    })
 
     await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
-      result: { kind: "failed", error: "Action timed out" },
-    });
+      result: { kind: "failed", error: "Action timed out" }
+    })
 
-    const exp = await t.run(async (ctx) => ctx.db.get(experimentId));
-    expect(exp!.status).toBe("failed");
-    expect(exp!.error).toBe("Action timed out");
-    expect(exp!.completedAt).toBeDefined();
-  });
+    const exp = await t.run(async (ctx) => ctx.db.get(experimentId))
+    expect(exp!.status).toBe("failed")
+    expect(exp!.error).toBe("Action timed out")
+    expect(exp!.completedAt).toBeDefined()
+  })
 
   it("marks experiment as canceled when WorkPool item is canceled", async () => {
-    const userId = await seedUser(t);
-    const kbId = await seedKB(t, userId);
-    const datasetId = await seedDataset(t, userId, kbId);
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const datasetId = await seedDataset(t, userId, kbId)
     const experimentId = await seedExperiment(t, userId, datasetId, {
-      status: "canceling",
-    });
+      status: "canceling"
+    })
 
     await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
-      result: { kind: "canceled" },
-    });
+      result: { kind: "canceled" }
+    })
 
-    const exp = await t.run(async (ctx) => ctx.db.get(experimentId));
-    expect(exp!.status).toBe("canceled");
-    expect(exp!.completedAt).toBeDefined();
-  });
+    const exp = await t.run(async (ctx) => ctx.db.get(experimentId))
+    expect(exp!.status).toBe("canceled")
+    expect(exp!.completedAt).toBeDefined()
+  })
 
   it("does not overwrite if experiment already marked failed by action", async () => {
-    const userId = await seedUser(t);
-    const kbId = await seedKB(t, userId);
-    const datasetId = await seedDataset(t, userId, kbId);
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const datasetId = await seedDataset(t, userId, kbId)
     const experimentId = await seedExperiment(t, userId, datasetId, {
-      status: "failed",
-    });
+      status: "failed"
+    })
 
     await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
-      result: { kind: "failed", error: "Duplicate failure" },
-    });
+      result: { kind: "failed", error: "Duplicate failure" }
+    })
 
-    const exp = await t.run(async (ctx) => ctx.db.get(experimentId));
+    const exp = await t.run(async (ctx) => ctx.db.get(experimentId))
     // Should not overwrite — status was already "failed"
-    expect(exp!.status).toBe("failed");
-    expect(exp!.error).toBeUndefined(); // Original had no error set
-  });
-});
+    expect(exp!.status).toBe("failed")
+    expect(exp!.error).toBeUndefined() // Original had no error set
+  })
+})
 
 describe("experiments: get query", () => {
-  let t: ReturnType<typeof convexTest>;
+  let t: ReturnType<typeof convexTest>
 
   beforeEach(() => {
-    t = setupTest();
-  });
+    t = setupTest()
+  })
 
   it("returns null for wrong org (C3)", async () => {
-    const userId = await seedUser(t);
-    const kbId = await seedKB(t, userId);
-    const datasetId = await seedDataset(t, userId, kbId);
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const datasetId = await seedDataset(t, userId, kbId)
 
     const experimentId = await t.run(async (ctx) => {
       return await ctx.db.insert("experiments", {
@@ -149,24 +149,28 @@ describe("experiments: get query", () => {
         metricNames: ["recall"],
         status: "completed" as any,
         createdBy: userId,
-        createdAt: Date.now(),
-      });
-    });
+        createdAt: Date.now()
+      })
+    })
 
-    const authedT = t.withIdentity(testIdentity);
-    const exp = await authedT.query(internal.experiments.orchestration.get, { id: experimentId });
-    expect(exp).toBeNull();
-  });
+    const authedT = t.withIdentity(testIdentity)
+    const exp = await authedT.query(internal.experiments.orchestration.get, {
+      id: experimentId
+    })
+    expect(exp).toBeNull()
+  })
 
   it("returns experiment for correct org", async () => {
-    const userId = await seedUser(t);
-    const kbId = await seedKB(t, userId);
-    const datasetId = await seedDataset(t, userId, kbId);
-    const experimentId = await seedExperiment(t, userId, datasetId);
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const datasetId = await seedDataset(t, userId, kbId)
+    const experimentId = await seedExperiment(t, userId, datasetId)
 
-    const authedT = t.withIdentity(testIdentity);
-    const exp = await authedT.query(internal.experiments.orchestration.get, { id: experimentId });
-    expect(exp).not.toBeNull();
-    expect(exp!.name).toBe("Test Experiment");
-  });
-});
+    const authedT = t.withIdentity(testIdentity)
+    const exp = await authedT.query(internal.experiments.orchestration.get, {
+      id: experimentId
+    })
+    expect(exp).not.toBeNull()
+    expect(exp!.name).toBe("Test Experiment")
+  })
+})

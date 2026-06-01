@@ -1,19 +1,19 @@
-"use client";
+"use client"
 
-import type { MessageRole } from "@tars-inc/eval-lib/data-analysis";
+import type { MessageRole } from "@tars-inc/eval-lib/data-analysis"
 
 export function ChatBubble({
   id,
   role,
   text,
   agentName,
-  translatedText,
+  translatedText
 }: {
-  id: number;
-  role: MessageRole;
-  text: string;
-  agentName?: string;
-  translatedText?: string;
+  id: number
+  role: MessageRole
+  text: string
+  agentName?: string
+  translatedText?: string
 }) {
   if (role === "workflow_input") {
     return (
@@ -22,10 +22,10 @@ export function ChatBubble({
           {text}
         </span>
       </div>
-    );
+    )
   }
 
-  const isUser = role === "user";
+  const isUser = role === "user"
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-1.5`}>
@@ -41,18 +41,20 @@ export function ChatBubble({
             isUser ? "text-accent-bright/50" : "text-text-dim"
           }`}
         >
-          {isUser ? "User" : agentName ?? "Agent"} · #{id}
+          {isUser ? "User" : (agentName ?? "Agent")} · #{id}
         </div>
         {text}
         {translatedText && (
           <>
             <div className="border-t border-dashed border-current/20 my-1" />
-            <div className={`text-[11px] ${isUser ? "text-white/70" : "text-[#c084fc]"}`}>
+            <div
+              className={`text-[11px] ${isUser ? "text-white/70" : "text-[#c084fc]"}`}
+            >
               {translatedText}
             </div>
           </>
         )}
       </div>
     </div>
-  );
+  )
 }

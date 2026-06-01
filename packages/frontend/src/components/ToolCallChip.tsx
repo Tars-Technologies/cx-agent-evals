@@ -1,31 +1,41 @@
-"use client";
+"use client"
 
-import { useState } from "react";
+import { useState } from "react"
 
 interface ToolCallChipProps {
-  toolName: string;
-  toolArgs?: string;   // JSON string
-  toolResult?: string; // JSON string
+  toolName: string
+  toolArgs?: string // JSON string
+  toolResult?: string // JSON string
 }
 
 function prettyJsonOr(s: string | undefined): string {
-  if (!s) return "";
+  if (!s) return ""
   try {
-    return JSON.stringify(JSON.parse(s), null, 2);
+    return JSON.stringify(JSON.parse(s), null, 2)
   } catch {
-    return s;
+    return s
   }
 }
 
-export default function ToolCallChip({ toolName, toolArgs, toolResult }: ToolCallChipProps) {
-  const [expanded, setExpanded] = useState(false);
+export default function ToolCallChip({
+  toolName,
+  toolArgs,
+  toolResult
+}: ToolCallChipProps) {
+  const [expanded, setExpanded] = useState(false)
 
-  const displayName = toolName.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const displayName = toolName
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
 
-  let parsedArgs: any = {};
-  let parsedResult: any = null;
-  try { parsedArgs = JSON.parse(toolArgs ?? "{}"); } catch {}
-  try { parsedResult = JSON.parse(toolResult ?? "null"); } catch {}
+  let parsedArgs: any = {}
+  let parsedResult: any = null
+  try {
+    parsedArgs = JSON.parse(toolArgs ?? "{}")
+  } catch {}
+  try {
+    parsedResult = JSON.parse(toolResult ?? "null")
+  } catch {}
 
   return (
     <div className="mb-1.5">
@@ -35,7 +45,8 @@ export default function ToolCallChip({ toolName, toolArgs, toolResult }: ToolCal
       >
         <span className="text-accent">&#9889;</span>
         <span className="text-text-muted">
-          Searched <strong className="text-text font-medium">{displayName}</strong>
+          Searched{" "}
+          <strong className="text-text font-medium">{displayName}</strong>
         </span>
         <span className="text-text-dim">{expanded ? "▾" : "▸"}</span>
       </button>
@@ -44,21 +55,33 @@ export default function ToolCallChip({ toolName, toolArgs, toolResult }: ToolCal
           {parsedArgs.query && (
             <div>
               <span className="text-text-dim">Query: </span>
-              <span className="text-text">&ldquo;{parsedArgs.query}&rdquo;</span>
+              <span className="text-text">
+                &ldquo;{parsedArgs.query}&rdquo;
+              </span>
             </div>
           )}
-          {Array.isArray(parsedResult) && parsedResult.length > 0 && parsedResult[0]?.content && (
-            <div>
-              <span className="text-text-dim">{parsedResult.length} chunk{parsedResult.length !== 1 ? "s" : ""} returned</span>
-              <div className="mt-1.5 space-y-1">
-                {parsedResult.slice(0, 3).map((chunk: any, i: number) => (
-                  <div key={i} className="p-1.5 bg-bg rounded border border-border/50 text-text-muted">
-                    <div className="line-clamp-2">{String(chunk.content ?? "").slice(0, 150)}...</div>
-                  </div>
-                ))}
+          {Array.isArray(parsedResult) &&
+            parsedResult.length > 0 &&
+            parsedResult[0]?.content && (
+              <div>
+                <span className="text-text-dim">
+                  {parsedResult.length} chunk
+                  {parsedResult.length !== 1 ? "s" : ""} returned
+                </span>
+                <div className="mt-1.5 space-y-1">
+                  {parsedResult.slice(0, 3).map((chunk: any, i: number) => (
+                    <div
+                      key={i}
+                      className="p-1.5 bg-bg rounded border border-border/50 text-text-muted"
+                    >
+                      <div className="line-clamp-2">
+                        {String(chunk.content ?? "").slice(0, 150)}...
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
           <div>
             <div className="text-text-dim mb-1">Input</div>
@@ -76,5 +99,5 @@ export default function ToolCallChip({ toolName, toolArgs, toolResult }: ToolCal
         </div>
       )}
     </div>
-  );
+  )
 }

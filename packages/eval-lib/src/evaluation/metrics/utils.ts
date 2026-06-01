@@ -1,7 +1,7 @@
 export {
-  mergeOverlappingSpans,
   calculateOverlap,
   calculateOverlapPreMerged,
+  mergeOverlappingSpans,
   totalSpanLength,
-  totalSpanLengthPreMerged,
-} from "../../utils/span.js";
+  totalSpanLengthPreMerged
+} from "../../utils/span.js"

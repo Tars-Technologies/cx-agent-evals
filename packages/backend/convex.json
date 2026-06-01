@@ -2,11 +2,20 @@
   "$schema": "./node_modules/convex/schemas/convex.schema.json",
   "node": {
     "externalPackages": [
-      "langsmith", "@langchain/core", "openai", "minisearch",
-      "linkedom", "turndown", "unpdf",
-      "ai", "@ai-sdk/anthropic", "@ai-sdk/openai", "zod",
+      "langsmith",
+      "@langchain/core",
+      "openai",
+      "minisearch",
+      "linkedom",
+      "turndown",
+      "unpdf",
+      "ai",
+      "@ai-sdk/anthropic",
+      "@ai-sdk/openai",
+      "zod",
       "cohere-ai",
-      "@anthropic-ai/sdk", "csv-parse"
+      "@anthropic-ai/sdk",
+      "csv-parse"
     ]
   }
 }

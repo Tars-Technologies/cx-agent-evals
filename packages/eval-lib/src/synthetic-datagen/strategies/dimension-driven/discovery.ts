@@ -1,6 +1,6 @@
-import type { LLMClient } from "../../base.js";
-import type { Dimension } from "../types.js";
-import { safeParseLLMResponse } from "../../../utils/json.js";
+import { safeParseLLMResponse } from "../../../utils/json.js"
+import type { LLMClient } from "../../base.js"
+import type { Dimension } from "../types.js"
 
 const DISCOVERY_PROMPT = `You are analyzing a company's website content to identify the key dimensions that would vary across real user questions asked to their AI assistant or support system.
 
@@ -27,31 +27,31 @@ Output JSON format:
       "values": ["new_user", "power_user", "admin", "developer"]
     }
   ]
-}`;
+}`
 
 export interface DiscoverDimensionsOptions {
-  readonly url: string;
-  readonly outputPath?: string;
-  readonly llmClient: LLMClient;
-  readonly model: string;
-  readonly fetchPage?: (url: string) => Promise<string>;
+  readonly url: string
+  readonly outputPath?: string
+  readonly llmClient: LLMClient
+  readonly model: string
+  readonly fetchPage?: (url: string) => Promise<string>
 }
 
 export async function discoverDimensions(
-  options: DiscoverDimensionsOptions,
+  options: DiscoverDimensionsOptions
 ): Promise<Dimension[]> {
-  const fetchPage = options.fetchPage ?? defaultFetchPage;
+  const fetchPage = options.fetchPage ?? defaultFetchPage
 
-  const mainContent = await fetchPage(options.url);
+  const mainContent = await fetchPage(options.url)
   const linkedUrls = extractSameDomainLinks(options.url, mainContent).slice(
     0,
-    4,
-  );
+    4
+  )
 
-  const pages = [mainContent];
+  const pages = [mainContent]
   for (const linkedUrl of linkedUrls) {
     try {
-      pages.push(await fetchPage(linkedUrl));
+      pages.push(await fetchPage(linkedUrl))
     } catch {
       // Skip pages that fail to fetch
     }
@@ -59,39 +59,36 @@ export async function discoverDimensions(
 
   const combinedContent = pages
     .map((p) => stripHtml(p).substring(0, 5000))
-    .join("\n\n---\n\n");
+    .join("\n\n---\n\n")
 
-  const prompt = `Here is content from a company's website:\n\n${combinedContent}\n\nIdentify the key dimensions for generating diverse user questions.`;
+  const prompt = `Here is content from a company's website:\n\n${combinedContent}\n\nIdentify the key dimensions for generating diverse user questions.`
 
   const response = await options.llmClient.complete({
     model: options.model,
     messages: [
       { role: "system", content: DISCOVERY_PROMPT },
-      { role: "user", content: prompt },
+      { role: "user", content: prompt }
     ],
-    responseFormat: "json",
-  });
+    responseFormat: "json"
+  })
 
-  const data = safeParseLLMResponse(response, { dimensions: [] as Dimension[] });
-  const dimensions: Dimension[] = data.dimensions ?? [];
+  const data = safeParseLLMResponse(response, { dimensions: [] as Dimension[] })
+  const dimensions: Dimension[] = data.dimensions ?? []
 
   if (options.outputPath) {
-    const { writeFile } = await import("node:fs/promises");
-    await writeFile(
-      options.outputPath,
-      JSON.stringify({ dimensions }, null, 2),
-    );
+    const { writeFile } = await import("node:fs/promises")
+    await writeFile(options.outputPath, JSON.stringify({ dimensions }, null, 2))
   }
 
-  return dimensions;
+  return dimensions
 }
 
 async function defaultFetchPage(url: string): Promise<string> {
-  const response = await fetch(url);
+  const response = await fetch(url)
   if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: ${response.status}`);
+    throw new Error(`Failed to fetch ${url}: ${response.status}`)
   }
-  return response.text();
+  return response.text()
 }
 
 function stripHtml(html: string): string {
@@ -100,25 +97,25 @@ function stripHtml(html: string): string {
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
 }
 
 function extractSameDomainLinks(baseUrl: string, html: string): string[] {
-  const baseHostname = new URL(baseUrl).hostname;
-  const linkRegex = /href="([^"]+)"/g;
-  const links = new Set<string>();
+  const baseHostname = new URL(baseUrl).hostname
+  const linkRegex = /href="([^"]+)"/g
+  const links = new Set<string>()
 
-  let match;
+  let match
   while ((match = linkRegex.exec(html)) !== null) {
     try {
-      const resolved = new URL(match[1], baseUrl);
+      const resolved = new URL(match[1], baseUrl)
       if (resolved.hostname === baseHostname && resolved.href !== baseUrl) {
-        links.add(resolved.href);
+        links.add(resolved.href)
       }
     } catch {
       // Skip invalid URLs
     }
   }
 
-  return [...links];
+  return [...links]
 }

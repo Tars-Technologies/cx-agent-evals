@@ -1,5 +1,5 @@
-import { internalAction } from "../_generated/server";
-import { internal } from "../_generated/api";
+import { internal } from "../_generated/api"
+import { internalAction } from "../_generated/server"
 
 /**
  * Cron job action: retry failed LangSmith syncs.
@@ -10,20 +10,18 @@ export const retryFailed = internalAction({
   handler: async (ctx) => {
     // Find datasets with failed sync status (uses by_sync_status index)
     const datasets = await ctx.runQuery(
-      internal.langsmith.syncRetry.getFailedDatasets,
-    );
+      internal.langsmith.syncRetry.getFailedDatasets
+    )
 
     for (const dataset of datasets) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.langsmith.sync.syncDataset,
-        { datasetId: dataset._id },
-      );
+      await ctx.scheduler.runAfter(0, internal.langsmith.sync.syncDataset, {
+        datasetId: dataset._id
+      })
     }
-  },
-});
+  }
+})
 
-import { internalQuery } from "../_generated/server";
+import { internalQuery } from "../_generated/server"
 
 /**
  * Internal query: find datasets with failed LangSmith sync status.
@@ -39,9 +37,9 @@ export const getFailedDatasets = internalQuery({
       .query("datasets")
       .withIndex("by_sync_status")
       .filter((q) => q.neq(q.field("langsmithSyncStatus"), undefined))
-      .collect();
-    return withStatus.filter(
-      (d) => d.langsmithSyncStatus?.startsWith("failed:"),
-    );
-  },
-});
+      .collect()
+    return withStatus.filter((d) =>
+      d.langsmithSyncStatus?.startsWith("failed:")
+    )
+  }
+})

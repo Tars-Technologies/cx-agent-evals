@@ -12,6 +12,7 @@ import type * as agents_actions from "../agents/actions.js";
 import type * as agents_orchestration from "../agents/orchestration.js";
 import type * as agents_promptTemplate from "../agents/promptTemplate.js";
 import type * as annotations_crud from "../annotations/crud.js";
+import type * as config from "../config.js";
 import type * as conversationSim_actions from "../conversationSim/actions.js";
 import type * as conversationSim_anchorPrompt from "../conversationSim/anchorPrompt.js";
 import type * as conversationSim_extractJson from "../conversationSim/extractJson.js";
@@ -35,6 +36,7 @@ import type * as crud_knowledgeBasesActions from "../crud/knowledgeBasesActions.
 import type * as crud_questions from "../crud/questions.js";
 import type * as crud_retrievers from "../crud/retrievers.js";
 import type * as crud_users from "../crud/users.js";
+import type * as env from "../env.js";
 import type * as errorAnalysis_clustering from "../errorAnalysis/clustering.js";
 import type * as errorAnalysis_clusteringHelpers from "../errorAnalysis/clusteringHelpers.js";
 import type * as errorAnalysis_members from "../errorAnalysis/members.js";
@@ -68,6 +70,7 @@ import type * as langsmith_sync from "../langsmith/sync.js";
 import type * as langsmith_syncRetry from "../langsmith/syncRetry.js";
 import type * as lib_agentLoop from "../lib/agentLoop.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_auth_tenant from "../lib/auth/tenant.js";
 import type * as lib_docId from "../lib/docId.js";
 import type * as lib_labels from "../lib/labels.js";
 import type * as lib_validators from "../lib/validators.js";
@@ -94,6 +97,7 @@ declare const fullApi: ApiFromModules<{
   "agents/orchestration": typeof agents_orchestration;
   "agents/promptTemplate": typeof agents_promptTemplate;
   "annotations/crud": typeof annotations_crud;
+  config: typeof config;
   "conversationSim/actions": typeof conversationSim_actions;
   "conversationSim/anchorPrompt": typeof conversationSim_anchorPrompt;
   "conversationSim/extractJson": typeof conversationSim_extractJson;
@@ -117,6 +121,7 @@ declare const fullApi: ApiFromModules<{
   "crud/questions": typeof crud_questions;
   "crud/retrievers": typeof crud_retrievers;
   "crud/users": typeof crud_users;
+  env: typeof env;
   "errorAnalysis/clustering": typeof errorAnalysis_clustering;
   "errorAnalysis/clusteringHelpers": typeof errorAnalysis_clusteringHelpers;
   "errorAnalysis/members": typeof errorAnalysis_members;
@@ -150,6 +155,7 @@ declare const fullApi: ApiFromModules<{
   "langsmith/syncRetry": typeof langsmith_syncRetry;
   "lib/agentLoop": typeof lib_agentLoop;
   "lib/auth": typeof lib_auth;
+  "lib/auth/tenant": typeof lib_auth_tenant;
   "lib/docId": typeof lib_docId;
   "lib/labels": typeof lib_labels;
   "lib/validators": typeof lib_validators;

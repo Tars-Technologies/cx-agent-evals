@@ -1,13 +1,13 @@
-"use client";
+"use client"
 
-import { useState } from "react";
+import { useState } from "react"
 
 interface DeleteDatasetModalProps {
-  datasetName: string;
-  questionCount: number;
-  strategy: string;
-  onConfirm: () => void;
-  onClose: () => void;
+  datasetName: string
+  questionCount: number
+  strategy: string
+  onConfirm: () => void
+  onClose: () => void
 }
 
 export function DeleteDatasetModal({
@@ -15,10 +15,10 @@ export function DeleteDatasetModal({
   questionCount,
   strategy,
   onConfirm,
-  onClose,
+  onClose
 }: DeleteDatasetModalProps) {
-  const [input, setInput] = useState("");
-  const isConfirmed = input === "DELETE";
+  const [input, setInput] = useState("")
+  const isConfirmed = input === "DELETE"
 
   return (
     <div
@@ -46,11 +46,15 @@ export function DeleteDatasetModal({
           <div className="bg-bg-surface border border-border rounded-lg p-3 space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-xs text-text-dim">Dataset:</span>
-              <span className="text-xs text-text font-medium">{datasetName}</span>
+              <span className="text-xs text-text font-medium">
+                {datasetName}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-text-dim">Questions:</span>
-              <span className="text-xs text-text">{questionCount} will be permanently deleted</span>
+              <span className="text-xs text-text">
+                {questionCount} will be permanently deleted
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-text-dim">Strategy:</span>
@@ -70,8 +74,8 @@ export function DeleteDatasetModal({
           <div>
             <label className="text-xs text-text-dim block mb-1">
               Type{" "}
-              <span className="text-text font-mono font-medium">DELETE</span>{" "}
-              to confirm
+              <span className="text-text font-mono font-medium">DELETE</span> to
+              confirm
             </label>
             <input
               type="text"
@@ -97,5 +101,5 @@ export function DeleteDatasetModal({
         </div>
       </div>
     </div>
-  );
+  )
 }

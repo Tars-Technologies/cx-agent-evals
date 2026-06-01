@@ -1,21 +1,23 @@
-"use client";
+"use client"
 
 import {
   REFINEMENT_STEP_REGISTRY,
-  RERANKER_REGISTRY,
-} from "@tars-inc/eval-lib/registry";
-import { OptionGroup } from "../shared/OptionGroup";
+  RERANKER_REGISTRY
+} from "@tars-inc/eval-lib/registry"
+import { OptionGroup } from "../shared/OptionGroup"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface RefinementStepProps {
-  steps: Array<{ type: string; [key: string]: unknown }>;
-  rerankerProvider: string;
-  rerankerOptions: Record<string, unknown>;
-  onStepsChange: (steps: Array<{ type: string; [key: string]: unknown }>) => void;
-  onRerankerChange: (provider: string, options: Record<string, unknown>) => void;
+  steps: Array<{ type: string; [key: string]: unknown }>
+  rerankerProvider: string
+  rerankerOptions: Record<string, unknown>
+  onStepsChange: (
+    steps: Array<{ type: string; [key: string]: unknown }>
+  ) => void
+  onRerankerChange: (provider: string, options: Record<string, unknown>) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -23,7 +25,7 @@ interface RefinementStepProps {
 // ---------------------------------------------------------------------------
 
 function findRegistryEntry(stepType: string) {
-  return REFINEMENT_STEP_REGISTRY.find((e) => e.id === stepType);
+  return REFINEMENT_STEP_REGISTRY.find((e) => e.id === stepType)
 }
 
 // ---------------------------------------------------------------------------
@@ -35,47 +37,47 @@ export function RefinementStep({
   rerankerProvider,
   rerankerOptions,
   onStepsChange,
-  onRerankerChange,
+  onRerankerChange
 }: RefinementStepProps) {
   const selectedReranker = RERANKER_REGISTRY.find(
-    (r) => r.id === rerankerProvider,
-  );
+    (r) => r.id === rerankerProvider
+  )
 
   const handleRemoveStep = (index: number) => {
-    onStepsChange(steps.filter((_, i) => i !== index));
-  };
+    onStepsChange(steps.filter((_, i) => i !== index))
+  }
 
   const handleAddStep = (type: string) => {
-    const entry = findRegistryEntry(type);
-    if (!entry) return;
-    onStepsChange([...steps, { type, ...entry.defaults }]);
-  };
+    const entry = findRegistryEntry(type)
+    if (!entry) return
+    onStepsChange([...steps, { type, ...entry.defaults }])
+  }
 
   const handleStepOptionChange = (
     index: number,
     key: string,
-    value: unknown,
+    value: unknown
   ) => {
     const updated = steps.map((step, i) =>
-      i === index ? { ...step, [key]: value } : step,
-    );
-    onStepsChange(updated);
-  };
+      i === index ? { ...step, [key]: value } : step
+    )
+    onStepsChange(updated)
+  }
 
   const handleRerankerSelect = (id: string) => {
-    const entry = RERANKER_REGISTRY.find((r) => r.id === id);
+    const entry = RERANKER_REGISTRY.find((r) => r.id === id)
     if (entry) {
-      onRerankerChange(id, { ...entry.defaults });
+      onRerankerChange(id, { ...entry.defaults })
     }
-  };
+  }
 
   const handleRerankerOptionChange = (key: string, value: unknown) => {
-    onRerankerChange(rerankerProvider, { ...rerankerOptions, [key]: value });
-  };
+    onRerankerChange(rerankerProvider, { ...rerankerOptions, [key]: value })
+  }
 
   const selectClass =
     "w-full bg-bg-surface border border-border text-text text-xs rounded px-2 py-1.5 " +
-    "focus:outline-none focus:border-accent/50 transition-colors cursor-pointer";
+    "focus:outline-none focus:border-accent/50 transition-colors cursor-pointer"
 
   return (
     <div className="flex flex-col gap-5">
@@ -89,7 +91,7 @@ export function RefinementStep({
       ) : (
         <ol className="flex flex-col gap-3">
           {steps.map((step, index) => {
-            const entry = findRegistryEntry(step.type);
+            const entry = findRegistryEntry(step.type)
             return (
               <li
                 key={`${step.type}-${index}`}
@@ -136,9 +138,7 @@ export function RefinementStep({
                             disabled={r.status === "coming-soon"}
                           >
                             {r.name}
-                            {r.status === "coming-soon"
-                              ? " (coming soon)"
-                              : ""}
+                            {r.status === "coming-soon" ? " (coming soon)" : ""}
                           </option>
                         ))}
                       </select>
@@ -174,7 +174,7 @@ export function RefinementStep({
                   </div>
                 )}
               </li>
-            );
+            )
           })}
         </ol>
       )}
@@ -188,7 +188,7 @@ export function RefinementStep({
           value=""
           onChange={(e) => {
             if (e.target.value) {
-              handleAddStep(e.target.value);
+              handleAddStep(e.target.value)
             }
           }}
           className={selectClass}
@@ -209,5 +209,5 @@ export function RefinementStep({
         </select>
       </div>
     </div>
-  );
+  )
 }

@@ -98,11 +98,8 @@ NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 CLERK_SECRET_KEY=sk_test_...
 
-# OpenAI — for any client-side eval-lib usage
-OPENAI_API_KEY=sk-...
-
-# LangSmith — optional
-LANGSMITH_API_KEY=lsv2_pt_...
+# LLM provider keys (OPENAI_API_KEY, LANGSMITH_API_KEY) belong in the
+# Convex dashboard environment variables — not here.
 ```
 
 ### 7. Start developing
@@ -134,8 +131,6 @@ Visit [http://localhost:3000](http://localhost:3000). You should see the Clerk s
 | `NEXT_PUBLIC_CONVEX_URL` | Yes | Convex deployment URL |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | Clerk publishable key (starts with `pk_`) |
 | `CLERK_SECRET_KEY` | Yes | Clerk secret key (starts with `sk_`) |
-| `OPENAI_API_KEY` | Yes | OpenAI API key |
-| `LANGSMITH_API_KEY` | No | LangSmith API key for dataset sync |
 
 ### Backend (Convex dashboard environment variables)
 
