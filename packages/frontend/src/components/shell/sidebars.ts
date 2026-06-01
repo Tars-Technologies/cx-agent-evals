@@ -7,8 +7,7 @@ export function kbSidebar(kbId: string): SidebarItem[] {
     {
       label: "Evaluate",
       href: `${base}/evaluate`,
-      match: (p) => p.startsWith(`${base}/evaluate`),
-      children: [
+children: [
         { label: "Datasets", href: `${base}/evaluate/datasets` },
         { label: "Retrievers", href: `${base}/evaluate/retrievers` },
         { label: "Experiments", href: `${base}/evaluate/experiments` },
@@ -24,8 +23,7 @@ export function agentSidebar(agentId: string): SidebarItem[] {
     {
       label: "Evaluate",
       href: `${base}/evaluate`,
-      match: (p) => p.startsWith(`${base}/evaluate`),
-      children: [
+children: [
         { label: "Scenarios", href: `${base}/evaluate/scenarios` },
         { label: "Experiments", href: `${base}/evaluate/experiments` },
         { label: "Open coding", href: `${base}/evaluate/open-coding` },
