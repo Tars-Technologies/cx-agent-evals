@@ -41,7 +41,7 @@ export function CreateExperimentModal({
   )
   const retrievers = useQuery(api.kb.retrievers.byKb, { kbId })
   const readyRetrievers = (retrievers ?? []).filter((r) => r.status === "ready")
-  const createRun = useMutation(api.experimentRuns.orchestration.create)
+  const createRun = useMutation(api.kb.experimentRuns.create)
 
   if (!open) return null
 

@@ -75,7 +75,7 @@ function formatDate(ts: number): string {
 
 export function ExperimentResults({ runId }: ExperimentResultsProps) {
   const data = useQuery(
-    api.experimentRuns.orchestration.getWithScores,
+    api.kb.experimentRuns.getWithScores,
     runId ? { id: runId } : "skip"
   )
 

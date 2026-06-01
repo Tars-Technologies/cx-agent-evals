@@ -136,7 +136,7 @@ export const onExperimentComplete = internalMutation({
       if (experiment.experimentRunId) {
         await ctx.scheduler.runAfter(
           0,
-          internal.experimentRuns.orchestration.onChildComplete,
+          internal.kb.experimentRuns.onChildComplete,
           {
             experimentRunId: experiment.experimentRunId,
             experimentId: context.experimentId,
@@ -156,7 +156,7 @@ export const onExperimentComplete = internalMutation({
       if (experiment.experimentRunId) {
         await ctx.scheduler.runAfter(
           0,
-          internal.experimentRuns.orchestration.onChildComplete,
+          internal.kb.experimentRuns.onChildComplete,
           {
             experimentRunId: experiment.experimentRunId,
             experimentId: context.experimentId,
@@ -178,7 +178,7 @@ export const onExperimentComplete = internalMutation({
     // Notify parent run
     if (experiment.experimentRunId) {
       await ctx.runMutation(
-        internal.experimentRuns.orchestration.onChildComplete,
+        internal.kb.experimentRuns.onChildComplete,
         {
           experimentRunId: experiment.experimentRunId,
           experimentId: context.experimentId,

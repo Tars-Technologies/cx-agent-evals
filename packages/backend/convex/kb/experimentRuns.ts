@@ -1,12 +1,19 @@
+/**
+ * KB experiment-run queries + mutations: create a multi-retriever run,
+ * list/get runs, and the child-completion callback that aggregates results.
+ *
+ * Owns the parent `experimentRuns` records; each child experiment's actual
+ * evaluation is delegated to experiment_actions.ts via the scheduler.
+ */
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
-import { internalMutation, mutation, query } from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { internalMutation } from "../_generated/server"
+import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 
 // ─── Create Experiment Run ───
 
-export const create = mutation({
+export const create = tenantMutation({
   args: {
     name: v.string(),
     kbId: v.id("knowledgeBases"),
@@ -19,7 +26,7 @@ export const create = mutation({
     })
   },
   handler: async (ctx, args) => {
-    const { orgId, userId } = await getAuthContext(ctx)
+    const { orgId, userId } = ctx
 
     // Validate KB belongs to org
     const kb = await ctx.db.get(args.kbId)
@@ -112,10 +119,10 @@ export const create = mutation({
 
 // ─── List Runs by KB ───
 
-export const byKb = query({
+export const byKb = tenantQuery({
   args: { kbId: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) throw new Error("Knowledge base not found")
@@ -130,10 +137,10 @@ export const byKb = query({
 
 // ─── Get Single Run ───
 
-export const get = query({
+export const get = tenantQuery({
   args: { id: v.id("experimentRuns") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const run = await ctx.db.get(args.id)
     if (!run || run.orgId !== orgId) return null
@@ -143,10 +150,10 @@ export const get = query({
 
 // ─── Get Run with Ranked Scores ───
 
-export const getWithScores = query({
+export const getWithScores = tenantQuery({
   args: { id: v.id("experimentRuns") },
   handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = ctx
 
     const run = await ctx.db.get(args.id)
     if (!run || run.orgId !== orgId) return null
