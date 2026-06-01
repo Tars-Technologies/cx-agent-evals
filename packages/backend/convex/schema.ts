@@ -491,6 +491,42 @@ export default defineSchema({
     .index("by_evaluator", ["evaluatorId"])
     .index("by_evaluator_split", ["evaluatorId", "splitAssignment"]),
 
+  evaluationRuns: defineTable({
+    orgId: v.string(),
+    agentId: v.id("agents"),
+    evaluatorId: v.id("evaluators"),
+    cohort: v.object({
+      kind: v.literal("simulation"),
+      simulationId: v.id("conversationSimulations"),
+    }),
+    n: v.number(),
+    observedPassRate: v.number(),
+    correctedPassRate: v.number(),
+    ci: v.object({ lower: v.number(), upper: v.number() }),
+    corrected: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_evaluator", ["evaluatorId"])
+    .index("by_simulation", ["cohort.simulationId"]),
+
+  evaluationResults: defineTable({
+    orgId: v.string(),
+    evaluationRunId: v.id("evaluationRuns"),
+    source: v.union(
+      v.object({
+        kind: v.literal("conversation"),
+        conversationId: v.id("conversations"),
+      }),
+      v.object({
+        kind: v.literal("transcript"),
+        transcriptId: v.id("livechatConversations"),
+      }),
+    ),
+    passed: v.boolean(),
+    justification: v.string(),
+  }).index("by_run", ["evaluationRunId"]),
+
   // ─── Document Chunks (position-aware, with vector embeddings) ───
   documentChunks: defineTable({
     documentId: v.id("documents"),
@@ -824,6 +860,35 @@ export default defineSchema({
       tnr: v.number(),
       agreement: v.number(),
     })),
+    testMetrics: v.optional(
+      v.object({
+        tpr: v.number(),
+        tnr: v.number(),
+        agreement: v.number(),
+        n: v.number(),
+      }),
+    ),
+    devMetricsCI: v.optional(
+      v.object({
+        tpr: v.object({ lower: v.number(), upper: v.number() }),
+        tnr: v.object({ lower: v.number(), upper: v.number() }),
+      }),
+    ),
+    testMetricsCI: v.optional(
+      v.object({
+        tpr: v.object({ lower: v.number(), upper: v.number() }),
+        tnr: v.object({ lower: v.number(), upper: v.number() }),
+      }),
+    ),
+    labelCounts: v.optional(
+      v.object({
+        passDev: v.number(),
+        failDev: v.number(),
+        passTest: v.number(),
+        failTest: v.number(),
+      }),
+    ),
+    validatedAt: v.optional(v.number()),
     tags: v.array(v.string()),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
