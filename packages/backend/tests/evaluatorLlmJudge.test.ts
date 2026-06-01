@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildJudgePrompt } from "../convex/evaluator/llmJudge";
+import {
+  buildJudgePrompt,
+  runLlmJudge,
+  scoreOneAsync,
+  type JudgeLlmClient,
+} from "../convex/evaluator/llmJudge";
 
 const evaluator = {
   type: "llm_judge" as const,
@@ -74,5 +79,60 @@ describe("buildJudgePrompt", () => {
     };
     const on = buildJudgePrompt(evWithTools as any, withTool, "");
     expect(on.user).toContain("lookupOrder");
+  });
+});
+
+function fakeClient(content: string): JudgeLlmClient {
+  return {
+    chat: {
+      completions: {
+        create: async () => ({ choices: [{ message: { content } }] }),
+      },
+    },
+  };
+}
+
+describe("runLlmJudge", () => {
+  it("returns passed=true on a pass verdict", async () => {
+    const client = fakeClient(JSON.stringify({ answer: "pass", reasoning: "fine" }));
+    const v = await runLlmJudge(client, evaluator as any, messages, "");
+    expect(v.passed).toBe(true);
+    expect(v.justification).toContain("fine");
+  });
+
+  it("returns passed=false on a fail verdict", async () => {
+    const client = fakeClient(JSON.stringify({ answer: "fail", reasoning: "bad" }));
+    const v = await runLlmJudge(client, evaluator as any, messages, "");
+    expect(v.passed).toBe(false);
+  });
+
+  it("throws on unparseable judge output", async () => {
+    const client = fakeClient("not json at all");
+    await expect(runLlmJudge(client, evaluator as any, messages, "")).rejects.toThrow();
+  });
+});
+
+describe("scoreOneAsync dispatch", () => {
+  it("uses code scorer for code judges without calling the client", async () => {
+    let called = false;
+    const client: JudgeLlmClient = {
+      chat: { completions: { create: async () => { called = true; return { choices: [] }; } } },
+    };
+    const codeEvaluator = {
+      type: "code",
+      codeJudgeConfig: {
+        checkType: "string_contains",
+        params: { needle: "policy", expectPresent: true },
+      },
+    };
+    const v = await scoreOneAsync(client, codeEvaluator as any, messages, "");
+    expect(called).toBe(false);
+    expect(v.passed).toBe(true); // "Let me check our policy." contains "policy"
+  });
+
+  it("routes llm_judge to the client", async () => {
+    const client = fakeClient(JSON.stringify({ answer: "fail", reasoning: "x" }));
+    const v = await scoreOneAsync(client, evaluator as any, messages, "");
+    expect(v.passed).toBe(false);
   });
 });

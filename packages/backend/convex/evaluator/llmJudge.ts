@@ -1,4 +1,5 @@
 import { scoreOne, type Verdict } from "./scoreOne";
+import { parseJudgeResponse } from "./parseJudge";
 
 /** Structural subset of the OpenAI client used by the judge — enables injection + mocking. */
 export interface JudgeLlmClient {
@@ -80,4 +81,45 @@ export function buildJudgePrompt(
     `Return your JSON verdict now.`;
 
   return { system, user };
+}
+
+/**
+ * Run a single LLM judge against a conversation. Throws on unparseable output
+ * so callers can record an error rather than silently passing.
+ */
+export async function runLlmJudge(
+  client: JudgeLlmClient,
+  evaluator: { llmJudgeConfig?: { model?: string; dimensions: any[]; inputContext: string[] } },
+  messages: any[],
+  fewShot: string,
+): Promise<Verdict> {
+  const { system, user } = buildJudgePrompt(evaluator as any, messages, fewShot);
+  const model = evaluator.llmJudgeConfig?.model ?? "gpt-4o-mini";
+  const res = await client.chat.completions.create({
+    model,
+    temperature: 0,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  });
+  const content = res.choices[0]?.message?.content;
+  if (!content) throw new Error("LLM judge returned no content");
+  const parsed = parseJudgeResponse(content); // throws on garbage
+  return { passed: parsed.verdict === "pass", justification: parsed.reasoning };
+}
+
+/**
+ * Async scoring dispatcher: code judges stay synchronous (`scoreOne`),
+ * llm judges go through the injected client. Used inside Node actions.
+ */
+export async function scoreOneAsync(
+  client: JudgeLlmClient,
+  evaluator: { type: "code" | "llm_judge"; [k: string]: any },
+  messages: any[],
+  fewShot: string = "",
+): Promise<Verdict> {
+  if (evaluator.type === "code") return scoreOne(evaluator, messages);
+  return runLlmJudge(client, evaluator as any, messages, fewShot);
 }
