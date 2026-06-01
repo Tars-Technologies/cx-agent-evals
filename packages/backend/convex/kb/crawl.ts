@@ -55,12 +55,6 @@ export const startCrawl = tenantMutation({
       throw new Error("Knowledge base not found")
     }
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", userId))
-      .unique()
-    if (!user) throw new Error("User not found")
-
     const userConfig = args.config ?? {}
     const config = {
       maxDepth: userConfig.maxDepth ?? 3,
@@ -77,7 +71,7 @@ export const startCrawl = tenantMutation({
     const jobId = await ctx.db.insert("crawlJobs", {
       orgId,
       kbId: args.kbId,
-      userId: user._id,
+      userId,
       startUrl: args.startUrl,
       config,
       status: "running",
