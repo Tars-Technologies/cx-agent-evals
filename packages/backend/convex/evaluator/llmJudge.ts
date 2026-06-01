@@ -39,6 +39,11 @@ function renderMessages(messages: any[], includeToolCalls: boolean): string {
 /**
  * Build the system + user prompt for an LLM judge.
  * Pure — no network. `fewShot` is a pre-rendered block (may be empty).
+ *
+ * Slice 1 simplification: all dimensions are evaluated in a single call with
+ * model-side fail-if-any (PASS only if every dimension is satisfied). We do not
+ * score dimensions individually, and `llmJudgeConfig.outputFormat` is intentionally
+ * not read yet (per-dimension code-side aggregation is deferred to a later slice).
  */
 export function buildJudgePrompt(
   evaluator: { llmJudgeConfig?: { dimensions: Dimension[]; inputContext: string[] } },

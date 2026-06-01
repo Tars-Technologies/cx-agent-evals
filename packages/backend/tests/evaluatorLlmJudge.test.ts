@@ -41,6 +41,25 @@ describe("buildJudgePrompt", () => {
     expect(system).toContain("### Example 1");
   });
 
+  it("renders all dimensions with numbering and a fail-if-any instruction", () => {
+    const multi = {
+      type: "llm_judge" as const,
+      llmJudgeConfig: {
+        dimensions: [
+          { name: "No hallucinated refunds", rubric: "R1", passExamples: [], failExamples: [] },
+          { name: "Stays on topic", rubric: "R2", passExamples: [], failExamples: [] },
+        ],
+        outputFormat: "per_dimension" as const,
+        model: "gpt-4o-mini",
+        inputContext: ["transcript"] as const,
+      },
+    };
+    const { system } = buildJudgePrompt(multi as any, messages, "");
+    expect(system).toContain("Dimension 1: No hallucinated refunds");
+    expect(system).toContain("Dimension 2: Stays on topic");
+    expect(system.toLowerCase()).toContain("every dimension");
+  });
+
   it("includes tool calls only when inputContext requests tool_calls", () => {
     const withTool = [
       ...messages,
