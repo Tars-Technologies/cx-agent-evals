@@ -45,6 +45,7 @@ import type * as evaluator_labels from "../evaluator/labels.js";
 import type * as evaluator_metrics from "../evaluator/metrics.js";
 import type * as evaluator_parseJudge from "../evaluator/parseJudge.js";
 import type * as evaluator_scoreOne from "../evaluator/scoreOne.js";
+import type * as evaluator_sources from "../evaluator/sources.js";
 import type * as evaluator_spawnJudge from "../evaluator/spawnJudge.js";
 import type * as evaluator_splits from "../evaluator/splits.js";
 import type * as evaluator_templates from "../evaluator/templates.js";
@@ -121,6 +122,7 @@ declare const fullApi: ApiFromModules<{
   "evaluator/metrics": typeof evaluator_metrics;
   "evaluator/parseJudge": typeof evaluator_parseJudge;
   "evaluator/scoreOne": typeof evaluator_scoreOne;
+  "evaluator/sources": typeof evaluator_sources;
   "evaluator/spawnJudge": typeof evaluator_spawnJudge;
   "evaluator/splits": typeof evaluator_splits;
   "evaluator/templates": typeof evaluator_templates;
