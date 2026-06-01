@@ -9,6 +9,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import { SimRunDetail } from "@/components/conversation-sim/SimRunDetail";
 import { SimScenarioList } from "@/components/conversation-sim/SimScenarioList";
 import { AnnotateButton } from "@/components/annotation/AnnotateButton";
+import { ScorecardPanel } from "@/components/evaluator/ScorecardPanel";
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
@@ -180,6 +181,11 @@ export default function AgentExperimentRunPage() {
     <div className="h-full flex flex-col overflow-hidden">
       {/* Metadata strip */}
       <SimMetadataBand sim={sim} onViewAsAnalysis={handleViewAsAnalysis} />
+
+      {/* Agent scorecard */}
+      <div className="px-4 py-3 border-b border-border">
+        <ScorecardPanel agentId={agentIdTyped} simulationId={simulationId} />
+      </div>
 
       {/* Two-column body */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
