@@ -8,6 +8,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { groupMessagesWithToolCalls } from "@/lib/messageDisplay";
 import { ToolCallGroup } from "@/components/conversation-sim/ToolCallGroup";
+import { AnnotationSidePanel } from "@/components/annotation/AnnotationSidePanel";
+import type { Turn } from "@/components/annotation/AnnotationEditor";
 
 interface AgentPlaygroundProps {
   agentId: Id<"agents">;
@@ -18,10 +20,11 @@ export default function AgentPlayground({ agentId }: AgentPlaygroundProps) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [rawMode, setRawMode] = useState(false);
+  const [annotateOpen, setAnnotateOpen] = useState(false);
 
   const getOrCreate = useMutation(api.agents.orchestration.getOrCreatePlayground);
   const send = useMutation(api.agents.orchestration.sendMessage);
-  const clear = useMutation(api.agents.orchestration.clearPlayground);
+  const newChat = useMutation(api.agents.orchestration.newPlayground);
 
   const initRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -86,12 +89,9 @@ export default function AgentPlayground({ agentId }: AgentPlaygroundProps) {
     }
   };
 
-  const handleClear = async () => {
-    if (!conversationId) return;
-    await clear({ conversationId });
+  const handleNewChat = async () => {
     setConversationId(null);
-    // Create a fresh playground conversation immediately
-    const newId = await getOrCreate({ agentId });
+    const newId = await newChat({ agentId });
     setConversationId(newId);
   };
 
@@ -103,6 +103,15 @@ export default function AgentPlayground({ agentId }: AgentPlaygroundProps) {
   };
 
   const displayItems = groupMessagesWithToolCalls(messages);
+
+  // Build Turn[] for the annotation editor (skip streaming / empty content).
+  const annotationTurns: Turn[] = messages
+    .filter((m) => m.status !== "streaming")
+    .map((m) => ({
+      role: m.role as Turn["role"],
+      content: m.content ?? "",
+    }));
+  const canAnnotate = !!conversationId && annotationTurns.length > 0;
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -125,10 +134,18 @@ export default function AgentPlayground({ agentId }: AgentPlaygroundProps) {
             </button>
           </div>
           <button
-            onClick={handleClear}
-            className="text-[10px] text-text-dim hover:text-text-muted transition-colors"
+            onClick={() => setAnnotateOpen(true)}
+            disabled={!canAnnotate}
+            title={canAnnotate ? "Annotate this conversation" : "Send a message first"}
+            className="flex items-center gap-1 px-2 py-1 text-[11px] border border-border rounded text-text-muted hover:text-text hover:border-accent/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Clear chat
+            <span aria-hidden>✏</span> Annotate
+          </button>
+          <button
+            onClick={handleNewChat}
+            className="flex items-center gap-1.5 px-3 py-1 text-[11px] bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors"
+          >
+            <span>+</span> New chat
           </button>
         </div>
       </div>
@@ -229,6 +246,17 @@ export default function AgentPlayground({ agentId }: AgentPlaygroundProps) {
           </div>
         </div>
       </div>
+
+      {conversationId && (
+        <AnnotationSidePanel
+          agentId={agentId}
+          conversationRef={{ kind: "conversation", conversationId }}
+          originHint={{ kind: "playground" }}
+          conversation={{ turns: annotationTurns }}
+          open={annotateOpen}
+          onClose={() => setAnnotateOpen(false)}
+        />
+      )}
     </div>
   );
 }

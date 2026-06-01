@@ -69,7 +69,7 @@ export default function KbRetrieversPage({
                   className={`text-[10px] shrink-0 mt-0.5 px-1.5 py-0.5 rounded ${
                     r.status === "ready"
                       ? "bg-accent/10 text-accent"
-                      : r.status === "indexing" || r.status === "pending"
+                      : r.status === "indexing" || r.status === "configuring"
                         ? "bg-yellow-500/10 text-yellow-400"
                         : "bg-red-500/10 text-red-400"
                   }`}

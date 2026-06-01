@@ -117,7 +117,6 @@ export const updateRun = internalMutation({
     toolCallCount: v.optional(v.number()),
     totalTokens: v.optional(v.number()),
     latencyMs: v.optional(v.number()),
-    annotations: v.optional(v.string()),
   },
   handler: async (ctx, { runId, ...patch }) => {
     const updates: Record<string, unknown> = {};
@@ -130,10 +129,43 @@ export const updateRun = internalMutation({
   },
 });
 
+// Append evaluator results to a sim run (used by autoApply)
+export const appendEvaluatorResultsInternal = internalMutation({
+  args: {
+    runId: v.id("conversationSimRuns"),
+    results: v.array(
+      v.object({
+        evaluatorId: v.id("evaluators"),
+        evaluatorName: v.string(),
+        passed: v.boolean(),
+        justification: v.string(),
+        required: v.boolean(),
+      }),
+    ),
+  },
+  handler: async (ctx, { runId, results }) => {
+    const run = await ctx.db.get(runId);
+    if (!run) return;
+    const existing = run.evaluatorResults ?? [];
+    await ctx.db.patch(runId, { evaluatorResults: [...existing, ...results] });
+  },
+});
+
 // ─── Internal Queries ───
 
 // Get run (for actions)
 export const getInternal = internalQuery({
   args: { id: v.id("conversationSimRuns") },
   handler: async (ctx, { id }) => ctx.db.get(id),
+});
+
+// All runs for a simulation (for actions — no auth)
+export const bySimulationInternal = internalQuery({
+  args: { simulationId: v.id("conversationSimulations") },
+  handler: async (ctx, { simulationId }) => {
+    return await ctx.db
+      .query("conversationSimRuns")
+      .withIndex("by_simulation", (q) => q.eq("simulationId", simulationId))
+      .collect();
+  },
 });

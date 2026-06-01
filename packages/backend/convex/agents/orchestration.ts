@@ -82,20 +82,44 @@ export const getOrCreatePlayground = mutation({
       throw new Error("Agent not found");
     }
 
-    // Look for existing active playground conversation for this agent.
+    // Look for the most recent playground conversation for this agent.
     const existing = await ctx.db
       .query("conversations")
       .withIndex("by_org", (q) => q.eq("orgId", orgId))
-      .filter((q) => q.eq(q.field("status"), "active"))
       .collect();
 
-    const playground = existing.find(
-      (c) => c.agentIds.length === 1 && c.agentIds[0] === agentId && (!c.source || c.source === "playground"),
-    );
+    const playground = existing
+      .filter(
+        (c) => c.agentIds.length === 1 && c.agentIds[0] === agentId && (!c.source || c.source === "playground"),
+      )
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
 
     if (playground) return playground._id;
 
     // Create new playground conversation
+    return ctx.db.insert("conversations", {
+      orgId,
+      agentIds: [agentId],
+      title: `${agent.name} Playground`,
+      status: "active",
+      createdAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Creates a fresh playground conversation for an agent.
+ * Older playground conversations remain in the database and surface
+ * in the conversations tab.
+ */
+export const newPlayground = mutation({
+  args: { agentId: v.id("agents") },
+  handler: async (ctx, { agentId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const agent = await ctx.db.get(agentId);
+    if (!agent || agent.orgId !== orgId) {
+      throw new Error("Agent not found");
+    }
     return ctx.db.insert("conversations", {
       orgId,
       agentIds: [agentId],
@@ -128,18 +152,3 @@ export const triggerUrlExtraction = mutation({
   },
 });
 
-/**
- * Clears a playground conversation by archiving it.
- * Next getOrCreatePlayground call will create a fresh one.
- */
-export const clearPlayground = mutation({
-  args: { conversationId: v.id("conversations") },
-  handler: async (ctx, { conversationId }) => {
-    const { orgId } = await getAuthContext(ctx);
-    const conv = await ctx.db.get(conversationId);
-    if (!conv || conv.orgId !== orgId) {
-      throw new Error("Conversation not found");
-    }
-    await ctx.db.patch(conversationId, { status: "archived" });
-  },
-});

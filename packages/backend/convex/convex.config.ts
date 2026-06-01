@@ -6,7 +6,6 @@ app.use(workpool, { name: "indexingPool" });
 app.use(workpool, { name: "generationPool" });
 app.use(workpool, { name: "experimentPool" });
 app.use(workpool, { name: "scrapingPool" });
-app.use(workpool, { name: "agentExperimentPool" });
 app.use(workpool, { name: "livechatAnalysisPool" });
 app.use(workpool, { name: "conversationSimPool" });
 

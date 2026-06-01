@@ -4,16 +4,16 @@ import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
-import { groupMessagesWithToolCalls } from "@/lib/messageDisplay";
-import { ToolCallGroup } from "@/components/conversation-sim/ToolCallGroup";
+import { MessageTranscript } from "@/components/conversation-sim/MessageTranscript";
 import { ScenarioSummaryBand } from "@/components/conversation-sim/ScenarioSummaryBand";
-import { SourceTranscriptPanel } from "@/components/livechat/SourceTranscriptPanel";
 import { ChatBubble } from "@/components/livechat/ChatBubble";
 
 export function SimRunDetail({
   runId,
+  headerActions,
 }: {
   runId: Id<"conversationSimRuns">;
+  headerActions?: React.ReactNode;
 }) {
   const run = useQuery(api.conversationSim.runs.get, { id: runId });
 
@@ -39,7 +39,8 @@ export function SimRunDetail({
   }
 
   const hasSnapshot = !!scenario?.referenceTranscript && scenario.referenceTranscript.length > 0;
-  const hasFetchableSource = !!scenario?.sourceTranscriptId;
+  // sourceTranscriptId was removed — grounded scenarios now reference transcriptUploadId via source discriminant
+  const hasFetchableSource = false;
   const hasExemplars = !!scenario?.referenceExemplars && scenario.referenceExemplars.length > 0;
   const hasSource = hasSnapshot || hasFetchableSource || hasExemplars;
 
@@ -97,6 +98,7 @@ export function SimRunDetail({
               {showSource ? "Hide source" : "Compare to source"}
             </button>
           )}
+          {headerActions}
         </div>
       </div>
 
@@ -108,29 +110,7 @@ export function SimRunDetail({
           {/* Conversation transcript */}
           <div className="px-4 py-3">
             <h3 className="text-[11px] text-text-dim uppercase tracking-wider mb-2">Transcript</h3>
-            {groupMessagesWithToolCalls(messages).map((item) => {
-              if (item.type === "tool_group") {
-                return <ToolCallGroup key={item.key} calls={item.calls} isLive={false} />;
-              }
-              const msg = item.msg;
-              const isUser = msg.role === "user";
-              return (
-                <div key={msg._id} className={`flex ${isUser ? "justify-end" : "justify-start"} mb-1.5`}>
-                  <div
-                    className={`max-w-[70%] px-2.5 py-1.5 text-xs whitespace-pre-wrap text-white ${
-                      isUser
-                        ? "bg-accent-dim rounded-lg rounded-br-sm"
-                        : "bg-bg-surface border border-border rounded-lg rounded-bl-sm"
-                    }`}
-                  >
-                    <div className={`text-[9px] mb-0.5 ${isUser ? "text-white/50" : "text-text-dim"}`}>
-                      {isUser ? "User" : "Agent"}
-                    </div>
-                    {msg.content}
-                  </div>
-                </div>
-              );
-            })}
+            <MessageTranscript messages={messages} />
           </div>
 
           {/* Evaluation Results */}
@@ -185,10 +165,9 @@ export function SimRunDetail({
                   ))}
                 </div>
               </div>
-            ) : hasFetchableSource && scenario?.sourceTranscriptId ? (
-              <SourceTranscriptPanel
-                sourceTranscriptId={scenario.sourceTranscriptId as Id<"livechatConversations">}
-              />
+            ) : hasFetchableSource ? (
+              /* sourceTranscriptId removed — this branch is unreachable */
+              null
             ) : hasExemplars ? (
               <div className="flex flex-col h-full">
                 <div className="px-4 py-2.5 border-b border-border bg-bg-elevated/50 flex-shrink-0">

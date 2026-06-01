@@ -22,7 +22,6 @@ const ICONS = {
   experiments: <Icon d="M9 3v3.586a2 2 0 0 1-.586 1.414L4.293 12.121A2 2 0 0 0 5.707 15.5h12.586a2 2 0 0 0 1.414-3.379l-4.121-4.121A2 2 0 0 1 15 6.586V3 M8 3h8 M12 13h.01" />,
   scenarios: <Icon d="M8 10h.01M12 10h.01M16 10h.01 M9 16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-5l-5 5v-5Z" />,
   "open-coding": <Icon d="M11 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4 M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5Z" />,
-  "axial-coding": <Icon d="M4 6h16M4 12h16M4 18h12" />,
   evaluators: <Icon d="m9 12.75 3 3 7.5-7.5 M3 12a9 9 0 1 1 18 0 9 9 0 0 1-18 0Z" />,
 } as const;
 
@@ -49,11 +48,11 @@ export function agentSidebar(agentId: string): SidebarItem[] {
     {
       label: "Evaluate",
       href: `${base}/evaluate`,
+      match: (p) => p.startsWith(`${base}/evaluate`),
       children: [
         { label: "Scenarios", href: `${base}/evaluate/scenarios`, icon: ICONS.scenarios },
         { label: "Experiments", href: `${base}/evaluate/experiments`, icon: ICONS.experiments },
-        { label: "Open coding", href: `${base}/evaluate/open-coding`, icon: ICONS["open-coding"] },
-        { label: "Axial coding", href: `${base}/evaluate/axial-coding`, icon: ICONS["axial-coding"] },
+        { label: "Error analysis", href: `${base}/evaluate/error-analysis`, icon: ICONS["open-coding"] },
         { label: "Evaluators", href: `${base}/evaluate/evaluators`, icon: ICONS.evaluators },
       ],
     },

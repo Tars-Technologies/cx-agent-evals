@@ -105,6 +105,40 @@ export const getStreamDeltas = query({
   },
 });
 
+export const countByAgentAndSource = query({
+  args: {
+    agentId: v.id("agents"),
+    source: v.union(v.literal("playground"), v.literal("simulation")),
+  },
+  handler: async (ctx, { agentId, source }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const rows = await ctx.db
+      .query("conversations")
+      .withIndex("by_org", (q) => q.eq("orgId", orgId))
+      .collect();
+    return rows.filter(
+      (c) => c.source === source && c.agentIds.includes(agentId),
+    ).length;
+  },
+});
+
+export const listByAgentAndSource = query({
+  args: {
+    agentId: v.id("agents"),
+    source: v.union(v.literal("playground"), v.literal("simulation")),
+  },
+  handler: async (ctx, { agentId, source }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const rows = await ctx.db
+      .query("conversations")
+      .withIndex("by_org", (q) => q.eq("orgId", orgId))
+      .collect();
+    return rows.filter(
+      (c) => c.source === source && c.agentIds.includes(agentId),
+    );
+  },
+});
+
 // Internal mutation for creating conversations from actions (no auth needed)
 export const createInternal = internalMutation({
   args: {
@@ -112,7 +146,7 @@ export const createInternal = internalMutation({
     agentIds: v.array(v.id("agents")),
     title: v.optional(v.string()),
     source: v.optional(v.union(
-      v.literal("playground"), v.literal("simulation"), v.literal("experiment"),
+      v.literal("playground"), v.literal("simulation"),
     )),
   },
   handler: async (ctx, args) => {
