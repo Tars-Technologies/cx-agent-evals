@@ -1,30 +1,26 @@
-"use client"
+"use client";
 
-import type { Id } from "@convex/_generated/dataModel"
-import { useMutation, useQuery } from "convex/react"
-import { useEffect, useRef, useState } from "react"
-import { api } from "@/lib/convex"
+import { useState, useRef, useEffect } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/lib/convex";
+import { Id } from "@convex/_generated/dataModel";
 
-// ─── Constants ───────────────────────────────────────────────────────
-
-const STEPS = ["Transcripts", "Configure", "Preferences", "Review"] as const
+const STEPS = ["Inputs", "Configure", "Preferences", "Review"] as const;
 
 const MODEL_OPTIONS = [
   "claude-sonnet-4-20250514",
   "claude-haiku-4-5-20251001",
-  "gpt-4o"
-] as const
-
-// ─── Summary Card ────────────────────────────────────────────────────
+  "gpt-4o",
+] as const;
 
 function SummaryCard({
   label,
   value,
-  onEdit
+  onEdit,
 }: {
-  label: string
-  value: string
-  onEdit: () => void
+  label: string;
+  value: string;
+  onEdit: () => void;
 }) {
   return (
     <div className="bg-bg-surface border border-border rounded p-2">
@@ -32,157 +28,136 @@ function SummaryCard({
         <span className="text-[9px] text-text-dim uppercase tracking-wider">
           {label}
         </span>
-        <button
-          onClick={onEdit}
-          className="text-[9px] text-accent hover:underline"
-        >
+        <button onClick={onEdit} className="text-[9px] text-accent hover:underline">
           Edit
         </button>
       </div>
       <span className="text-xs text-text">{value}</span>
     </div>
-  )
+  );
 }
 
-// ─── Main Wizard ─────────────────────────────────────────────────────
-
 export function ScenarioGenerationWizard({
-  kbId,
+  agentId,
   onGenerated,
   onError,
-  onCancel
+  onCancel,
 }: {
-  kbId: Id<"knowledgeBases">
-  onGenerated: (datasetId: Id<"datasets">) => void
-  onError: (error: string) => void
-  onCancel: () => void
+  agentId: Id<"agents">;
+  onGenerated: () => void;
+  onError: (error: string) => void;
+  onCancel: () => void;
 }) {
-  const createSimDataset = useMutation(api.crud.datasets.createSimDataset)
   const startGeneration = useMutation(
-    api.conversationSim.generation.startGeneration
-  )
+    api.conversationSim.generation.startGeneration,
+  );
 
-  // ── Wizard step ──
-  const [step, setStep] = useState(0)
+  const [step, setStep] = useState(0);
 
-  // ── Step 1: Transcripts ──
-  const [selectedUploadId, setSelectedUploadId] =
-    useState<Id<"livechatUploads"> | null>(null)
-  const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(new Set())
+  // Step 0: Inputs
+  const [selectedKbId, setSelectedKbId] = useState<Id<"knowledgeBases"> | null>(null);
+  const [selectedUploadId, setSelectedUploadId] = useState<Id<"livechatUploads"> | null>(null);
+  const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(new Set());
 
-  // ── Step 2: Configure ──
-  const [count, setCount] = useState(10)
-  const [distribution, setDistribution] = useState(80)
-  const [fidelity, setFidelity] = useState(100)
-  const [lowPct, setLowPct] = useState(30)
-  const [medPct, setMedPct] = useState(50)
-  const [highPct, setHighPct] = useState(20)
+  // Step 1: Configure
+  const [count, setCount] = useState(10);
+  const [distribution, setDistribution] = useState(50); // % grounded
+  const [fidelity, setFidelity] = useState(70);
+  const [lowPct, setLowPct] = useState(30);
+  const [medPct, setMedPct] = useState(50);
+  const [highPct, setHighPct] = useState(20);
 
-  // ── Step 3: Preferences ──
-  const [model, setModel] = useState<string>("claude-sonnet-4-20250514")
-  const [name, setName] = useState("")
+  // Step 2: Preferences
+  const [model, setModel] = useState<string>("claude-sonnet-4-20250514");
 
-  // ── Step 4: Generate ──
-  const [generating, setGenerating] = useState(false)
+  const [generating, setGenerating] = useState(false);
 
-  // ── Queries ──
-  const uploads = useQuery(api.livechat.orchestration.list)
+  const kbs = useQuery(api.crud.knowledgeBases.list);
+  const uploads = useQuery(api.livechat.orchestration.list);
   const conversations = useQuery(
     api.livechat.orchestration.listConversationsSummary,
-    selectedUploadId ? { uploadIds: [selectedUploadId] } : "skip"
-  )
+    selectedUploadId ? { uploadIds: [selectedUploadId] } : "skip",
+  );
 
-  // ── Derived values ──
-  const hasTranscripts = selectedUploadId !== null && selectedConvIds.size > 0
-  const groundedCount = Math.round((count * distribution) / 100)
-  const syntheticCount = count - groundedCount
-
-  // ── Helpers ──
-
-  function selectUpload(id: Id<"livechatUploads"> | null) {
-    setSelectedUploadId(id)
-    // Clear conversation selection when upload changes
-    setSelectedConvIds(new Set())
-  }
+  const hasTranscripts =
+    selectedUploadId !== null && selectedConvIds.size > 0;
+  const effectiveDistribution = hasTranscripts ? distribution : 0;
+  const groundedCount = Math.round((count * effectiveDistribution) / 100);
+  const syntheticCount = count - groundedCount;
+  const needsKb = syntheticCount > 0;
+  const canAdvanceFromInputs =
+    (!!selectedKbId || hasTranscripts) &&
+    (!needsKb || !!selectedKbId);
 
   function toggleConversation(id: string) {
     setSelectedConvIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   function toggleAllConversations() {
-    if (!conversations) return
-    const allIds = conversations.map((c) => c._id)
-    const allSelected = allIds.every((id) => selectedConvIds.has(id))
-    if (allSelected) {
-      setSelectedConvIds(new Set())
-    } else {
-      setSelectedConvIds(new Set(allIds))
-    }
+    if (!conversations) return;
+    const allIds = conversations.map((c) => c._id);
+    const allSelected = allIds.every((id) => selectedConvIds.has(id));
+    setSelectedConvIds(allSelected ? new Set() : new Set(allIds));
   }
 
-  function adjustDistribution(
-    changed: "low" | "medium" | "high",
-    value: number
-  ) {
-    const clamped = Math.max(0, Math.min(100, value))
+  function adjustDistribution(changed: "low" | "medium" | "high", value: number) {
+    const clamped = Math.max(0, Math.min(100, value));
     if (changed === "low") {
-      setLowPct(clamped)
-      const remaining = 100 - clamped
-      const ratio = medPct + highPct > 0 ? medPct / (medPct + highPct) : 0.5
-      setMedPct(Math.round(remaining * ratio))
-      setHighPct(remaining - Math.round(remaining * ratio))
+      setLowPct(clamped);
+      const remaining = 100 - clamped;
+      const ratio = medPct + highPct > 0 ? medPct / (medPct + highPct) : 0.5;
+      setMedPct(Math.round(remaining * ratio));
+      setHighPct(remaining - Math.round(remaining * ratio));
     } else if (changed === "medium") {
-      setMedPct(clamped)
-      const remaining = 100 - clamped
-      const ratio = lowPct + highPct > 0 ? lowPct / (lowPct + highPct) : 0.5
-      setLowPct(Math.round(remaining * ratio))
-      setHighPct(remaining - Math.round(remaining * ratio))
+      setMedPct(clamped);
+      const remaining = 100 - clamped;
+      const ratio = lowPct + highPct > 0 ? lowPct / (lowPct + highPct) : 0.5;
+      setLowPct(Math.round(remaining * ratio));
+      setHighPct(remaining - Math.round(remaining * ratio));
     } else {
-      setHighPct(clamped)
-      const remaining = 100 - clamped
-      const ratio = lowPct + medPct > 0 ? lowPct / (lowPct + medPct) : 0.5
-      setLowPct(Math.round(remaining * ratio))
-      setMedPct(remaining - Math.round(remaining * ratio))
+      setHighPct(clamped);
+      const remaining = 100 - clamped;
+      const ratio = lowPct + medPct > 0 ? lowPct / (lowPct + medPct) : 0.5;
+      setLowPct(Math.round(remaining * ratio));
+      setMedPct(remaining - Math.round(remaining * ratio));
     }
   }
 
   async function handleGenerate() {
-    if (!name.trim()) return
-    setGenerating(true)
+    if (generating) return;
+    setGenerating(true);
     try {
-      const datasetId = await createSimDataset({ kbId, name: name.trim() })
       await startGeneration({
-        datasetId,
+        agentId,
+        kbId: selectedKbId ?? undefined,
+        transcriptUploadId: hasTranscripts
+          ? (selectedUploadId ?? undefined)
+          : undefined,
         count,
         complexityDistribution: {
           low: lowPct / 100,
           medium: medPct / 100,
-          high: highPct / 100
+          high: highPct / 100,
         },
         model,
-        transcriptUploadIds: selectedUploadId ? [selectedUploadId] : undefined,
-        transcriptConversationIds:
-          selectedConvIds.size > 0
-            ? ([...selectedConvIds] as Id<"livechatConversations">[])
-            : undefined,
-        distribution: selectedConvIds.size > 0 ? distribution : 0,
-        fidelity: selectedConvIds.size > 0 ? fidelity : 100,
-        kbId
-      })
-      onGenerated(datasetId)
+        transcriptConversationIds: hasTranscripts
+          ? ([...selectedConvIds] as Id<"livechatConversations">[])
+          : undefined,
+        distribution: effectiveDistribution,
+        fidelity,
+      });
+      onGenerated();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Generation failed")
+      onError(err instanceof Error ? err.message : "Generation failed");
     } finally {
-      setGenerating(false)
+      setGenerating(false);
     }
   }
-
-  // ── Render ──
 
   return (
     <div className="p-6">
@@ -190,13 +165,12 @@ export function ScenarioGenerationWizard({
         Generate Conversation Scenarios
       </h2>
       <p className="text-xs text-text-dim mb-4">
-        Create diverse conversation scenarios to test your AI agent.
+        Generate diverse scenarios from your knowledge base, real transcripts, or a mix of both.
       </p>
 
-      {/* Stepper */}
       <div className="flex items-stretch gap-2 mb-6">
         {STEPS.map((label, i) => {
-          const state = i === step ? "active" : i < step ? "done" : "pending"
+          const state = i === step ? "active" : i < step ? "done" : "pending";
           return (
             <button
               key={label}
@@ -222,21 +196,26 @@ export function ScenarioGenerationWizard({
                 {label}
               </span>
             </button>
-          )
+          );
         })}
       </div>
 
-      {/* Step Content */}
       <div className="min-h-[280px]">
         {step === 0 && (
-          <StepTranscripts
+          <StepInputs
+            kbs={kbs}
+            selectedKbId={selectedKbId}
+            onSelectKb={setSelectedKbId}
             uploads={uploads}
-            conversations={conversations}
             selectedUploadId={selectedUploadId}
+            onSelectUpload={(id) => {
+              setSelectedUploadId(id);
+              setSelectedConvIds(new Set());
+            }}
+            conversations={conversations}
             selectedConvIds={selectedConvIds}
-            onSelectUpload={selectUpload}
             onToggleConversation={toggleConversation}
-            onToggleAll={toggleAllConversations}
+            onToggleAllConversations={toggleAllConversations}
           />
         )}
         {step === 1 && (
@@ -257,16 +236,15 @@ export function ScenarioGenerationWizard({
           />
         )}
         {step === 2 && (
-          <StepPreferences
-            kbId={kbId}
-            model={model}
-            onModelChange={setModel}
-            name={name}
-            onNameChange={setName}
-          />
+          <StepPreferences model={model} onModelChange={setModel} />
         )}
         {step === 3 && (
           <StepReview
+            selectedKbName={kbs?.find((k) => k._id === selectedKbId)?.name ?? "—"}
+            hasKb={!!selectedKbId}
+            selectedUploadName={
+              uploads?.find((u) => u._id === selectedUploadId)?.filename ?? "—"
+            }
             selectedConvCount={selectedConvIds.size}
             hasTranscripts={hasTranscripts}
             count={count}
@@ -277,15 +255,11 @@ export function ScenarioGenerationWizard({
             highPct={highPct}
             fidelity={fidelity}
             model={model}
-            name={name}
             onEdit={setStep}
-            onGenerate={handleGenerate}
-            generating={generating}
           />
         )}
       </div>
 
-      {/* Navigation */}
       <div className="flex items-center justify-between mt-6 pt-4 border-t border-border">
         <div>
           {step === 0 ? (
@@ -305,22 +279,11 @@ export function ScenarioGenerationWizard({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {step === 0 && (
-            <button
-              onClick={() => {
-                setSelectedUploadId(null)
-                setSelectedConvIds(new Set())
-                setStep(1)
-              }}
-              className="text-xs text-text-dim hover:text-text transition-colors"
-            >
-              Skip
-            </button>
-          )}
           {step < 3 && (
             <button
               onClick={() => setStep(step + 1)}
-              className="px-4 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors"
+              disabled={step === 0 && !canAdvanceFromInputs}
+              className="px-4 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next
             </button>
@@ -328,197 +291,125 @@ export function ScenarioGenerationWizard({
           {step === 3 && (
             <button
               onClick={handleGenerate}
-              disabled={!name.trim() || generating}
+              disabled={generating}
               className="px-4 py-1.5 text-xs bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {generating ? "Starting..." : `Generate ${count} Scenarios`}
+              {generating ? "Starting…" : `Generate ${count} scenarios`}
             </button>
           )}
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-// ─── Step 1: Transcript Selection ────────────────────────────────────
-
-function StepTranscripts({
+function StepInputs({
+  kbs,
+  selectedKbId,
+  onSelectKb,
   uploads,
-  conversations,
   selectedUploadId,
-  selectedConvIds,
   onSelectUpload,
+  conversations,
+  selectedConvIds,
   onToggleConversation,
-  onToggleAll
+  onToggleAllConversations,
 }: {
+  kbs: Array<{ _id: Id<"knowledgeBases">; name: string }> | undefined;
+  selectedKbId: Id<"knowledgeBases"> | null;
+  onSelectKb: (id: Id<"knowledgeBases"> | null) => void;
   uploads:
-    | Array<{
-        _id: Id<"livechatUploads">
-        filename: string
-        conversationCount?: number
-        status: string
-      }>
-    | undefined
+    | Array<{ _id: Id<"livechatUploads">; filename: string; status: string; conversationCount?: number }>
+    | undefined;
+  selectedUploadId: Id<"livechatUploads"> | null;
+  onSelectUpload: (id: Id<"livechatUploads"> | null) => void;
   conversations:
     | Array<{
-        _id: Id<"livechatConversations">
-        conversationId: string
-        visitorName: string
-        labels: string[]
-        messageCount: number
+        _id: Id<"livechatConversations">;
+        conversationId: string;
+        visitorName: string;
+        labels: string[];
+        messageCount: number;
       }>
-    | undefined
-  selectedUploadId: Id<"livechatUploads"> | null
-  selectedConvIds: Set<string>
-  onSelectUpload: (id: Id<"livechatUploads"> | null) => void
-  onToggleConversation: (id: string) => void
-  onToggleAll: () => void
+    | undefined;
+  selectedConvIds: Set<string>;
+  onToggleConversation: (id: string) => void;
+  onToggleAllConversations: () => void;
 }) {
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(e.target as Node)
-      ) {
-        setDropdownOpen(false)
-      }
-    }
-    if (dropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside)
-      return () => document.removeEventListener("mousedown", handleClickOutside)
-    }
-  }, [dropdownOpen])
-
-  if (!uploads || uploads.length === 0) {
-    return (
-      <div className="text-xs text-text-dim py-8 text-center">
-        No conversation transcripts available. You can upload transcripts in the
-        Knowledge Base section, or skip to generate synthetic scenarios.
-      </div>
-    )
-  }
-
-  const readyUploads = uploads.filter((u) => u.status === "ready")
-  const selectedUpload = readyUploads.find((u) => u._id === selectedUploadId)
-
-  // Conversation checkbox states
-  const totalConvs = conversations?.length ?? 0
+  const readyUploads = (uploads ?? []).filter((u) => u.status === "ready");
+  const totalConvs = conversations?.length ?? 0;
   const selectedCount = conversations
     ? conversations.filter((c) => selectedConvIds.has(c._id)).length
-    : 0
-  const allSelected = totalConvs > 0 && selectedCount === totalConvs
-  const someSelected = selectedCount > 0 && selectedCount < totalConvs
+    : 0;
+  const allSelected = totalConvs > 0 && selectedCount === totalConvs;
+  const someSelected = selectedCount > 0 && selectedCount < totalConvs;
 
   return (
-    <div className="space-y-4">
-      {/* Transcript dropdown */}
+    <div className="space-y-5">
+      <p className="text-[11px] text-text-dim">
+        Pick a knowledge base for synthetic scenarios, transcripts for grounded scenarios, or both for a mix.
+      </p>
+
       <div>
         <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-2">
-          Transcript Set
+          Knowledge Base (for synthetic scenarios)
         </label>
-        <div ref={dropdownRef} className="relative">
-          {/* Trigger */}
-          <button
-            onClick={() => setDropdownOpen(!dropdownOpen)}
-            className={`w-full text-left px-3 py-2 rounded border transition-colors flex items-center justify-between ${
-              selectedUploadId
-                ? "border-accent bg-accent/5"
-                : "border-border bg-bg-surface hover:border-border-bright"
-            }`}
+        {!kbs || kbs.length === 0 ? (
+          <div className="text-[11px] text-text-dim bg-bg-surface border border-border rounded p-2">
+            No knowledge bases available.
+          </div>
+        ) : (
+          <select
+            value={selectedKbId ?? ""}
+            onChange={(e) =>
+              onSelectKb(
+                e.target.value
+                  ? (e.target.value as Id<"knowledgeBases">)
+                  : null,
+              )
+            }
+            className="w-full bg-bg border border-border rounded px-3 py-1.5 text-xs text-text focus:border-accent outline-none"
           >
-            {selectedUpload ? (
-              <div>
-                <div className="text-xs text-text truncate">
-                  {selectedUpload.filename}
-                </div>
-                <div className="text-[10px] text-text-dim mt-0.5">
-                  {selectedUpload.conversationCount ?? "?"} conversations
-                </div>
-              </div>
-            ) : (
-              <span className="text-xs text-text-dim">
-                Select a transcript set...
-              </span>
-            )}
-            <svg
-              className={`w-3.5 h-3.5 text-text-dim shrink-0 ml-2 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="m19.5 8.25-7.5 7.5-7.5-7.5"
-              />
-            </svg>
-          </button>
-
-          {/* Dropdown menu */}
-          {dropdownOpen && (
-            <div className="absolute z-20 w-full mt-1 border border-border rounded bg-bg-elevated shadow-lg max-h-[220px] overflow-y-auto">
-              {/* Clear selection option */}
-              {selectedUploadId && (
-                <button
-                  onClick={() => {
-                    onSelectUpload(null)
-                    setDropdownOpen(false)
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs text-text-dim hover:bg-bg-surface border-b border-border transition-colors"
-                >
-                  Clear selection
-                </button>
-              )}
-              {readyUploads.map((upload) => {
-                const isSelected = upload._id === selectedUploadId
-                return (
-                  <button
-                    key={upload._id}
-                    onClick={() => {
-                      onSelectUpload(upload._id)
-                      setDropdownOpen(false)
-                    }}
-                    className={`w-full text-left px-3 py-2.5 transition-colors border-b border-border last:border-0 ${
-                      isSelected ? "bg-accent/10" : "hover:bg-bg-surface"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs text-text truncate">
-                        {upload.filename}
-                      </div>
-                      {isSelected && (
-                        <svg
-                          className="w-3.5 h-3.5 text-accent shrink-0 ml-2"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={2}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="m4.5 12.75 6 6 9-13.5"
-                          />
-                        </svg>
-                      )}
-                    </div>
-                    <div className="text-[10px] text-text-dim mt-0.5">
-                      {upload.conversationCount ?? "?"} conversations
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
+            <option value="">None — grounded only</option>
+            {kbs.map((kb) => (
+              <option key={kb._id} value={kb._id}>
+                {kb.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
-      {/* Conversation table */}
+      <div>
+        <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-2">
+          Transcript Upload (optional; for grounded scenarios)
+        </label>
+        {readyUploads.length === 0 ? (
+          <div className="text-[11px] text-text-dim bg-bg-surface border border-border rounded p-2">
+            No ready transcript uploads.
+          </div>
+        ) : (
+          <select
+            value={selectedUploadId ?? ""}
+            onChange={(e) =>
+              onSelectUpload(
+                e.target.value
+                  ? (e.target.value as Id<"livechatUploads">)
+                  : null,
+              )
+            }
+            className="w-full bg-bg border border-border rounded px-3 py-1.5 text-xs text-text focus:border-accent outline-none"
+          >
+            <option value="">None — synthetic only</option>
+            {readyUploads.map((u) => (
+              <option key={u._id} value={u._id}>
+                {u.filename} ({u.conversationCount ?? "?"} convs)
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
       {selectedUploadId && (
         <div>
           <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-2">
@@ -529,17 +420,16 @@ function StepTranscripts({
               </span>
             )}
           </label>
-
           {!conversations ? (
             <div className="text-[10px] text-text-dim py-4 text-center">
-              Loading conversations...
+              Loading conversations…
             </div>
           ) : conversations.length === 0 ? (
             <div className="text-[10px] text-text-dim py-4 text-center">
-              No conversations found in selected transcript.
+              No conversations found.
             </div>
           ) : (
-            <div className="max-h-[200px] overflow-y-auto border border-border rounded">
+            <div className="max-h-[180px] overflow-y-auto border border-border rounded">
               <table className="w-full text-[10px]">
                 <thead>
                   <tr className="border-b border-border bg-bg-surface sticky top-0">
@@ -547,7 +437,7 @@ function StepTranscripts({
                       <TriStateCheckbox
                         checked={allSelected}
                         indeterminate={someSelected}
-                        onChange={onToggleAll}
+                        onChange={onToggleAllConversations}
                       />
                     </th>
                     <th className="p-1.5 text-left text-text-dim font-normal">
@@ -571,10 +461,7 @@ function StepTranscripts({
                       className="border-b border-border last:border-0 hover:bg-bg-surface/50 cursor-pointer"
                       onClick={() => onToggleConversation(conv._id)}
                     >
-                      <td
-                        className="p-1.5"
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                      <td className="p-1.5" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={selectedConvIds.has(conv._id)}
@@ -617,26 +504,22 @@ function StepTranscripts({
         </div>
       )}
     </div>
-  )
+  );
 }
-
-// ─── Tri-State Checkbox ──────────────────────────────────────────────
 
 function TriStateCheckbox({
   checked,
   indeterminate,
-  onChange
+  onChange,
 }: {
-  checked: boolean
-  indeterminate: boolean
-  onChange: () => void
+  checked: boolean;
+  indeterminate: boolean;
+  onChange: () => void;
 }) {
-  const ref = useRef<HTMLInputElement>(null)
+  const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (ref.current) {
-      ref.current.indeterminate = indeterminate
-    }
-  }, [indeterminate])
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
   return (
     <input
       ref={ref}
@@ -645,10 +528,8 @@ function TriStateCheckbox({
       onChange={onChange}
       className="accent-accent"
     />
-  )
+  );
 }
-
-// ─── Step 2: Configure ───────────────────────────────────────────────
 
 function StepConfigure({
   count,
@@ -663,28 +544,24 @@ function StepConfigure({
   lowPct,
   medPct,
   highPct,
-  onAdjustDistribution
+  onAdjustDistribution,
 }: {
-  count: number
-  onCountChange: (v: number) => void
-  distribution: number
-  onDistributionChange: (v: number) => void
-  fidelity: number
-  onFidelityChange: (v: number) => void
-  hasTranscripts: boolean
-  groundedCount: number
-  syntheticCount: number
-  lowPct: number
-  medPct: number
-  highPct: number
-  onAdjustDistribution: (
-    changed: "low" | "medium" | "high",
-    value: number
-  ) => void
+  count: number;
+  onCountChange: (v: number) => void;
+  distribution: number;
+  onDistributionChange: (v: number) => void;
+  fidelity: number;
+  onFidelityChange: (v: number) => void;
+  hasTranscripts: boolean;
+  groundedCount: number;
+  syntheticCount: number;
+  lowPct: number;
+  medPct: number;
+  highPct: number;
+  onAdjustDistribution: (changed: "low" | "medium" | "high", value: number) => void;
 }) {
   return (
     <div className="space-y-5">
-      {/* Scenario Count */}
       <div>
         <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
           Number of Scenarios
@@ -703,44 +580,40 @@ function StepConfigure({
         </div>
       </div>
 
-      {/* Distribution */}
       <div>
         <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
-          Grounded / Synthetic Distribution
+          Synthetic / Grounded Mix
         </label>
         {!hasTranscripts ? (
           <div className="text-[10px] text-text-dim bg-bg-surface border border-border rounded p-2">
-            No transcripts selected — all scenarios will be synthetic.
+            No transcripts selected — all {count} scenarios will be synthetic.
           </div>
         ) : (
-          <>
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={distribution}
-                onChange={(e) => onDistributionChange(Number(e.target.value))}
-                className="flex-1 accent-[#6ee7b7]"
-              />
-              <span className="text-xs text-text w-32 text-right">
-                {groundedCount} grounded / {syntheticCount} synthetic
-              </span>
-            </div>
-          </>
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={distribution}
+              onChange={(e) => onDistributionChange(Number(e.target.value))}
+              className="flex-1 accent-[#6ee7b7]"
+            />
+            <span className="text-xs text-text w-40 text-right">
+              {groundedCount} grounded / {syntheticCount} synthetic
+            </span>
+          </div>
         )}
       </div>
 
-      {/* Fidelity */}
       <div>
         <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
           Fidelity
         </label>
-        {!hasTranscripts || distribution === 0 ? (
+        {!hasTranscripts || groundedCount === 0 ? (
           <div className="text-[10px] text-text-dim bg-bg-surface border border-border rounded p-2">
             {!hasTranscripts
-              ? "No transcripts selected."
-              : "Distribution set to 0% grounded — fidelity does not apply."}
+              ? "No transcripts selected — fidelity does not apply."
+              : "0% grounded — fidelity does not apply."}
           </div>
         ) : (
           <div className="flex items-center gap-3">
@@ -756,69 +629,37 @@ function StepConfigure({
             <span className="text-[10px] text-text-dim w-14 text-right">
               Faithful
             </span>
-            <span className="text-xs text-text w-8 text-right">
-              {fidelity}%
-            </span>
+            <span className="text-xs text-text w-8 text-right">{fidelity}%</span>
           </div>
         )}
       </div>
 
-      {/* Complexity Distribution */}
       <div>
         <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-2">
           Complexity Distribution
         </label>
         <div className="grid grid-cols-3 gap-3">
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-green-400">Low</span>
-              <span className="text-[10px] text-text-dim">{lowPct}%</span>
+          {([
+            { key: "low" as const, label: "Low", val: lowPct, color: "green" },
+            { key: "medium" as const, label: "Medium", val: medPct, color: "yellow" },
+            { key: "high" as const, label: "High", val: highPct, color: "red" },
+          ]).map(({ key, label, val, color }) => (
+            <div key={key}>
+              <div className="flex items-center justify-between mb-1">
+                <span className={`text-[10px] text-${color}-400`}>{label}</span>
+                <span className="text-[10px] text-text-dim">{val}%</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={val}
+                onChange={(e) => onAdjustDistribution(key, Number(e.target.value))}
+                className={`w-full accent-${color}-400`}
+              />
             </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={lowPct}
-              onChange={(e) =>
-                onAdjustDistribution("low", Number(e.target.value))
-              }
-              className="w-full accent-green-400"
-            />
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-yellow-400">Medium</span>
-              <span className="text-[10px] text-text-dim">{medPct}%</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={medPct}
-              onChange={(e) =>
-                onAdjustDistribution("medium", Number(e.target.value))
-              }
-              className="w-full accent-yellow-400"
-            />
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-red-400">High</span>
-              <span className="text-[10px] text-text-dim">{highPct}%</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={highPct}
-              onChange={(e) =>
-                onAdjustDistribution("high", Number(e.target.value))
-              }
-              className="w-full accent-red-400"
-            />
-          </div>
+          ))}
         </div>
-        {/* Distribution bar */}
         <div className="flex h-1.5 rounded-full overflow-hidden mt-2">
           <div className="bg-green-400" style={{ width: `${lowPct}%` }} />
           <div className="bg-yellow-400" style={{ width: `${medPct}%` }} />
@@ -826,37 +667,18 @@ function StepConfigure({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-// ─── Step 3: Preferences ─────────────────────────────────────────────
-
 function StepPreferences({
-  kbId,
   model,
   onModelChange,
-  name,
-  onNameChange
 }: {
-  kbId: Id<"knowledgeBases">
-  model: string
-  onModelChange: (v: string) => void
-  name: string
-  onNameChange: (v: string) => void
+  model: string;
+  onModelChange: (v: string) => void;
 }) {
   return (
     <div className="space-y-5">
-      {/* Knowledge Base (read-only) */}
-      <div>
-        <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
-          Knowledge Base
-        </label>
-        <div className="text-xs text-text bg-bg-surface border border-border rounded px-3 py-1.5">
-          {kbId}
-        </div>
-      </div>
-
-      {/* Model */}
       <div>
         <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
           Model
@@ -873,31 +695,14 @@ function StepPreferences({
           ))}
         </select>
       </div>
-
-      {/* Dataset Name */}
-      <div>
-        <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
-          Dataset Name
-        </label>
-        <input
-          value={name}
-          onChange={(e) => onNameChange(e.target.value)}
-          placeholder="e.g., Support Scenarios v1"
-          className="w-full bg-bg border border-border rounded px-3 py-1.5 text-xs text-text placeholder:text-text-dim focus:border-accent outline-none"
-        />
-        {!name.trim() && (
-          <p className="text-[10px] text-red-400 mt-1">
-            A dataset name is required before generating.
-          </p>
-        )}
-      </div>
     </div>
-  )
+  );
 }
 
-// ─── Step 4: Review ──────────────────────────────────────────────────
-
 function StepReview({
+  selectedKbName,
+  hasKb,
+  selectedUploadName,
   selectedConvCount,
   hasTranscripts,
   count,
@@ -908,46 +713,37 @@ function StepReview({
   highPct,
   fidelity,
   model,
-  name,
   onEdit,
-  onGenerate,
-  generating
 }: {
-  selectedConvCount: number
-  hasTranscripts: boolean
-  count: number
-  groundedCount: number
-  syntheticCount: number
-  lowPct: number
-  medPct: number
-  highPct: number
-  fidelity: number
-  model: string
-  name: string
-  onEdit: (step: number) => void
-  onGenerate: () => void
-  generating: boolean
+  selectedKbName: string;
+  hasKb: boolean;
+  selectedUploadName: string;
+  selectedConvCount: number;
+  hasTranscripts: boolean;
+  count: number;
+  groundedCount: number;
+  syntheticCount: number;
+  lowPct: number;
+  medPct: number;
+  highPct: number;
+  fidelity: number;
+  model: string;
+  onEdit: (step: number) => void;
 }) {
   return (
     <div className="space-y-4">
-      {/* Dataset name */}
-      <div>
-        <label className="block text-[11px] text-text-dim uppercase tracking-wider mb-1">
-          Dataset
-        </label>
-        <div className="text-sm text-text font-medium">
-          {name || <span className="text-red-400 italic">No name set</span>}
-        </div>
-      </div>
-
-      {/* Summary grid */}
       <div className="grid grid-cols-2 gap-2">
+        <SummaryCard
+          label="Knowledge Base"
+          value={hasKb ? selectedKbName : "—"}
+          onEdit={() => onEdit(0)}
+        />
         <SummaryCard
           label="Transcripts"
           value={
             hasTranscripts
-              ? `${selectedConvCount} conversations selected`
-              : "Skipped"
+              ? `${selectedUploadName} · ${selectedConvCount} convs`
+              : "—"
           }
           onEdit={() => onEdit(0)}
         />
@@ -957,7 +753,7 @@ function StepReview({
           onEdit={() => onEdit(1)}
         />
         <SummaryCard
-          label="Distribution"
+          label="Mix"
           value={
             hasTranscripts
               ? `${groundedCount} grounded / ${syntheticCount} synthetic`
@@ -972,11 +768,11 @@ function StepReview({
         />
         <SummaryCard
           label="Fidelity"
-          value={hasTranscripts && groundedCount > 0 ? `${fidelity}%` : "N/A"}
+          value={hasTranscripts && groundedCount > 0 ? `${fidelity}%` : "—"}
           onEdit={() => onEdit(1)}
         />
         <SummaryCard label="Model" value={model} onEdit={() => onEdit(2)} />
       </div>
     </div>
-  )
+  );
 }
