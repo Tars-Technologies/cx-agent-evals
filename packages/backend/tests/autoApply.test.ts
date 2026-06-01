@@ -1,7 +1,33 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { setupTest, seedUser, seedKB, testIdentity, TEST_ORG_ID } from "./helpers";
 import { api, internal } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+
+vi.mock("openai", () => {
+  return {
+    default: class {
+      chat = {
+        completions: {
+          create: async (args: any) => {
+            // The transcript under test lives in the user message; the system
+            // message carries the rubric + few-shot examples. Judge on the
+            // transcript only so few-shot pass examples don't leak the marker.
+            const userText = args.messages
+              .filter((m: any) => m.role === "user")
+              .map((m: any) => m.content)
+              .join("\n");
+            const answer = userText.includes("GOOD") ? "pass" : "fail";
+            return {
+              choices: [
+                { message: { content: JSON.stringify({ answer, reasoning: "mock" }) } },
+              ],
+            };
+          },
+        },
+      };
+    },
+  };
+});
 
 async function seedAgent(
   t: ReturnType<typeof setupTest>,
@@ -109,6 +135,113 @@ async function seedSimRunWithConversation(
     }),
   );
   return { simId, runId, convId };
+}
+
+/**
+ * Seed a READY llm_judge evaluator for a sim's agent plus a completed sim run
+ * whose conversation transcript contains "GOOD" when `good` is true. The judge
+ * also gets a couple of train labels so few-shot building exercises the real
+ * label → source → messages path.
+ */
+async function seedReadyLlmJudgeAndSimRun(
+  t: ReturnType<typeof setupTest>,
+  { good }: { good: boolean },
+): Promise<{ runId: Id<"conversationSimRuns">; agentId: Id<"agents">; evaluatorId: Id<"evaluators"> }> {
+  const userId = await seedUser(t);
+  const agentId = await seedAgent(t);
+  const kbId = await seedKB(t, userId);
+  const scenarioSetId = await seedScenarioSet(t, agentId);
+  const { runId, convId } = await seedSimRunWithConversation(
+    t,
+    userId,
+    agentId,
+    scenarioSetId,
+    kbId,
+  );
+
+  // Transcript under evaluation. Marker only in the user (transcript) message.
+  await t.run(async (ctx) => {
+    await ctx.db.insert("messages", {
+      conversationId: convId,
+      order: 0,
+      role: "user" as const,
+      content: good ? "This was GOOD service" : "This was bad service",
+      status: "complete" as const,
+      createdAt: Date.now(),
+    });
+    await ctx.db.insert("messages", {
+      conversationId: convId,
+      order: 1,
+      role: "assistant" as const,
+      content: "Thanks for the feedback",
+      status: "complete" as const,
+      createdAt: Date.now(),
+    });
+  });
+
+  const evaluatorId = await t.run(async (ctx) =>
+    ctx.db.insert("evaluators", {
+      orgId: TEST_ORG_ID,
+      agentId,
+      name: "llm refund judge",
+      description: "",
+      type: "llm_judge" as const,
+      llmJudgeConfig: {
+        dimensions: [
+          { name: "quality", rubric: "respond well", passExamples: [], failExamples: [] },
+        ],
+        outputFormat: "per_dimension" as const,
+        model: "gpt-4o-mini",
+        inputContext: ["transcript" as const],
+      },
+      source: { kind: "manual" as const },
+      status: "ready" as const,
+      tags: [],
+      createdAt: Date.now(),
+      splitSeed: 42,
+    }),
+  );
+
+  // A balanced pair of train labels (pass + fail) backed by conversations.
+  const makeTrainLabel = async (humanLabel: "pass" | "fail") => {
+    const labelConvId = await t.run(async (ctx) => {
+      const c = await ctx.db.insert("conversations", {
+        orgId: TEST_ORG_ID,
+        agentIds: [agentId],
+        status: "active" as const,
+        source: "playground" as const,
+        createdAt: Date.now(),
+      });
+      await ctx.db.insert("messages", {
+        conversationId: c,
+        order: 0,
+        role: "assistant" as const,
+        content: humanLabel === "pass" ? "exemplary GOOD reply" : "weak reply",
+        status: "complete" as const,
+        createdAt: Date.now(),
+      });
+      return c;
+    });
+    await t.run(async (ctx) =>
+      ctx.db.insert("evaluatorLabels", {
+        orgId: TEST_ORG_ID,
+        evaluatorId,
+        source: { kind: "conversation" as const, conversationId: labelConvId },
+        humanLabel,
+        splitAssignment: "train" as const,
+        origin:
+          humanLabel === "pass"
+            ? { kind: "calibration_pass" as const }
+            : { kind: "inferred_negative" as const },
+        ratedBy: userId,
+        createdAt: Date.now(),
+      }),
+    );
+  };
+  await makeTrainLabel("pass");
+  await makeTrainLabel("fail");
+
+  return { runId, agentId, evaluatorId };
 }
 
 describe("autoApply ready evaluators on sim run completion", () => {
@@ -226,42 +359,34 @@ describe("autoApply ready evaluators on sim run completion", () => {
     expect(row?.evaluatorResults?.[0].evaluatorId).not.toBe(draftId);
   });
 
-  it("llm_judge evaluator records a stub result (real scoring deferred)", async () => {
+  it("applies a ready llm_judge via the LLM client (no stub)", async () => {
     const t = setupTest();
-    const userId = await seedUser(t);
-    const agentId = await seedAgent(t);
-    const kbId = await seedKB(t, userId);
-    const scenarioSetId = await seedScenarioSet(t, agentId);
-    const { runId } = await seedSimRunWithConversation(t, userId, agentId, scenarioSetId, kbId);
-
-    const evalId = await t.withIdentity(testIdentity).mutation(api.evaluator.crud.create, {
-      agentId,
-      name: "tone",
-      description: "",
-      type: "llm_judge",
-      llmJudgeConfig: {
-        dimensions: [
-          { name: "tone", rubric: "polite", passExamples: [], failExamples: [] },
-        ],
-        outputFormat: "per_dimension",
-        model: "gpt-4o-mini",
-        inputContext: ["transcript"],
-      },
-      source: { kind: "manual" },
-      tags: [],
-    });
-    await t.withIdentity(testIdentity).mutation(api.evaluator.crud.updateStatus, {
-      id: evalId,
-      status: "ready",
-    });
-
+    const { runId } = await seedReadyLlmJudgeAndSimRun(t, { good: true });
     await t.action(internal.evaluator.autoApply.applyReadyEvaluatorsToSimRun, {
       simRunId: runId,
     });
+    const run = await t.run(async (ctx) => ctx.db.get(runId));
+    const llm = run!.evaluatorResults!.find((r: any) =>
+      r.evaluatorName.toLowerCase().includes("llm"),
+    );
+    expect(llm).toBeTruthy();
+    expect(llm!.passed).toBe(true);
+    expect(llm!.justification).not.toContain("[stub]");
+  });
 
-    const row = await t.run(async (ctx) => ctx.db.get(runId));
-    expect(row?.evaluatorResults).toHaveLength(1);
-    expect(row?.evaluatorResults?.[0].justification).toMatch(/stub|pending/i);
+  it("ready llm_judge fails when transcript lacks the marker", async () => {
+    const t = setupTest();
+    const { runId } = await seedReadyLlmJudgeAndSimRun(t, { good: false });
+    await t.action(internal.evaluator.autoApply.applyReadyEvaluatorsToSimRun, {
+      simRunId: runId,
+    });
+    const run = await t.run(async (ctx) => ctx.db.get(runId));
+    const llm = run!.evaluatorResults!.find((r: any) =>
+      r.evaluatorName.toLowerCase().includes("llm"),
+    );
+    expect(llm).toBeTruthy();
+    expect(llm!.passed).toBe(false);
+    expect(llm!.justification).not.toContain("[stub]");
   });
 
   it("no-op when sim run lacks conversationId", async () => {
