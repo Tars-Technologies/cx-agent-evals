@@ -32,6 +32,11 @@ interface SeedOpts {
   goodCount: number;
   badCount: number;
   validated: { tpr: number; tnr: number } | null;
+  /**
+   * When true, seed a "ready" evaluator with devMetrics but NO testMetrics
+   * (simulates validation that had no test-split labels). Requires `validated`.
+   */
+  devOnly?: boolean;
 }
 
 async function seedAgent(
@@ -206,12 +211,17 @@ async function seedCohortAndJudge(
               tnr: validated.tnr,
               agreement: (validated.tpr + validated.tnr) / 2,
             },
-            testMetrics: {
-              tpr: validated.tpr,
-              tnr: validated.tnr,
-              agreement: (validated.tpr + validated.tnr) / 2,
-              n: 10,
-            },
+            // devOnly: status "ready" + devMetrics but NO testMetrics (no test split).
+            ...(opts.devOnly
+              ? {}
+              : {
+                  testMetrics: {
+                    tpr: validated.tpr,
+                    tnr: validated.tnr,
+                    agreement: (validated.tpr + validated.tnr) / 2,
+                    n: 10,
+                  },
+                }),
           }
         : {}),
     }),
@@ -282,5 +292,21 @@ describe("batchApply.runOnCohort (Score B)", () => {
       cohort: { kind: "simulation", simulationId },
     });
     expect(res.runs[0].corrected).toBe(false);
+  });
+
+  it("does not claim a corrected score when only devMetrics exist (no test split)", async () => {
+    const t = setupTest();
+    const { simulationId, evaluatorId } = await seedCohortAndJudge(t, {
+      goodCount: 3,
+      badCount: 1,
+      validated: { tpr: 0.9, tnr: 0.9 },
+      devOnly: true,
+    });
+    const res = await t.withIdentity(testIdentity).action(api.evaluator.batchApply.runOnCohort, {
+      evaluatorIds: [evaluatorId],
+      cohort: { kind: "simulation", simulationId },
+    });
+    expect(res.runs[0].corrected).toBe(false);
+    expect(res.runs[0].ci).toEqual({ lower: 0, upper: 1 });
   });
 });

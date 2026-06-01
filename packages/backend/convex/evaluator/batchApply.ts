@@ -18,7 +18,11 @@ type RunSummary = {
   corrected: boolean;
 };
 
-/** Reconstruct representative (label,pred) arrays from stored test confusion metrics. */
+/**
+ * Reconstruct representative (label,pred) arrays from stored test confusion metrics.
+ * CAVEAT: assumes a ~50/50 pass/fail test split, so the resulting CI is approximate
+ * (not exact). The exact fix is to persist raw tp/tn/fp/fn on testMetrics.
+ */
 function reconstructPairs(testMetrics?: { tpr: number; tnr: number; n: number }): {
   testLabels: number[];
   testPreds: number[];
@@ -90,6 +94,8 @@ export const runOnCohort = action({
         justification: string;
       }[] = [];
       let passes = 0;
+      // Fail-fast: a judge error here aborts the whole cohort run (intentional for
+      // Slice 1; per-conversation isolation/partial results is deferred).
       for (const conversationId of measured) {
         const messages = await ctx.runQuery(internal.evaluator.sources.getMessagesForSource, {
           source: { kind: "conversation", conversationId },
@@ -106,18 +112,20 @@ export const runOnCohort = action({
       const n = measured.length;
       const observed = n > 0 ? passes / n : 0;
 
-      const tm = evaluator.testMetrics ?? evaluator.devMetrics;
+      // A corrected claim requires held-out testMetrics: corrected === true ⟺
+      // testMetrics present ⟺ a real correctedPassRate AND a real scoreBCI were
+      // computed. devMetrics-only (or unvalidated) evaluators stay uncorrected with
+      // the vacuous {0,1} CI (the UI treats uncorrected rows as "no CI").
+      const tm = evaluator.testMetrics;
       const canCorrect =
         (evaluator.status === "ready" || evaluator.status === "validated") && !!tm;
       let corrected = observed;
       let ci = { lower: 0, upper: 1 };
       if (canCorrect && tm) {
         corrected = correctedPassRate(observed, tm.tpr, tm.tnr);
-        if (evaluator.testMetrics) {
-          const cohortPreds = resultRows.map((r) => (r.passed ? 1 : 0));
-          const { testLabels, testPreds } = reconstructPairs(evaluator.testMetrics);
-          ci = scoreBCI(cohortPreds, testLabels, testPreds, 20000, evaluator.splitSeed ?? 42);
-        }
+        const cohortPreds = resultRows.map((r) => (r.passed ? 1 : 0));
+        const { testLabels, testPreds } = reconstructPairs(tm);
+        ci = scoreBCI(cohortPreds, testLabels, testPreds, 20000, evaluator.splitSeed ?? 42);
       }
 
       await ctx.runMutation(internal.evaluator.evaluationRuns.insertRunInternal, {
