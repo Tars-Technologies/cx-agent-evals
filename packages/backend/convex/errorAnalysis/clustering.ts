@@ -13,7 +13,8 @@
  *   2. Hydrate the conversation/transcript text for each annotated source.
  *   3. Filter to FAILING annotations (rating "fail" or "bad").
  *   4. Prompt gpt-4o with the failing items; expect json_object back.
- *   5. Wipe existing failure modes for this analysis.
+ *   5. Wipe existing failure modes (only AFTER a successful parse, so a
+ *      transient LLM/parse error doesn't erase prior results).
  *   6. Write new modes + memberships (memberships carry polymorphic source).
  */
 
@@ -136,13 +137,12 @@ export const recluster = action({
       });
     }
 
-    // Always wipe old modes first so empty-failing-set leaves the analysis clean.
-    await ctx.runMutation(
-      internal.errorAnalysis.clusteringHelpers.deleteFailureModesForAnalysisInternal,
-      { errorAnalysisId },
-    );
-
     if (failingItems.length === 0) {
+      // No failing items: safe to wipe and write the placeholder (no LLM dependency).
+      await ctx.runMutation(
+        internal.errorAnalysis.clusteringHelpers.deleteFailureModesForAnalysisInternal,
+        { errorAnalysisId },
+      );
       await ctx.runMutation(internal.failureModes.crud.createInternal, {
         orgId: analysis.orgId,
         agentId: analysis.agentId,
@@ -209,6 +209,19 @@ Guidelines:
         itemIndices: number[];
       }>;
     };
+
+    // NOTE: from here the action is non-atomic across mutations — a crash between
+    // this wipe and the create loop below would leave modes empty until the next
+    // recluster. Still an improvement over wiping before the LLM call (which lost
+    // data on any transient error); a fully atomic replace would need a single
+    // mutation receiving the parsed payload.
+    //
+    // Parse succeeded — only now is it safe to replace the existing modes. A
+    // transient LLM/parse error above leaves the prior analysis untouched.
+    await ctx.runMutation(
+      internal.errorAnalysis.clusteringHelpers.deleteFailureModesForAnalysisInternal,
+      { errorAnalysisId },
+    );
 
     let created = 0;
     for (let i = 0; i < parsed.failureModes.length; i++) {

@@ -492,6 +492,10 @@ describe("errorAnalysis/members.addMemberInternal", () => {
 });
 
 describe("errorAnalysis/clustering.recluster", () => {
+  // NOTE: the non-empty path's "LLM/parse error preserves prior modes" guarantee
+  // rests on code inspection — convex-test can't inject a throwing OpenAI client
+  // into this "use node" action, so it's covered by an integration test, not here.
+
   it("rejects a caller from another org", async () => {
     const t = setupTest();
     await seedUser(t);
@@ -515,5 +519,57 @@ describe("errorAnalysis/clustering.recluster", () => {
         errorAnalysisId: analysisId,
       }),
     ).rejects.toThrow(/not found/i);
+  });
+
+  it("empty-failing-set: wipes existing failure modes and inserts placeholder", async () => {
+    const t = setupTest();
+    await seedUser(t);
+    const agentId = await seedAgent(t);
+    const authedT = t.withIdentity(testIdentity);
+
+    // Seed an errorAnalysis owned by TEST_ORG_ID.
+    const errorAnalysisId = await t.run(async (ctx) =>
+      ctx.db.insert("errorAnalyses", {
+        orgId: TEST_ORG_ID,
+        agentId,
+        name: "EA for recluster test",
+        origin: { kind: "custom" as const },
+        createdAt: Date.now(),
+      }),
+    );
+
+    // Pre-seed one existing failure mode for this analysis.
+    const existingFmId = await t.run(async (ctx) =>
+      ctx.db.insert("failureModes", {
+        orgId: TEST_ORG_ID,
+        agentId,
+        errorAnalysisId,
+        name: "Old mode",
+        description: "Should be wiped",
+        order: 0,
+        createdAt: Date.now(),
+      }),
+    );
+
+    // No annotations → failingItems is empty → empty branch fires.
+    const result = await authedT.action(api.errorAnalysis.clustering.recluster, {
+      errorAnalysisId,
+    });
+
+    expect(result).toEqual({ failureModesCreated: 1 });
+
+    // The pre-existing failure mode must be gone.
+    const gone = await t.run((ctx) => ctx.db.get(existingFmId));
+    expect(gone).toBeNull();
+
+    // Exactly one "No failures detected" mode must remain for the analysis.
+    const modes = await t.run((ctx) =>
+      ctx.db
+        .query("failureModes")
+        .withIndex("by_analysis", (q) => q.eq("errorAnalysisId", errorAnalysisId))
+        .collect(),
+    );
+    expect(modes).toHaveLength(1);
+    expect(modes[0].name).toBe("No failures detected");
   });
 });
