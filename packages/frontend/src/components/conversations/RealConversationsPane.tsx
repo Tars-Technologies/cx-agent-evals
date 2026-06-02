@@ -58,7 +58,15 @@ export function RealConversationsPane({ selectedId }: { selectedId?: string }) {
             return (
               <div
                 key={conv._id}
+                role="button"
+                tabIndex={0}
                 onClick={() => select(conv._id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    select(conv._id);
+                  }
+                }}
                 className={`px-3 py-2 cursor-pointer border-b border-border/50 transition-colors ${
                   isActive
                     ? "bg-accent/10 border-l-2 border-l-accent"
