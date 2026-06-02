@@ -1,5 +1,7 @@
 import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
+import type { QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
+import type { Id } from "../_generated/dataModel";
 import { getAuthContext } from "../lib/auth";
 
 // Sidebar list cap. The conversations sidebar shows most-recent first; older
@@ -110,6 +112,22 @@ export const getStreamDeltas = query({
   },
 });
 
+// Shared scan for agent+source lookups. Narrows to the (orgId, source) index
+// partition, then filters by agentId in memory (agentIds is an array and not
+// directly indexable). Used by both the count and list endpoints below.
+async function conversationsByAgentAndSource(
+  ctx: QueryCtx,
+  orgId: string,
+  agentId: Id<"agents">,
+  source: "playground" | "simulation",
+) {
+  const rows = await ctx.db
+    .query("conversations")
+    .withIndex("by_org_source", (q) => q.eq("orgId", orgId).eq("source", source))
+    .collect();
+  return rows.filter((c) => c.agentIds.includes(agentId));
+}
+
 export const countByAgentAndSource = query({
   args: {
     agentId: v.id("agents"),
@@ -117,13 +135,8 @@ export const countByAgentAndSource = query({
   },
   handler: async (ctx, { agentId, source }) => {
     const { orgId } = await getAuthContext(ctx);
-    const rows = await ctx.db
-      .query("conversations")
-      .withIndex("by_org", (q) => q.eq("orgId", orgId))
-      .collect();
-    return rows.filter(
-      (c) => c.source === source && c.agentIds.includes(agentId),
-    ).length;
+    const rows = await conversationsByAgentAndSource(ctx, orgId, agentId, source);
+    return rows.length;
   },
 });
 
@@ -134,13 +147,7 @@ export const listByAgentAndSource = query({
   },
   handler: async (ctx, { agentId, source }) => {
     const { orgId } = await getAuthContext(ctx);
-    const rows = await ctx.db
-      .query("conversations")
-      .withIndex("by_org", (q) => q.eq("orgId", orgId))
-      .collect();
-    return rows.filter(
-      (c) => c.source === source && c.agentIds.includes(agentId),
-    );
+    return conversationsByAgentAndSource(ctx, orgId, agentId, source);
   },
 });
 

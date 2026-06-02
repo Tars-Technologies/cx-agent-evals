@@ -366,7 +366,8 @@ export const agentTables = {
     )),
     createdAt: v.number(),
   })
-    .index("by_org", ["orgId"]),
+    .index("by_org", ["orgId"])
+    .index("by_org_source", ["orgId", "source"]),
 
   messages: defineTable({
     conversationId: v.id("conversations"),

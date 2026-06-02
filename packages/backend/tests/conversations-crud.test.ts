@@ -143,4 +143,19 @@ describe("conversations CRUD", () => {
     const rows = await authed.query(api.crud.conversations.listForOrg, {})
     expect(rows.length).toBeLessThanOrEqual(100)
   })
+
+  it("count/list by agent+source share a result and respect source", async () => {
+    const t = setupTest();
+    await seedUser(t);
+    const authed = t.withIdentity(testIdentity);
+    const agentId = await authed.mutation(api.crud.agents.create, DEFAULT_AGENT_ARGS);
+    await t.mutation(internal.crud.conversations.createInternal, { orgId: TEST_ORG_ID, agentIds: [agentId], source: "playground" });
+    await t.mutation(internal.crud.conversations.createInternal, { orgId: TEST_ORG_ID, agentIds: [agentId], source: "playground" });
+    await t.mutation(internal.crud.conversations.createInternal, { orgId: TEST_ORG_ID, agentIds: [agentId], source: "simulation" });
+    const count = await authed.query(api.crud.conversations.countByAgentAndSource, { agentId, source: "playground" });
+    const list = await authed.query(api.crud.conversations.listByAgentAndSource, { agentId, source: "playground" });
+    expect(count).toBe(2);
+    expect(list).toHaveLength(2);
+    expect(count).toBe(list.length);
+  });
 })
