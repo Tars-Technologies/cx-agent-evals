@@ -20,6 +20,7 @@
 import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
+import { getAuthContext } from "../lib/auth";
 import { Doc, Id } from "../_generated/dataModel";
 import OpenAI from "openai";
 
@@ -76,11 +77,15 @@ function summarizeLivechatTurns(
 export const recluster = action({
   args: { errorAnalysisId: v.id("errorAnalyses") },
   handler: async (ctx, { errorAnalysisId }): Promise<{ failureModesCreated: number }> => {
+    const { orgId } = await getAuthContext(ctx);
+
     const analysis = await ctx.runQuery(
       internal.errorAnalysis.orchestration.getInternal,
       { id: errorAnalysisId },
     );
-    if (!analysis) throw new Error("Error analysis not found");
+    if (!analysis || analysis.orgId !== orgId) {
+      throw new Error("Error analysis not found");
+    }
 
     const annotations = await ctx.runQuery(
       internal.annotations.crud.byAnalysisInternal,

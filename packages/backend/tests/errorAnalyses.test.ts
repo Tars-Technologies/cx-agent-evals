@@ -1,7 +1,21 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { setupTest, seedUser, testIdentity, TEST_ORG_ID } from "./helpers";
 import { api, internal } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+
+vi.mock("openai", () => {
+  return {
+    default: class {
+      chat = {
+        completions: {
+          create: async () => ({
+            choices: [{ message: { content: JSON.stringify({ failureModes: [] }) } }],
+          }),
+        },
+      };
+    },
+  };
+});
 
 async function seedAgent(t: ReturnType<typeof setupTest>): Promise<Id<"agents">> {
   return await t.run(async (ctx) =>
@@ -474,5 +488,32 @@ describe("errorAnalysis/members.addMemberInternal", () => {
         .collect(),
     );
     expect(all).toHaveLength(1);
+  });
+});
+
+describe("errorAnalysis/clustering.recluster", () => {
+  it("rejects a caller from another org", async () => {
+    const t = setupTest();
+    await seedUser(t);
+    const agentId = await seedAgent(t);
+    const analysisId = await t.run(async (ctx) =>
+      ctx.db.insert("errorAnalyses", {
+        orgId: TEST_ORG_ID,
+        agentId,
+        name: "EA owned by test org",
+        origin: { kind: "custom" as const },
+        createdAt: Date.now(),
+      }),
+    );
+    const intruder = t.withIdentity({
+      ...testIdentity,
+      subject: "user_other",
+      org_id: "org_other",
+    });
+    await expect(
+      intruder.action(api.errorAnalysis.clustering.recluster, {
+        errorAnalysisId: analysisId,
+      }),
+    ).rejects.toThrow(/not found/i);
   });
 });
