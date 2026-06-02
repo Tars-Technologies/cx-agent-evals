@@ -75,8 +75,8 @@ export const runOnCohort = action({
       simulationId: cohort.simulationId,
     });
     let cohortConvIds = runsRows
-      .filter((r: any) => r.status === "completed" && r.conversationId)
-      .map((r: any) => r.conversationId as Id<"conversations">);
+      .filter((r) => r.status === "completed" && r.conversationId)
+      .map((r) => r.conversationId as Id<"conversations">);
     if (sampleSize && sampleSize < cohortConvIds.length) {
       cohortConvIds = cohortConvIds.slice(0, sampleSize);
     }
@@ -93,8 +93,9 @@ export const runOnCohort = action({
       });
       const labeledConvIds = new Set(
         labels
-          .filter((l: any) => l.source.kind === "conversation")
-          .map((l: any) => l.source.conversationId as string),
+          .flatMap((l) =>
+            l.source.kind === "conversation" ? [l.source.conversationId as string] : [],
+          ),
       );
       const measured = cohortConvIds.filter((id: Id<"conversations">) => !labeledConvIds.has(id));
 

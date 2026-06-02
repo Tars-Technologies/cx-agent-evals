@@ -38,7 +38,7 @@ export const applyReadyEvaluatorsToSimRun = internalAction({
     const client = new OpenAI() as unknown as JudgeLlmClient;
     const results: EvaluatorResult[] = [];
 
-    for (const ev of ready as any[]) {
+    for (const ev of ready) {
       const fewShot = await buildFewShotForEvaluator(ctx, ev);
 
       const verdict = await scoreOneAsync(client, ev, messages, fewShot);
