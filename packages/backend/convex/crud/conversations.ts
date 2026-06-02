@@ -2,6 +2,11 @@ import { mutation, query, internalMutation, internalQuery } from "../_generated/
 import { v } from "convex/values";
 import { getAuthContext } from "../lib/auth";
 
+// Sidebar list cap. The conversations sidebar shows most-recent first; older
+// history is out of scope for this reactive query (guidelines.md: prefer bounded
+// reads). Bump or switch to .paginate() if a "load more" affordance is added.
+const CONVERSATION_LIST_LIMIT = 100;
+
 export const create = mutation({
   args: {
     agentIds: v.array(v.id("agents")),
@@ -39,7 +44,7 @@ export const listForOrg = query({
       .query("conversations")
       .withIndex("by_org", (q) => q.eq("orgId", orgId))
       .order("desc")
-      .collect();
+      .take(CONVERSATION_LIST_LIMIT);
 
     return Promise.all(
       conversations.map(async (conv) => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { api } from "../convex/_generated/api"
-import { seedUser, setupTest, testIdentity } from "./helpers"
+import { api, internal } from "../convex/_generated/api"
+import { seedUser, setupTest, TEST_ORG_ID, testIdentity } from "./helpers"
 
 const DEFAULT_AGENT_ARGS = {
   name: "Test Agent",
@@ -125,5 +125,22 @@ describe("conversations CRUD", () => {
     expect(deltas).toHaveLength(2)
     expect(deltas[0].text).toBe("Hello")
     expect(deltas[1].text).toBe(" world")
+  })
+
+  it("listForOrg never returns more than the sidebar cap", async () => {
+    const t = setupTest()
+    await seedUser(t)
+    const authed = t.withIdentity(testIdentity)
+    const agentId = await authed.mutation(api.crud.agents.create, DEFAULT_AGENT_ARGS)
+    for (let i = 0; i < 105; i++) {
+      await t.mutation(internal.crud.conversations.createInternal, {
+        orgId: TEST_ORG_ID,
+        agentIds: [agentId],
+        title: `c${i}`,
+        source: "playground",
+      })
+    }
+    const rows = await authed.query(api.crud.conversations.listForOrg, {})
+    expect(rows.length).toBeLessThanOrEqual(100)
   })
 })
