@@ -158,4 +158,15 @@ describe("conversations CRUD", () => {
     expect(list).toHaveLength(2);
     expect(count).toBe(list.length);
   });
+
+  it("get returns null and listMessages returns [] for a cross-org id", async () => {
+    const t = setupTest();
+    await seedUser(t);
+    const owner = t.withIdentity(testIdentity);
+    const agentId = await owner.mutation(api.crud.agents.create, DEFAULT_AGENT_ARGS);
+    const convId = await owner.mutation(api.crud.conversations.create, { agentIds: [agentId] });
+    const intruder = t.withIdentity({ ...testIdentity, subject: "user_other", org_id: "org_other" });
+    expect(await intruder.query(api.crud.conversations.get, { id: convId })).toBeNull();
+    expect(await intruder.query(api.crud.conversations.listMessages, { conversationId: convId })).toEqual([]);
+  });
 })

@@ -32,7 +32,9 @@ export const get = query({
     const { orgId } = await getAuthContext(ctx);
     const conv = await ctx.db.get(id);
     if (!conv || conv.orgId !== orgId) {
-      throw new Error("Conversation not found");
+      // Stale/cross-org id (common during reactive navigation): return null so
+      // the client can render a not-found state instead of crashing the pane.
+      return null;
     }
     return conv;
   },
@@ -84,7 +86,7 @@ export const listMessages = query({
     const { orgId } = await getAuthContext(ctx);
     const conv = await ctx.db.get(conversationId);
     if (!conv || conv.orgId !== orgId) {
-      throw new Error("Conversation not found");
+      return [];
     }
     return ctx.db
       .query("messages")

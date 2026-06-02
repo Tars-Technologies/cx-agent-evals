@@ -20,6 +20,14 @@ export function RealConversationDetail({
     return <div className="p-6 text-xs text-text-dim">Loading conversation…</div>;
   }
 
+  if (conversation === null) {
+    return (
+      <div className="p-6 text-xs text-text-dim">
+        Conversation not found. It may have been deleted.
+      </div>
+    );
+  }
+
   const displayItems = groupMessagesWithToolCalls(messages);
 
   return (
