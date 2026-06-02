@@ -92,14 +92,14 @@ export const runAgentExperimentSetup = internalAction({
   },
   handler: async (ctx, args) => {
     try {
-      await ctx.runMutation(internal.experiments.orchestration.updateStatus, {
+      await ctx.runMutation(internal.kb.experiments.updateStatus, {
         experimentId: args.experimentId,
         status: "running",
         phase: "initializing"
       })
 
       const experiment = await ctx.runQuery(
-        internal.experiments.orchestration.getInternal,
+        internal.kb.experiments.getInternal,
         { id: args.experimentId }
       )
 
@@ -119,7 +119,7 @@ export const runAgentExperimentSetup = internalAction({
       let hasReadyRetriever = false
       for (const retrieverId of agent.retrieverIds) {
         const retriever = await ctx.runQuery(
-          internal.crud.retrievers.getInternal,
+          internal.kb.retrievers.getInternal,
           { id: retrieverId }
         )
         if (retriever && retriever.status === "ready") {
@@ -133,7 +133,7 @@ export const runAgentExperimentSetup = internalAction({
 
       // Load questions, filter by ground truth
       const allQuestions = await ctx.runQuery(
-        internal.crud.questions.byDatasetInternal,
+        internal.kb.questions.byDatasetInternal,
         { datasetId: args.datasetId }
       )
       const questions = allQuestions.filter(
@@ -141,7 +141,7 @@ export const runAgentExperimentSetup = internalAction({
       )
 
       if (questions.length === 0) {
-        await ctx.runMutation(internal.experiments.orchestration.updateStatus, {
+        await ctx.runMutation(internal.kb.experiments.updateStatus, {
           experimentId: args.experimentId,
           status: "completed",
           phase: "done",
@@ -151,7 +151,7 @@ export const runAgentExperimentSetup = internalAction({
         return
       }
 
-      await ctx.runMutation(internal.experiments.orchestration.updateStatus, {
+      await ctx.runMutation(internal.kb.experiments.updateStatus, {
         experimentId: args.experimentId,
         status: "running",
         phase: "evaluating",
@@ -171,7 +171,7 @@ export const runAgentExperimentSetup = internalAction({
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       console.error("[runAgentExperimentSetup] FAILED:", message)
-      await ctx.runMutation(internal.experiments.orchestration.updateStatus, {
+      await ctx.runMutation(internal.kb.experiments.updateStatus, {
         experimentId: args.experimentId,
         status: "failed",
         error: message
@@ -216,11 +216,11 @@ export const evaluateAgentQuestion = internalAction({
 
     for (const retrieverId of agent.retrieverIds) {
       const retriever = await ctx.runQuery(
-        internal.crud.retrievers.getInternal,
+        internal.kb.retrievers.getInternal,
         { id: retrieverId }
       )
       if (!retriever || retriever.status !== "ready") continue
-      const kb = await ctx.runQuery(internal.crud.knowledgeBases.getInternal, {
+      const kb = await ctx.runQuery(internal.kb.core.getInternal, {
         id: retriever.kbId
       })
       retrieverInfos.push({
@@ -305,7 +305,7 @@ export const evaluateAgentQuestion = internalAction({
     }
 
     // 5. Load question
-    const question = await ctx.runQuery(internal.crud.questions.getInternal, {
+    const question = await ctx.runQuery(internal.kb.questions.getInternal, {
       id: args.questionId
     })
     if (!question) throw new Error("Question not found")

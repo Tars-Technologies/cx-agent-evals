@@ -1,4 +1,8 @@
+/**
+ * Knowledge Base CRUD (org-scoped queries + mutations).
+ */
 import { v } from "convex/values"
+import type { Doc } from "../_generated/dataModel"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 
@@ -17,15 +21,6 @@ export const create = tenantMutation({
   handler: async (ctx, args) => {
     const { orgId, userId } = ctx
 
-    // Look up or create the user record
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", userId))
-      .unique()
-    if (!user) {
-      throw new Error("User not found. Please sign in again.")
-    }
-
     return await ctx.db.insert("knowledgeBases", {
       orgId,
       name: args.name,
@@ -37,7 +32,7 @@ export const create = tenantMutation({
       entityType: args.entityType,
       sourceUrl: args.sourceUrl,
       tags: args.tags,
-      createdBy: user._id,
+      createdBy: userId,
       createdAt: Date.now()
     })
   }
@@ -81,7 +76,7 @@ export const listWithDocCounts = tenantQuery({
   args: { industry: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const { orgId } = ctx
-    let kbs
+    let kbs: Doc<"knowledgeBases">[]
     if (args.industry) {
       kbs = await ctx.db
         .query("knowledgeBases")

@@ -1,3 +1,6 @@
+/**
+ * Per-question experiment result writes and queries.
+ */
 import { v } from "convex/values"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantQuery } from "../lib/auth/tenant"

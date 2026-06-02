@@ -1,3 +1,6 @@
+/**
+ * Retriever CRUD, shared-index protection, status sync.
+ */
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalMutation, internalQuery } from "../_generated/server"
@@ -95,7 +98,7 @@ export const insertRetriever = internalMutation({
       v.literal("error")
     ),
     chunkCount: v.optional(v.number()),
-    createdBy: v.id("users")
+    createdBy: v.string()
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("retrievers", {
@@ -191,7 +194,7 @@ export const remove = tenantMutation({
       if (sharingChunks.length === 0) {
         await ctx.scheduler.runAfter(
           0,
-          internal.retrieval.indexingActions.cleanupAction,
+          internal.kb.indexing_actions.cleanupAction,
           {
             kbId: retriever.kbId,
             indexConfigHash: retriever.indexConfigHash,
@@ -273,7 +276,7 @@ export const deleteIndex = tenantMutation({
     if (retriever.indexingJobId) {
       await ctx.scheduler.runAfter(
         0,
-        internal.retrieval.indexingActions.cleanupAction,
+        internal.kb.indexing_actions.cleanupAction,
         {
           kbId: retriever.kbId,
           indexConfigHash: retriever.indexConfigHash,

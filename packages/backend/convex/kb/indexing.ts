@@ -1,3 +1,9 @@
+/**
+ * Indexing job orchestration: WorkPool callbacks, status transitions, cancel.
+ *
+ * Owns the indexing WorkPool; mutations here drive job lifecycle but delegate
+ * chunk-embedding work to indexing_actions.ts.
+ */
 import {
   type RunResult,
   vOnCompleteArgs,
@@ -61,7 +67,7 @@ export const startIndexing = internalMutation({
     kbId: v.id("knowledgeBases"),
     indexConfigHash: v.string(),
     indexConfig: v.any(),
-    createdBy: v.id("users"),
+    createdBy: v.string(),
     tier: v.optional(v.string()),
     force: v.optional(v.boolean())
   },
@@ -148,13 +154,13 @@ export const startIndexing = internalMutation({
     let cursor: string | null = null
     while (true) {
       const page: PaginationResult<Doc<"documents">> = await ctx.runQuery(
-        internal.retrieval.indexing.getDocumentPage,
+        internal.kb.indexing.getDocumentPage,
         { kbId: args.kbId, cursor }
       )
       for (const doc of page.page) {
         const wId = await pool.enqueueAction(
           ctx,
-          internal.retrieval.indexingActions.indexDocument,
+          internal.kb.indexing_actions.indexDocument,
           {
             documentId: doc._id,
             kbId: args.kbId,
@@ -171,7 +177,7 @@ export const startIndexing = internalMutation({
           },
           {
             context: { jobId, documentId: doc._id },
-            onComplete: internal.retrieval.indexing.onDocumentIndexed
+            onComplete: internal.kb.indexing.onDocumentIndexed
           }
         )
         workIds.push(wId)
@@ -299,7 +305,7 @@ export const onDocumentIndexed = internalMutation({
           retriever.status === "indexing"
         ) {
           await ctx.runMutation(
-            internal.crud.retrievers.syncStatusFromIndexingJob,
+            internal.kb.retrievers.syncStatusFromIndexingJob,
             { retrieverId: retriever._id }
           )
         }
@@ -425,7 +431,7 @@ export const cleanupIndex = tenantMutation({
 
     await ctx.scheduler.runAfter(
       0,
-      internal.retrieval.indexingActions.cleanupAction,
+      internal.kb.indexing_actions.cleanupAction,
       {
         kbId: args.kbId,
         indexConfigHash: args.indexConfigHash,

@@ -1,3 +1,9 @@
+/**
+ * Web-crawl job queries, mutations, and internal helpers.
+ *
+ * Owns the crawl WorkPool; batch scraping and page fetching are delegated
+ * to crawl_actions.ts because they import HTTP scraper dependencies.
+ */
 import {
   type RunResult,
   vOnCompleteArgs,
@@ -49,12 +55,6 @@ export const startCrawl = tenantMutation({
       throw new Error("Knowledge base not found")
     }
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", userId))
-      .unique()
-    if (!user) throw new Error("User not found")
-
     const userConfig = args.config ?? {}
     const config = {
       maxDepth: userConfig.maxDepth ?? 3,
@@ -71,7 +71,7 @@ export const startCrawl = tenantMutation({
     const jobId = await ctx.db.insert("crawlJobs", {
       orgId,
       kbId: args.kbId,
-      userId: user._id,
+      userId,
       startUrl: args.startUrl,
       config,
       status: "running",
@@ -96,11 +96,11 @@ export const startCrawl = tenantMutation({
     // Enqueue the first batch scrape action
     const workId = await pool.enqueueAction(
       ctx,
-      internal.scraping.actions.batchScrape,
+      internal.kb.crawl_actions.batchScrape,
       { crawlJobId: jobId },
       {
         context: { jobId },
-        onComplete: internal.scraping.orchestration.onBatchComplete
+        onComplete: internal.kb.crawl.onBatchComplete
       }
     )
 
@@ -212,7 +212,7 @@ export const persistScrapedPage = internalMutation({
 
     // Create document via createFromScrape
     const documentId = await ctx.runMutation(
-      internal.crud.documents.createFromScrape,
+      internal.kb.documents.createFromScrape,
       {
         orgId: job.orgId,
         kbId: job.kbId,
@@ -359,11 +359,11 @@ export const onBatchComplete = internalMutation({
       // More work to do — enqueue another batch
       await pool.enqueueAction(
         ctx,
-        internal.scraping.actions.batchScrape,
+        internal.kb.crawl_actions.batchScrape,
         { crawlJobId: context.jobId },
         {
           context: { jobId: context.jobId },
-          onComplete: internal.scraping.orchestration.onBatchComplete
+          onComplete: internal.kb.crawl.onBatchComplete
         }
       )
     } else {

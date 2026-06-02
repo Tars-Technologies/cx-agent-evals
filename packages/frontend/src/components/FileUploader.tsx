@@ -10,8 +10,8 @@ interface FileUploaderProps {
 }
 
 export function FileUploader({ kbId }: FileUploaderProps) {
-  const generateUploadUrl = useMutation(api.crud.documents.generateUploadUrl)
-  const createDocument = useMutation(api.crud.documents.create)
+  const generateUploadUrl = useMutation(api.kb.documents.generateUploadUrl)
+  const createDocument = useMutation(api.kb.documents.create)
   const [uploading, setUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)

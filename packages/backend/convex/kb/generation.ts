@@ -1,3 +1,9 @@
+/**
+ * Question-generation job orchestration: WorkPool callbacks, status transitions, cancel.
+ *
+ * Owns the generation WorkPool; mutations here drive job lifecycle but never
+ * call OpenAI directly — heavy work is delegated to generation_actions.ts.
+ */
 import {
   type RunResult,
   vOnCompleteArgs,
@@ -68,12 +74,6 @@ export const startGeneration = tenantMutation({
       )
     }
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", userId))
-      .unique()
-    if (!user) throw new Error("User not found")
-
     // Create dataset record
     const datasetId = await ctx.db.insert("datasets", {
       orgId,
@@ -83,7 +83,7 @@ export const startGeneration = tenantMutation({
       strategyConfig: args.strategyConfig,
       questionCount: 0,
       metadata: {},
-      createdBy: user._id,
+      createdBy: userId,
       createdAt: Date.now()
     })
 
@@ -115,7 +115,7 @@ export const startGeneration = tenantMutation({
       processedItems: 0,
       failedItems: 0,
       skippedItems: 0,
-      createdBy: user._id,
+      createdBy: userId,
       createdAt: Date.now()
     })
 
@@ -125,7 +125,7 @@ export const startGeneration = tenantMutation({
     if (args.strategy === "simple") {
       const wId = await pool.enqueueAction(
         ctx,
-        internal.generation.actions.generateSimple,
+        internal.kb.generation_actions.generateSimple,
         {
           datasetId,
           kbId: args.kbId,
@@ -133,14 +133,14 @@ export const startGeneration = tenantMutation({
         },
         {
           context: { jobId, itemKey: "corpus" },
-          onComplete: internal.generation.orchestration.onQuestionGenerated
+          onComplete: internal.kb.generation.onQuestionGenerated
         }
       )
       workIds.push(wId)
     } else if (args.strategy === "dimension-driven") {
       const wId = await pool.enqueueAction(
         ctx,
-        internal.generation.actions.generateDimensionDriven,
+        internal.kb.generation_actions.generateDimensionDriven,
         {
           datasetId,
           kbId: args.kbId,
@@ -148,14 +148,14 @@ export const startGeneration = tenantMutation({
         },
         {
           context: { jobId, itemKey: "corpus" },
-          onComplete: internal.generation.orchestration.onQuestionGenerated
+          onComplete: internal.kb.generation.onQuestionGenerated
         }
       )
       workIds.push(wId)
     } else if (args.strategy === "real-world-grounded") {
       const wId = await pool.enqueueAction(
         ctx,
-        internal.generation.actions.generateRealWorldGrounded,
+        internal.kb.generation_actions.generateRealWorldGrounded,
         {
           datasetId,
           kbId: args.kbId,
@@ -163,7 +163,7 @@ export const startGeneration = tenantMutation({
         },
         {
           context: { jobId, itemKey: "corpus" },
-          onComplete: internal.generation.orchestration.onQuestionGenerated
+          onComplete: internal.kb.generation.onQuestionGenerated
         }
       )
       workIds.push(wId)
@@ -171,7 +171,7 @@ export const startGeneration = tenantMutation({
       // Phase 1: preparation (single action that calls savePlanAndEnqueueDocs internally)
       const wId = await pool.enqueueAction(
         ctx,
-        internal.generation.actions.prepareGeneration,
+        internal.kb.generation_actions.prepareGeneration,
         {
           jobId,
           datasetId,
@@ -180,7 +180,7 @@ export const startGeneration = tenantMutation({
         },
         {
           context: { jobId, itemKey: "prepare" },
-          onComplete: internal.generation.orchestration.onPrepareComplete
+          onComplete: internal.kb.generation.onPrepareComplete
         }
       )
       workIds.push(wId)
@@ -273,7 +273,7 @@ export const onQuestionGenerated = internalMutation({
       for (const question of questions) {
         const wId = await pool.enqueueAction(
           ctx,
-          internal.generation.actions.assignGroundTruthForQuestion,
+          internal.kb.generation_actions.assignGroundTruthForQuestion,
           {
             questionId: question._id,
             kbId: job.kbId,
@@ -281,7 +281,7 @@ export const onQuestionGenerated = internalMutation({
           },
           {
             context: { jobId: context.jobId, itemKey: question._id as string },
-            onComplete: internal.generation.orchestration.onGroundTruthAssigned
+            onComplete: internal.kb.generation.onGroundTruthAssigned
           }
         )
         gtWorkIds.push(wId)
@@ -364,9 +364,13 @@ export const onGroundTruthAssigned = internalMutation({
       })
 
       // Fire-and-forget LangSmith sync
-      await ctx.scheduler.runAfter(0, internal.langsmith.sync.syncDataset, {
-        datasetId: job.datasetId
-      })
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.langsmith_actions.syncDataset,
+        {
+          datasetId: job.datasetId
+        }
+      )
     } else {
       await ctx.db.patch(context.jobId, counterPatch(counters))
     }
@@ -489,7 +493,7 @@ export const savePlanAndEnqueueDocs = internalMutation({
     for (const doc of activeDocs) {
       const wId = await pool.enqueueAction(
         ctx,
-        internal.generation.actions.generateForDoc,
+        internal.kb.generation_actions.generateForDoc,
         {
           jobId: args.jobId,
           datasetId: args.datasetId,
@@ -501,7 +505,7 @@ export const savePlanAndEnqueueDocs = internalMutation({
         },
         {
           context: { jobId: args.jobId, itemKey: doc.docId },
-          onComplete: internal.generation.orchestration.onDocGenerated
+          onComplete: internal.kb.generation.onDocGenerated
         }
       )
       workIds.push(wId)
@@ -613,9 +617,13 @@ export const onDocGenerated = internalMutation({
       })
 
       // Fire-and-forget LangSmith sync
-      await ctx.scheduler.runAfter(0, internal.langsmith.sync.syncDataset, {
-        datasetId: job.datasetId
-      })
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.langsmith_actions.syncDataset,
+        {
+          datasetId: job.datasetId
+        }
+      )
     } else {
       await ctx.db.patch(context.jobId, {
         ...counterPatch(counters),

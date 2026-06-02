@@ -22,7 +22,7 @@ export function RunPanel({ config, experimentId, experiment }: RunPanelProps) {
 
   // Get available experiments to run on (same KB)
   const experiments = useQuery(
-    api.experiments.orchestration.byKb,
+    api.kb.experiments.byKb,
     experiment.kbId ? { kbId: experiment.kbId } : "skip"
   )
   const completedExperiments = (experiments ?? []).filter(
@@ -56,13 +56,13 @@ export function RunPanel({ config, experimentId, experiment }: RunPanelProps) {
 
   // Questions for display
   const targetExp = useQuery(
-    api.experiments.orchestration.get,
+    api.kb.experiments.get,
     displayRun?.targetExperimentId
       ? { id: displayRun.targetExperimentId }
       : "skip"
   )
   const targetQuestions = useQuery(
-    api.crud.questions.byDataset,
+    api.kb.questions.byDataset,
     targetExp?.datasetId ? { datasetId: targetExp.datasetId } : "skip"
   )
   const questionMap = new Map((targetQuestions ?? []).map((q) => [q._id, q]))

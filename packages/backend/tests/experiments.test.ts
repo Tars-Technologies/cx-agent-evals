@@ -58,7 +58,7 @@ describe("experiments: onExperimentComplete", () => {
       phase: "done"
     })
 
-    await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
+    await t.mutation(internal.kb.experiments.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
       result: { kind: "success", returnValue: {} }
@@ -77,7 +77,7 @@ describe("experiments: onExperimentComplete", () => {
       status: "running"
     })
 
-    await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
+    await t.mutation(internal.kb.experiments.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
       result: { kind: "failed", error: "Action timed out" }
@@ -97,7 +97,7 @@ describe("experiments: onExperimentComplete", () => {
       status: "canceling"
     })
 
-    await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
+    await t.mutation(internal.kb.experiments.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
       result: { kind: "canceled" }
@@ -116,7 +116,7 @@ describe("experiments: onExperimentComplete", () => {
       status: "failed"
     })
 
-    await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
+    await t.mutation(internal.kb.experiments.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
       result: { kind: "failed", error: "Duplicate failure" }
@@ -154,7 +154,7 @@ describe("experiments: get query", () => {
     })
 
     const authedT = t.withIdentity(testIdentity)
-    const exp = await authedT.query(internal.experiments.orchestration.get, {
+    const exp = await authedT.query(internal.kb.experiments.get, {
       id: experimentId
     })
     expect(exp).toBeNull()
@@ -167,7 +167,7 @@ describe("experiments: get query", () => {
     const experimentId = await seedExperiment(t, userId, datasetId)
 
     const authedT = t.withIdentity(testIdentity)
-    const exp = await authedT.query(internal.experiments.orchestration.get, {
+    const exp = await authedT.query(internal.kb.experiments.get, {
       id: experimentId
     })
     expect(exp).not.toBeNull()

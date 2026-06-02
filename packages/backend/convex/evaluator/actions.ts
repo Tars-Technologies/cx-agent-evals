@@ -119,10 +119,10 @@ export const runValidation = internalAction({
       )
 
       const questions = await ctx.runQuery(
-        internal.crud.questions.byDatasetInternal,
+        internal.kb.questions.byDatasetInternal,
         {
           datasetId: (await ctx.runQuery(
-            internal.experiments.orchestration.getInternal,
+            internal.kb.experiments.getInternal,
             { id: config.experimentId }
           ))!.datasetId
         }
@@ -308,13 +308,13 @@ export const runOnExperiment = internalAction({
       )
 
       const targetExp = await ctx.runQuery(
-        internal.experiments.orchestration.getInternal,
+        internal.kb.experiments.getInternal,
         { id: args.targetExperimentId }
       )
       if (!targetExp) throw new Error("Target experiment not found")
 
       const questions = await ctx.runQuery(
-        internal.crud.questions.byDatasetInternal,
+        internal.kb.questions.byDatasetInternal,
         { datasetId: targetExp.datasetId }
       )
       const questionMap = new Map(
@@ -338,11 +338,11 @@ export const runOnExperiment = internalAction({
       )
 
       const sourceExp = await ctx.runQuery(
-        internal.experiments.orchestration.getInternal,
+        internal.kb.experiments.getInternal,
         { id: config.experimentId }
       )
       const sourceQuestions = await ctx.runQuery(
-        internal.crud.questions.byDatasetInternal,
+        internal.kb.questions.byDatasetInternal,
         { datasetId: sourceExp!.datasetId }
       )
       const sourceQuestionMap = new Map(

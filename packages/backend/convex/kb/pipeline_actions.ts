@@ -1,5 +1,11 @@
 "use node"
 
+/**
+ * Retrieval pipeline: query rewrite, vector search, Cohere rerank/refine, traced retrieve.
+ *
+ * Actions live here ("use node") because they import openai and cohere,
+ * which depend on Node.js built-ins unavailable in the Convex edge runtime.
+ */
 import type {
   HydeQueryConfig,
   MultiQueryConfig,
@@ -220,7 +226,7 @@ export const rewriteQuery = tenantAction({
     query: v.string()
   },
   handler: async (ctx, args) => {
-    const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
+    const retriever = await ctx.runQuery(internal.kb.retrievers.getInternal, {
       id: args.retrieverId
     })
 
@@ -295,7 +301,7 @@ async function loadAllChunks(
       }>
       isDone: boolean
       continueCursor: string
-    } = await ctx.runQuery(api.retrieval.chunks.getChunksByRetrieverPage, {
+    } = await ctx.runQuery(api.kb.chunks.getChunksByRetrieverPage, {
       kbId,
       indexConfigHash,
       cursor,
@@ -662,7 +668,7 @@ export const searchWithQueries = tenantAction({
     const start = performance.now()
 
     // Load retriever
-    const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
+    const retriever = await ctx.runQuery(internal.kb.retrievers.getInternal, {
       id: args.retrieverId
     })
 
@@ -911,7 +917,7 @@ async function applyExpandContext(
 ): Promise<ChunkResult[]> {
   // Fetch all documents in the KB so we can look up content by docId
   const docs: Array<{ docId: string; content: string }> = await ctx.runQuery(
-    internal.crud.documents.listByKbInternal,
+    internal.kb.documents.listByKbInternal,
     { kbId }
   )
 
@@ -1058,7 +1064,7 @@ export const refine = tenantAction({
   },
   handler: async (ctx, args) => {
     // Load and validate retriever
-    const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
+    const retriever = await ctx.runQuery(internal.kb.retrievers.getInternal, {
       id: args.retrieverId
     })
 
@@ -1288,7 +1294,7 @@ export const retrieveWithTrace = tenantAction({
     const totalStart = performance.now()
 
     // Load and validate retriever
-    const retriever = await ctx.runQuery(internal.crud.retrievers.getInternal, {
+    const retriever = await ctx.runQuery(internal.kb.retrievers.getInternal, {
       id: args.retrieverId
     })
 

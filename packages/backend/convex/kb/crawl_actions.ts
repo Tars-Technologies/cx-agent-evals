@@ -1,5 +1,11 @@
 "use node"
 
+/**
+ * Batch web scraping and page fetching as Convex actions.
+ *
+ * Actions live here ("use node") because they import HTTP scraper dependencies
+ * that rely on Node.js built-ins unavailable in the Convex edge runtime.
+ */
 import {
   ContentScraper,
   filterLinks,
@@ -20,12 +26,9 @@ export const batchScrape = internalAction({
 
     while (Date.now() - startTime < TIME_BUDGET_MS - 30_000) {
       // Check if job was cancelled
-      const job = await ctx.runQuery(
-        internal.scraping.orchestration.getJobInternal,
-        {
-          jobId: args.crawlJobId
-        }
-      )
+      const job = await ctx.runQuery(internal.kb.crawl.getJobInternal, {
+        jobId: args.crawlJobId
+      })
       if (!job || job.status === "cancelled") return
 
       // Check maxPages limit
@@ -33,18 +36,15 @@ export const batchScrape = internalAction({
       if (job.stats.scraped >= maxPages) return
 
       // Get batch of pending URLs
-      const pendingUrls = await ctx.runQuery(
-        internal.scraping.orchestration.getPendingUrls,
-        {
-          crawlJobId: args.crawlJobId,
-          limit: BATCH_SIZE
-        }
-      )
+      const pendingUrls = await ctx.runQuery(internal.kb.crawl.getPendingUrls, {
+        crawlJobId: args.crawlJobId,
+        limit: BATCH_SIZE
+      })
 
       if (pendingUrls.length === 0) return
 
       // Mark batch as scraping
-      await ctx.runMutation(internal.scraping.orchestration.markUrlsScraping, {
+      await ctx.runMutation(internal.kb.crawl.markUrlsScraping, {
         urlIds: pendingUrls.map((u: any) => u._id)
       })
 
@@ -90,27 +90,21 @@ export const batchScrape = internalAction({
               }))
 
               // Persist the scraped page
-              await ctx.runMutation(
-                internal.scraping.orchestration.persistScrapedPage,
-                {
-                  crawlJobId: args.crawlJobId,
-                  crawlUrlId: urlDoc._id,
-                  title: scraped.metadata.title || urlDoc.url,
-                  content: scraped.markdown,
-                  sourceUrl: urlDoc.url,
-                  discoveredUrls
-                }
-              )
+              await ctx.runMutation(internal.kb.crawl.persistScrapedPage, {
+                crawlJobId: args.crawlJobId,
+                crawlUrlId: urlDoc._id,
+                title: scraped.metadata.title || urlDoc.url,
+                content: scraped.markdown,
+                sourceUrl: urlDoc.url,
+                discoveredUrls
+              })
             } catch (error: any) {
               // Mark URL as failed
-              await ctx.runMutation(
-                internal.scraping.orchestration.markUrlFailed,
-                {
-                  crawlJobId: args.crawlJobId,
-                  crawlUrlId: urlDoc._id,
-                  error: error.message || "Unknown error"
-                }
-              )
+              await ctx.runMutation(internal.kb.crawl.markUrlFailed, {
+                crawlJobId: args.crawlJobId,
+                crawlUrlId: urlDoc._id,
+                error: error.message || "Unknown error"
+              })
             }
           })
         )

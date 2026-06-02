@@ -9,7 +9,7 @@ export const generate = internalAction({
   args: { experimentId: v.id("experiments") },
   handler: async (ctx, args) => {
     const experiment = await ctx.runQuery(
-      internal.experiments.orchestration.getInternal,
+      internal.kb.experiments.getInternal,
       { id: args.experimentId }
     )
     if (!experiment) throw new Error("Experiment not found")
@@ -25,7 +25,7 @@ export const generate = internalAction({
     )
 
     const questions = await ctx.runQuery(
-      internal.crud.questions.byDatasetInternal,
+      internal.kb.questions.byDatasetInternal,
       { datasetId: experiment.datasetId }
     )
 

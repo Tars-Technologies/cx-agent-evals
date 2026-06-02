@@ -80,14 +80,14 @@ export function ExperimentModeLayout({
   }, [selectedRunId])
 
   // Queries
-  const experiments = useQuery(api.experiments.orchestration.byOrg)
+  const experiments = useQuery(api.kb.experiments.byOrg)
   const agentExperiments = useMemo(
     () => experiments?.filter((e: any) => e.experimentType === "agent") ?? [],
     [experiments]
   )
 
   const selectedExperiment = useQuery(
-    api.experiments.orchestration.get,
+    api.kb.experiments.get,
     selectedRunId ? { id: selectedRunId } : "skip"
   )
 
@@ -113,7 +113,7 @@ export function ExperimentModeLayout({
     ) ?? []
 
   const questions = useQuery(
-    api.crud.questions.byDataset,
+    api.kb.questions.byDataset,
     selectedExperiment?.datasetId
       ? { datasetId: selectedExperiment.datasetId }
       : "skip"

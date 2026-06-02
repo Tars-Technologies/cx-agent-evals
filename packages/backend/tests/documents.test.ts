@@ -18,7 +18,7 @@ describe("documents: createFromScrape", () => {
   it("creates a document from scraped content without fileId", async () => {
     const userId = await seedUser(t)
     const kbId = await seedKB(t, userId)
-    const docId = await t.mutation(internal.crud.documents.createFromScrape, {
+    const docId = await t.mutation(internal.kb.documents.createFromScrape, {
       orgId: TEST_ORG_ID,
       kbId,
       title: "Chase Support FAQ",
@@ -44,7 +44,7 @@ describe("documents: ASCII-safe docId", () => {
   it("produces an ASCII hex docId even when title contains em-dash", async () => {
     const userId = await seedUser(t)
     const kbId = await seedKB(t, userId)
-    const id = await t.mutation(internal.crud.documents.createFromScrape, {
+    const id = await t.mutation(internal.kb.documents.createFromScrape, {
       orgId: TEST_ORG_ID,
       kbId,
       title: "BRIGHT MINDS—Proven Ways to Reduce the Risk | Amen Clinics",
@@ -61,14 +61,14 @@ describe("documents: ASCII-safe docId", () => {
     const userId = await seedUser(t)
     const kbId = await seedKB(t, userId)
     const url = "https://example.com/page"
-    const id1 = await t.mutation(internal.crud.documents.createFromScrape, {
+    const id1 = await t.mutation(internal.kb.documents.createFromScrape, {
       orgId: TEST_ORG_ID,
       kbId,
       title: "A",
       content: "x",
       sourceUrl: url
     })
-    const id2 = await t.mutation(internal.crud.documents.createFromScrape, {
+    const id2 = await t.mutation(internal.kb.documents.createFromScrape, {
       orgId: TEST_ORG_ID,
       kbId,
       title: "B (renamed)",
@@ -86,7 +86,7 @@ describe("documents: ASCII-safe docId", () => {
     const userId = await seedUser(t)
     const kbId = await seedKB(t, userId)
     await expect(
-      t.mutation(internal.crud.documents.createFromScrape, {
+      t.mutation(internal.kb.documents.createFromScrape, {
         orgId: TEST_ORG_ID,
         kbId,
         title: "no url",
@@ -108,7 +108,7 @@ describe("documents: remove", () => {
     const docId = await seedDocument(t, kbId, { title: "To Delete" })
 
     const authedT = t.withIdentity(testIdentity)
-    await authedT.mutation(api.crud.documents.remove, { id: docId })
+    await authedT.mutation(api.kb.documents.remove, { id: docId })
 
     const doc = await t.run(async (ctx) => ctx.db.get(docId))
     expect(doc).toBeNull()
@@ -126,7 +126,7 @@ describe("documents: remove", () => {
     const otherT = t.withIdentity(otherOrgIdentity)
 
     await expect(
-      otherT.mutation(api.crud.documents.remove, { id: docId })
+      otherT.mutation(api.kb.documents.remove, { id: docId })
     ).rejects.toThrow("Document not found")
   })
 })
@@ -145,7 +145,7 @@ describe("documents: documentCount maintenance", () => {
     const storageId1 = await t.run(async (ctx) =>
       ctx.storage.store(new Blob(["one"]))
     )
-    await authedT.mutation(api.crud.documents.create, {
+    await authedT.mutation(api.kb.documents.create, {
       kbId,
       storageId: storageId1,
       title: "Doc 1",
@@ -158,7 +158,7 @@ describe("documents: documentCount maintenance", () => {
     const storageId2 = await t.run(async (ctx) =>
       ctx.storage.store(new Blob(["two"]))
     )
-    await authedT.mutation(api.crud.documents.create, {
+    await authedT.mutation(api.kb.documents.create, {
       kbId,
       storageId: storageId2,
       title: "Doc 2",
@@ -173,14 +173,14 @@ describe("documents: documentCount maintenance", () => {
     const userId = await seedUser(t)
     const kbId = await seedKB(t, userId)
 
-    await t.mutation(internal.crud.documents.createFromScrape, {
+    await t.mutation(internal.kb.documents.createFromScrape, {
       orgId: TEST_ORG_ID,
       kbId,
       title: "Scraped 1",
       content: "x",
       sourceUrl: "https://example.com/1"
     })
-    await t.mutation(internal.crud.documents.createFromScrape, {
+    await t.mutation(internal.kb.documents.createFromScrape, {
       orgId: TEST_ORG_ID,
       kbId,
       title: "Scraped 2",
@@ -200,13 +200,13 @@ describe("documents: documentCount maintenance", () => {
     const storageId = await t.run(async (ctx) =>
       ctx.storage.store(new Blob(["a"]))
     )
-    const docId = await authedT.mutation(api.crud.documents.create, {
+    const docId = await authedT.mutation(api.kb.documents.create, {
       kbId,
       storageId,
       title: "Doc",
       content: "a"
     })
-    await authedT.mutation(api.crud.documents.remove, { id: docId })
+    await authedT.mutation(api.kb.documents.remove, { id: docId })
 
     const kb = await t.run(async (ctx) => ctx.db.get(kbId))
     expect(kb!.documentCount).toBe(0)
@@ -222,7 +222,7 @@ describe("documents: documentCount maintenance", () => {
     const docId = await seedDocument(t, kbId, { title: "Orphan" })
     const authedT = t.withIdentity(testIdentity)
 
-    await authedT.mutation(api.crud.documents.remove, { id: docId })
+    await authedT.mutation(api.kb.documents.remove, { id: docId })
 
     const kb = await t.run(async (ctx) => ctx.db.get(kbId))
     expect(kb!.documentCount).toBe(0)
@@ -276,7 +276,7 @@ describe("documents: listCustomizedDocs", () => {
       })
     })
 
-    const docs = await authedT.query(api.crud.documents.listCustomizedDocs, {
+    const docs = await authedT.query(api.kb.documents.listCustomizedDocs, {
       kbId
     })
 
@@ -326,7 +326,7 @@ describe("documents: listCustomizedDocs", () => {
       })
     })
 
-    const docs = await authedT.query(api.crud.documents.listCustomizedDocs, {
+    const docs = await authedT.query(api.kb.documents.listCustomizedDocs, {
       kbId
     })
     expect(docs.map((d) => d.priority)).toEqual([5, 3, 2])
@@ -365,7 +365,7 @@ describe("knowledgeBases: backfillDocumentCounts", () => {
     await seedDocument(t, kbBId, { title: "B3" })
 
     const result = await t.action(
-      internal.crud.knowledgeBasesActions.backfillDocumentCounts,
+      internal.kb.core_actions.backfillDocumentCounts,
       {}
     )
 

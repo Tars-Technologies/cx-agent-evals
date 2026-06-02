@@ -31,7 +31,7 @@ function FailureModesContent() {
   const params = useParams()
   const experimentId = params.id as Id<"experiments">
 
-  const experiment = useQuery(api.experiments.orchestration.get, {
+  const experiment = useQuery(api.kb.experiments.get, {
     id: experimentId
   })
   const stats = useQuery(api.annotations.crud.stats, { experimentId })
@@ -45,7 +45,7 @@ function FailureModesContent() {
     experimentId
   })
   const questions = useQuery(
-    api.crud.questions.byDataset,
+    api.kb.questions.byDataset,
     experiment?.datasetId ? { datasetId: experiment.datasetId } : "skip"
   )
 

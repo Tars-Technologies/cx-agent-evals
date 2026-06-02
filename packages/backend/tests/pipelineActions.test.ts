@@ -56,7 +56,7 @@ describe("chunks: getChunksByRetrieverPage", () => {
 
     const result = await t
       .withIdentity(testIdentity)
-      .query(api.retrieval.chunks.getChunksByRetrieverPage, {
+      .query(api.kb.chunks.getChunksByRetrieverPage, {
         kbId,
         indexConfigHash: "hash-abc",
         cursor: null
@@ -84,7 +84,7 @@ describe("chunks: getChunksByRetrieverPage", () => {
 
     const result = await t
       .withIdentity(testIdentity)
-      .query(api.retrieval.chunks.getChunksByRetrieverPage, {
+      .query(api.kb.chunks.getChunksByRetrieverPage, {
         kbId,
         indexConfigHash: "hash-wrong",
         cursor: null
@@ -112,7 +112,7 @@ describe("chunks: getChunksByRetrieverPage", () => {
     // Filter to doc1 only
     const result = await t
       .withIdentity(testIdentity)
-      .query(api.retrieval.chunks.getChunksByRetrieverPage, {
+      .query(api.kb.chunks.getChunksByRetrieverPage, {
         kbId,
         indexConfigHash: "hash-abc",
         documentId: doc1Id,
@@ -137,7 +137,7 @@ describe("chunks: getChunksByRetrieverPage", () => {
 
     // First page
     const page1 = await authedT.query(
-      api.retrieval.chunks.getChunksByRetrieverPage,
+      api.kb.chunks.getChunksByRetrieverPage,
       { kbId, indexConfigHash: "hash-abc", cursor: null, pageSize: 25 }
     )
 
@@ -147,7 +147,7 @@ describe("chunks: getChunksByRetrieverPage", () => {
 
     // Second page
     const page2 = await authedT.query(
-      api.retrieval.chunks.getChunksByRetrieverPage,
+      api.kb.chunks.getChunksByRetrieverPage,
       {
         kbId,
         indexConfigHash: "hash-abc",
@@ -161,7 +161,7 @@ describe("chunks: getChunksByRetrieverPage", () => {
 
     // Third page
     const page3 = await authedT.query(
-      api.retrieval.chunks.getChunksByRetrieverPage,
+      api.kb.chunks.getChunksByRetrieverPage,
       {
         kbId,
         indexConfigHash: "hash-abc",
@@ -195,7 +195,7 @@ describe("chunks: getChunksByRetrieverPage", () => {
     await expect(
       t
         .withIdentity(otherOrgIdentity)
-        .query(api.retrieval.chunks.getChunksByRetrieverPage, {
+        .query(api.kb.chunks.getChunksByRetrieverPage, {
           kbId,
           indexConfigHash: "hash-abc",
           cursor: null
@@ -225,7 +225,7 @@ describe("chunks: getChunksByRetrieverPage", () => {
 
     const result = await t
       .withIdentity(testIdentity)
-      .query(api.retrieval.chunks.getChunksByRetrieverPage, {
+      .query(api.kb.chunks.getChunksByRetrieverPage, {
         kbId,
         indexConfigHash: "hash-abc",
         cursor: null
@@ -258,7 +258,7 @@ describe("documents: getContent", () => {
 
     const result = await t
       .withIdentity(testIdentity)
-      .query(api.crud.documents.getContent, { id: docId })
+      .query(api.kb.documents.getContent, { id: docId })
 
     expect(result.docId).toBe("My Doc")
     expect(result.content).toBe("# Heading\n\nParagraph text here.")
@@ -275,7 +275,7 @@ describe("documents: getContent", () => {
     await expect(
       t
         .withIdentity(otherOrgIdentity)
-        .query(api.crud.documents.getContent, { id: docId })
+        .query(api.kb.documents.getContent, { id: docId })
     ).rejects.toThrow("Access denied")
   })
 
@@ -293,7 +293,7 @@ describe("documents: getContent", () => {
     await expect(
       t
         .withIdentity(testIdentity)
-        .query(api.crud.documents.getContent, { id: docId })
+        .query(api.kb.documents.getContent, { id: docId })
     ).rejects.toThrow("Document not found")
   })
 })

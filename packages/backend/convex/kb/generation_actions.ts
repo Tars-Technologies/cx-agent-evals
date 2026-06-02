@@ -1,5 +1,11 @@
 "use node"
 
+/**
+ * Runs question-generation strategies (eval-lib + OpenAI) as Convex actions.
+ *
+ * Actions live here ("use node") because they import eval-lib/llm and openai,
+ * which depend on Node.js built-ins unavailable in the Convex edge runtime.
+ */
 import {
   calculateQuotas,
   createCorpusFromDocuments,
@@ -29,7 +35,7 @@ async function loadCorpusFromKb(
   ctx: { runQuery: (ref: any, args: any) => Promise<any> },
   kbId: Id<"knowledgeBases">
 ) {
-  const docs = await ctx.runQuery(internal.crud.documents.listByKbInternal, {
+  const docs = await ctx.runQuery(internal.kb.documents.listByKbInternal, {
     kbId
   })
   return {
@@ -62,7 +68,7 @@ export const generateSimple = internalAction({
     if (queries.length > 0) {
       for (let i = 0; i < queries.length; i += QUESTION_INSERT_BATCH_SIZE) {
         const batch = queries.slice(i, i + QUESTION_INSERT_BATCH_SIZE)
-        await ctx.runMutation(internal.crud.questions.insertBatch, {
+        await ctx.runMutation(internal.kb.questions.insertBatch, {
           datasetId: args.datasetId,
           questions: batch.map((q, idx) => ({
             queryId: `simple_q${i + idx}`,
@@ -107,7 +113,7 @@ export const generateDimensionDriven = internalAction({
     if (queries.length > 0) {
       for (let i = 0; i < queries.length; i += QUESTION_INSERT_BATCH_SIZE) {
         const batch = queries.slice(i, i + QUESTION_INSERT_BATCH_SIZE)
-        await ctx.runMutation(internal.crud.questions.insertBatch, {
+        await ctx.runMutation(internal.kb.questions.insertBatch, {
           datasetId: args.datasetId,
           questions: batch.map((q, idx) => ({
             queryId: `dd_q${i + idx}`,
@@ -164,7 +170,7 @@ export const generateRealWorldGrounded = internalAction({
     if (queries.length > 0) {
       for (let i = 0; i < queries.length; i += QUESTION_INSERT_BATCH_SIZE) {
         const batch = queries.slice(i, i + QUESTION_INSERT_BATCH_SIZE)
-        await ctx.runMutation(internal.crud.questions.insertBatch, {
+        await ctx.runMutation(internal.kb.questions.insertBatch, {
           datasetId: args.datasetId,
           questions: batch.map((q, idx) => ({
             queryId: `rwg_q${i + idx}`,
@@ -271,35 +277,29 @@ export const prepareGeneration = internalAction({
 
     // Step 1: Store shared plan data on the job record (avoids duplicating
     // large arrays in every per-doc action call)
-    await ctx.runMutation(
-      internal.generation.orchestration.storeGenerationPlan,
-      {
-        jobId: args.jobId,
-        sharedPlan: {
-          validCombos: truncatedCombos,
-          globalStyleExamples,
-          preferences,
-          model
-        }
+    await ctx.runMutation(internal.kb.generation.storeGenerationPlan, {
+      jobId: args.jobId,
+      sharedPlan: {
+        validCombos: truncatedCombos,
+        globalStyleExamples,
+        preferences,
+        model
       }
-    )
+    })
 
     // Step 2: Enqueue per-doc actions with only doc-specific data
-    await ctx.runMutation(
-      internal.generation.orchestration.savePlanAndEnqueueDocs,
-      {
-        jobId: args.jobId,
-        datasetId: args.datasetId,
-        kbId: args.kbId,
-        strategyConfig: args.strategyConfig,
-        plan: {
-          quotas: Object.fromEntries(quotas),
-          unmatchedQuestions: truncatedUnmatched,
-          docPlans,
-          model
-        }
+    await ctx.runMutation(internal.kb.generation.savePlanAndEnqueueDocs, {
+      jobId: args.jobId,
+      datasetId: args.datasetId,
+      kbId: args.kbId,
+      strategyConfig: args.strategyConfig,
+      plan: {
+        quotas: Object.fromEntries(quotas),
+        unmatchedQuestions: truncatedUnmatched,
+        docPlans,
+        model
       }
-    )
+    })
 
     return {
       phase: "prepared",
@@ -325,17 +325,16 @@ export const generateForDoc = internalAction({
       return { questionsGenerated: 0, failedCitations: 0, missedQuestions: 0 }
 
     // Read shared plan data from job record (stored once, not passed per-doc)
-    const job = await ctx.runQuery(
-      internal.generation.orchestration.getJobInternal,
-      { jobId: args.jobId }
-    )
+    const job = await ctx.runQuery(internal.kb.generation.getJobInternal, {
+      jobId: args.jobId
+    })
     const sharedPlan = (job?.generationPlan ?? {}) as {
       validCombos?: Record<string, string>[]
       globalStyleExamples?: string[]
       preferences?: any
     }
 
-    const doc = await ctx.runQuery(internal.crud.documents.getInternal, {
+    const doc = await ctx.runQuery(internal.kb.documents.getInternal, {
       id: args.docConvexId
     })
     const llmClient = createLLMClient()
@@ -468,7 +467,7 @@ export const generateForDoc = internalAction({
         i += QUESTION_INSERT_BATCH_SIZE
       ) {
         const batch = allValidated.slice(i, i + QUESTION_INSERT_BATCH_SIZE)
-        await ctx.runMutation(internal.crud.questions.insertBatch, {
+        await ctx.runMutation(internal.kb.questions.insertBatch, {
           datasetId: args.datasetId,
           questions: batch
         })
@@ -476,7 +475,7 @@ export const generateForDoc = internalAction({
     }
 
     // Report progress (once, after all retries)
-    await ctx.runMutation(internal.generation.orchestration.updateDocProgress, {
+    await ctx.runMutation(internal.kb.generation.updateDocProgress, {
       jobId: args.jobId,
       docName: doc.title
     })
@@ -500,13 +499,13 @@ export const assignGroundTruthForQuestion = internalAction({
     datasetId: v.id("datasets")
   },
   handler: async (ctx, args) => {
-    const question = await ctx.runQuery(internal.crud.questions.getInternal, {
+    const question = await ctx.runQuery(internal.kb.questions.getInternal, {
       id: args.questionId
     })
 
     const { corpus } = await loadCorpusFromKb(ctx, args.kbId)
 
-    const dataset = await ctx.runQuery(internal.crud.datasets.getInternal, {
+    const dataset = await ctx.runQuery(internal.kb.datasets.getInternal, {
       id: args.datasetId
     })
     const config = dataset.strategyConfig as Record<string, unknown>
@@ -533,7 +532,7 @@ export const assignGroundTruthForQuestion = internalAction({
         text: s.text
       }))
 
-      await ctx.runMutation(internal.crud.questions.updateSpans, {
+      await ctx.runMutation(internal.kb.questions.updateSpans, {
         questionId: args.questionId,
         relevantSpans: spans
       })

@@ -123,11 +123,11 @@ export function ValidatePanel({ config, experimentId }: ValidatePanelProps) {
   }, [viewMode])
 
   // Load questions for display
-  const experiment = useQuery(api.experiments.orchestration.get, {
+  const experiment = useQuery(api.kb.experiments.get, {
     id: experimentId
   })
   const questions = useQuery(
-    api.crud.questions.byDataset,
+    api.kb.questions.byDataset,
     experiment?.datasetId ? { datasetId: experiment.datasetId } : "skip"
   )
   const questionMap = new Map((questions ?? []).map((q) => [q._id, q]))

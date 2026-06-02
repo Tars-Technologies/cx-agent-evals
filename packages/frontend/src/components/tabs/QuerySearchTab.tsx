@@ -502,12 +502,8 @@ export function QuerySearchTab({
   const [isSearching, setIsSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const rewriteQueryAction = useAction(
-    api.retrieval.pipelineActions.rewriteQuery
-  )
-  const searchAction = useAction(
-    api.retrieval.pipelineActions.searchWithQueries
-  )
+  const rewriteQueryAction = useAction(api.kb.pipeline_actions.rewriteQuery)
+  const searchAction = useAction(api.kb.pipeline_actions.searchWithQueries)
 
   const handleRun = useCallback(async () => {
     if (!query.trim()) return

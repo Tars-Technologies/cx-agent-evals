@@ -1,5 +1,11 @@
 "use node"
 
+/**
+ * Dataset sync to LangSmith.
+ *
+ * Actions live here ("use node") because they import the LangSmith SDK,
+ * which depends on Node.js built-ins unavailable in the Convex edge runtime.
+ */
 import {
   type CharacterSpan,
   DocumentId,
@@ -24,18 +30,18 @@ export const syncDataset = internalAction({
   },
   handler: async (ctx, args) => {
     // Update sync status to syncing
-    await ctx.runMutation(internal.crud.datasets.updateSyncStatus, {
+    await ctx.runMutation(internal.kb.datasets.updateSyncStatus, {
       datasetId: args.datasetId,
       langsmithSyncStatus: "syncing"
     })
 
     try {
-      const dataset = await ctx.runQuery(internal.crud.datasets.getInternal, {
+      const dataset = await ctx.runQuery(internal.kb.datasets.getInternal, {
         id: args.datasetId
       })
 
       const allQuestions = await ctx.runQuery(
-        internal.crud.questions.byDatasetInternal,
+        internal.kb.questions.byDatasetInternal,
         { datasetId: args.datasetId }
       )
       // Only sync questions with ground truth spans — questions without
@@ -45,7 +51,7 @@ export const syncDataset = internalAction({
       )
 
       if (questions.length === 0) {
-        await ctx.runMutation(internal.crud.datasets.updateSyncStatus, {
+        await ctx.runMutation(internal.kb.datasets.updateSyncStatus, {
           datasetId: args.datasetId,
           langsmithSyncStatus: "skipped"
         })
@@ -93,13 +99,13 @@ export const syncDataset = internalAction({
       })
 
       // Update dataset with LangSmith info and aligned question count
-      await ctx.runMutation(internal.crud.datasets.updateSyncStatus, {
+      await ctx.runMutation(internal.kb.datasets.updateSyncStatus, {
         datasetId: args.datasetId,
         langsmithDatasetId: result.datasetName,
         langsmithUrl: result.datasetUrl,
         langsmithSyncStatus: "synced"
       })
-      await ctx.runMutation(internal.crud.datasets.updateQuestionCount, {
+      await ctx.runMutation(internal.kb.datasets.updateQuestionCount, {
         datasetId: args.datasetId,
         questionCount: questions.length
       })
@@ -129,7 +135,7 @@ export const syncDataset = internalAction({
 
         if (updates.length > 0) {
           await ctx.runMutation(
-            internal.crud.questions.updateLangsmithExampleIds,
+            internal.kb.questions.updateLangsmithExampleIds,
             {
               updates
             }
@@ -141,7 +147,7 @@ export const syncDataset = internalAction({
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      await ctx.runMutation(internal.crud.datasets.updateSyncStatus, {
+      await ctx.runMutation(internal.kb.datasets.updateSyncStatus, {
         datasetId: args.datasetId,
         langsmithSyncStatus: `failed: ${message}`
       })

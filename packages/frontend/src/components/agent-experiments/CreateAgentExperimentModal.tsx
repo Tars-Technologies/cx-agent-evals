@@ -27,7 +27,7 @@ export function CreateAgentExperimentModal({
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
 
   const agents = useQuery(api.crud.agents.byOrg)
-  const datasets = useQuery(api.crud.datasets.list)
+  const datasets = useQuery(api.kb.datasets.list)
   const startExperiment = useMutation(
     api.experiments.orchestration.startAgentExperiment
   )

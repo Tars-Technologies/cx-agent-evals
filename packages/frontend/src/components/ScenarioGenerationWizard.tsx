@@ -57,7 +57,7 @@ export function ScenarioGenerationWizard({
   onError: (error: string) => void
   onCancel: () => void
 }) {
-  const createSimDataset = useMutation(api.crud.datasets.createSimDataset)
+  const createSimDataset = useMutation(api.kb.datasets.createSimDataset)
   const startGeneration = useMutation(
     api.conversationSim.generation.startGeneration
   )

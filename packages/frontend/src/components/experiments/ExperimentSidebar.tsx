@@ -55,7 +55,7 @@ export function ExperimentSidebar({
   selectedRunId,
   onSelect
 }: ExperimentSidebarProps) {
-  const runs = useQuery(api.experimentRuns.orchestration.byKb, { kbId })
+  const runs = useQuery(api.kb.experimentRuns.byKb, { kbId })
 
   return (
     <div

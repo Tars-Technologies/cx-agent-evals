@@ -1,3 +1,6 @@
+/**
+ * Low-level document-chunk CRUD (batched insert/patch/delete, paginated queries).
+ */
 import { v } from "convex/values"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantQuery } from "../lib/auth/tenant"

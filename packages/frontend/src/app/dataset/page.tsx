@@ -49,27 +49,24 @@ function GeneratePageContent() {
 
   // Questions from Convex (reactive)
   const questionsData = useQuery(
-    api.crud.questions.byDataset,
+    api.kb.questions.byDataset,
     datasetId ? { datasetId } : "skip"
   )
 
   // KB metadata for emptiness check (replaces loading the full doc list)
   const selectedKb = useQuery(
-    api.crud.knowledgeBases.get,
+    api.kb.core.get,
     selectedKbId ? { id: selectedKbId } : "skip"
   )
 
   // Job status (reactive — updates as generation progresses)
-  const job = useQuery(
-    api.generation.orchestration.getJob,
-    jobId ? { jobId } : "skip"
-  )
+  const job = useQuery(api.kb.generation.getJob, jobId ? { jobId } : "skip")
 
-  const deleteDataset = useMutation(api.crud.datasets.deleteDataset)
+  const deleteDataset = useMutation(api.kb.datasets.deleteDataset)
 
   // Datasets for selected KB
   const kbDatasets = useQuery(
-    api.crud.datasets.byKb,
+    api.kb.datasets.byKb,
     selectedKbId ? { kbId: selectedKbId } : "skip"
   )
 
@@ -81,11 +78,11 @@ function GeneratePageContent() {
   const firstFilteredId = filteredDatasets[0]?._id ?? null
 
   // Active job detection (org-wide, no kbId filter — we want to know about any active job)
-  const activeJob = useQuery(api.generation.orchestration.getActiveJob, {})
+  const activeJob = useQuery(api.kb.generation.getActiveJob, {})
 
   // Look up KB name for the active job's banner
   const activeJobKb = useQuery(
-    api.crud.knowledgeBases.get,
+    api.kb.core.get,
     activeJob ? { id: activeJob.kbId } : "skip"
   )
 
@@ -95,7 +92,7 @@ function GeneratePageContent() {
     {}
   )
   const activeScenarioJobKb = useQuery(
-    api.crud.knowledgeBases.get,
+    api.kb.core.get,
     activeScenarioJob ? { id: activeScenarioJob.kbId } : "skip"
   )
 
@@ -110,7 +107,7 @@ function GeneratePageContent() {
 
   // Questions for browsed dataset
   const browseQuestions = useQuery(
-    api.crud.questions.byDataset,
+    api.kb.questions.byDataset,
     browseDatasetId ? { datasetId: browseDatasetId } : "skip"
   )
 
@@ -194,7 +191,7 @@ function GeneratePageContent() {
     number | null
   >(null)
   const selectedDocData = useQuery(
-    api.crud.documents.get,
+    api.kb.documents.get,
     selectedDocId ? { id: selectedDocId } : "skip"
   )
 
@@ -281,7 +278,7 @@ function GeneratePageContent() {
   }, [selectedQ])
 
   const resolvedDocs = useQuery(
-    api.crud.documents.getDocsByDocIds,
+    api.kb.documents.getDocsByDocIds,
     selectedKbId && selectedQDocIdList.length > 0
       ? { kbId: selectedKbId, docIds: selectedQDocIdList }
       : "skip"

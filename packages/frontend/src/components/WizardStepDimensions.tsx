@@ -46,7 +46,7 @@ export function WizardStepDimensions({
     {}
   )
 
-  const discoverAction = useAction(api.generation.actions.discoverDimensions)
+  const discoverAction = useAction(api.kb.generation_actions.discoverDimensions)
 
   const handleDiscover = useCallback(async () => {
     if (!url.trim()) return

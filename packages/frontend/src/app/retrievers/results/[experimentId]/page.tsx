@@ -22,7 +22,7 @@ export default function RetrieverDetailPage({
   const { experimentId } = use(params)
   const expId = experimentId as Id<"experiments">
 
-  const data = useQuery(api.experiments.results.getDetailForExperiment, {
+  const data = useQuery(api.kb.results.getDetailForExperiment, {
     experimentId: expId
   })
 

@@ -1,3 +1,6 @@
+/**
+ * Generated-question CRUD and curation.
+ */
 import { v } from "convex/values"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"

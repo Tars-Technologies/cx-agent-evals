@@ -22,7 +22,7 @@ export function CreateKBModal({
   onClose,
   onCreated
 }: CreateKBModalProps) {
-  const createKb = useMutation(api.crud.knowledgeBases.create)
+  const createKb = useMutation(api.kb.core.create)
   const [name, setName] = useState("")
   const [industry, setIndustry] = useState<string>("other")
   const [customIndustry, setCustomIndustry] = useState("")

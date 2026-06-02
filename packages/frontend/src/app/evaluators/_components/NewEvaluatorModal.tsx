@@ -24,7 +24,7 @@ export function NewEvaluatorModal({
   const createConfig = useMutation(api.evaluator.crud.createConfig)
 
   // Load all experiments for this KB
-  const experiments = useQuery(api.experiments.orchestration.byKb, { kbId })
+  const experiments = useQuery(api.kb.experiments.byKb, { kbId })
   const agentExperiments = (experiments ?? []).filter(
     (e) => e.experimentType === "agent"
   )

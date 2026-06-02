@@ -1,3 +1,6 @@
+/**
+ * internalAction: backfills `documentCount` across KBs, paginated to stay under read limits.
+ */
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
@@ -14,7 +17,7 @@ export const backfillDocumentCounts = internalAction({
   args: { batchSize: v.optional(v.number()) },
   handler: async (ctx, args): Promise<{ kbs: number; updated: number }> => {
     const kbIds: Id<"knowledgeBases">[] = await ctx.runQuery(
-      internal.crud.knowledgeBases.listKbsMissingCount,
+      internal.kb.core.listKbsMissingCount,
       {}
     )
 
@@ -27,7 +30,7 @@ export const backfillDocumentCounts = internalAction({
           done: boolean
           processedDelta: number
           cursor: string | null
-        } = await ctx.runMutation(internal.crud.knowledgeBases.backfillOneKb, {
+        } = await ctx.runMutation(internal.kb.core.backfillOneKb, {
           kbId,
           cursor,
           batchSize: args.batchSize ?? 100
@@ -36,7 +39,7 @@ export const backfillDocumentCounts = internalAction({
         cursor = res.cursor
         if (res.done) break
       }
-      await ctx.runMutation(internal.crud.knowledgeBases.setDocumentCount, {
+      await ctx.runMutation(internal.kb.core.setDocumentCount, {
         kbId,
         count
       })
