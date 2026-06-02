@@ -19,14 +19,14 @@ Restructure the frontend around four top-level sections that match the actual us
 
 Four top-level sections, ordered by the workflow dependency chain:
 
-```
+```text
 Top nav:  Knowledge Base | Agents | Conversations | Analytics
 Default landing:  /kb
 ```
 
 Tree:
 
-```
+```text
 Knowledge Base           (list-landing → pick KB → sidebar)
   └─ /kb/<id>/
       • Configure                (docs + indexing playground)
@@ -65,7 +65,7 @@ Persistent components rendered around every page.
 
 ## Routing
 
-```
+```text
 /kb                                       → list landing
 /kb/<id>/configure                        → docs + indexing playground
 /kb/<id>/evaluate/datasets

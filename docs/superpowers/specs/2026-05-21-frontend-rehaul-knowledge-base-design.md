@@ -10,7 +10,7 @@ Move all knowledge-base-related pages (`kb`, `dataset`, `retrievers`, `experimen
 
 ## Routes (new)
 
-```
+```text
 /kb                                          → list landing
 /kb/<id>/configure                           → documents + indexing playground
 /kb/<id>/evaluate/datasets                   → dataset list + question generation
