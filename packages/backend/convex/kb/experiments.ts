@@ -25,6 +25,14 @@ const pool = new Workpool(components.experimentPool, {
   retryActionsByDefault: false
 })
 
+/** Statuses an experiment can no longer transition out of. */
+const TERMINAL_STATUSES = new Set([
+  "completed",
+  "completed_with_errors",
+  "failed",
+  "canceled"
+])
+
 // ─── Start Experiment ───
 
 export const start = tenantMutation({
@@ -169,10 +177,7 @@ export const onExperimentComplete = internalMutation({
     const alreadySucceeded =
       experiment.status === "completed" ||
       experiment.status === "completed_with_errors"
-    const alreadyTerminal =
-      alreadySucceeded ||
-      experiment.status === "failed" ||
-      experiment.status === "canceled"
+    const alreadyTerminal = TERMINAL_STATUSES.has(experiment.status)
 
     if (!alreadyTerminal) {
       await ctx.db.patch(context.experimentId, {
@@ -294,12 +299,6 @@ export const updateStatus = internalMutation({
   },
   handler: async (ctx, args) => {
     const patch: Record<string, unknown> = { status: args.status }
-    const TERMINAL_STATUSES = new Set([
-      "completed",
-      "completed_with_errors",
-      "failed",
-      "canceled"
-    ])
     if (TERMINAL_STATUSES.has(args.status)) patch.completedAt = Date.now()
     if (args.scores !== undefined) patch.scores = args.scores
     if (args.error !== undefined) patch.error = args.error
