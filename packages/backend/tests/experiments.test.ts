@@ -292,6 +292,34 @@ describe("experiments: updateStatus completedAt", () => {
     expect(exp!.status).toBe("running")
     expect(exp!.completedAt).toBeUndefined()
   })
+
+  it("preserves the original completedAt on a later terminal write", async () => {
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const datasetId = await seedDataset(t, userId, kbId)
+    const experimentId = await seedExperiment(t, userId, datasetId, {
+      status: "running"
+    })
+
+    await t.mutation(internal.kb.experiments.updateStatus, {
+      experimentId,
+      status: "completed",
+      phase: "done"
+    })
+    const first = await t.run(async (ctx) => ctx.db.get(experimentId))
+    const firstCompletedAt = first!.completedAt
+    expect(firstCompletedAt).toBeDefined()
+
+    await t.mutation(internal.kb.experiments.updateStatus, {
+      experimentId,
+      status: "failed",
+      error: "late failure"
+    })
+
+    const exp = await t.run(async (ctx) => ctx.db.get(experimentId))
+    expect(exp!.status).toBe("failed")
+    expect(exp!.completedAt).toBe(firstCompletedAt)
+  })
 })
 
 describe("experiments: get query", () => {

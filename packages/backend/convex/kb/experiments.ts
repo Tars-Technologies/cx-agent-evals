@@ -299,7 +299,14 @@ export const updateStatus = internalMutation({
   },
   handler: async (ctx, args) => {
     const patch: Record<string, unknown> = { status: args.status }
-    if (TERMINAL_STATUSES.has(args.status)) patch.completedAt = Date.now()
+    // Stamp completedAt only on the first transition into a terminal state,
+    // so a later terminal write can't overwrite the true finish time.
+    if (TERMINAL_STATUSES.has(args.status)) {
+      const current = await ctx.db.get(args.experimentId)
+      if (current && current.completedAt === undefined) {
+        patch.completedAt = Date.now()
+      }
+    }
     if (args.scores !== undefined) patch.scores = args.scores
     if (args.error !== undefined) patch.error = args.error
     if (args.phase !== undefined) patch.phase = args.phase
