@@ -18,6 +18,8 @@ export interface LangSmithExperimentConfig {
   readonly experimentPrefix?: string
   readonly metadata?: Record<string, unknown>
   readonly onResult?: (result: ExperimentResult) => Promise<void>
+  /** Max dataset examples evaluate() processes concurrently (default: sequential). */
+  readonly maxConcurrency?: number
 }
 
 export function deserializeSpans(raw: unknown): CharacterSpan[] {
@@ -64,7 +66,8 @@ export async function runLangSmithExperiment(
     datasetName,
     experimentPrefix,
     metadata,
-    onResult
+    onResult,
+    maxConcurrency
   } = config
   const metrics = config.metrics ?? DEFAULT_METRICS
 
@@ -137,6 +140,7 @@ export async function runLangSmithExperiment(
         data: datasetName,
         evaluators,
         experimentPrefix: experimentPrefix ?? retriever.name,
+        ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),
         metadata: {
           retriever: retriever.name,
           k,

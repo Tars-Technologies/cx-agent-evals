@@ -25,6 +25,14 @@ const pool = new Workpool(components.experimentPool, {
   retryActionsByDefault: false
 })
 
+/** Statuses an experiment can no longer transition out of. */
+const TERMINAL_STATUSES = new Set([
+  "completed",
+  "completed_with_errors",
+  "failed",
+  "canceled"
+])
+
 // ─── Start Experiment ───
 
 export const start = tenantMutation({
@@ -49,9 +57,7 @@ export const start = tenantMutation({
       throw new Error("Must provide either retrieverId or retrieverConfig")
     }
     if (args.retrieverId && args.retrieverConfig) {
-      throw new Error(
-        "Provide either retrieverId or retrieverConfig, not both"
-      )
+      throw new Error("Provide either retrieverId or retrieverConfig, not both")
     }
 
     // If using retrieverId, verify the retriever is ready and KB matches
@@ -166,24 +172,26 @@ export const onExperimentComplete = internalMutation({
       return
     }
 
-    // result.kind === "failed"
-    if (experiment.status !== "failed") {
+    // A late WorkPool failure can arrive after the action already persisted a
+    // terminal status; preserve that source of truth.
+    const alreadySucceeded =
+      experiment.status === "completed" ||
+      experiment.status === "completed_with_errors"
+    const alreadyTerminal = TERMINAL_STATUSES.has(experiment.status)
+
+    if (!alreadyTerminal) {
       await ctx.db.patch(context.experimentId, {
         status: "failed",
         error: result.error ?? "Evaluation action failed",
         completedAt: Date.now()
       })
     }
-    // Notify parent run
     if (experiment.experimentRunId) {
-      await ctx.runMutation(
-        internal.kb.experimentRuns.onChildComplete,
-        {
-          experimentRunId: experiment.experimentRunId,
-          experimentId: context.experimentId,
-          success: false
-        }
-      )
+      await ctx.runMutation(internal.kb.experimentRuns.onChildComplete, {
+        experimentRunId: experiment.experimentRunId,
+        experimentId: context.experimentId,
+        success: alreadySucceeded
+      })
     }
   }
 })
@@ -291,6 +299,14 @@ export const updateStatus = internalMutation({
   },
   handler: async (ctx, args) => {
     const patch: Record<string, unknown> = { status: args.status }
+    // Stamp completedAt only on the first transition into a terminal state,
+    // so a later terminal write can't overwrite the true finish time.
+    if (TERMINAL_STATUSES.has(args.status)) {
+      const current = await ctx.db.get(args.experimentId)
+      if (current && current.completedAt === undefined) {
+        patch.completedAt = Date.now()
+      }
+    }
     if (args.scores !== undefined) patch.scores = args.scores
     if (args.error !== undefined) patch.error = args.error
     if (args.phase !== undefined) patch.phase = args.phase

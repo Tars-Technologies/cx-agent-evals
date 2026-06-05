@@ -73,6 +73,7 @@ import type * as lib_agentLoop from "../lib/agentLoop.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_auth_tenant from "../lib/auth/tenant.js";
 import type * as lib_docId from "../lib/docId.js";
+import type * as lib_experimentConcurrency from "../lib/experimentConcurrency.js";
 import type * as lib_labels from "../lib/labels.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as lib_vectorSearch from "../lib/vectorSearch.js";
@@ -152,6 +153,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/auth/tenant": typeof lib_auth_tenant;
   "lib/docId": typeof lib_docId;
+  "lib/experimentConcurrency": typeof lib_experimentConcurrency;
   "lib/labels": typeof lib_labels;
   "lib/validators": typeof lib_validators;
   "lib/vectorSearch": typeof lib_vectorSearch;
