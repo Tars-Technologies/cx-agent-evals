@@ -46,6 +46,7 @@ import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
 import { internalAction } from "../_generated/server"
+import { resolveMaxConcurrency } from "../lib/experimentConcurrency"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
 
 // ─── Helpers: search-strategy dispatch ───
@@ -750,7 +751,15 @@ export const runEvaluation = internalAction({
     })
 
     // Run evaluation via LangSmith evaluate()
+    const total = questions.length
+    const maxConcurrency = resolveMaxConcurrency(
+      process.env.EXPERIMENT_MAX_CONCURRENCY
+    )
+    // Coalesce progress writes so concurrent onResult callbacks don't contend
+    // on the experiment row: ~100 updates max, plus the final one.
+    const progressStep = Math.max(1, Math.floor(total / 100))
     let resultsCount = 0
+    const evalStartedAt = Date.now()
 
     await runLangSmithExperiment({
       corpus,
@@ -758,6 +767,7 @@ export const runEvaluation = internalAction({
       k: args.k,
       datasetName: args.datasetName,
       experimentPrefix: experiment.name,
+      maxConcurrency,
       metadata: {
         experimentId: args.experimentId,
         retrieverConfig: experiment.retrieverConfig,
@@ -774,15 +784,23 @@ export const runEvaluation = internalAction({
             metadata: {}
           })
         }
-        resultsCount++
-        await ctx.runMutation(internal.kb.experiments.updateStatus, {
-          experimentId: args.experimentId,
-          status: "running",
-          phase: "evaluating",
-          processedQuestions: resultsCount
-        })
+        const n = ++resultsCount
+        if (n % progressStep === 0 || n === total) {
+          await ctx.runMutation(internal.kb.experiments.updateStatus, {
+            experimentId: args.experimentId,
+            status: "running",
+            phase: "evaluating",
+            processedQuestions: n
+          })
+        }
       }
     })
+
+    const elapsedMs = Date.now() - evalStartedAt
+    const perQ = elapsedMs / Math.max(1, resultsCount)
+    console.info(
+      `[Experiment ${args.experimentId}] evaluated ${resultsCount}/${total} questions in ${(elapsedMs / 1000).toFixed(1)}s (${perQ.toFixed(0)}ms/q, maxConcurrency=${maxConcurrency})`
+    )
 
     // Aggregate scores after evaluate() completes
     const results = await ctx.runQuery(
