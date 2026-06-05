@@ -757,7 +757,7 @@ export const runEvaluation = internalAction({
     )
     // Coalesce progress writes so concurrent onResult callbacks don't contend
     // on the experiment row: ~100 updates max, plus the final one.
-    const progressStep = Math.max(1, Math.floor(total / 100))
+    const progressStep = Math.max(1, Math.ceil(total / 100))
     let resultsCount = 0
     const evalStartedAt = Date.now()
 
@@ -822,12 +822,15 @@ export const runEvaluation = internalAction({
           : 0
     }
 
-    // Mark experiment complete with aggregated scores
+    // Mark experiment complete with aggregated scores. Stamp the final
+    // processedQuestions so the counter is exact even if a coalesced in-loop
+    // write was skipped or the evaluated count drifted from `total`.
     await ctx.runMutation(internal.kb.experiments.updateStatus, {
       experimentId: args.experimentId,
       status: "completed",
       scores: avgScores,
-      phase: "done"
+      phase: "done",
+      processedQuestions: resultsCount
     })
   }
 })
