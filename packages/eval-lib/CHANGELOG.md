@@ -1,5 +1,11 @@
 # @tars-inc/eval-lib
 
+## 0.2.0
+
+### Minor Changes
+
+- 11b017e: Add an optional `maxConcurrency` to `runLangSmithExperiment`, forwarded to LangSmith `evaluate()`. When omitted, behavior is unchanged (sequential). This lets callers parallelize per-example retrieval to buy headroom against long-running evaluation limits.
+
 ## 0.1.2
 
 ### Patch Changes
