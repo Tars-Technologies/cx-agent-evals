@@ -43,6 +43,7 @@ import { OpenAIPipelineLLM } from "@tars-inc/eval-lib/pipeline/llm-openai"
 import type { ExperimentResult } from "@tars-inc/eval-lib/shared"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
+import { backendConfig } from "../config"
 import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
 import { internalAction } from "../_generated/server"
@@ -251,7 +252,7 @@ async function applyRefinementChain(
       case "rerank": {
         if (!reranker) {
           console.warn(
-            "[Refinement] Skipping rerank — no reranker available (set CO_API_KEY)"
+            "[Refinement] Skipping rerank — no reranker available (set COHERE_API_KEY)"
           )
           break
         }
@@ -281,18 +282,60 @@ async function applyRefinementChain(
   return current
 }
 
-/** Try to create a Cohere reranker. Returns undefined if not available. */
+/**
+ * Build a Cohere reranker backed by a direct HTTP call (no `cohere-ai` SDK).
+ *
+ * STOPGAP: eval-lib's `CohereReranker` loads the `cohere-ai` SDK via a dynamic
+ * `import()`, which fails inside the bundled eval-lib chunk in the Convex runtime,
+ * so rerank steps were silently skipped during evaluation. This inline reranker
+ * mirrors `pipeline_actions.ts` `applyRerank` and satisfies eval-lib's `Reranker`
+ * interface. DELETE this when the eval-lib port moves the fix into
+ * `createRerankerFromConfig`; see
+ * .idea/kb-eval-lib-port-new-plan/execution/02-ai-provider-plan.md.
+ */
 async function tryCreateReranker(): Promise<Reranker | undefined> {
-  try {
-    const { CohereReranker } = await import(
-      "@tars-inc/eval-lib/rerankers/cohere"
-    )
-    return await CohereReranker.create()
-  } catch {
+  const apiKey = backendConfig.ai.cohereApiKey
+  if (!apiKey) {
     console.warn(
-      "[Reranker] Cohere reranker not available — rerank steps will be skipped"
+      "[Reranker] COHERE_API_KEY not set — rerank steps will be skipped"
     )
     return undefined
+  }
+
+  const model = "rerank-english-v3.0"
+  return {
+    name: `Cohere(${model})`,
+    async rerank(
+      query: string,
+      chunks: readonly PositionAwareChunk[],
+      topK?: number
+    ): Promise<PositionAwareChunk[]> {
+      if (chunks.length === 0) return []
+
+      const response = await fetch("https://api.cohere.com/v1/rerank", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model,
+          query,
+          documents: chunks.map((c) => c.content),
+          top_n: topK ?? chunks.length
+        })
+      })
+
+      if (!response.ok) {
+        const body = await response.text()
+        throw new Error(`Cohere rerank failed (${response.status}): ${body}`)
+      }
+
+      const data = (await response.json()) as {
+        results: Array<{ index: number }>
+      }
+      return data.results.map((r) => chunks[r.index])
+    }
   }
 }
 
