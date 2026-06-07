@@ -18,10 +18,7 @@ import {
   PositionAwareChunkId,
   type ScoredChunk
 } from "@tars-inc/eval-lib"
-import {
-  type LangSmithExperimentConfig,
-  runLangSmithExperiment
-} from "@tars-inc/eval-lib/langsmith"
+import { runLangSmithExperiment } from "@tars-inc/eval-lib/langsmith"
 import { createEmbedder } from "@tars-inc/eval-lib/llm"
 import {
   applyDedup,
@@ -282,6 +279,9 @@ async function applyRefinementChain(
   return current
 }
 
+/** Abort the Cohere rerank request if it does not respond in time. */
+const COHERE_RERANK_TIMEOUT_MS = 20_000
+
 /**
  * Build a Cohere reranker backed by a direct HTTP call (no `cohere-ai` SDK).
  *
@@ -290,8 +290,7 @@ async function applyRefinementChain(
  * so rerank steps were silently skipped during evaluation. This inline reranker
  * mirrors `pipeline_actions.ts` `applyRerank` and satisfies eval-lib's `Reranker`
  * interface. DELETE this when the eval-lib port moves the fix into
- * `createRerankerFromConfig`; see
- * .idea/kb-eval-lib-port-new-plan/execution/02-ai-provider-plan.md.
+ * `createRerankerFromConfig`.
  */
 async function tryCreateReranker(): Promise<Reranker | undefined> {
   const apiKey = backendConfig.ai.cohereApiKey
@@ -323,7 +322,8 @@ async function tryCreateReranker(): Promise<Reranker | undefined> {
           query,
           documents: chunks.map((c) => c.content),
           top_n: topK ?? chunks.length
-        })
+        }),
+        signal: AbortSignal.timeout(COHERE_RERANK_TIMEOUT_MS)
       })
 
       if (!response.ok) {
@@ -332,9 +332,19 @@ async function tryCreateReranker(): Promise<Reranker | undefined> {
       }
 
       const data = (await response.json()) as {
-        results: Array<{ index: number }>
+        results?: Array<{ index: number }>
       }
-      return data.results.map((r) => chunks[r.index])
+      if (!Array.isArray(data.results)) {
+        throw new Error("Cohere rerank response missing results array")
+      }
+      return data.results
+        .filter(
+          (r) =>
+            typeof r.index === "number" &&
+            r.index >= 0 &&
+            r.index < chunks.length
+        )
+        .map((r) => chunks[r.index])
     }
   }
 }
@@ -466,9 +476,7 @@ export const runExperiment = internalAction({
             ) {
               indexingDone = true
             } else if (indexJob.status === "failed") {
-              throw new Error(
-                "Indexing failed: " + (indexJob.error ?? "unknown")
-              )
+              throw new Error(`Indexing failed: ${indexJob.error ?? "unknown"}`)
             } else if (indexJob.status === "canceled") {
               throw new Error("Indexing was canceled")
             }
