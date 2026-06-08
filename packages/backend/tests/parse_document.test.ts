@@ -117,6 +117,39 @@ describe("parse document mutations", () => {
     expect(docs?.parseStatus).toBe("failed")
   })
 
+  it("finishParse with ok status but empty markdown is marked failed", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+
+    await t.mutation(internal.kb.documents.createParsing, {
+      orgId: TEST_ORG_ID,
+      kbId,
+      title: "empty.md",
+      mimeType: "text/markdown",
+      parseServiceJobId: "psvc-5",
+      parseToken: "ptok5"
+    })
+
+    // Tarser returns ok + empty markdown for formats it cannot extract; that must
+    // surface as failed, not a silently-empty "done" document.
+    await t.mutation(internal.kb.documents.finishParse, {
+      parseServiceJobId: "psvc-5",
+      status: "ok",
+      markdown: "   "
+    })
+
+    const doc = await t.run(async (ctx) =>
+      ctx.db
+        .query("documents")
+        .withIndex("by_parse_service_job", (q) =>
+          q.eq("parseServiceJobId", "psvc-5")
+        )
+        .first()
+    )
+    expect(doc?.parseStatus).toBe("failed")
+  })
+
   it("createParsed creates a done document with correct fields", async () => {
     const t = setupTest()
     const userId = await seedUser(t)

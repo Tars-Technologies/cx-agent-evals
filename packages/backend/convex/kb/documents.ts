@@ -416,8 +416,11 @@ export const finishParse = internalMutation({
       )
       .first()
     if (!doc || doc.parseStatus !== "parsing") return // unknown or already finalized
-    if (args.status === "ok") {
-      const content = args.markdown ?? ""
+    const content = args.markdown ?? ""
+    // An "ok" parse that produced no content is treated as failed so a content-less
+    // parse is surfaced rather than stored as a silently-empty "done" document
+    // (e.g. Tarser returns ok+empty for formats it cannot extract).
+    if (args.status === "ok" && content.trim().length > 0) {
       await ctx.db.patch(doc._id, {
         content,
         contentLength: content.length,
