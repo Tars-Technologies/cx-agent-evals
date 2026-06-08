@@ -320,8 +320,11 @@ export const kbTables = {
     .index("by_kb_priority", ["kbId", "priority"])
     .index("by_org", ["orgId"])
     .index("by_parse_service_job", ["parseServiceJobId"])
+<<<<<<< HEAD
     // Lets the reaper cron sweep documents stuck in parseStatus:"parsing".
     .index("by_parse_status", ["parseStatus"])
+=======
+>>>>>>> e3fb0b9 (feat(backend): Tarser schema fields, env/config, availability query)
     .searchIndex("search_content", {
       searchField: "content",
       filterFields: ["kbId"]
@@ -437,11 +440,15 @@ export const kbTables = {
     .index("by_org", ["orgId"])
     .index("by_kb", ["kbId"])
     .index("by_status", ["orgId", "status"])
+<<<<<<< HEAD
     .index("by_service_job", ["serviceJobId"])
     // Cross-org sweep by (backend, status) for the stale-crawl reaper cron, so a
     // bounded take() returns only reapable Tarser jobs (never-reaped in-process
     // "running" rows would otherwise starve the batch).
     .index("by_backend_status", ["backend", "status"]),
+=======
+    .index("by_service_job", ["serviceJobId"]),
+>>>>>>> e3fb0b9 (feat(backend): Tarser schema fields, env/config, availability query)
 
   // ─── Crawl URLs (URL frontier for crawl jobs) ───
   crawlUrls: defineTable({

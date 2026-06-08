@@ -4,6 +4,8 @@ export type BackendConfig = {
   ai: {
     openaiApiKey: string
     cohereApiKey: string | undefined
+    jinaApiKey: string | undefined
+    voyageApiKey: string | undefined
   }
   tarser: {
     baseUrl: string
@@ -29,7 +31,9 @@ function createBackendConfig(): BackendConfig {
   return {
     ai: {
       openaiApiKey: env.OPENAI_API_KEY,
-      cohereApiKey: env.COHERE_API_KEY
+      cohereApiKey: env.COHERE_API_KEY,
+      jinaApiKey: env.JINA_API_KEY,
+      voyageApiKey: env.VOYAGE_API_KEY
     },
     tarser
   }
