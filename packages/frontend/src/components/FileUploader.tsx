@@ -57,12 +57,16 @@ export function FileUploader({ kbId }: FileUploaderProps) {
         }
         const { storageId } = await result.json()
 
+        // Fall back to native if Tarser became unavailable after selection.
+        const resolvedBackend =
+          backend === "tarser" && !tarserAvailable ? "inprocess" : backend
+
         await parseUpload({
           kbId,
           storageId: storageId as Id<"_storage">,
           title: file.name,
           mimeType: mimeTypeFor(file),
-          backend
+          backend: resolvedBackend
         })
 
         success++
