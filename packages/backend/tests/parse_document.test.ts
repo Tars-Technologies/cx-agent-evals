@@ -115,6 +115,7 @@ describe("parse document mutations", () => {
         .first()
     )
     expect(docs?.parseStatus).toBe("failed")
+    expect(docs?.metadata?.error).toBe("parse error")
   })
 
   it("finishParse with ok status but empty markdown is marked failed", async () => {
@@ -148,6 +149,7 @@ describe("parse document mutations", () => {
         .first()
     )
     expect(doc?.parseStatus).toBe("failed")
+    expect(doc?.metadata?.error).toBe("Remote parser returned no content")
   })
 
   it("createParsed creates a done document with correct fields", async () => {
