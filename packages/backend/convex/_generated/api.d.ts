@@ -54,6 +54,7 @@ import type * as kb_crawl from "../kb/crawl.js";
 import type * as kb_crawl_actions from "../kb/crawl_actions.js";
 import type * as kb_datasets from "../kb/datasets.js";
 import type * as kb_documents from "../kb/documents.js";
+import type * as kb_documents_actions from "../kb/documents_actions.js";
 import type * as kb_experimentRuns from "../kb/experimentRuns.js";
 import type * as kb_experiment_actions from "../kb/experiment_actions.js";
 import type * as kb_experiments from "../kb/experiments.js";
@@ -135,6 +136,7 @@ declare const fullApi: ApiFromModules<{
   "kb/crawl_actions": typeof kb_crawl_actions;
   "kb/datasets": typeof kb_datasets;
   "kb/documents": typeof kb_documents;
+  "kb/documents_actions": typeof kb_documents_actions;
   "kb/experimentRuns": typeof kb_experimentRuns;
   "kb/experiment_actions": typeof kb_experiment_actions;
   "kb/experiments": typeof kb_experiments;
