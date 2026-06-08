@@ -6,7 +6,11 @@ const requiredStr = z
 
 const envSchema = z.object({
   OPENAI_API_KEY: requiredStr,
-  COHERE_API_KEY: z.string().optional() // optional — reranker falls back gracefully if not set
+  COHERE_API_KEY: z.string().optional(), // optional — reranker falls back gracefully if not set
+  TARSER_BASE_URL: z.string().optional(),
+  TARSER_API_TOKEN: z.string().optional(),
+  TARSER_CALLBACK_HMAC_SECRET: z.string().optional(),
+  TARSER_CALLBACK_BASE_URL: z.string().optional() // local-dev override for the callback host (e.g. host.docker.internal)
 })
 
 type Env = z.infer<typeof envSchema>
@@ -26,7 +30,11 @@ function parseEnv(): Env {
     const partial = envSchema.partial().parse(snapshot)
     return {
       OPENAI_API_KEY: partial.OPENAI_API_KEY ?? "",
-      COHERE_API_KEY: partial.COHERE_API_KEY
+      COHERE_API_KEY: partial.COHERE_API_KEY,
+      TARSER_BASE_URL: partial.TARSER_BASE_URL,
+      TARSER_API_TOKEN: partial.TARSER_API_TOKEN,
+      TARSER_CALLBACK_HMAC_SECRET: partial.TARSER_CALLBACK_HMAC_SECRET,
+      TARSER_CALLBACK_BASE_URL: partial.TARSER_CALLBACK_BASE_URL
     }
   }
   const result = envSchema.safeParse(snapshot)

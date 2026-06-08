@@ -33,6 +33,13 @@ export const documentValidator = v.object({
   sourceUrl: v.optional(v.string()),
   sourceType: v.optional(v.string()),
   priority: v.optional(v.number()), // 1-5, default 3
+  mimeType: v.optional(v.string()),
+  parseBackend: v.optional(v.union(v.literal("inprocess"), v.literal("tarser"))),
+  parseServiceJobId: v.optional(v.string()),
+  parseToken: v.optional(v.string()),
+  parseStatus: v.optional(
+    v.union(v.literal("parsing"), v.literal("done"), v.literal("failed"))
+  ),
   createdAt: v.number()
 })
 export type Document = Infer<typeof documentValidator>
@@ -310,6 +317,7 @@ export const kbTables = {
     .index("by_kb_doc_id", ["kbId", "docId"])
     .index("by_kb_priority", ["kbId", "priority"])
     .index("by_org", ["orgId"])
+    .index("by_parse_service_job", ["parseServiceJobId"])
     .searchIndex("search_content", {
       searchField: "content",
       filterFields: ["kbId"]
@@ -413,11 +421,19 @@ export const kbTables = {
     }),
     error: v.optional(v.string()),
     createdAt: v.number(),
-    completedAt: v.optional(v.number())
+    completedAt: v.optional(v.number()),
+    backend: v.optional(v.union(v.literal("inprocess"), v.literal("tarser"))),
+    serviceJobId: v.optional(v.string()),
+    callbackToken: v.optional(v.string()),
+    submittedAt: v.optional(v.number()),
+    cancelRequestedAt: v.optional(v.number()),
+    lastCallbackAt: v.optional(v.number()),
+    finishReason: v.optional(v.string())
   })
     .index("by_org", ["orgId"])
     .index("by_kb", ["kbId"])
-    .index("by_status", ["orgId", "status"]),
+    .index("by_status", ["orgId", "status"])
+    .index("by_service_job", ["serviceJobId"]),
 
   // ─── Crawl URLs (URL frontier for crawl jobs) ───
   crawlUrls: defineTable({
@@ -436,7 +452,8 @@ export const kbTables = {
     documentId: v.optional(v.id("documents")),
     error: v.optional(v.string()),
     retryCount: v.optional(v.number()),
-    scrapedAt: v.optional(v.number())
+    scrapedAt: v.optional(v.number()),
+    callbackReceivedAt: v.optional(v.number())
   })
     .index("by_job_status", ["crawlJobId", "status"])
     .index("by_job_url", ["crawlJobId", "normalizedUrl"])
