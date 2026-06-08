@@ -15,14 +15,28 @@ describe("isBlockedHost", () => {
       "172.31.255.255",
       "192.168.1.1",
       "169.254.169.254",
+      "100.64.0.1",
+      "100.127.255.255",
       "[::1]",
-      "::1"
+      "::1",
+      "fe80::1",
+      "fc00::1",
+      "fd12:3456::1"
     ]) {
       expect(isBlockedHost(h)).toBe(true)
     }
   })
-  it("allows public hosts", () => {
-    for (const h of ["example.com", "docs.example.com", "8.8.8.8"]) {
+  it("allows public hosts, incl. names starting with IPv6-like prefixes", () => {
+    for (const h of [
+      "example.com",
+      "docs.example.com",
+      "8.8.8.8",
+      "99.64.0.1", // not CGNAT (first octet 99)
+      "facebook.com", // starts with "fc" but not IPv6
+      "fedex.com", // starts with "fd" but not IPv6
+      "fe80news.com", // starts with "fe80" but not IPv6
+      "999.999.999.999" // malformed octets -> not treated as a blocked IP
+    ]) {
       expect(isBlockedHost(h)).toBe(false)
     }
   })
