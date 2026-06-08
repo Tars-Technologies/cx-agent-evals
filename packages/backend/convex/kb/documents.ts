@@ -427,7 +427,13 @@ export const finishParse = internalMutation({
         parseStatus: "done"
       })
     } else {
-      await ctx.db.patch(doc._id, { parseStatus: "failed" })
+      // Persist why it failed (the remote error, or a content-less "ok") so the
+      // reason is visible on the document, matching recordParseFailure.
+      const error = args.error ?? "Remote parser returned no content"
+      await ctx.db.patch(doc._id, {
+        parseStatus: "failed",
+        metadata: { ...doc.metadata, error }
+      })
     }
   }
 })
