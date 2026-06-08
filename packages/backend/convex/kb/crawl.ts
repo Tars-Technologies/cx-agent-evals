@@ -51,6 +51,24 @@ export const startCrawl = tenantMutation({
   handler: async (ctx, args) => {
     const { orgId, userId } = ctx
 
+    // Normalize + validate the start URL. Bare domains get https://; only http(s) allowed.
+    // (Private/metadata host blocking is enforced downstream: at fetch time for the in-process
+    // scraper, and via the eval-lib guard on the Tarser submit path.)
+    let startUrl = args.startUrl.trim()
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(startUrl)) {
+      startUrl = `https://${startUrl}`
+    }
+    let parsedStart: URL
+    try {
+      parsedStart = new URL(startUrl)
+    } catch {
+      throw new Error(`Invalid start URL: ${args.startUrl}`)
+    }
+    if (parsedStart.protocol !== "http:" && parsedStart.protocol !== "https:") {
+      throw new Error(`Unsupported start URL scheme: ${parsedStart.protocol}`)
+    }
+    startUrl = parsedStart.toString()
+
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) {
       throw new Error("Knowledge base not found")
@@ -76,7 +94,7 @@ export const startCrawl = tenantMutation({
       orgId,
       kbId: args.kbId,
       userId,
-      startUrl: args.startUrl,
+      startUrl,
       config,
       status: backend === "tarser" ? "pending" : "running",
       stats: { discovered: 1, scraped: 0, failed: 0, skipped: 0 },
@@ -88,13 +106,13 @@ export const startCrawl = tenantMutation({
     if (backend === "inprocess") {
       // Normalize the start URL for dedup
       const normalizedUrl =
-        args.startUrl.toLowerCase().replace(/#.*$/, "").replace(/\/+$/, "") ||
-        args.startUrl
+        startUrl.toLowerCase().replace(/#.*$/, "").replace(/\/+$/, "") ||
+        startUrl
 
       // Insert seed URL into frontier
       await ctx.db.insert("crawlUrls", {
         crawlJobId: jobId,
-        url: args.startUrl,
+        url: startUrl,
         normalizedUrl,
         status: "pending",
         depth: 0
