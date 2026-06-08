@@ -87,10 +87,14 @@ export function ImportUrlModal({
       const includeArr = parsePatterns(includePaths)
       const excludeArr = parsePatterns(excludePaths)
 
+      // Fall back to native if Tarser became unavailable after selection.
+      const resolvedBackend =
+        backend === "tarser" && !tarserAvailable ? "inprocess" : backend
+
       const jobId = await startCrawl({
         kbId,
         startUrl: url.trim(),
-        backend,
+        backend: resolvedBackend,
         config: {
           maxPages: Math.min(Math.max(maxPages, 1), 1000),
           maxDepth,
