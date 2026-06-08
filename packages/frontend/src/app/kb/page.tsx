@@ -262,8 +262,9 @@ function KBPageContent() {
                         {crawlJob.status === "running" && (
                           <div className="flex items-center justify-between">
                             <span className="text-text-dim">
-                              Crawling... {crawlJob.stats.scraped}/
-                              {crawlJob.stats.discovered} pages
+                              {crawlJob.backend === "tarser"
+                                ? `Crawling... ${crawlJob.stats.scraped} pages`
+                                : `Crawling... ${crawlJob.stats.scraped}/${crawlJob.stats.discovered} pages`}
                             </span>
                             <button
                               onClick={() =>
