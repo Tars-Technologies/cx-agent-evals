@@ -29,3 +29,4 @@ export {
   type ScraperCrawlConfig
 } from "./ports.js"
 export { ErrorCategory, FinishReason } from "./wire.js"
+export { assertPublicHttpUrl, isBlockedHost } from "./url-guard.js"
