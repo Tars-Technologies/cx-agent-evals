@@ -78,6 +78,12 @@ export const handleTarserCallback = internalAction({
         nonce: args.nonce
       })
 
+    // The body's service_job_id must match the signed job id, else a valid signed
+    // envelope could be replayed with a different body job id.
+    if (cb.kind !== "ignored" && cb.serviceJobId !== args.jobId) {
+      return { status: 401 }
+    }
+
     if (
       cb.kind === "page" ||
       cb.kind === "page_failed" ||
