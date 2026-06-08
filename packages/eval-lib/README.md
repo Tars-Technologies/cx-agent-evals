@@ -147,9 +147,49 @@ Provider-specific code lives in sub-paths so you only pay for what you import:
 | `@tars-inc/eval-lib/utils` | Hashing, span helpers, retry, concurrency, cosine similarity |
 | `@tars-inc/eval-lib/shared` | Constants and shared types (`JobStatus`, `SerializedSpan`, `ExperimentResult`) |
 | `@tars-inc/eval-lib/file-processing` | `processFile`, `htmlToMarkdown`, `pdfToMarkdown` |
-| `@tars-inc/eval-lib/scraper` | `ContentScraper`, `filterLinks`, `normalizeUrl`, seed-entity helpers |
+| `@tars-inc/eval-lib/scraper` | `makeScraper` / `makeParser` factories, `Scraper` / `Parser` interfaces, `ContentScraper`, `assertPublicHttpUrl`, callback signing helpers, `filterLinks`, `normalizeUrl` |
 | `@tars-inc/eval-lib/registry` | Component registries for embedders, rerankers, chunkers, strategies, presets |
 | `@tars-inc/eval-lib/data-analysis` | `parseTranscript`, `parseBotFlowInput`, `computeBasicStats`, `classifyMessageTypes`, `extractMicrotopics` |
+
+## Scraper / parser providers
+
+`@tars-inc/eval-lib/scraper` exposes `makeScraper` / `makeParser` factories behind unified `Scraper` and `Parser` interfaces, so callers pick a backend via config without depending on the implementation.
+
+Available backends:
+
+| Backend | Selector | What it does |
+|---|---|---|
+| In-process (default) | `"inprocess"` (or omit `backend`) | Single-page scraping (`scrapePage`) via `ContentScraper`, plus synchronous HTML / PDF / text parsing (`parseFile`). Runs in your process. |
+| Remote content service | `"tarser"` | Submits crawl / parse jobs to an external HTTP service and returns results asynchronously via signed callbacks (`startCrawl` / `startParse` / `cancel`). |
+
+```ts
+import { makeScraper, makeParser } from "@tars-inc/eval-lib/scraper"
+
+// In-process (default): no config needed
+const scraper = makeScraper()
+const parser = makeParser()
+// equivalently: makeScraper({ backend: "inprocess", userAgent: "my-bot/1.0" })
+
+// Remote content service
+const remoteScraper = makeScraper({
+  backend: "tarser",
+  baseUrl: "https://content.example.com",
+  apiToken: "<service token>",
+  hmacSecret: "<callback signing secret>"
+})
+const remoteParser = makeParser({
+  backend: "tarser",
+  baseUrl: "https://content.example.com",
+  apiToken: "<service token>",
+  hmacSecret: "<callback signing secret>"
+})
+```
+
+Notes:
+
+- The factories default to the in-process backend when no config (or no `backend`) is passed.
+- The remote backend posts results to a callback URL you supply. Verify those callbacks with `verifyCallbackSignature` (HMAC over `${jobId}|${token}`) and map them with `PythonContentService.normalizeCallback`.
+- The in-process scraper enforces an SSRF guard (`assertPublicHttpUrl`): only `http` / `https` to public hosts, redirects re-validated per hop, and responses capped by content type and size.
 
 ## Key concepts
 
