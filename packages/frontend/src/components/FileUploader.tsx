@@ -1,17 +1,30 @@
 "use client"
 
 import type { Id } from "@convex/_generated/dataModel"
-import { useMutation } from "convex/react"
+import { useMutation, useQuery } from "convex/react"
 import { useRef, useState } from "react"
 import { api } from "@/lib/convex"
+import { ScraperBackendToggle } from "./ScraperBackendToggle"
 
 interface FileUploaderProps {
   kbId: Id<"knowledgeBases">
 }
 
+function mimeTypeFor(file: File): string {
+  if (file.type) return file.type
+  const name = file.name.toLowerCase()
+  if (name.endsWith(".pdf")) return "application/pdf"
+  if (name.endsWith(".html") || name.endsWith(".htm")) return "text/html"
+  if (name.endsWith(".md")) return "text/markdown"
+  return "text/plain"
+}
+
 export function FileUploader({ kbId }: FileUploaderProps) {
   const generateUploadUrl = useMutation(api.kb.documents.generateUploadUrl)
-  const createDocument = useMutation(api.kb.documents.create)
+  const parseUpload = useMutation(api.kb.documents.parseUpload)
+  const availability = useQuery(api.kb.providers.getScraperAvailability, {})
+  const tarserAvailable = availability?.tarser ?? false
+  const [backend, setBackend] = useState<"inprocess" | "tarser">("inprocess")
   const [uploading, setUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -32,32 +45,24 @@ export function FileUploader({ kbId }: FileUploaderProps) {
       }
 
       try {
-        // Get upload URL
         const url = await generateUploadUrl()
-
-        // Upload file to Convex storage
         const result = await fetch(url, {
           method: "POST",
-          headers: { "Content-Type": file.type || "text/plain" },
+          headers: { "Content-Type": file.type || "application/octet-stream" },
           body: file
         })
-
         if (!result.ok) {
           failed++
           continue
         }
-
         const { storageId } = await result.json()
 
-        // Read file content on the client (mutations can't use fetch())
-        const content = await file.text()
-
-        // Create document record
-        await createDocument({
+        await parseUpload({
           kbId,
           storageId: storageId as Id<"_storage">,
           title: file.name,
-          content
+          mimeType: mimeTypeFor(file),
+          backend
         })
 
         success++
@@ -85,6 +90,13 @@ export function FileUploader({ kbId }: FileUploaderProps) {
       <label className="text-xs text-text-muted uppercase tracking-wide">
         Upload Documents
       </label>
+
+      <ScraperBackendToggle
+        value={backend}
+        onChange={setBackend}
+        tarserAvailable={tarserAvailable}
+        disabled={uploading}
+      />
 
       <div
         className="border border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-accent/50 transition-colors"
