@@ -95,4 +95,36 @@ describe("POST /tarser/cb", () => {
     )
     expect(docs.length).toBe(1) // idempotent — second callback did not duplicate
   })
+
+  it("rejects a callback whose body service_job_id differs from the signed job id", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    await seedTarserJob(
+      t,
+      kbId as unknown as string,
+      userId as unknown as string
+    )
+
+    // Valid signature/header for svc-1, but the body claims a different job.
+    const sig = await computeCallbackSignature({
+      jobId: "svc-1",
+      token: "tok",
+      secret: SECRET
+    })
+    const res = await t.fetch("/tarser/cb?jobId=svc-1&token=tok", {
+      method: "POST",
+      headers: { "X-Tarser-Signature": sig, "X-Tarser-Job-Id": "svc-1" },
+      body: JSON.stringify({
+        event: "url_done",
+        service_job_id: "svc-2",
+        url: "https://example.com/evil",
+        status: "ok",
+        finish_reason: "finished",
+        markdown: "# Injected",
+        metadata: { title: "x", depth: 0 }
+      })
+    })
+    expect(res.status).toBe(401)
+  })
 })

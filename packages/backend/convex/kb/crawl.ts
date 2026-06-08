@@ -485,7 +485,7 @@ export const handleTarserPage = internalMutation({
         q.eq("crawlJobId", args.crawlJobId).eq("normalizedUrl", normalizedUrl)
       )
       .first()
-    if (existing && existing.status === "done") return
+    if (existing && (existing.status === "done" || existing.documentId)) return
 
     const documentId = await ctx.runMutation(
       internal.kb.documents.createFromScrape,
