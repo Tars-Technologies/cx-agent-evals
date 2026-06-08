@@ -34,7 +34,9 @@ export const documentValidator = v.object({
   sourceType: v.optional(v.string()),
   priority: v.optional(v.number()), // 1-5, default 3
   mimeType: v.optional(v.string()),
-  parseBackend: v.optional(v.union(v.literal("inprocess"), v.literal("tarser"))),
+  parseBackend: v.optional(
+    v.union(v.literal("inprocess"), v.literal("tarser"))
+  ),
   parseServiceJobId: v.optional(v.string()),
   parseToken: v.optional(v.string()),
   parseStatus: v.optional(

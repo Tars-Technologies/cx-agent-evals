@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { computeCallbackSignature, verifyCallbackSignature } from "../../../src/scraper/hmac.js"
+import {
+  computeCallbackSignature,
+  verifyCallbackSignature
+} from "../../../src/scraper/hmac.js"
 
 describe("computeCallbackSignature", () => {
   it("matches the live Tarser HMAC vector (job_id|token, sha256, hex)", async () => {
@@ -14,8 +17,26 @@ describe("computeCallbackSignature", () => {
   })
 
   it("verifyCallbackSignature accepts a matching signature and rejects a wrong one", async () => {
-    const good = await computeCallbackSignature({ jobId: "JID", token: "tok", secret: "dev-token" })
-    expect(await verifyCallbackSignature({ jobId: "JID", token: "tok", secret: "dev-token", signature: good })).toBe(true)
-    expect(await verifyCallbackSignature({ jobId: "JID", token: "tok", secret: "dev-token", signature: "deadbeef" })).toBe(false)
+    const good = await computeCallbackSignature({
+      jobId: "JID",
+      token: "tok",
+      secret: "dev-token"
+    })
+    expect(
+      await verifyCallbackSignature({
+        jobId: "JID",
+        token: "tok",
+        secret: "dev-token",
+        signature: good
+      })
+    ).toBe(true)
+    expect(
+      await verifyCallbackSignature({
+        jobId: "JID",
+        token: "tok",
+        secret: "dev-token",
+        signature: "deadbeef"
+      })
+    ).toBe(false)
   })
 })

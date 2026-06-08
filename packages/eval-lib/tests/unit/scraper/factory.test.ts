@@ -12,7 +12,12 @@ describe("makeScraper", () => {
     expect(makeScraper({})).toBeInstanceOf(InProcessScraper)
   })
   it("builds PythonContentService for backend tarser", () => {
-    const s = makeScraper({ backend: "tarser", baseUrl: "u", apiToken: "t", hmacSecret: "s" })
+    const s = makeScraper({
+      backend: "tarser",
+      baseUrl: "u",
+      apiToken: "t",
+      hmacSecret: "s"
+    })
     expect(s).toBeInstanceOf(PythonContentService)
     expect(s.name).toBe("tarser")
   })
@@ -24,7 +29,12 @@ describe("makeParser", () => {
   })
   it("builds PythonContentService for backend tarser", () => {
     expect(
-      makeParser({ backend: "tarser", baseUrl: "u", apiToken: "t", hmacSecret: "s" })
+      makeParser({
+        backend: "tarser",
+        baseUrl: "u",
+        apiToken: "t",
+        hmacSecret: "s"
+      })
     ).toBeInstanceOf(PythonContentService)
   })
 })

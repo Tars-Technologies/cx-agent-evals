@@ -66,7 +66,7 @@ export const batchScrape = internalAction({
           await new Promise((resolve) => setTimeout(resolve, delay))
         }
 
-        const results = await Promise.allSettled(
+        await Promise.allSettled(
           chunk.map(async (urlDoc: any) => {
             try {
               const scraped = await scraper.scrapePage(urlDoc.url, {
@@ -148,16 +148,19 @@ export const submitTarserCrawl = internalAction({
           allowSubdomains: job.config.allowSubdomains,
           crawlMode: "http"
         },
-        callbackUrl: tarserCallbackUrl(args.crawlJobId as string, job.callbackToken ?? "")
+        callbackUrl: tarserCallbackUrl(
+          args.crawlJobId as string,
+          job.callbackToken ?? ""
+        )
       })
       await ctx.runMutation(internal.kb.crawl.attachServiceJob, {
         crawlJobId: args.crawlJobId,
         serviceJobId
       })
-    } catch (error: any) {
+    } catch (error) {
       await ctx.runMutation(internal.kb.crawl.markTarserFailed, {
         crawlJobId: args.crawlJobId,
-        error: error?.message ?? "Tarser submit failed"
+        error: error instanceof Error ? error.message : "Tarser submit failed"
       })
     }
   }

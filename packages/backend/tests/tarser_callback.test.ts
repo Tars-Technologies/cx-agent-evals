@@ -14,7 +14,7 @@ async function seedTarserJob(
   kbId: string,
   userId: string
 ) {
-  return await t.run(async (ctx: any) =>
+  return await t.run(async (ctx) =>
     ctx.db.insert("crawlJobs", {
       orgId: TEST_ORG_ID,
       kbId,
@@ -51,7 +51,11 @@ describe("POST /tarser/cb", () => {
     const t = setupTest()
     const userId = await seedUser(t)
     const kbId = await seedKB(t, userId)
-    await seedTarserJob(t, kbId as unknown as string, userId as unknown as string)
+    await seedTarserJob(
+      t,
+      kbId as unknown as string,
+      userId as unknown as string
+    )
 
     const body = JSON.stringify({
       event: "url_done",
@@ -63,16 +67,31 @@ describe("POST /tarser/cb", () => {
       metadata: { title: "Example", depth: 0 },
       content_hash: "h1"
     })
-    const sig = await computeCallbackSignature({ jobId: "svc-1", token: "tok", secret: SECRET })
+    const sig = await computeCallbackSignature({
+      jobId: "svc-1",
+      token: "tok",
+      secret: SECRET
+    })
     const headers = { "X-Tarser-Signature": sig, "X-Tarser-Job-Id": "svc-1" }
 
-    const first = await t.fetch("/tarser/cb?jobId=svc-1&token=tok", { method: "POST", headers, body })
+    const first = await t.fetch("/tarser/cb?jobId=svc-1&token=tok", {
+      method: "POST",
+      headers,
+      body
+    })
     expect(first.status).toBe(200)
-    const second = await t.fetch("/tarser/cb?jobId=svc-1&token=tok", { method: "POST", headers, body })
+    const second = await t.fetch("/tarser/cb?jobId=svc-1&token=tok", {
+      method: "POST",
+      headers,
+      body
+    })
     expect(second.status).toBe(200)
 
-    const docs = await t.run(async (ctx: any) =>
-      ctx.db.query("documents").withIndex("by_kb", (q: any) => q.eq("kbId", kbId)).collect()
+    const docs = await t.run(async (ctx) =>
+      ctx.db
+        .query("documents")
+        .withIndex("by_kb", (q) => q.eq("kbId", kbId))
+        .collect()
     )
     expect(docs.length).toBe(1) // idempotent — second callback did not duplicate
   })

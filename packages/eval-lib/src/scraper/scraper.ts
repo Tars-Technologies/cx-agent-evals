@@ -1,6 +1,6 @@
 import { htmlToMarkdown } from "../file-processing/html-to-markdown.js"
-import { assertPublicHttpUrl } from "./url-guard.js"
 import type { ScrapedPage, ScrapeOptions } from "./types.js"
+import { assertPublicHttpUrl } from "./url-guard.js"
 
 export interface ContentScraperConfig {
   userAgent?: string
@@ -42,7 +42,9 @@ export class ContentScraper {
         if (response.status >= 300 && response.status < 400) {
           const location = response.headers.get("location")
           if (!location) break
-          current = assertPublicHttpUrl(new URL(location, current).toString()).toString()
+          current = assertPublicHttpUrl(
+            new URL(location, current).toString()
+          ).toString()
           if (hop === MAX_REDIRECTS) throw new Error("Too many redirects")
           continue
         }
@@ -51,10 +53,15 @@ export class ContentScraper {
       if (!response) throw new Error("No response")
 
       const contentType = response.headers.get("content-type") ?? ""
-      if (contentType && !/text\/html|text\/plain|application\/xhtml/i.test(contentType)) {
+      if (
+        contentType &&
+        !/text\/html|text\/plain|application\/xhtml/i.test(contentType)
+      ) {
         throw new Error(`Unsupported content-type: ${contentType}`)
       }
-      const declaredLength = Number(response.headers.get("content-length") ?? "0")
+      const declaredLength = Number(
+        response.headers.get("content-length") ?? "0"
+      )
       if (declaredLength > MAX_BYTES) {
         throw new Error(`Response too large: ${declaredLength} bytes`)
       }

@@ -1,7 +1,7 @@
 import type {
   NormalizedCallback,
-  Parser,
   ParseOptions,
+  Parser,
   Scraper,
   ScraperCrawlConfig
 } from "./ports.js"
@@ -83,11 +83,17 @@ export class PythonContentService implements Scraper, Parser {
   }
 
   private async parseJobAccepted(
-    res: { status: number; json: () => Promise<unknown>; text: () => Promise<string> },
+    res: {
+      status: number
+      json: () => Promise<unknown>
+      text: () => Promise<string>
+    },
     op: string
   ): Promise<{ serviceJobId: string }> {
     if (res.status < 200 || res.status >= 300) {
-      throw new Error(`Tarser ${op} failed: HTTP ${res.status} ${await res.text()}`)
+      throw new Error(
+        `Tarser ${op} failed: HTTP ${res.status} ${await res.text()}`
+      )
     }
     const body = (await res.json()) as { serviceJobId?: string }
     if (!body.serviceJobId) {
@@ -122,7 +128,9 @@ export class PythonContentService implements Scraper, Parser {
           serviceJobId,
           fileUrl: url,
           sourcePage:
-            metadata.source_page == null ? undefined : String(metadata.source_page)
+            metadata.source_page == null
+              ? undefined
+              : String(metadata.source_page)
         }
       }
       return {
@@ -132,7 +140,8 @@ export class PythonContentService implements Scraper, Parser {
         markdown: String(raw.markdown ?? ""),
         title: metadata.title == null ? undefined : String(metadata.title),
         depth: typeof metadata.depth === "number" ? metadata.depth : undefined,
-        contentHash: raw.content_hash == null ? undefined : String(raw.content_hash)
+        contentHash:
+          raw.content_hash == null ? undefined : String(raw.content_hash)
       }
     }
 
@@ -142,9 +151,12 @@ export class PythonContentService implements Scraper, Parser {
         serviceJobId,
         status: raw.status === "ok" ? "ok" : "failed",
         markdown: raw.markdown == null ? undefined : String(raw.markdown),
-        metadata: (raw.metadata ?? undefined) as Record<string, unknown> | undefined,
+        metadata: (raw.metadata ?? undefined) as
+          | Record<string, unknown>
+          | undefined,
         error: raw.error == null ? undefined : String(raw.error),
-        contentHash: raw.content_hash == null ? undefined : String(raw.content_hash)
+        contentHash:
+          raw.content_hash == null ? undefined : String(raw.content_hash)
       }
     }
 
