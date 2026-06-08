@@ -7,7 +7,6 @@
 import {
   type RunResult,
   vOnCompleteArgs,
-  WorkId,
   Workpool
 } from "@convex-dev/workpool"
 import { v } from "convex/values"
@@ -464,7 +463,9 @@ export const getJobByServiceJob = internalQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("crawlJobs")
-      .withIndex("by_service_job", (q) => q.eq("serviceJobId", args.serviceJobId))
+      .withIndex("by_service_job", (q) =>
+        q.eq("serviceJobId", args.serviceJobId)
+      )
       .first()
   }
 })
@@ -490,14 +491,17 @@ export const handleTarserPage = internalMutation({
       .first()
     if (existing && existing.status === "done") return
 
-    const documentId = await ctx.runMutation(internal.kb.documents.createFromScrape, {
-      orgId: job.orgId,
-      kbId: job.kbId,
-      title: args.title || args.url,
-      content: args.markdown,
-      sourceUrl: args.url,
-      sourceType: "scraped"
-    })
+    const documentId = await ctx.runMutation(
+      internal.kb.documents.createFromScrape,
+      {
+        orgId: job.orgId,
+        kbId: job.kbId,
+        title: args.title || args.url,
+        content: args.markdown,
+        sourceUrl: args.url,
+        sourceType: "scraped"
+      }
+    )
 
     if (existing) {
       await ctx.db.patch(existing._id, {

@@ -16,7 +16,10 @@ describe("InProcessParser", () => {
   })
 
   it("passes plain text/markdown through unchanged", async () => {
-    const out = await new InProcessParser().parseFile(enc("# Already Markdown\n\ntext"), "text/markdown")
+    const out = await new InProcessParser().parseFile(
+      enc("# Already Markdown\n\ntext"),
+      "text/markdown"
+    )
     expect(out.markdown).toBe("# Already Markdown\n\ntext")
   })
 

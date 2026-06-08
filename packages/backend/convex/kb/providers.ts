@@ -2,8 +2,9 @@
  * Provider availability + callback wiring for scraper/parser backends.
  * The frontend reads getScraperAvailability to enable/disable the Tarser toggle.
  */
-import { env } from "../env"
+
 import { isTarserAvailable } from "../config"
+import { env } from "../env"
 import { tenantQuery } from "../lib/auth/tenant"
 
 export const getScraperAvailability = tenantQuery({
@@ -19,8 +20,10 @@ export const getScraperAvailability = tenantQuery({
  * Server-only helper used by submit actions — NOT a Convex function.
  */
 export function tarserCallbackUrl(jobId: string, token: string): string {
-  const base =
-    env.TARSER_CALLBACK_BASE_URL ?? process.env.CONVEX_SITE_URL ?? ""
-  if (!base) throw new Error("No callback base URL: set TARSER_CALLBACK_BASE_URL or CONVEX_SITE_URL")
+  const base = env.TARSER_CALLBACK_BASE_URL ?? process.env.CONVEX_SITE_URL ?? ""
+  if (!base)
+    throw new Error(
+      "No callback base URL: set TARSER_CALLBACK_BASE_URL or CONVEX_SITE_URL"
+    )
   return `${base.replace(/\/+$/, "")}/tarser/cb?jobId=${encodeURIComponent(jobId)}&token=${encodeURIComponent(token)}`
 }

@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest"
-import { assertPublicHttpUrl, isBlockedHost } from "../../../src/scraper/url-guard.js"
+import {
+  assertPublicHttpUrl,
+  isBlockedHost
+} from "../../../src/scraper/url-guard.js"
 
 describe("isBlockedHost", () => {
   it("blocks loopback, private, link-local, metadata, and 0.0.0.0", () => {
     for (const h of [
-      "localhost", "127.0.0.1", "0.0.0.0", "10.0.0.5", "172.16.0.1",
-      "172.31.255.255", "192.168.1.1", "169.254.169.254", "[::1]", "::1"
+      "localhost",
+      "127.0.0.1",
+      "0.0.0.0",
+      "10.0.0.5",
+      "172.16.0.1",
+      "172.31.255.255",
+      "192.168.1.1",
+      "169.254.169.254",
+      "[::1]",
+      "::1"
     ]) {
       expect(isBlockedHost(h)).toBe(true)
     }
@@ -28,7 +39,9 @@ describe("assertPublicHttpUrl", () => {
     expect(() => assertPublicHttpUrl("gopher://x")).toThrow()
   })
   it("rejects private/loopback/metadata hosts", () => {
-    expect(() => assertPublicHttpUrl("http://169.254.169.254/latest/meta-data")).toThrow()
+    expect(() =>
+      assertPublicHttpUrl("http://169.254.169.254/latest/meta-data")
+    ).toThrow()
     expect(() => assertPublicHttpUrl("http://localhost:8000")).toThrow()
     expect(() => assertPublicHttpUrl("http://10.0.0.1")).toThrow()
   })

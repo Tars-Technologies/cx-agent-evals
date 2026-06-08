@@ -41,7 +41,9 @@ describe("startCrawl backend selection", () => {
       const t = setupTest()
       await seedUser(t)
       const authedT = t.withIdentity(testIdentity)
-      const kbId = await authedT.mutation(api.kb.core.create, { name: "Test KB" })
+      const kbId = await authedT.mutation(api.kb.core.create, {
+        name: "Test KB"
+      })
 
       // backend=tarser takes the remote branch: no crawlUrls seed, schedules a submit.
       const jobId = await authedT.mutation(api.kb.crawl.startCrawl, {

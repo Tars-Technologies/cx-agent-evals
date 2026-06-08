@@ -1,6 +1,6 @@
 import { htmlToMarkdown } from "../file-processing/html-to-markdown.js"
 import { pdfToMarkdown } from "../file-processing/pdf-to-markdown.js"
-import type { ParsedFile, Parser, ParseOptions } from "./ports.js"
+import type { ParsedFile, ParseOptions, Parser } from "./ports.js"
 import { NotSupportedError } from "./ports.js"
 
 /**

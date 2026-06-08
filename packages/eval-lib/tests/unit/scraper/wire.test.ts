@@ -19,7 +19,15 @@ describe("wire enums", () => {
 
   it("ErrorCategory mirrors Tarser values exactly", () => {
     expect(Object.values(ErrorCategory).sort()).toEqual(
-      ["404", "cloudflare", "login", "network", "other", "parse_error", "timeout"].sort()
+      [
+        "404",
+        "cloudflare",
+        "login",
+        "network",
+        "other",
+        "parse_error",
+        "timeout"
+      ].sort()
     )
   })
 })

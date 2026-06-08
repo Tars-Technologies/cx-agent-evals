@@ -14,7 +14,9 @@ beforeAll(() => {
 describe("getScraperAvailability", () => {
   it("reports tarser:false when unconfigured", async () => {
     const t = setupTest()
-    const out = await t.withIdentity(testIdentity).query(api.kb.providers.getScraperAvailability, {})
+    const out = await t
+      .withIdentity(testIdentity)
+      .query(api.kb.providers.getScraperAvailability, {})
     expect(out).toEqual({ tarser: false })
   })
 })

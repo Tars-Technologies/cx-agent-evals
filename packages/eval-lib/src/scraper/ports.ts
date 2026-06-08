@@ -71,9 +71,47 @@ export type ParserConfig =
 
 /** Normalized form of a Tarser callback after PythonContentService.normalizeCallback(). */
 export type NormalizedCallback =
-  | { kind: "page"; serviceJobId: string; url: string; markdown: string; title?: string; depth?: number; contentHash?: string }
-  | { kind: "page_failed"; serviceJobId: string; url: string; error?: string; finishReason: string; errorCategory?: string }
-  | { kind: "discovered_file"; serviceJobId: string; fileUrl: string; sourcePage?: string }
-  | { kind: "parsed"; serviceJobId: string; status: "ok" | "failed"; markdown?: string; metadata?: Record<string, unknown>; error?: string; contentHash?: string }
-  | { kind: "job_complete"; serviceJobId: string; finishReason: string; stats: { visited?: number; failed?: number; skipped?: number; files?: number } }
+  | {
+      kind: "page"
+      serviceJobId: string
+      url: string
+      markdown: string
+      title?: string
+      depth?: number
+      contentHash?: string
+    }
+  | {
+      kind: "page_failed"
+      serviceJobId: string
+      url: string
+      error?: string
+      finishReason: string
+      errorCategory?: string
+    }
+  | {
+      kind: "discovered_file"
+      serviceJobId: string
+      fileUrl: string
+      sourcePage?: string
+    }
+  | {
+      kind: "parsed"
+      serviceJobId: string
+      status: "ok" | "failed"
+      markdown?: string
+      metadata?: Record<string, unknown>
+      error?: string
+      contentHash?: string
+    }
+  | {
+      kind: "job_complete"
+      serviceJobId: string
+      finishReason: string
+      stats: {
+        visited?: number
+        failed?: number
+        skipped?: number
+        files?: number
+      }
+    }
   | { kind: "ignored"; event: string }

@@ -14,7 +14,9 @@ export type BackendConfig = {
 
 function createBackendConfig(): BackendConfig {
   const tarser =
-    env.TARSER_BASE_URL && env.TARSER_API_TOKEN && env.TARSER_CALLBACK_HMAC_SECRET
+    env.TARSER_BASE_URL &&
+    env.TARSER_API_TOKEN &&
+    env.TARSER_CALLBACK_HMAC_SECRET
       ? {
           baseUrl: env.TARSER_BASE_URL,
           apiToken: env.TARSER_API_TOKEN,

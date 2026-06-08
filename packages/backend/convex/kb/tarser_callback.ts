@@ -5,7 +5,10 @@
  * event, and dispatches to the crawl/parse handlers. Lives in a "use node" action
  * because it imports the eval-lib scraper module (node-only transitive deps).
  */
-import { PythonContentService, verifyCallbackSignature } from "@tars-inc/eval-lib/scraper"
+import {
+  PythonContentService,
+  verifyCallbackSignature
+} from "@tars-inc/eval-lib/scraper"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"

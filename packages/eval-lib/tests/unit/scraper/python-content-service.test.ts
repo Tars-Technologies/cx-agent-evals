@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { PythonContentService } from "../../../src/scraper/python-content-service.js"
 
-const cfg = { baseUrl: "http://tarser:8000", apiToken: "tok", hmacSecret: "sec" }
+const cfg = {
+  baseUrl: "http://tarser:8000",
+  apiToken: "tok",
+  hmacSecret: "sec"
+}
 
 function mockFetchOnce(body: unknown, status = 200) {
   vi.stubGlobal(
@@ -27,7 +31,8 @@ describe("PythonContentService HTTP", () => {
       callbackUrl: "https://cb?jobId=j&token=t"
     })
     expect(out).toEqual({ serviceJobId: "svc-1" })
-    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock
+      .calls[0]
     expect(url).toBe("http://tarser:8000/jobs")
     expect(init.method).toBe("POST")
     expect(init.headers.Authorization).toBe("Bearer tok")
@@ -56,7 +61,8 @@ describe("PythonContentService HTTP", () => {
   it("cancel issues DELETE /jobs/{id}", async () => {
     mockFetchOnce({ ok: true })
     await new PythonContentService(cfg).cancel("svc-1")
-    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock
+      .calls[0]
     expect(url).toBe("http://tarser:8000/jobs/svc-1")
     expect(init.method).toBe("DELETE")
   })
@@ -176,7 +182,11 @@ describe("PythonContentService.normalizeCallback (live wire shapes)", () => {
 
   it("maps unknown/dead events -> ignored", () => {
     expect(
-      PythonContentService.normalizeCallback({ event: "discovered_batch", service_job_id: "JID", pages: [] })
+      PythonContentService.normalizeCallback({
+        event: "discovered_batch",
+        service_job_id: "JID",
+        pages: []
+      })
     ).toEqual({ kind: "ignored", event: "discovered_batch" })
   })
 })
