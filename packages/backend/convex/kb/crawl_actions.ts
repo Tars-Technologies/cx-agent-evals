@@ -7,13 +7,16 @@
  * that rely on Node.js built-ins unavailable in the Convex edge runtime.
  */
 import {
-  ContentScraper,
   filterLinks,
+  InProcessScraper,
+  makeScraper,
   normalizeUrl
 } from "@tars-inc/eval-lib/scraper"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
+import { backendConfig } from "../config"
+import { tarserCallbackUrl } from "./providers"
 
 const TIME_BUDGET_MS = 9 * 60 * 1000 // 9 minutes (1 min buffer before Convex 10-min timeout)
 const BATCH_SIZE = 10
@@ -22,7 +25,7 @@ export const batchScrape = internalAction({
   args: { crawlJobId: v.id("crawlJobs") },
   handler: async (ctx, args) => {
     const startTime = Date.now()
-    const scraper = new ContentScraper()
+    const scraper = new InProcessScraper()
 
     while (Date.now() - startTime < TIME_BUDGET_MS - 30_000) {
       // Check if job was cancelled
@@ -65,7 +68,7 @@ export const batchScrape = internalAction({
         const results = await Promise.allSettled(
           chunk.map(async (urlDoc: any) => {
             try {
-              const scraped = await scraper.scrape(urlDoc.url, {
+              const scraped = await scraper.scrapePage(urlDoc.url, {
                 onlyMainContent: job.config.onlyMainContent ?? true,
                 timeout: 30_000
               })
@@ -113,5 +116,60 @@ export const batchScrape = internalAction({
       // Check time budget
       if (Date.now() - startTime >= TIME_BUDGET_MS - 30_000) return
     }
+  }
+})
+
+export const submitTarserCrawl = internalAction({
+  args: { crawlJobId: v.id("crawlJobs") },
+  handler: async (ctx, args) => {
+    const job = await ctx.runQuery(internal.kb.crawl.getJobInternal, {
+      jobId: args.crawlJobId
+    })
+    if (!job || job.status === "cancelled") return
+    const tarser = backendConfig.tarser
+    if (!tarser) {
+      await ctx.runMutation(internal.kb.crawl.markTarserFailed, {
+        crawlJobId: args.crawlJobId,
+        error: "Tarser is not configured"
+      })
+      return
+    }
+    const scraper = makeScraper({ backend: "tarser", ...tarser })
+    try {
+      const { serviceJobId } = await scraper.startCrawl({
+        startUrl: job.startUrl,
+        config: {
+          maxPages: job.config.maxPages,
+          maxDepth: job.config.maxDepth,
+          includePaths: job.config.includePaths,
+          excludePaths: job.config.excludePaths,
+          allowSubdomains: job.config.allowSubdomains,
+          crawlMode: "http"
+        },
+        callbackUrl: tarserCallbackUrl(args.crawlJobId as string, job.callbackToken ?? "")
+      })
+      await ctx.runMutation(internal.kb.crawl.attachServiceJob, {
+        crawlJobId: args.crawlJobId,
+        serviceJobId
+      })
+    } catch (error: any) {
+      await ctx.runMutation(internal.kb.crawl.markTarserFailed, {
+        crawlJobId: args.crawlJobId,
+        error: error?.message ?? "Tarser submit failed"
+      })
+    }
+  }
+})
+
+export const cancelTarserCrawl = internalAction({
+  args: { crawlJobId: v.id("crawlJobs") },
+  handler: async (ctx, args) => {
+    const job = await ctx.runQuery(internal.kb.crawl.getJobInternal, {
+      jobId: args.crawlJobId
+    })
+    const tarser = backendConfig.tarser
+    if (!job?.serviceJobId || !tarser) return
+    const scraper = makeScraper({ backend: "tarser", ...tarser })
+    await scraper.cancel(job.serviceJobId)
   }
 })

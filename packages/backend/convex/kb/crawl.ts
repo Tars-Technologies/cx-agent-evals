@@ -45,7 +45,8 @@ export const startCrawl = tenantMutation({
         delay: v.optional(v.number()),
         concurrency: v.optional(v.number())
       })
-    )
+    ),
+    backend: v.optional(v.union(v.literal("inprocess"), v.literal("tarser")))
   },
   handler: async (ctx, args) => {
     const { orgId, userId } = ctx
@@ -67,6 +68,9 @@ export const startCrawl = tenantMutation({
       concurrency: userConfig.concurrency ?? 3
     }
 
+    const backend = args.backend ?? "inprocess"
+    const callbackToken = crypto.randomUUID()
+
     // Create crawl job
     const jobId = await ctx.db.insert("crawlJobs", {
       orgId,
@@ -74,35 +78,46 @@ export const startCrawl = tenantMutation({
       userId,
       startUrl: args.startUrl,
       config,
-      status: "running",
+      status: backend === "tarser" ? "pending" : "running",
       stats: { discovered: 1, scraped: 0, failed: 0, skipped: 0 },
+      backend,
+      callbackToken,
       createdAt: Date.now()
     })
 
-    // Normalize the start URL for dedup
-    const normalizedUrl =
-      args.startUrl.toLowerCase().replace(/#.*$/, "").replace(/\/+$/, "") ||
-      args.startUrl
+    if (backend === "inprocess") {
+      // Normalize the start URL for dedup
+      const normalizedUrl =
+        args.startUrl.toLowerCase().replace(/#.*$/, "").replace(/\/+$/, "") ||
+        args.startUrl
 
-    // Insert seed URL into frontier
-    await ctx.db.insert("crawlUrls", {
-      crawlJobId: jobId,
-      url: args.startUrl,
-      normalizedUrl,
-      status: "pending",
-      depth: 0
-    })
+      // Insert seed URL into frontier
+      await ctx.db.insert("crawlUrls", {
+        crawlJobId: jobId,
+        url: args.startUrl,
+        normalizedUrl,
+        status: "pending",
+        depth: 0
+      })
 
-    // Enqueue the first batch scrape action
-    const workId = await pool.enqueueAction(
-      ctx,
-      internal.kb.crawl_actions.batchScrape,
-      { crawlJobId: jobId },
-      {
-        context: { jobId },
-        onComplete: internal.kb.crawl.onBatchComplete
-      }
-    )
+      // Enqueue the first batch scrape action
+      await pool.enqueueAction(
+        ctx,
+        internal.kb.crawl_actions.batchScrape,
+        { crawlJobId: jobId },
+        {
+          context: { jobId },
+          onComplete: internal.kb.crawl.onBatchComplete
+        }
+      )
+    } else {
+      // Tarser owns the frontier remotely; submit once (no crawlUrls seed).
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.crawl_actions.submitTarserCrawl,
+        { crawlJobId: jobId }
+      )
+    }
 
     return jobId
   }
@@ -121,7 +136,17 @@ export const cancelCrawl = tenantMutation({
     if (job.status !== "running" && job.status !== "pending") {
       throw new Error(`Cannot cancel job in status: ${job.status}`)
     }
-    await ctx.db.patch(args.jobId, { status: "cancelled" })
+    await ctx.db.patch(args.jobId, {
+      status: "cancelled",
+      cancelRequestedAt: Date.now()
+    })
+    if (job.backend === "tarser" && job.serviceJobId) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.crawl_actions.cancelTarserCrawl,
+        { crawlJobId: args.jobId }
+      )
+    }
   }
 })
 
@@ -387,5 +412,126 @@ export const onBatchComplete = internalMutation({
         completedAt: Date.now()
       })
     }
+  }
+})
+
+// ─── Tarser submit support ───
+
+export const attachServiceJob = internalMutation({
+  args: { crawlJobId: v.id("crawlJobs"), serviceJobId: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.crawlJobId, {
+      serviceJobId: args.serviceJobId,
+      submittedAt: Date.now(),
+      status: "running"
+    })
+  }
+})
+
+export const markTarserFailed = internalMutation({
+  args: { crawlJobId: v.id("crawlJobs"), error: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.crawlJobId, {
+      status: "failed",
+      error: args.error,
+      completedAt: Date.now()
+    })
+  }
+})
+
+// ─── Tarser callback dispatch (called by http.ts after HMAC verify) ───
+
+export const getJobByServiceJob = internalQuery({
+  args: { serviceJobId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("crawlJobs")
+      .withIndex("by_service_job", (q) => q.eq("serviceJobId", args.serviceJobId))
+      .first()
+  }
+})
+
+export const handleTarserPage = internalMutation({
+  args: {
+    crawlJobId: v.id("crawlJobs"),
+    url: v.string(),
+    title: v.string(),
+    markdown: v.string()
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.crawlJobId)
+    if (!job) return
+    const normalizedUrl =
+      args.url.toLowerCase().replace(/#.*$/, "").replace(/\/+$/, "") || args.url
+    // Idempotency: skip if a crawlUrl for this normalized URL is already done.
+    const existing = await ctx.db
+      .query("crawlUrls")
+      .withIndex("by_job_url", (q) =>
+        q.eq("crawlJobId", args.crawlJobId).eq("normalizedUrl", normalizedUrl)
+      )
+      .first()
+    if (existing && existing.status === "done") return
+
+    const documentId = await ctx.runMutation(internal.kb.documents.createFromScrape, {
+      orgId: job.orgId,
+      kbId: job.kbId,
+      title: args.title || args.url,
+      content: args.markdown,
+      sourceUrl: args.url,
+      sourceType: "scraped"
+    })
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        status: "done",
+        documentId,
+        callbackReceivedAt: Date.now()
+      })
+    } else {
+      await ctx.db.insert("crawlUrls", {
+        crawlJobId: args.crawlJobId,
+        url: args.url,
+        normalizedUrl,
+        status: "done",
+        depth: 0,
+        documentId,
+        callbackReceivedAt: Date.now()
+      })
+    }
+    await ctx.db.patch(args.crawlJobId, {
+      stats: { ...job.stats, scraped: job.stats.scraped + 1 },
+      lastCallbackAt: Date.now()
+    })
+  }
+})
+
+export const handleTarserJobComplete = internalMutation({
+  args: {
+    crawlJobId: v.id("crawlJobs"),
+    finishReason: v.string(),
+    stats: v.object({
+      visited: v.optional(v.number()),
+      failed: v.optional(v.number()),
+      skipped: v.optional(v.number()),
+      files: v.optional(v.number())
+    })
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.crawlJobId)
+    if (!job || job.status === "cancelled") return
+    const failed = args.stats.failed ?? job.stats.failed
+    const scraped = job.stats.scraped
+    const status =
+      scraped === 0 && failed > 0
+        ? "failed"
+        : failed > 0
+          ? "completed_with_errors"
+          : "completed"
+    await ctx.db.patch(args.crawlJobId, {
+      status,
+      finishReason: args.finishReason,
+      completedAt: Date.now(),
+      lastCallbackAt: Date.now()
+    })
   }
 })
