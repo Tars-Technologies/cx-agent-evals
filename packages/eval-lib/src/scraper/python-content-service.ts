@@ -76,10 +76,18 @@ export class PythonContentService implements Scraper, Parser {
   }
 
   async cancel(serviceJobId: string): Promise<void> {
-    await fetch(`${this.config.baseUrl}/jobs/${serviceJobId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${this.config.apiToken}` }
-    })
+    const res = await fetch(
+      `${this.config.baseUrl}/jobs/${encodeURIComponent(serviceJobId)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${this.config.apiToken}` }
+      }
+    )
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(
+        `Tarser cancel failed: HTTP ${res.status} ${await res.text()}`
+      )
+    }
   }
 
   private async parseJobAccepted(

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { InProcessScraper } from "../../../src/scraper/in-process-scraper.js"
 import { NotSupportedError } from "../../../src/scraper/ports.js"
 
@@ -14,6 +14,10 @@ beforeEach(() => {
       headers: new Headers({ "content-type": "text/html" })
     })
   )
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe("InProcessScraper", () => {

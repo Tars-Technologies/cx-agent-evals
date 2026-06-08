@@ -13,6 +13,8 @@ export function isBlockedHost(host: string): boolean {
   // public hostnames like "facebook.com" / "fedex.com" are not misclassified.
   if (h.includes(":")) {
     if (h === "::1" || h === "::") return true
+    // IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1) can tunnel loopback/private IPv4.
+    if (h.startsWith("::ffff:")) return true
     if (h.startsWith("fc") || h.startsWith("fd")) return true // unique-local fc00::/7
     if (h.startsWith("fe80:")) return true // link-local
   }
