@@ -67,6 +67,13 @@ describe("PythonContentService HTTP", () => {
     expect(init.method).toBe("DELETE")
   })
 
+  it("cancel throws on a non-2xx response", async () => {
+    mockFetchOnce({ error: "nope" }, 500)
+    await expect(new PythonContentService(cfg).cancel("svc-1")).rejects.toThrow(
+      /cancel failed/i
+    )
+  })
+
   it("checkHealth returns false on non-200", async () => {
     mockFetchOnce({}, 503)
     expect(await new PythonContentService(cfg).checkHealth()).toBe(false)
