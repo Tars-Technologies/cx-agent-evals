@@ -4,11 +4,7 @@
  * Owns the crawl WorkPool; batch scraping and page fetching are delegated
  * to crawl_actions.ts because they import HTTP scraper dependencies.
  */
-import {
-  type RunResult,
-  vOnCompleteArgs,
-  Workpool
-} from "@convex-dev/workpool"
+import { type RunResult, vOnCompleteArgs, Workpool } from "@convex-dev/workpool"
 import { v } from "convex/values"
 import { components, internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
