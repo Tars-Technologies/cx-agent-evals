@@ -15,24 +15,15 @@ describe("startCrawl backend selection", () => {
     const authedT = t.withIdentity(testIdentity)
     const kbId = await authedT.mutation(api.kb.core.create, { name: "Test KB" })
 
-    // startCrawl enqueues a WorkPool action which may not resolve in test env;
-    // wrap like the existing scraping tests and assert the records regardless.
-    let jobId: Awaited<ReturnType<typeof authedT.mutation>> | undefined
-    try {
-      jobId = await authedT.mutation(api.kb.crawl.startCrawl, {
-        kbId,
-        startUrl: "https://example.com"
-      })
-    } catch {
-      // WorkPool enqueue may fail in test env — that's OK.
-    }
+    const jobId = await authedT.mutation(api.kb.crawl.startCrawl, {
+      kbId,
+      startUrl: "https://example.com"
+    })
 
-    if (jobId) {
-      const job = await t.run(async (ctx) => ctx.db.get(jobId))
-      expect(job?.backend).toBe("inprocess")
-      expect(job?.status).toBe("running")
-      expect(job?.callbackToken).toBeDefined()
-    }
+    const job = await t.run(async (ctx) => ctx.db.get(jobId))
+    expect(job?.backend).toBe("inprocess")
+    expect(job?.status).toBe("running")
+    expect(job?.callbackToken).toBeDefined()
   })
 
   it("records backend=tarser, status=pending, and a callbackToken when backend=tarser", async () => {
