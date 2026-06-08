@@ -12,15 +12,18 @@ export type BackendConfig = {
   } | null
 }
 
+const isNonEmpty = (v: string | undefined): v is string =>
+  typeof v === "string" && v.trim().length > 0
+
 function createBackendConfig(): BackendConfig {
   const tarser =
-    env.TARSER_BASE_URL &&
-    env.TARSER_API_TOKEN &&
-    env.TARSER_CALLBACK_HMAC_SECRET
+    isNonEmpty(env.TARSER_BASE_URL) &&
+    isNonEmpty(env.TARSER_API_TOKEN) &&
+    isNonEmpty(env.TARSER_CALLBACK_HMAC_SECRET)
       ? {
-          baseUrl: env.TARSER_BASE_URL,
-          apiToken: env.TARSER_API_TOKEN,
-          hmacSecret: env.TARSER_CALLBACK_HMAC_SECRET
+          baseUrl: env.TARSER_BASE_URL.trim(),
+          apiToken: env.TARSER_API_TOKEN.trim(),
+          hmacSecret: env.TARSER_CALLBACK_HMAC_SECRET.trim()
         }
       : null
   return {
