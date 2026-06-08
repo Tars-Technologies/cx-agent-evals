@@ -5,14 +5,28 @@ export type BackendConfig = {
     openaiApiKey: string
     cohereApiKey: string | undefined
   }
+  tarser: {
+    baseUrl: string
+    apiToken: string
+    hmacSecret: string
+  } | null
 }
 
 function createBackendConfig(): BackendConfig {
+  const tarser =
+    env.TARSER_BASE_URL && env.TARSER_API_TOKEN && env.TARSER_CALLBACK_HMAC_SECRET
+      ? {
+          baseUrl: env.TARSER_BASE_URL,
+          apiToken: env.TARSER_API_TOKEN,
+          hmacSecret: env.TARSER_CALLBACK_HMAC_SECRET
+        }
+      : null
   return {
     ai: {
       openaiApiKey: env.OPENAI_API_KEY,
       cohereApiKey: env.COHERE_API_KEY
-    }
+    },
+    tarser
   }
 }
 
@@ -28,3 +42,8 @@ export const backendConfig: BackendConfig = new Proxy({} as BackendConfig, {
   getOwnPropertyDescriptor: (_, prop) =>
     Reflect.getOwnPropertyDescriptor(load(), prop)
 })
+
+/** True when all Tarser connection vars are configured. */
+export function isTarserAvailable(): boolean {
+  return backendConfig.tarser !== null
+}

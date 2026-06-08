@@ -64,6 +64,7 @@ import type * as kb_indexing_actions from "../kb/indexing_actions.js";
 import type * as kb_langsmithRetry from "../kb/langsmithRetry.js";
 import type * as kb_langsmith_actions from "../kb/langsmith_actions.js";
 import type * as kb_pipeline_actions from "../kb/pipeline_actions.js";
+import type * as kb_providers from "../kb/providers.js";
 import type * as kb_questions from "../kb/questions.js";
 import type * as kb_results from "../kb/results.js";
 import type * as kb_retrieve_actions from "../kb/retrieve_actions.js";
@@ -144,6 +145,7 @@ declare const fullApi: ApiFromModules<{
   "kb/langsmithRetry": typeof kb_langsmithRetry;
   "kb/langsmith_actions": typeof kb_langsmith_actions;
   "kb/pipeline_actions": typeof kb_pipeline_actions;
+  "kb/providers": typeof kb_providers;
   "kb/questions": typeof kb_questions;
   "kb/results": typeof kb_results;
   "kb/retrieve_actions": typeof kb_retrieve_actions;
