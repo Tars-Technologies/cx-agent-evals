@@ -6,6 +6,7 @@ import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import type { Doc } from "../_generated/dataModel"
 import { internalMutation, internalQuery } from "../_generated/server"
+import { internal } from "../_generated/api"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 import { capContent } from "../lib/contentCap"
 import { computeDocId } from "../lib/docId"
@@ -516,10 +517,10 @@ export const finishParse = internalMutation({
       // inflate the KB count. createParsing deliberately skips the increment.
       const kb = await ctx.db.get(doc.kbId)
       if (kb) {
-        await ctx.db.patch(doc.kbId, {
-          documentCount: (kb.documentCount ?? 0) + 1
-        })
-      }
+      await ctx.db.patch(doc.kbId, {
+        documentCount: (kb.documentCount ?? 0) + 1
+      })
+    }
     } else {
       // Persist why it failed (the remote error, or a content-less "ok") so the
       // reason is visible on the document, matching recordParseFailure.
