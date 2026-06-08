@@ -1,10 +1,11 @@
 "use client"
 
 import type { Id } from "@convex/_generated/dataModel"
-import { useMutation } from "convex/react"
+import { useMutation, useQuery } from "convex/react"
 import { useEffect, useState } from "react"
 import { loadImportUrlConfig, saveImportUrlConfig } from "@/lib/constants"
 import { api } from "@/lib/convex"
+import { ScraperBackendToggle } from "./ScraperBackendToggle"
 
 interface ImportUrlModalProps {
   open: boolean
@@ -22,6 +23,10 @@ export function ImportUrlModal({
   onStarted
 }: ImportUrlModalProps) {
   const startCrawl = useMutation(api.kb.crawl.startCrawl)
+
+  const availability = useQuery(api.kb.providers.getScraperAvailability, {})
+  const tarserAvailable = availability?.tarser ?? false
+  const [backend, setBackend] = useState<"inprocess" | "tarser">("inprocess")
 
   // Primary fields
   const [url, setUrl] = useState("")
@@ -44,6 +49,7 @@ export function ImportUrlModal({
     setUrl(defaultUrl || "")
     setStarting(false)
     setShowAdvanced(false)
+    setBackend("inprocess")
 
     const saved = loadImportUrlConfig()
     if (saved) {
@@ -84,6 +90,7 @@ export function ImportUrlModal({
       const jobId = await startCrawl({
         kbId,
         startUrl: url.trim(),
+        backend,
         config: {
           maxPages: Math.min(Math.max(maxPages, 1), 1000),
           maxDepth,
@@ -142,6 +149,13 @@ export function ImportUrlModal({
             autoFocus
           />
         </div>
+
+        <ScraperBackendToggle
+          value={backend}
+          onChange={setBackend}
+          tarserAvailable={tarserAvailable}
+          disabled={starting}
+        />
 
         {/* Max Pages */}
         <div className="space-y-1">
