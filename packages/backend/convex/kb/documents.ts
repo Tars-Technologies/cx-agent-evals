@@ -5,6 +5,7 @@ import { paginationOptsValidator } from "convex/server"
 import { v } from "convex/values"
 import type { Doc } from "../_generated/dataModel"
 import { internalMutation, internalQuery } from "../_generated/server"
+import { internal } from "../_generated/api"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 import { computeDocId } from "../lib/docId"
 
@@ -354,5 +355,140 @@ export const createFromScrape = internalMutation({
     }
 
     return docRowId
+  }
+})
+
+/** Create a document placeholder while a remote parse is in flight. */
+export const createParsing = internalMutation({
+  args: {
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    title: v.string(),
+    mimeType: v.string(),
+    fileId: v.optional(v.id("_storage")),
+    parseServiceJobId: v.string(),
+    parseToken: v.string()
+  },
+  handler: async (ctx, args) => {
+    const docRowId = await ctx.db.insert("documents", {
+      orgId: args.orgId,
+      kbId: args.kbId,
+      docId: await computeDocId({
+        fileId: args.fileId ?? undefined,
+        sourceUrl: args.parseServiceJobId
+      }),
+      title: args.title,
+      content: "",
+      fileId: args.fileId,
+      contentLength: 0,
+      metadata: {},
+      sourceType: "upload",
+      mimeType: args.mimeType,
+      parseBackend: "tarser",
+      parseServiceJobId: args.parseServiceJobId,
+      parseToken: args.parseToken,
+      parseStatus: "parsing",
+      createdAt: Date.now()
+    })
+    const kb = await ctx.db.get(args.kbId)
+    if (kb) {
+      await ctx.db.patch(args.kbId, {
+        documentCount: (kb.documentCount ?? 0) + 1
+      })
+    }
+    return docRowId
+  }
+})
+
+/** Fill a parsing document once the remote parse_done callback arrives. Idempotent. */
+export const finishParse = internalMutation({
+  args: {
+    parseServiceJobId: v.string(),
+    status: v.union(v.literal("ok"), v.literal("failed")),
+    markdown: v.optional(v.string()),
+    error: v.optional(v.string())
+  },
+  handler: async (ctx, args) => {
+    const doc = await ctx.db
+      .query("documents")
+      .withIndex("by_parse_service_job", (q) =>
+        q.eq("parseServiceJobId", args.parseServiceJobId)
+      )
+      .first()
+    if (!doc || doc.parseStatus !== "parsing") return // unknown or already finalized
+    if (args.status === "ok") {
+      const content = args.markdown ?? ""
+      await ctx.db.patch(doc._id, {
+        content,
+        contentLength: content.length,
+        parseStatus: "done"
+      })
+    } else {
+      await ctx.db.patch(doc._id, { parseStatus: "failed" })
+    }
+  }
+})
+
+/** Create an upload document directly from in-process-parsed markdown. */
+export const createParsed = internalMutation({
+  args: {
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    title: v.string(),
+    content: v.string(),
+    mimeType: v.string(),
+    fileId: v.optional(v.id("_storage"))
+  },
+  handler: async (ctx, args) => {
+    const docRowId = await ctx.db.insert("documents", {
+      orgId: args.orgId,
+      kbId: args.kbId,
+      docId: await computeDocId({ fileId: args.fileId ?? undefined }),
+      title: args.title,
+      content: args.content,
+      fileId: args.fileId,
+      contentLength: args.content.length,
+      metadata: {},
+      sourceType: "upload",
+      mimeType: args.mimeType,
+      parseBackend: "inprocess",
+      parseStatus: "done",
+      createdAt: Date.now()
+    })
+    const kb = await ctx.db.get(args.kbId)
+    if (kb) {
+      await ctx.db.patch(args.kbId, {
+        documentCount: (kb.documentCount ?? 0) + 1
+      })
+    }
+    return docRowId
+  }
+})
+
+/** Public entry the frontend calls after uploading file bytes to storage. */
+export const parseUpload = tenantMutation({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    storageId: v.id("_storage"),
+    title: v.string(),
+    mimeType: v.string(),
+    backend: v.optional(v.union(v.literal("inprocess"), v.literal("tarser")))
+  },
+  handler: async (ctx, args) => {
+    const { orgId } = ctx
+    const kb = await ctx.db.get(args.kbId)
+    if (!kb || kb.orgId !== orgId) throw new Error("Knowledge base not found")
+    await ctx.scheduler.runAfter(
+      0,
+      internal.kb.documents_actions.parseDocument,
+      {
+        orgId,
+        kbId: args.kbId,
+        storageId: args.storageId,
+        title: args.title,
+        mimeType: args.mimeType,
+        backend: args.backend ?? "inprocess"
+      }
+    )
   }
 })
