@@ -25,6 +25,7 @@ export function FileUploader({ kbId }: FileUploaderProps) {
   const availability = useQuery(api.kb.providers.getScraperAvailability, {})
   const tarserAvailable = availability?.tarser ?? false
   const [backend, setBackend] = useState<"inprocess" | "tarser">("inprocess")
+  const [ocr, setOcr] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -66,7 +67,9 @@ export function FileUploader({ kbId }: FileUploaderProps) {
           storageId: storageId as Id<"_storage">,
           title: file.name,
           mimeType: mimeTypeFor(file),
-          backend: resolvedBackend
+          backend: resolvedBackend,
+          // OCR only applies to remote (Tarser) parsing.
+          ocr: resolvedBackend === "tarser" ? ocr : undefined
         })
 
         success++
@@ -101,6 +104,19 @@ export function FileUploader({ kbId }: FileUploaderProps) {
         tarserAvailable={tarserAvailable}
         disabled={uploading}
       />
+
+      {backend === "tarser" && tarserAvailable && (
+        <label className="flex items-center gap-2 text-xs text-text-dim cursor-pointer">
+          <input
+            type="checkbox"
+            checked={ocr}
+            onChange={(e) => setOcr(e.target.checked)}
+            disabled={uploading}
+            className="accent-accent"
+          />
+          Enable OCR (scanned PDFs and images)
+        </label>
+      )}
 
       <div
         className="border border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-accent/50 transition-colors"
