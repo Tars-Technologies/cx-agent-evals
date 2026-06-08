@@ -7,6 +7,7 @@
  * that rely on Node.js built-ins unavailable in the Convex edge runtime.
  */
 import {
+  assertPublicHttpUrl,
   filterLinks,
   InProcessScraper,
   makeScraper,
@@ -136,6 +137,7 @@ export const submitTarserCrawl = internalAction({
     }
     const scraper = makeScraper({ backend: "tarser", ...tarser })
     try {
+      assertPublicHttpUrl(job.startUrl) // SSRF: reject private/loopback/metadata before handing to Tarser
       const { serviceJobId } = await scraper.startCrawl({
         startUrl: job.startUrl,
         config: {

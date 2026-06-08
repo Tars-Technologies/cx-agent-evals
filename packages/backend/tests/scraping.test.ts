@@ -101,7 +101,7 @@ describe("scraping: startCrawl", () => {
           .collect()
       )
       expect(urls).toHaveLength(1)
-      expect(urls[0].url).toBe("https://example.com")
+      expect(urls[0].url).toBe("https://example.com/")
       expect(urls[0].depth).toBe(0)
     }
   })
