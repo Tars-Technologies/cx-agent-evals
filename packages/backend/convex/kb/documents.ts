@@ -522,7 +522,8 @@ export const parseUpload = tenantMutation({
     storageId: v.id("_storage"),
     title: v.string(),
     mimeType: v.string(),
-    backend: v.optional(v.union(v.literal("inprocess"), v.literal("tarser")))
+    backend: v.optional(v.union(v.literal("inprocess"), v.literal("tarser"))),
+    ocr: v.optional(v.boolean())
   },
   handler: async (ctx, args) => {
     const { orgId } = ctx
@@ -537,7 +538,8 @@ export const parseUpload = tenantMutation({
         storageId: args.storageId,
         title: args.title,
         mimeType: args.mimeType,
-        backend: args.backend ?? "inprocess"
+        backend: args.backend ?? "inprocess",
+        ocr: args.ocr
       }
     )
   }

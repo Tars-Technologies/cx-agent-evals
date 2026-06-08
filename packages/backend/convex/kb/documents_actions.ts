@@ -19,7 +19,8 @@ export const parseDocument = internalAction({
     storageId: v.id("_storage"),
     title: v.string(),
     mimeType: v.string(),
-    backend: v.union(v.literal("inprocess"), v.literal("tarser"))
+    backend: v.union(v.literal("inprocess"), v.literal("tarser")),
+    ocr: v.optional(v.boolean())
   },
   handler: async (ctx, args) => {
     if (args.backend === "tarser") {
@@ -34,6 +35,9 @@ export const parseDocument = internalAction({
         const result = await parser.startParse({
           fileUrl,
           mimeType: args.mimeType,
+          // Only send options when OCR is requested; otherwise let Tarser
+          // apply its own defaults. OCR has no effect on the inprocess path.
+          ...(args.ocr ? { options: { ocr: true } } : {}),
           callbackUrl: tarserCallbackUrl("parse", parseToken)
         })
         serviceJobId = result.serviceJobId
