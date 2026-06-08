@@ -53,3 +53,6 @@ data/uploads/
 
 # Superpowers brainstorming
 .superpowers/
+
+# Local implementation working docs (plans, progress, discoveries)
+.implementation/
