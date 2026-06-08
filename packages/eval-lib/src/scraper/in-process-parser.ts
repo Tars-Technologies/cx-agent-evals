@@ -18,7 +18,6 @@ function decodeBytes(bytes: Uint8Array, charset = "utf-8"): string {
     return new TextDecoder().decode(bytes)
   }
 }
-
 /**
  * In-process parser. Converts uploaded file bytes to markdown synchronously by
  * mime type. The async startParse() is unsupported here: in-process parsing returns
