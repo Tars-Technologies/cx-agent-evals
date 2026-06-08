@@ -468,6 +468,47 @@ export const createParsed = internalMutation({
   }
 })
 
+/**
+ * Record an upload whose parse could not even start or run (e.g. the remote parser
+ * was unreachable, or an in-process parse threw). Surfaces the upload as a failed
+ * document instead of silently vanishing.
+ */
+export const recordParseFailure = internalMutation({
+  args: {
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    title: v.string(),
+    mimeType: v.string(),
+    backend: v.union(v.literal("inprocess"), v.literal("tarser")),
+    fileId: v.optional(v.id("_storage")),
+    error: v.string()
+  },
+  handler: async (ctx, args) => {
+    const docRowId = await ctx.db.insert("documents", {
+      orgId: args.orgId,
+      kbId: args.kbId,
+      docId: await computeDocId({ fileId: args.fileId ?? undefined }),
+      title: args.title,
+      content: "",
+      fileId: args.fileId,
+      contentLength: 0,
+      metadata: { error: args.error },
+      sourceType: "upload",
+      mimeType: args.mimeType,
+      parseBackend: args.backend,
+      parseStatus: "failed",
+      createdAt: Date.now()
+    })
+    const kb = await ctx.db.get(args.kbId)
+    if (kb) {
+      await ctx.db.patch(args.kbId, {
+        documentCount: (kb.documentCount ?? 0) + 1
+      })
+    }
+    return docRowId
+  }
+})
+
 /** Public entry the frontend calls after uploading file bytes to storage. */
 export const parseUpload = tenantMutation({
   args: {

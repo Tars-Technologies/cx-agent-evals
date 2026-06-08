@@ -176,4 +176,29 @@ describe("parse document mutations", () => {
     expect(doc?.contentLength).toBe("# Hello\n\nWorld".length)
     expect(doc?.sourceType).toBe("upload")
   })
+
+  it("recordParseFailure surfaces a failed upload document", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+
+    const fileId = await t.run(async (ctx) =>
+      ctx.storage.store(new Blob(["x"], { type: "text/markdown" }))
+    )
+
+    const docId = await t.mutation(internal.kb.documents.recordParseFailure, {
+      orgId: TEST_ORG_ID,
+      kbId,
+      title: "down.md",
+      mimeType: "text/markdown",
+      backend: "tarser",
+      fileId,
+      error: "Tarser is unreachable"
+    })
+
+    const doc = await t.run(async (ctx) => ctx.db.get(docId))
+    expect(doc?.parseStatus).toBe("failed")
+    expect(doc?.parseBackend).toBe("tarser")
+    expect(doc?.content).toBe("")
+  })
 })

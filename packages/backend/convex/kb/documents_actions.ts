@@ -29,11 +29,31 @@ export const parseDocument = internalAction({
       if (!fileUrl) throw new Error("Uploaded file not found")
       const parseToken = crypto.randomUUID()
       const parser = makeParser({ backend: "tarser", ...tarser })
-      const { serviceJobId } = await parser.startParse({
-        fileUrl,
-        mimeType: args.mimeType,
-        callbackUrl: tarserCallbackUrl("parse", parseToken)
-      })
+      let serviceJobId: string
+      try {
+        const result = await parser.startParse({
+          fileUrl,
+          mimeType: args.mimeType,
+          callbackUrl: tarserCallbackUrl("parse", parseToken)
+        })
+        serviceJobId = result.serviceJobId
+      } catch (error) {
+        // Tarser unreachable / rejected the submit: surface a failed upload
+        // instead of letting the action vanish with no document.
+        await ctx.runMutation(internal.kb.documents.recordParseFailure, {
+          orgId: args.orgId,
+          kbId: args.kbId,
+          title: args.title,
+          mimeType: args.mimeType,
+          backend: "tarser",
+          fileId: args.storageId,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to submit document to Tarser"
+        })
+        return
+      }
       await ctx.runMutation(internal.kb.documents.createParsing, {
         orgId: args.orgId,
         kbId: args.kbId,
@@ -51,7 +71,23 @@ export const parseDocument = internalAction({
     if (!blob) throw new Error("Uploaded file not found")
     const bytes = new Uint8Array(await blob.arrayBuffer())
     const parser = new InProcessParser()
-    const parsed = await parser.parseFile(bytes, args.mimeType)
+    let parsed: Awaited<ReturnType<typeof parser.parseFile>>
+    try {
+      parsed = await parser.parseFile(bytes, args.mimeType)
+    } catch (error) {
+      // Unsupported type / parse error: surface a failed upload, don't vanish.
+      await ctx.runMutation(internal.kb.documents.recordParseFailure, {
+        orgId: args.orgId,
+        kbId: args.kbId,
+        title: args.title,
+        mimeType: args.mimeType,
+        backend: "inprocess",
+        fileId: args.storageId,
+        error:
+          error instanceof Error ? error.message : "Failed to parse document"
+      })
+      return
+    }
     await ctx.runMutation(internal.kb.documents.createParsed, {
       orgId: args.orgId,
       kbId: args.kbId,
