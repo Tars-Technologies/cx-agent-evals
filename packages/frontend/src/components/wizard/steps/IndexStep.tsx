@@ -141,10 +141,11 @@ export function IndexStep({
             <option
               key={entry.id}
               value={entry.id}
-              disabled={entry.status === "coming-soon"}
+              disabled={entry.status !== "available"}
             >
               {entry.name}
               {entry.status === "coming-soon" ? " (coming soon)" : ""}
+              {entry.status === "unavailable" ? " (unavailable)" : ""}
             </option>
           ))}
         </select>

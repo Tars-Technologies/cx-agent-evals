@@ -213,9 +213,18 @@ export function RetrieverWizard({
     // Search
     config.search = { strategy: searchStrategy, ...searchOptions }
 
-    // Refinement
+    // Refinement - fold the selected reranker provider/model into each rerank
+    // step so the backend can honor the user's choice.
     if (refinementSteps.length > 0) {
-      config.refinement = refinementSteps
+      config.refinement = refinementSteps.map((step) =>
+        step.type === "rerank"
+          ? {
+              ...step,
+              provider: rerankerProvider,
+              model: rerankerOptions.model
+            }
+          : step
+      )
     }
 
     config.k = k
@@ -228,6 +237,8 @@ export function RetrieverWizard({
     searchStrategy,
     searchOptions,
     refinementSteps,
+    rerankerProvider,
+    rerankerOptions,
     k
   ])
 
