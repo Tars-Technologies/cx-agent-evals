@@ -37,8 +37,10 @@ import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
+import { backendConfig } from "../config"
 import { tenantAction } from "../lib/auth/tenant"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
+import { resolveRerankerSelection } from "./reranker_selection"
 
 // ─── Helpers ───
 
@@ -190,14 +192,23 @@ async function applyRefinementsForRetriever(
   return current
 }
 
-/** Try to create a Cohere reranker. Returns undefined if not available. */
-async function tryCreateRerankerForRetriever(): Promise<Reranker | undefined> {
+/**
+ * Build the reranker selected by the retriever's rerank refinement step.
+ * Returns undefined (graceful skip) when no rerank step is configured or the
+ * selected provider's API key is not set.
+ */
+async function createRerankerForRetriever(
+  refinementSteps: Array<Record<string, unknown>>
+): Promise<Reranker | undefined> {
+  const selection = resolveRerankerSelection(refinementSteps, backendConfig.ai)
+  if (!selection) return undefined
   try {
-    const { CohereReranker } = await import(
-      "@tars-inc/eval-lib/rerankers/cohere"
+    const { makeReranker } = await import(
+      "@tars-inc/eval-lib/rerankers/make-reranker"
     )
-    return await CohereReranker.create()
-  } catch {
+    return await makeReranker(selection)
+  } catch (err) {
+    console.warn("[Reranker] failed to construct reranker, skipping", err)
     return undefined
   }
 }
@@ -419,7 +430,7 @@ export const retrieve = tenantAction({
 
     const needsReranker = refinementSteps.some((s) => s.type === "rerank")
     const reranker = needsReranker
-      ? await tryCreateRerankerForRetriever()
+      ? await createRerankerForRetriever(refinementSteps)
       : undefined
 
     // Helper to convert Convex results to ScoredChunk[]
