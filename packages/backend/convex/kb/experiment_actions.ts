@@ -257,7 +257,7 @@ async function applyRefinementChain(
       case "rerank": {
         if (!reranker) {
           console.warn(
-            "[Refinement] Skipping rerank — no reranker available (set CO_API_KEY)"
+            "[Refinement] Skipping rerank, no reranker available (set COHERE_API_KEY / JINA_API_KEY / VOYAGE_API_KEY)"
           )
           break
         }
