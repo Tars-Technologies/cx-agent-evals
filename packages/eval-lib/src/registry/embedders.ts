@@ -33,6 +33,36 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
     defaults: { model: "text-embedding-3-small" }
   },
   {
+    id: "openrouter",
+    name: "OpenRouter",
+    description:
+      "OpenAI-compatible gateway to many embedding models. Uses the OpenAI embedder under the hood with the OpenRouter base URL.",
+    status: "available",
+    tags: ["gateway"],
+    options: [
+      {
+        key: "model",
+        label: "Model",
+        description: "OpenRouter embedding model id (provider-namespaced).",
+        type: "select",
+        choices: [
+          {
+            value: "openai/text-embedding-3-small",
+            label: "openai/text-embedding-3-small",
+            description: "1536 dims - fast, cost-effective"
+          },
+          {
+            value: "openai/text-embedding-3-large",
+            label: "openai/text-embedding-3-large",
+            description: "3072 dims - highest quality"
+          }
+        ],
+        default: "openai/text-embedding-3-small"
+      }
+    ],
+    defaults: { model: "openai/text-embedding-3-small" }
+  },
+  {
     id: "cohere",
     name: "Cohere",
     description:
@@ -68,7 +98,7 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
     name: "Voyage",
     description:
       "High-quality embeddings from Voyage AI. voyage-3.5 offers strong retrieval performance across domains.",
-    status: "available",
+    status: "unavailable",
     tags: ["high-quality"],
     options: [
       {
@@ -108,7 +138,7 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
     name: "Jina",
     description:
       "Flexible embeddings with Matryoshka dimension support. Adjust output dimensions (32-1024) for speed vs quality trade-off.",
-    status: "available",
+    status: "unavailable",
     tags: ["flexible", "matryoshka"],
     options: [
       {

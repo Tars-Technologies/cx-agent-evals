@@ -4,6 +4,7 @@ export default defineConfig({
   entry: [
     "src/index.ts",
     "src/embedders/openai.ts",
+    "src/embedders/make-embedder.ts",
     "src/rerankers/cohere.ts",
     "src/embedders/cohere.ts",
     "src/embedders/voyage.ts",

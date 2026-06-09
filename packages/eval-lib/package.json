@@ -28,6 +28,10 @@
       "import": "./dist/embedders/openai.js",
       "types": "./dist/embedders/openai.d.ts"
     },
+    "./embedders/make-embedder": {
+      "import": "./dist/embedders/make-embedder.js",
+      "types": "./dist/embedders/make-embedder.d.ts"
+    },
     "./rerankers/cohere": {
       "import": "./dist/rerankers/cohere.js",
       "types": "./dist/rerankers/cohere.d.ts"
