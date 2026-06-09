@@ -16,17 +16,25 @@ describe("resolveRerankerSelection", () => {
   })
 
   it("defaults to cohere when the rerank step has no provider", () => {
-    expect(resolveRerankerSelection([{ type: "rerank", topN: 5 }], ai)).toEqual({
-      provider: "cohere",
-      model: undefined,
-      apiKey: "cohere-key"
-    })
+    expect(resolveRerankerSelection([{ type: "rerank", topN: 5 }], ai)).toEqual(
+      {
+        provider: "cohere",
+        model: undefined,
+        apiKey: "cohere-key"
+      }
+    )
   })
 
   it("reads provider and model off the rerank step", () => {
     expect(
       resolveRerankerSelection(
-        [{ type: "rerank", provider: "jina", model: "jina-reranker-v2-base-multilingual" }],
+        [
+          {
+            type: "rerank",
+            provider: "jina",
+            model: "jina-reranker-v2-base-multilingual"
+          }
+        ],
         ai
       )
     ).toEqual({

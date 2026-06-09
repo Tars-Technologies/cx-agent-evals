@@ -1,11 +1,4 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi
-} from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { CohereReranker } from "../../../src/rerankers/cohere.js"
 import type { PositionAwareChunk } from "../../../src/types/index.js"
 
@@ -87,7 +80,11 @@ describe("CohereReranker", () => {
         mockFetchResponse({ results: [{ index: 0, relevance_score: 0.8 }] })
       )
       const reranker = await CohereReranker.create({ apiKey: "test-key" })
-      const result = await reranker.rerank("query", [makeChunk("c1", "hello")], 1)
+      const result = await reranker.rerank(
+        "query",
+        [makeChunk("c1", "hello")],
+        1
+      )
 
       expect(result.map((c) => c.content)).toEqual(["hello"])
       const [url, init] = fetchSpy.mock.calls[0]

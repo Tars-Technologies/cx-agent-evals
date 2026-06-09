@@ -1,7 +1,7 @@
 import type { PositionAwareChunk } from "../types/index.js"
 import { postJSON } from "../utils/fetch-json.js"
-import type { Reranker } from "./reranker.interface.js"
 import { mapRerankResults } from "./rerank-bounds.js"
+import type { Reranker } from "./reranker.interface.js"
 
 interface CohereRerankClient {
   rerank(opts: {

@@ -1,6 +1,6 @@
 import { postJSON } from "../utils/fetch-json.js"
-import { assertEmbeddingBatch } from "./embedding-batch.js"
 import type { Embedder } from "./embedder.interface.js"
+import { assertEmbeddingBatch } from "./embedding-batch.js"
 
 interface CohereEmbedClient {
   embed(opts: {

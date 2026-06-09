@@ -5,19 +5,12 @@ describe("mapRerankResults", () => {
   const chunks = ["a", "b", "c"]
 
   it("maps result indices back to chunks in result order", () => {
-    const out = mapRerankResults(
-      [{ index: 2 }, { index: 0 }],
-      chunks,
-      2
-    )
+    const out = mapRerankResults([{ index: 2 }, { index: 0 }], chunks, 2)
     expect(out).toEqual(["c", "a"])
   })
 
   it("drops out-of-range indices instead of emitting undefined", () => {
-    const out = mapRerankResults(
-      [{ index: 5 }, { index: 1 }],
-      chunks
-    )
+    const out = mapRerankResults([{ index: 5 }, { index: 1 }], chunks)
     expect(out).toEqual(["b"])
   })
 
