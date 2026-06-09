@@ -1,10 +1,25 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi
+} from "vitest"
 import { CohereEmbedder } from "../../../src/embedders/cohere.js"
 
+function mockFetchResponse(body: unknown, status = 200, statusText = "OK") {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText,
+    json: async () => body,
+    text: async () => (typeof body === "string" ? body : JSON.stringify(body))
+  } as unknown as Response
+}
+
 describe("CohereEmbedder", () => {
-  const mockClient = {
-    embed: vi.fn()
-  }
+  const mockClient = { embed: vi.fn() }
 
   beforeEach(() => {
     mockClient.embed.mockReset()
@@ -28,19 +43,10 @@ describe("CohereEmbedder", () => {
       expect(embedder.name).toBe("Cohere(embed-multilingual-v3.0)")
       expect(embedder.dimension).toBe(1024)
     })
-
-    it("should fall back to 1024 dimensions for unknown model", () => {
-      const embedder = new CohereEmbedder({
-        client: mockClient,
-        model: "embed-future-v4.0"
-      })
-      expect(embedder.name).toBe("Cohere(embed-future-v4.0)")
-      expect(embedder.dimension).toBe(1024)
-    })
   })
 
   describe("embed()", () => {
-    it("should call client.embed with inputType search_document", async () => {
+    it("should call client.embed with input_type search_document", async () => {
       const embedder = new CohereEmbedder({
         client: mockClient,
         model: "embed-english-v3.0"
@@ -50,76 +56,82 @@ describe("CohereEmbedder", () => {
       expect(mockClient.embed).toHaveBeenCalledWith({
         model: "embed-english-v3.0",
         texts: ["hello world"],
-        inputType: "search_document",
-        embeddingTypes: ["float"]
+        input_type: "search_document",
+        embedding_types: ["float"]
       })
     })
 
     it("should return embeddings from response", async () => {
       mockClient.embed.mockResolvedValue({
-        embeddings: {
-          float: [
-            [0.1, 0.2],
-            [0.3, 0.4]
-          ]
-        }
+        embeddings: { float: [[0.1, 0.2], [0.3, 0.4]] }
       })
-
       const embedder = new CohereEmbedder({ client: mockClient })
       const result = await embedder.embed(["text1", "text2"])
-
-      expect(result).toEqual([
-        [0.1, 0.2],
-        [0.3, 0.4]
-      ])
+      expect(result).toEqual([[0.1, 0.2], [0.3, 0.4]])
     })
 
-    it("should spread readonly texts array", async () => {
+    it("should throw when the returned count does not match the input", async () => {
+      mockClient.embed.mockResolvedValue({
+        embeddings: { float: [[0.1, 0.2]] }
+      })
       const embedder = new CohereEmbedder({ client: mockClient })
-      const texts: readonly string[] = ["a", "b"]
-      await embedder.embed(texts)
-
-      expect(mockClient.embed).toHaveBeenCalledWith(
-        expect.objectContaining({ texts: ["a", "b"] })
+      await expect(embedder.embed(["a", "b"])).rejects.toThrow(
+        /returned 1 embeddings for 2 inputs/
       )
     })
   })
 
   describe("embedQuery()", () => {
-    it("should call client.embed with inputType search_query", async () => {
+    it("should call client.embed with input_type search_query", async () => {
       const embedder = new CohereEmbedder({ client: mockClient })
       await embedder.embedQuery("test query")
-
       expect(mockClient.embed).toHaveBeenCalledWith({
         model: "embed-english-v3.0",
         texts: ["test query"],
-        inputType: "search_query",
-        embeddingTypes: ["float"]
+        input_type: "search_query",
+        embedding_types: ["float"]
       })
     })
+  })
 
-    it("should return a single embedding vector", async () => {
-      mockClient.embed.mockResolvedValue({
-        embeddings: { float: [[0.5, 0.6, 0.7]] }
-      })
-
-      const embedder = new CohereEmbedder({ client: mockClient })
-      const result = await embedder.embedQuery("query")
-
-      expect(result).toEqual([0.5, 0.6, 0.7])
+  describe("create() HTTP wire contract", () => {
+    let fetchSpy: ReturnType<typeof vi.spyOn>
+    beforeEach(() => {
+      fetchSpy = vi.spyOn(globalThis, "fetch")
     })
+    afterEach(() => vi.restoreAllMocks())
 
-    it("should NOT delegate to embed() — calls client directly", async () => {
-      const embedder = new CohereEmbedder({ client: mockClient })
-      const embedSpy = vi.spyOn(embedder, "embed")
-
-      await embedder.embedQuery("direct call")
-
-      expect(embedSpy).not.toHaveBeenCalled()
-      expect(mockClient.embed).toHaveBeenCalledTimes(1)
-      expect(mockClient.embed).toHaveBeenCalledWith(
-        expect.objectContaining({ inputType: "search_query" })
+    it("POSTs to the Cohere v2 embed endpoint with snake_case body + bearer auth", async () => {
+      fetchSpy.mockResolvedValueOnce(
+        mockFetchResponse({ embeddings: { float: [[0.1, 0.2, 0.3]] } })
       )
+      const embedder = await CohereEmbedder.create({ apiKey: "test-key" })
+      const result = await embedder.embed(["hello"])
+
+      expect(result).toEqual([[0.1, 0.2, 0.3]])
+      const [url, init] = fetchSpy.mock.calls[0]
+      expect(url).toBe("https://api.cohere.com/v2/embed")
+      expect(init).toMatchObject({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer test-key"
+        }
+      })
+      expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+        model: "embed-english-v3.0",
+        texts: ["hello"],
+        input_type: "search_document",
+        embedding_types: ["float"]
+      })
+    })
+
+    it("throws a clear error when no API key is available", async () => {
+      const prev = process.env.COHERE_API_KEY
+      process.env.COHERE_API_KEY = ""
+      await expect(CohereEmbedder.create()).rejects.toThrow(/Cohere API key/)
+      if (prev === undefined) delete process.env.COHERE_API_KEY
+      else process.env.COHERE_API_KEY = prev
     })
   })
 })

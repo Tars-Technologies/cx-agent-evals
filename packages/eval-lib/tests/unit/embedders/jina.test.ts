@@ -88,12 +88,40 @@ describe("JinaEmbedder", () => {
     })
 
     it("should spread readonly texts array", async () => {
+      mockClient.embed.mockResolvedValue({
+        data: [
+          { embedding: [0.1, 0.2], index: 0 },
+          { embedding: [0.3, 0.4], index: 1 }
+        ]
+      })
       const embedder = new JinaEmbedder({ client: mockClient })
       const texts: readonly string[] = ["a", "b"]
       await embedder.embed(texts)
 
       expect(mockClient.embed).toHaveBeenCalledWith(
         expect.objectContaining({ input: ["a", "b"] })
+      )
+    })
+
+    it("reorders embeddings by their API index", async () => {
+      mockClient.embed.mockResolvedValue({
+        data: [
+          { embedding: [0.3, 0.4], index: 1 },
+          { embedding: [0.1, 0.2], index: 0 }
+        ]
+      })
+      const embedder = new JinaEmbedder({ client: mockClient })
+      const result = await embedder.embed(["first", "second"])
+      expect(result).toEqual([[0.1, 0.2], [0.3, 0.4]])
+    })
+
+    it("throws when the returned count does not match the input", async () => {
+      mockClient.embed.mockResolvedValue({
+        data: [{ embedding: [0.1, 0.2], index: 0 }]
+      })
+      const embedder = new JinaEmbedder({ client: mockClient })
+      await expect(embedder.embed(["a", "b"])).rejects.toThrow(
+        /returned 1 embeddings for 2 inputs/
       )
     })
   })
