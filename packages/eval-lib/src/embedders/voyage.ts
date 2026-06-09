@@ -1,6 +1,6 @@
 import { postJSON } from "../utils/fetch-json.js"
-import { assertEmbeddingBatch, reorderByIndex } from "./embedding-batch.js"
 import type { Embedder } from "./embedder.interface.js"
+import { assertEmbeddingBatch, reorderByIndex } from "./embedding-batch.js"
 
 interface VoyageEmbedClient {
   embed(opts: { model: string; input: string[]; input_type: string }): Promise<{

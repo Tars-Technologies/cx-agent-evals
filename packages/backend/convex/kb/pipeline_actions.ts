@@ -23,12 +23,12 @@ import MiniSearch from "minisearch"
 import { api, internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
-import { tenantAction } from "../lib/auth/tenant"
 import { backendConfig } from "../config"
+import { tenantAction } from "../lib/auth/tenant"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
 import {
-  resolveRerankerSelection,
-  type RerankerSelection
+  type RerankerSelection,
+  resolveRerankerSelection
 } from "./reranker_selection"
 
 // ---------------------------------------------------------------------------

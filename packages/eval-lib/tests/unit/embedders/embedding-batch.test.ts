@@ -31,14 +31,21 @@ describe("reorderByIndex", () => {
 describe("assertEmbeddingBatch", () => {
   it("passes when count matches and all vectors share a length", () => {
     expect(() =>
-      assertEmbeddingBatch([[0.1, 0.2], [0.3, 0.4]], 2, "TestProvider")
+      assertEmbeddingBatch(
+        [
+          [0.1, 0.2],
+          [0.3, 0.4]
+        ],
+        2,
+        "TestProvider"
+      )
     ).not.toThrow()
   })
 
   it("throws when the returned count does not match the input count", () => {
-    expect(() =>
-      assertEmbeddingBatch([[0.1, 0.2]], 2, "TestProvider")
-    ).toThrow(/TestProvider returned 1 embeddings for 2 inputs/)
+    expect(() => assertEmbeddingBatch([[0.1, 0.2]], 2, "TestProvider")).toThrow(
+      /TestProvider returned 1 embeddings for 2 inputs/
+    )
   })
 
   it("throws when vectors have inconsistent dimensions", () => {

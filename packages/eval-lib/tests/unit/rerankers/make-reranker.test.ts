@@ -24,7 +24,10 @@ describe("makeReranker", () => {
   })
 
   it("honors a custom model", async () => {
-    const reranker = await makeReranker({ provider: "cohere", model: "rerank-v3.5" })
+    const reranker = await makeReranker({
+      provider: "cohere",
+      model: "rerank-v3.5"
+    })
     expect(reranker.name).toBe("Cohere(rerank-v3.5)")
   })
 

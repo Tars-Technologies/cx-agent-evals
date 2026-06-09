@@ -21,11 +21,17 @@ export async function makeReranker(
   const provider = config.provider ?? "cohere"
   switch (provider) {
     case "cohere":
-      return CohereReranker.create({ model: config.model, apiKey: config.apiKey })
+      return CohereReranker.create({
+        model: config.model,
+        apiKey: config.apiKey
+      })
     case "jina":
       return JinaReranker.create({ model: config.model, apiKey: config.apiKey })
     case "voyage":
-      return VoyageReranker.create({ model: config.model, apiKey: config.apiKey })
+      return VoyageReranker.create({
+        model: config.model,
+        apiKey: config.apiKey
+      })
     default:
       throw new Error(`Unknown reranker provider: ${provider}`)
   }

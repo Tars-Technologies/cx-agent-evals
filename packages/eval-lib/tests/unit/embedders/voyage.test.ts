@@ -112,7 +112,10 @@ describe("VoyageEmbedder", () => {
       })
       const embedder = new VoyageEmbedder({ client: mockClient })
       const result = await embedder.embed(["first", "second"])
-      expect(result).toEqual([[0.1, 0.2], [0.3, 0.4]])
+      expect(result).toEqual([
+        [0.1, 0.2],
+        [0.3, 0.4]
+      ])
     })
 
     it("throws when the returned count does not match the input", async () => {

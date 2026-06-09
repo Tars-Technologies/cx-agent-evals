@@ -1,11 +1,4 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi
-} from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { CohereEmbedder } from "../../../src/embedders/cohere.js"
 
 function mockFetchResponse(body: unknown, status = 200, statusText = "OK") {
@@ -63,11 +56,19 @@ describe("CohereEmbedder", () => {
 
     it("should return embeddings from response", async () => {
       mockClient.embed.mockResolvedValue({
-        embeddings: { float: [[0.1, 0.2], [0.3, 0.4]] }
+        embeddings: {
+          float: [
+            [0.1, 0.2],
+            [0.3, 0.4]
+          ]
+        }
       })
       const embedder = new CohereEmbedder({ client: mockClient })
       const result = await embedder.embed(["text1", "text2"])
-      expect(result).toEqual([[0.1, 0.2], [0.3, 0.4]])
+      expect(result).toEqual([
+        [0.1, 0.2],
+        [0.3, 0.4]
+      ])
     })
 
     it("should throw when the returned count does not match the input", async () => {
