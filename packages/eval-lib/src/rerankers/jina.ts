@@ -1,6 +1,7 @@
 import type { PositionAwareChunk } from "../types/index.js"
 import { postJSON } from "../utils/fetch-json.js"
 import type { Reranker } from "./reranker.interface.js"
+import { mapRerankResults } from "./rerank-bounds.js"
 
 interface JinaRerankClient {
   rerank(opts: {
@@ -76,6 +77,6 @@ export class JinaReranker implements Reranker {
       top_n: topK ?? chunks.length
     })
 
-    return response.results.map((r) => chunks[r.index])
+    return mapRerankResults(response.results, chunks, topK)
   }
 }

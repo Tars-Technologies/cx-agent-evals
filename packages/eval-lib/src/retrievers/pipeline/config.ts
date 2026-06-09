@@ -174,11 +174,15 @@ export interface RerankRefinementStep {
   readonly type: "rerank"
   /**
    * Cap the rerank output to the top N chunks. When omitted, the rerank step
-   * narrows to the pipeline's overall topK — same behavior as before this
+   * narrows to the pipeline's overall topK - same behavior as before this
    * field was added. Use this to widen-then-narrow (e.g. fetch 25 candidates,
    * keep the top 6 after reranking).
    */
   readonly topN?: number
+  /** Reranker provider for this step. Defaults to "cohere" when omitted. */
+  readonly provider?: "cohere" | "jina" | "voyage"
+  /** Reranker model id. Falls back to the provider's default. */
+  readonly model?: string
 }
 
 export interface ThresholdRefinementStep {

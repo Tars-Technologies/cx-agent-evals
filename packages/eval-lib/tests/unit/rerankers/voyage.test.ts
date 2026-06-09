@@ -126,5 +126,18 @@ describe("VoyageReranker", () => {
         expect.objectContaining({ model: "rerank-2" })
       )
     })
+
+    it("drops out-of-range indices instead of emitting undefined", async () => {
+      const chunks = [makeChunk("c1", "first"), makeChunk("c2", "second")]
+      mockClient.rerank.mockResolvedValue({
+        data: [
+          { index: 9, relevance_score: 0.9 },
+          { index: 0, relevance_score: 0.5 }
+        ]
+      })
+      const reranker = new VoyageReranker({ client: mockClient })
+      const result = await reranker.rerank("query", chunks, 2)
+      expect(result).toEqual([chunks[0]])
+    })
   })
 })
