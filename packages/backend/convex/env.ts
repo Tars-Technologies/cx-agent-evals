@@ -7,6 +7,8 @@ const requiredStr = z
 const envSchema = z.object({
   OPENAI_API_KEY: requiredStr,
   COHERE_API_KEY: z.string().optional(), // optional — reranker falls back gracefully if not set
+  JINA_API_KEY: z.string().optional(),
+  VOYAGE_API_KEY: z.string().optional(),
   TARSER_BASE_URL: z.string().optional(),
   TARSER_API_TOKEN: z.string().optional(),
   TARSER_CALLBACK_HMAC_SECRET: z.string().optional(),
@@ -31,6 +33,8 @@ function parseEnv(): Env {
     return {
       OPENAI_API_KEY: partial.OPENAI_API_KEY ?? "",
       COHERE_API_KEY: partial.COHERE_API_KEY,
+      JINA_API_KEY: partial.JINA_API_KEY,
+      VOYAGE_API_KEY: partial.VOYAGE_API_KEY,
       TARSER_BASE_URL: partial.TARSER_BASE_URL,
       TARSER_API_TOKEN: partial.TARSER_API_TOKEN,
       TARSER_CALLBACK_HMAC_SECRET: partial.TARSER_CALLBACK_HMAC_SECRET,

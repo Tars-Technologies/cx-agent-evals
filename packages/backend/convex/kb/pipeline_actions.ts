@@ -10,6 +10,7 @@ import type {
   HydeQueryConfig,
   MultiQueryConfig,
   PipelineConfig,
+  PositionAwareChunk,
   QueryConfig,
   RefinementStepConfig,
   RewriteQueryConfig,
@@ -25,6 +26,10 @@ import type { ActionCtx } from "../_generated/server"
 import { tenantAction } from "../lib/auth/tenant"
 import { backendConfig } from "../config"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
+import {
+  resolveRerankerSelection,
+  type RerankerSelection
+} from "./reranker_selection"
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -859,48 +864,30 @@ function applyMmr(
 }
 
 /**
- * Rerank chunks using the Cohere rerank API (direct HTTP — no SDK dependency).
- * Falls back to the original order if `COHERE_API_KEY` is not set.
+ * Rerank chunks through eval-lib's makeReranker, honoring the provider and model
+ * selected on the rerank refinement step (no direct provider HTTP here). Re-scores
+ * survivors by descending rank - matching the retrieve/experiment paths - so a
+ * downstream threshold or the final output reflects rerank order.
  */
 async function applyRerank(
   query: string,
   chunks: ChunkResult[],
-  topK: number
+  topK: number,
+  selection: RerankerSelection
 ): Promise<ChunkResult[]> {
-  const apiKey = backendConfig.ai.cohereApiKey
-  if (!apiKey) {
-    throw new Error(
-      "COHERE_API_KEY not set — required for the rerank refinement step"
-    )
-  }
-
-  const response = await fetch("https://api.cohere.com/v1/rerank", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "rerank-english-v3.0",
-      query,
-      documents: chunks.map((c) => c.content),
-      top_n: topK
-    })
-  })
-
-  if (!response.ok) {
-    const body = await response.text()
-    throw new Error(`Cohere rerank failed (${response.status}): ${body}`)
-  }
-
-  const data = (await response.json()) as {
-    results: Array<{ index: number; relevance_score: number }>
-  }
-
-  return data.results.map((r) => ({
-    ...chunks[r.index],
-    score: r.relevance_score
-  }))
+  const { makeReranker } = await import(
+    "@tars-inc/eval-lib/rerankers/make-reranker"
+  )
+  const reranker = await makeReranker(selection)
+  // The reranker reads only `.content` and maps result indices back to the same
+  // objects we pass, so ChunkResult round-trips safely through the cast.
+  const reranked = (await reranker.rerank(
+    query,
+    chunks as unknown as PositionAwareChunk[],
+    topK
+  )) as unknown as ChunkResult[]
+  const count = reranked.length
+  return reranked.map((chunk, i) => ({ ...chunk, score: (count - i) / count }))
 }
 
 /**
@@ -996,12 +983,24 @@ async function runRefinementStage(
 
     case "rerank": {
       const rerankTopN = step.topN ?? k
+      const selection = resolveRerankerSelection(
+        [step as unknown as Record<string, unknown>],
+        backendConfig.ai
+      )
+      if (!selection) {
+        throw new Error(
+          `Rerank step has no usable reranker for provider ` +
+            `"${step.provider ?? "cohere"}": check the provider name and that ` +
+            `its API key is set (COHERE_API_KEY / JINA_API_KEY / VOYAGE_API_KEY).`
+        )
+      }
       config = {
         type: "rerank",
-        model: "rerank-english-v3.0",
+        provider: selection.provider,
+        model: selection.model ?? "(provider default)",
         topK: rerankTopN
       }
-      outputChunks = await applyRerank(query, chunks, rerankTopN)
+      outputChunks = await applyRerank(query, chunks, rerankTopN, selection)
       break
     }
 

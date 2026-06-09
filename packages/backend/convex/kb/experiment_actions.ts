@@ -46,8 +46,10 @@ import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
 import { internalAction } from "../_generated/server"
+import { backendConfig } from "../config"
 import { resolveMaxConcurrency } from "../lib/experimentConcurrency"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
+import { resolveRerankerSelection } from "./reranker_selection"
 
 // ─── Helpers: search-strategy dispatch ───
 
@@ -164,6 +166,8 @@ interface RefinementStep {
   overlapThreshold?: number
   lambda?: number
   windowChars?: number
+  provider?: "cohere" | "jina" | "voyage"
+  model?: string
 }
 
 function resolveQueryConfig(retrieverConfig: Record<string, any>): QueryConfig {
@@ -191,7 +195,9 @@ function resolveRefinementConfig(
     method: step.method as "exact" | "overlap" | undefined,
     overlapThreshold: step.overlapThreshold as number | undefined,
     lambda: step.lambda as number | undefined,
-    windowChars: step.windowChars as number | undefined
+    windowChars: step.windowChars as number | undefined,
+    provider: step.provider as "cohere" | "jina" | "voyage" | undefined,
+    model: step.model as string | undefined
   }))
 }
 
@@ -281,16 +287,25 @@ async function applyRefinementChain(
   return current
 }
 
-/** Try to create a Cohere reranker. Returns undefined if not available. */
-async function tryCreateReranker(): Promise<Reranker | undefined> {
+/**
+ * Build the reranker selected by the experiment retriever's rerank refinement
+ * step. Returns undefined (graceful skip) when no rerank step is configured or
+ * the selected provider's API key is not set.
+ */
+async function createRerankerForExperiment(
+  refinementSteps: Array<Record<string, unknown>>
+): Promise<Reranker | undefined> {
+  const selection = resolveRerankerSelection(refinementSteps, backendConfig.ai)
+  if (!selection) return undefined
   try {
-    const { CohereReranker } = await import(
-      "@tars-inc/eval-lib/rerankers/cohere"
+    const { makeReranker } = await import(
+      "@tars-inc/eval-lib/rerankers/make-reranker"
     )
-    return await CohereReranker.create()
-  } catch {
+    return await makeReranker(selection)
+  } catch (err) {
     console.warn(
-      "[Reranker] Cohere reranker not available — rerank steps will be skipped"
+      "[Reranker] failed to construct reranker, rerank steps will be skipped",
+      err
     )
     return undefined
   }
@@ -601,7 +616,9 @@ export const runEvaluation = internalAction({
     const needsReranker = refinementSteps.some((s) => s.type === "rerank")
     let reranker: Reranker | undefined
     if (needsReranker) {
-      reranker = await tryCreateReranker()
+      reranker = await createRerankerForExperiment(
+        refinementSteps as unknown as Array<Record<string, unknown>>
+      )
     }
 
     // ── Build search function based on strategy ──

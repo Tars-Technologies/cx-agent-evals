@@ -13,7 +13,6 @@
       "@ai-sdk/anthropic",
       "@ai-sdk/openai",
       "zod",
-      "cohere-ai",
       "@anthropic-ai/sdk",
       "csv-parse"
     ]

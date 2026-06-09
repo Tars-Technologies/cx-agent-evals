@@ -12,6 +12,7 @@ import { CLEANUP_BATCH_SIZE, EMBED_BATCH_SIZE } from "@tars-inc/eval-lib/shared"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
+import { assertIndexableDimension } from "./dimension_guard"
 
 /** Retry a mutation that may fail with TooManyWrites under concurrent load. */
 async function retryOnWriteLimit<T>(
@@ -232,6 +233,7 @@ export const indexDocument = internalAction({
     }
 
     const embedder = createEmbedder(args.embeddingModel)
+    assertIndexableDimension(embedder.dimension, args.embeddingModel)
     let totalEmbedded = 0
 
     for (let i = 0; i < toEmbed.length; i += EMBED_BATCH_SIZE) {
