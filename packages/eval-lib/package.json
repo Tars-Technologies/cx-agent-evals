@@ -36,6 +36,10 @@
       "import": "./dist/rerankers/cohere.js",
       "types": "./dist/rerankers/cohere.d.ts"
     },
+    "./rerankers/make-reranker": {
+      "import": "./dist/rerankers/make-reranker.js",
+      "types": "./dist/rerankers/make-reranker.d.ts"
+    },
     "./embedders/cohere": {
       "types": "./dist/embedders/cohere.d.ts",
       "import": "./dist/embedders/cohere.js"
@@ -140,7 +144,6 @@
   },
   "optionalDependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
-    "cohere-ai": ">=7.0",
     "openai": ">=4.0"
   },
   "devDependencies": {

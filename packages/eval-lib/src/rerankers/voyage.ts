@@ -1,6 +1,7 @@
 import type { PositionAwareChunk } from "../types/index.js"
 import { postJSON } from "../utils/fetch-json.js"
 import type { Reranker } from "./reranker.interface.js"
+import { mapRerankResults } from "./rerank-bounds.js"
 
 interface VoyageRerankClient {
   rerank(opts: {
@@ -76,6 +77,6 @@ export class VoyageReranker implements Reranker {
       top_k: topK ?? chunks.length
     })
 
-    return response.data.map((r) => chunks[r.index])
+    return mapRerankResults(response.data, chunks, topK)
   }
 }

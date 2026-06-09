@@ -126,5 +126,18 @@ describe("JinaReranker", () => {
         expect.objectContaining({ model: "jina-reranker-v1-base-en" })
       )
     })
+
+    it("drops out-of-range indices instead of emitting undefined", async () => {
+      const chunks = [makeChunk("c1", "first"), makeChunk("c2", "second")]
+      mockClient.rerank.mockResolvedValue({
+        results: [
+          { index: 9, relevance_score: 0.9 },
+          { index: 0, relevance_score: 0.5 }
+        ]
+      })
+      const reranker = new JinaReranker({ client: mockClient })
+      const result = await reranker.rerank("query", chunks, 2)
+      expect(result).toEqual([chunks[0]])
+    })
   })
 })
