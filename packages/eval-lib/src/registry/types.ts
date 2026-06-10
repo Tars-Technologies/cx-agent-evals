@@ -6,6 +6,8 @@ export interface Choice {
   readonly value: string
   /** Human-readable label */
   readonly label: string
+  /** Embedding dimensions this choice produces (embedder model choices only). */
+  readonly dimensions?: number
   /** Optional description shown when this choice is selected */
   readonly description?: string
 }
