@@ -28,6 +28,7 @@ import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
 import { backendConfig } from "../config"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
+import { assertIndexableDimension } from "./dimension_guard"
 import { resolveRerankerSelection } from "./reranker_selection"
 
 /** Convert raw Convex chunk rows + the vector-search score map to results. */
@@ -268,6 +269,7 @@ export async function buildStatelessRetriever(
     : []
 
   const embedder = createEmbedder(embeddingModel)
+  assertIndexableDimension(embedder.dimension, embeddingModel)
   const llm = await buildQueryLLM(
     opts.retrieverConfig.query as Record<string, unknown> | undefined
   )
