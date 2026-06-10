@@ -57,9 +57,17 @@ export {
   QueryId,
   QueryText
 } from "./types/index.js"
-
+export type {
+  CallbackVectorStoreConfig,
+  VectorFilter,
+  VectorSearchOptions,
+  VectorSearchResult,
+  VectorStore,
+  VectorStoreConfig,
+  VectorStoreHooks
+} from "./vector-stores/index.js"
 // Vector Store
-export type { VectorSearchResult, VectorStore } from "./vector-stores/index.js"
+export { CallbackVectorStore, makeVectorStore } from "./vector-stores/index.js"
 
 // InMemoryVectorStore moved to "@tars-inc/eval-lib/pipeline/internals"
 

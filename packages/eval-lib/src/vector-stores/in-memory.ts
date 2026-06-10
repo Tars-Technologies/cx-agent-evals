@@ -1,44 +1,95 @@
 import type { PositionAwareChunk } from "../types/index.js"
 import { cosineSimilarity } from "../utils/similarity.js"
 import type {
+  VectorFilter,
+  VectorSearchOptions,
   VectorSearchResult,
   VectorStore
 } from "./vector-store.interface.js"
 
+interface StoredEntry {
+  readonly chunk: PositionAwareChunk
+  readonly embedding: number[]
+  readonly scope?: VectorFilter
+}
+
+function matchesFilter(entry: StoredEntry, filter?: VectorFilter): boolean {
+  if (!filter) return true
+  for (const field of ["kbId", "indexConfigHash", "documentId"] as const) {
+    const wanted = filter[field]
+    if (wanted !== undefined && entry.scope?.[field] !== wanted) return false
+  }
+  return true
+}
+
 export class InMemoryVectorStore implements VectorStore {
-  readonly name = "InMemory"
-  private _chunks: PositionAwareChunk[] = []
-  private _embeddings: number[][] = []
+  readonly name = "in-memory"
+  private _entries = new Map<string, StoredEntry>()
 
   async add(
     chunks: readonly PositionAwareChunk[],
-    embeddings: readonly number[][]
+    embeddings: readonly number[][],
+    scope?: VectorFilter
   ): Promise<void> {
-    if (this._chunks.length > 0) {
-      console.warn(
-        `[InMemoryVectorStore] add() called while store already contains ${this._chunks.length} chunks — clearing existing state to avoid duplicates`
+    if (chunks.length !== embeddings.length) {
+      throw new Error(
+        `InMemoryVectorStore.add: ${chunks.length} chunks but ${embeddings.length} embeddings`
       )
-      this._chunks = []
-      this._embeddings = []
     }
-    this._chunks.push(...chunks)
-    this._embeddings.push(...embeddings.map((e) => [...e]))
+    chunks.forEach((chunk, i) => {
+      this._entries.set(String(chunk.id), {
+        chunk,
+        embedding: [...embeddings[i]],
+        scope
+      })
+    })
   }
 
   async search(
     queryEmbedding: readonly number[],
-    k: number = 5
+    opts: VectorSearchOptions
   ): Promise<VectorSearchResult[]> {
-    const scored = this._chunks.map((chunk, i) => ({
-      chunk,
-      score: cosineSimilarity(queryEmbedding, this._embeddings[i])
-    }))
+    const scored: VectorSearchResult[] = []
+    for (const entry of this._entries.values()) {
+      if (!matchesFilter(entry, opts.filter)) continue
+      scored.push({
+        chunk: entry.chunk,
+        score: cosineSimilarity(queryEmbedding, entry.embedding)
+      })
+    }
     scored.sort((a, b) => b.score - a.score)
-    return scored.slice(0, k)
+    return scored.slice(0, opts.k)
   }
 
-  async clear(): Promise<void> {
-    this._chunks = []
-    this._embeddings = []
+  async deleteByDocument(
+    documentId: string,
+    filter?: VectorFilter
+  ): Promise<void> {
+    this._deleteWhere({ ...filter, documentId })
+  }
+
+  async deleteByKnowledgeBase(
+    kbId: string,
+    filter?: VectorFilter
+  ): Promise<void> {
+    this._deleteWhere({ ...filter, kbId })
+  }
+
+  async clear(filter?: VectorFilter): Promise<void> {
+    if (!filter) {
+      this._entries.clear()
+      return
+    }
+    this._deleteWhere(filter)
+  }
+
+  async checkHealth(): Promise<boolean> {
+    return true
+  }
+
+  private _deleteWhere(filter: VectorFilter): void {
+    for (const [key, entry] of this._entries) {
+      if (matchesFilter(entry, filter)) this._entries.delete(key)
+    }
   }
 }

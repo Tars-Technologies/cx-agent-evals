@@ -181,7 +181,7 @@ describe("VectorRAGRetriever", () => {
       const results = await retriever.retrieve("test query", 5)
 
       expect(mockEmbedder.embedQuery).toHaveBeenCalledWith("test query")
-      expect(mockVectorStore.search).toHaveBeenCalledWith([1, 0, 0], 5)
+      expect(mockVectorStore.search).toHaveBeenCalledWith([1, 0, 0], { k: 5 })
       expect(results).toHaveLength(1)
     })
 
