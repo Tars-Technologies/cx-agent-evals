@@ -28,7 +28,7 @@ async function main() {
   console.error(
     `[microtopics] Written ${result.processedConversations} conversations to: ${output}`
   )
-  if (result.failures.length > 0) {
+  if (result.failures && result.failures.length > 0) {
     console.error(
       `[microtopics] ${result.failures.length} failures: ${result.failures.join(", ")}`
     )
