@@ -22,6 +22,7 @@ interface RetrieverWizardProps {
     chunkerOptions?: Record<string, unknown>
     embedderProvider?: string
     embedderOptions?: Record<string, unknown>
+    vectorBackend?: string
     queryStrategy?: string
     searchStrategy?: string
     searchOptions?: Record<string, unknown>
@@ -41,6 +42,9 @@ interface BuiltConfig {
     strategy: string
     chunkSize?: number
     chunkOverlap?: number
+    embeddingModel?: string
+    embeddingProvider?: string
+    vectorBackend?: string
     [key: string]: unknown
   }
   query?: { strategy: string; [key: string]: unknown }
@@ -172,6 +176,9 @@ export function RetrieverWizard({
   const [embedderOptions, setEmbedderOptions] = useState<
     Record<string, unknown>
   >(initialConfig?.embedderOptions ?? { model: "text-embedding-3-small" })
+  const [vectorBackend, setVectorBackend] = useState(
+    initialConfig?.vectorBackend ?? "native"
+  )
 
   // ---- Query ----
   const [queryStrategy, setQueryStrategy] = useState(
@@ -202,8 +209,22 @@ export function RetrieverWizard({
   const buildConfig = useCallback((): BuiltConfig => {
     const config: BuiltConfig = { name }
 
-    // Index
-    config.index = { strategy: indexStrategy, ...chunkerOptions }
+    // Index - fold the embedder + vector-store selections in. embeddingModel
+    // is always written; provider/backend only when non-default so existing
+    // index-config hashes are preserved (server-side default-omission mirrors
+    // this).
+    config.index = {
+      strategy: indexStrategy,
+      ...chunkerOptions,
+      embeddingModel:
+        (embedderOptions.model as string) ?? "text-embedding-3-small"
+    }
+    if (embedderProvider !== "openai") {
+      config.index.embeddingProvider = embedderProvider
+    }
+    if (vectorBackend !== "native") {
+      config.index.vectorBackend = vectorBackend
+    }
 
     // Query
     if (queryStrategy !== "identity") {
@@ -233,6 +254,9 @@ export function RetrieverWizard({
     name,
     indexStrategy,
     chunkerOptions,
+    embedderProvider,
+    embedderOptions,
+    vectorBackend,
     queryStrategy,
     searchStrategy,
     searchOptions,
@@ -261,6 +285,7 @@ export function RetrieverWizard({
         setChunkerOptions({ chunkSize: 1000, chunkOverlap: 200 })
         setEmbedderProvider("openai")
         setEmbedderOptions({ model: "text-embedding-3-small" })
+        setVectorBackend("native")
         setQueryStrategy("identity")
         setSearchStrategy("dense")
         setSearchOptions({})
@@ -344,6 +369,28 @@ export function RetrieverWizard({
     []
   )
 
+  // ---- Vector backend change handler ----
+  // Switching to native resets any embedder selection the Convex built-in
+  // index cannot serve (non-OpenAI providers, 3072-dim models).
+  const handleVectorBackendChange = useCallback(
+    (backend: string) => {
+      setVectorBackend(backend)
+      if (backend === "native" && embedderProvider !== "openai") {
+        setEmbedderProvider("openai")
+        setEmbedderOptions({ model: "text-embedding-3-small" })
+      }
+      if (backend === "native" && embedderProvider === "openai") {
+        // 3072-dim model is not indexable natively, snap back to the default
+        setEmbedderOptions((opts) =>
+          opts.model === "text-embedding-3-large"
+            ? { ...opts, model: "text-embedding-3-small" }
+            : opts
+        )
+      }
+    },
+    [embedderProvider]
+  )
+
   // ---- Search change handler ----
   const handleSearchChange = useCallback(
     (strategy: string, options: Record<string, unknown>) => {
@@ -413,9 +460,11 @@ export function RetrieverWizard({
             chunkerOptions={chunkerOptions}
             embedderProvider={embedderProvider}
             embedderOptions={embedderOptions}
+            vectorBackend={vectorBackend}
             onIndexStrategyChange={setIndexStrategy}
             onChunkerChange={handleChunkerChange}
             onEmbedderChange={handleEmbedderChange}
+            onVectorBackendChange={handleVectorBackendChange}
           />
         )}
 
@@ -457,6 +506,7 @@ export function RetrieverWizard({
               chunkerOptions,
               embedderProvider,
               embedderOptions,
+              vectorBackend,
               queryStrategy,
               searchStrategy,
               searchOptions,

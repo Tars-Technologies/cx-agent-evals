@@ -10,6 +10,7 @@ import {
   SEARCH_STRATEGY_REGISTRY
 } from "@tars-inc/eval-lib/registry"
 import { useState } from "react"
+import { VECTOR_BACKEND_CHOICES } from "@/lib/vectorBackendGating"
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal"
 
 // ---------------------------------------------------------------------------
@@ -46,6 +47,8 @@ interface ParsedConfig {
     chunkSize?: number
     chunkOverlap?: number
     embeddingModel?: string
+    embeddingProvider?: string
+    vectorBackend?: string
     chunkerType?: string
     childChunkSize?: number
     parentChunkSize?: number
@@ -146,6 +149,8 @@ function IndexSection({ config }: { config: ParsedConfig }) {
     "chunkSize",
     "chunkOverlap",
     "embeddingModel",
+    "embeddingProvider",
+    "vectorBackend",
     "chunkerType",
     "childChunkSize",
     "parentChunkSize",
@@ -193,6 +198,20 @@ function IndexSection({ config }: { config: ParsedConfig }) {
             />
           </>
         )}
+        <SummaryRow
+          label="Vector Store"
+          value={lookupName(
+            VECTOR_BACKEND_CHOICES,
+            index?.vectorBackend ?? "native"
+          )}
+        />
+        <SummaryRow
+          label="Embedder"
+          value={lookupName(
+            EMBEDDER_REGISTRY,
+            index?.embeddingProvider ?? "openai"
+          )}
+        />
         {index?.embeddingModel && (
           <SummaryRow label="Embedding" value={index.embeddingModel} />
         )}
