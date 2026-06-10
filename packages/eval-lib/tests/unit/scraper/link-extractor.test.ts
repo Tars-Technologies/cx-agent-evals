@@ -54,4 +54,13 @@ describe("filterLinks", () => {
     const result = filterLinks(links, base, { allowSubdomains: true })
     expect(result).toContain("https://sub.example.com/page")
   })
+  it("rejects look-alike domains even with subdomains allowed", () => {
+    const result = filterLinks(
+      ["https://evilexample.com/page", "https://sub.example.com/page"],
+      base,
+      { allowSubdomains: true }
+    )
+    expect(result).not.toContain("https://evilexample.com/page")
+    expect(result).toContain("https://sub.example.com/page")
+  })
 })

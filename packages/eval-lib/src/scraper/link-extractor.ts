@@ -35,8 +35,8 @@ export function filterLinks(
     }
     if (config?.allowSubdomains) {
       if (
-        !parsed.hostname.endsWith(baseDomain) &&
-        parsed.hostname !== baseDomain
+        parsed.hostname !== baseDomain &&
+        !parsed.hostname.endsWith(`.${baseDomain}`)
       )
         return false
     } else {
