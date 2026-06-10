@@ -5,6 +5,12 @@ import {
   EMBEDDER_REGISTRY,
   INDEX_STRATEGY_REGISTRY
 } from "@tars-inc/eval-lib/registry"
+import {
+  gateEmbedderEntry,
+  isEmbedderAllowed,
+  VECTOR_BACKEND_CHOICES,
+  type VectorBackendChoice
+} from "@/lib/vectorBackendGating"
 import { OptionGroup } from "../shared/OptionGroup"
 import { StrategyCard } from "../shared/StrategyCard"
 
@@ -18,9 +24,11 @@ interface IndexStepProps {
   chunkerOptions: Record<string, unknown>
   embedderProvider: string
   embedderOptions: Record<string, unknown>
+  vectorBackend: string
   onIndexStrategyChange: (strategy: string) => void
   onChunkerChange: (type: string, options: Record<string, unknown>) => void
   onEmbedderChange: (provider: string, options: Record<string, unknown>) => void
+  onVectorBackendChange: (backend: string) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -33,14 +41,23 @@ export function IndexStep({
   chunkerOptions,
   embedderProvider,
   embedderOptions,
+  vectorBackend,
   onIndexStrategyChange,
   onChunkerChange,
-  onEmbedderChange
+  onEmbedderChange,
+  onVectorBackendChange
 }: IndexStepProps) {
   const selectedChunker = CHUNKER_REGISTRY.find((c) => c.id === chunkerType)
   const selectedEmbedder = EMBEDDER_REGISTRY.find(
     (e) => e.id === embedderProvider
   )
+
+  const backend = (
+    vectorBackend === "qdrant" ? "qdrant" : "native"
+  ) as VectorBackendChoice
+  const gatedEmbedder = selectedEmbedder
+    ? gateEmbedderEntry(selectedEmbedder, backend)
+    : undefined
 
   const handleChunkerSelect = (id: string) => {
     const entry = CHUNKER_REGISTRY.find((c) => c.id === id)
@@ -128,6 +145,27 @@ export function IndexStep({
         )}
       </section>
 
+      {/* ---- Vector Store ---- */}
+      <section>
+        <h3 className="text-sm font-medium text-text mb-3">Vector Store</h3>
+
+        <select
+          value={vectorBackend}
+          onChange={(e) => onVectorBackendChange(e.target.value)}
+          className={selectClass}
+        >
+          {VECTOR_BACKEND_CHOICES.map((choice) => (
+            <option key={choice.id} value={choice.id}>
+              {choice.name}
+            </option>
+          ))}
+        </select>
+
+        <p className="mt-1.5 text-xs text-text-muted">
+          {VECTOR_BACKEND_CHOICES.find((c) => c.id === backend)?.description}
+        </p>
+      </section>
+
       {/* ---- Embedder ---- */}
       <section>
         <h3 className="text-sm font-medium text-text mb-3">Embedder</h3>
@@ -141,25 +179,29 @@ export function IndexStep({
             <option
               key={entry.id}
               value={entry.id}
-              disabled={entry.status !== "available"}
+              disabled={!isEmbedderAllowed(entry, backend)}
             >
               {entry.name}
               {entry.status === "coming-soon" ? " (coming soon)" : ""}
               {entry.status === "unavailable" ? " (unavailable)" : ""}
+              {entry.status === "available" &&
+              !isEmbedderAllowed(entry, backend)
+                ? " (qdrant only)"
+                : ""}
             </option>
           ))}
         </select>
 
-        {selectedEmbedder && selectedEmbedder.description && (
+        {gatedEmbedder && gatedEmbedder.description && (
           <p className="mt-1.5 text-xs text-text-muted">
-            {selectedEmbedder.description}
+            {gatedEmbedder.description}
           </p>
         )}
 
-        {selectedEmbedder && selectedEmbedder.options.length > 0 && (
+        {gatedEmbedder && gatedEmbedder.options.length > 0 && (
           <div className="mt-4">
             <OptionGroup
-              options={selectedEmbedder.options}
+              options={gatedEmbedder.options}
               values={embedderOptions}
               onChange={handleEmbedderOptionChange}
             />
