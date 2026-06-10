@@ -78,6 +78,36 @@ describe("PythonContentService HTTP", () => {
     mockFetchOnce({}, 503)
     expect(await new PythonContentService(cfg).checkHealth()).toBe(false)
   })
+
+  it("throws a clear error on a non-JSON 2xx response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.reject(new Error("Unexpected end of JSON input")),
+        text: () => Promise.resolve("")
+      })
+    )
+    await expect(
+      new PythonContentService(cfg).startCrawl({
+        startUrl: "https://example.com",
+        config: { crawlMode: "http" },
+        callbackUrl: "https://cb"
+      })
+    ).rejects.toThrow(/expected JSON/i)
+  })
+
+  it("passes an abort signal on outbound calls", async () => {
+    mockFetchOnce({ serviceJobId: "svc-1" })
+    await new PythonContentService(cfg).startCrawl({
+      startUrl: "https://example.com",
+      config: { crawlMode: "http" },
+      callbackUrl: "https://cb"
+    })
+    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+  })
 })
 
 describe("PythonContentService.normalizeCallback (live wire shapes)", () => {

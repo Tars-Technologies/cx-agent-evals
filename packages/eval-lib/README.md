@@ -189,6 +189,7 @@ Notes:
 
 - The factories default to the in-process backend when no config (or no `backend`) is passed.
 - The remote backend posts results to a callback URL you supply. Verify those callbacks with `verifyCallbackSignature` (HMAC over `${jobId}|${token}`) and map them with `PythonContentService.normalizeCallback`.
+- Remote health, submit, parse, and cancellation requests use a 30-second default timeout. Empty or non-JSON successful responses are rejected with an error that includes the HTTP status and a response-body snippet.
 - The in-process scraper enforces an SSRF guard (`assertPublicHttpUrl`): only `http` / `https` to public hosts, redirects re-validated per hop, and responses capped by content type and size.
 
 ## Key concepts
