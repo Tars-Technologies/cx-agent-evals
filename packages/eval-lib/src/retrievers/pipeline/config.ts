@@ -20,12 +20,20 @@ function stableStringify(value: unknown): string {
 // Stage 1 — Index configuration (discriminated union on strategy)
 // ---------------------------------------------------------------------------
 
+/** Where vectors are stored. Omit (or "native") = the host's built-in store. */
+export type VectorBackend = "native" | "qdrant"
+
+/** Which provider embeds chunks/queries. Omit (or "openai") = OpenAI. */
+export type EmbeddingProvider = "openai" | "openrouter" | "cohere"
+
 export interface PlainIndexConfig {
   readonly strategy: "plain"
   readonly chunkSize?: number
   readonly chunkOverlap?: number
   readonly separators?: readonly string[]
   readonly embeddingModel?: string
+  readonly vectorBackend?: VectorBackend
+  readonly embeddingProvider?: EmbeddingProvider
 }
 
 export interface ContextualIndexConfig {
@@ -36,6 +44,8 @@ export interface ContextualIndexConfig {
   readonly contextPrompt?: string
   /** Number of parallel LLM calls during indexing. @default 5 */
   readonly concurrency?: number
+  readonly vectorBackend?: VectorBackend
+  readonly embeddingProvider?: EmbeddingProvider
 }
 
 export interface SummaryIndexConfig {
@@ -46,6 +56,8 @@ export interface SummaryIndexConfig {
   readonly summaryPrompt?: string
   /** Number of parallel LLM calls during indexing. @default 5 */
   readonly concurrency?: number
+  readonly vectorBackend?: VectorBackend
+  readonly embeddingProvider?: EmbeddingProvider
 }
 
 export interface ParentChildIndexConfig {
@@ -59,6 +71,8 @@ export interface ParentChildIndexConfig {
   readonly childOverlap?: number
   /** @default 100 */
   readonly parentOverlap?: number
+  readonly vectorBackend?: VectorBackend
+  readonly embeddingProvider?: EmbeddingProvider
 }
 
 export type IndexConfig =
@@ -239,6 +253,19 @@ export interface PipelineConfig {
  * Excludes runtime-only fields (concurrency) that don't affect output.
  */
 function buildIndexPayload(index: IndexConfig): Record<string, unknown> {
+  const payload = buildBaseIndexPayload(index)
+  // Default-omission: these fields enter the hash ONLY when non-default, so
+  // every pre-existing config keeps its exact hash (chunks are keyed by it).
+  if (index.vectorBackend && index.vectorBackend !== "native") {
+    payload.vectorBackend = index.vectorBackend
+  }
+  if (index.embeddingProvider && index.embeddingProvider !== "openai") {
+    payload.embeddingProvider = index.embeddingProvider
+  }
+  return payload
+}
+
+function buildBaseIndexPayload(index: IndexConfig): Record<string, unknown> {
   switch (index.strategy) {
     case "plain":
       return {
