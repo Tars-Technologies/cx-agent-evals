@@ -53,12 +53,23 @@ export const handleTarserCallback = internalAction({
         serviceJobId: cb.serviceJobId
       })
       if (!job) return { status: 200 } // ack; nothing to correlate
+      // Defense-in-depth: the request token must match the per-job token we
+      // stored (the global HMAC secret alone otherwise gates every job).
+      if (job.callbackToken && job.callbackToken !== args.token) {
+        return { status: 401 }
+      }
       if (cb.kind === "page") {
         await ctx.runMutation(internal.kb.crawl.handleTarserPage, {
           crawlJobId: job._id,
           url: cb.url,
           title: cb.title ?? cb.url,
           markdown: cb.markdown
+        })
+      } else if (cb.kind === "page_failed") {
+        await ctx.runMutation(internal.kb.crawl.handleTarserPageFailed, {
+          crawlJobId: job._id,
+          url: cb.url,
+          error: cb.error
         })
       } else if (cb.kind === "job_complete") {
         await ctx.runMutation(internal.kb.crawl.handleTarserJobComplete, {
@@ -67,11 +78,18 @@ export const handleTarserCallback = internalAction({
           stats: cb.stats
         })
       }
-      // page_failed / discovered_file: acked no-op in v1.
+      // discovered_file: acked no-op in v1.
       return { status: 200 }
     }
 
     if (cb.kind === "parsed") {
+      const parseToken = await ctx.runQuery(
+        internal.kb.documents.getParseTokenByServiceJob,
+        { parseServiceJobId: cb.serviceJobId }
+      )
+      if (parseToken && parseToken !== args.token) {
+        return { status: 401 }
+      }
       await ctx.runMutation(internal.kb.documents.finishParse, {
         parseServiceJobId: cb.serviceJobId,
         status: cb.status,

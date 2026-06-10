@@ -11,6 +11,14 @@ import type { Id } from "../_generated/dataModel"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 
+// Finish reasons that represent a clean crawl completion. Anything else
+// (timeout, site_failure, ...) is treated as an abnormal end.
+const NORMAL_FINISH_REASONS = new Set(["finished", "completed", "ok", "done"])
+
+// Tarser crawls with no callback activity past this are presumed abandoned and
+// swept to a terminal status by the reaper cron.
+const CRAWL_STALE_MS = 30 * 60 * 1000
+
 // ─── WorkPool Instance ───
 
 const pool = new Workpool(components.scrapingPool, {
@@ -476,6 +484,8 @@ export const handleTarserPage = internalMutation({
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.crawlJobId)
     if (!job) return
+    // Don't keep ingesting in-flight pages after the job was cancelled.
+    if (job.status === "cancelled") return
     const normalizedUrl =
       args.url.toLowerCase().replace(/#.*$/, "").replace(/\/+$/, "") || args.url
     // Idempotency: skip if a crawlUrl for this normalized URL is already done.
@@ -486,6 +496,33 @@ export const handleTarserPage = internalMutation({
       )
       .first()
     if (existing && (existing.status === "done" || existing.documentId)) return
+
+    // An empty page is a failure, not a document (parity with finishParse, which
+    // treats ok+empty as failed). Record it and bump the failed counter.
+    if (args.markdown.trim().length === 0) {
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          status: "failed",
+          error: "Empty page (no content)",
+          callbackReceivedAt: Date.now()
+        })
+      } else {
+        await ctx.db.insert("crawlUrls", {
+          crawlJobId: args.crawlJobId,
+          url: args.url,
+          normalizedUrl,
+          status: "failed",
+          depth: 0,
+          error: "Empty page (no content)",
+          callbackReceivedAt: Date.now()
+        })
+      }
+      await ctx.db.patch(args.crawlJobId, {
+        stats: { ...job.stats, failed: job.stats.failed + 1 },
+        lastCallbackAt: Date.now()
+      })
+      return
+    }
 
     const documentId = await ctx.runMutation(
       internal.kb.documents.createFromScrape,
@@ -539,10 +576,14 @@ export const handleTarserJobComplete = internalMutation({
     if (!job || job.status === "cancelled") return
     const failed = args.stats.failed ?? job.stats.failed
     const scraped = job.stats.scraped
+    // A finishReason other than a normal completion (e.g. timeout, site_failure)
+    // means the crawl ended abnormally, so it must not be reported as a clean
+    // "completed" even when no individual page failed.
+    const abnormal = !NORMAL_FINISH_REASONS.has(args.finishReason)
     const status =
-      scraped === 0 && failed > 0
+      scraped === 0 && (failed > 0 || abnormal)
         ? "failed"
-        : failed > 0
+        : failed > 0 || abnormal
           ? "completed_with_errors"
           : "completed"
     await ctx.db.patch(args.crawlJobId, {
@@ -551,5 +592,92 @@ export const handleTarserJobComplete = internalMutation({
       completedAt: Date.now(),
       lastCallbackAt: Date.now()
     })
+  }
+})
+
+/** Record a Tarser page failure so it counts toward the job's failed stat. */
+export const handleTarserPageFailed = internalMutation({
+  args: {
+    crawlJobId: v.id("crawlJobs"),
+    url: v.string(),
+    error: v.optional(v.string())
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.crawlJobId)
+    if (!job || job.status === "cancelled") return
+    const normalizedUrl =
+      args.url.toLowerCase().replace(/#.*$/, "").replace(/\/+$/, "") || args.url
+    const existing = await ctx.db
+      .query("crawlUrls")
+      .withIndex("by_job_url", (q) =>
+        q.eq("crawlJobId", args.crawlJobId).eq("normalizedUrl", normalizedUrl)
+      )
+      .first()
+    // Don't double-count a URL already recorded as done/failed.
+    if (
+      existing &&
+      (existing.status === "done" || existing.status === "failed")
+    )
+      return
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        status: "failed",
+        error: args.error ?? "Page failed",
+        callbackReceivedAt: Date.now()
+      })
+    } else {
+      await ctx.db.insert("crawlUrls", {
+        crawlJobId: args.crawlJobId,
+        url: args.url,
+        normalizedUrl,
+        status: "failed",
+        depth: 0,
+        error: args.error ?? "Page failed",
+        callbackReceivedAt: Date.now()
+      })
+    }
+    await ctx.db.patch(args.crawlJobId, {
+      stats: { ...job.stats, failed: job.stats.failed + 1 },
+      lastCallbackAt: Date.now()
+    })
+  }
+})
+
+/**
+ * Reaper: fail Tarser crawl jobs stuck in running/pending with no callback
+ * activity past CRAWL_STALE_MS. The in-process backend self-terminates via the
+ * WorkPool loop, but a Tarser job only ends on the remote job_complete callback,
+ * so an abandoned remote crawl would otherwise hang forever.
+ */
+export const reapStaleCrawls = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - CRAWL_STALE_MS
+    let reaped = 0
+    for (const status of ["running", "pending"] as const) {
+      const jobs = await ctx.db
+        .query("crawlJobs")
+        .withIndex("by_global_status", (q) => q.eq("status", status))
+        .collect()
+      for (const job of jobs) {
+        if (job.backend !== "tarser") continue
+        const lastActivity =
+          job.lastCallbackAt ?? job.submittedAt ?? job.createdAt
+        if (lastActivity >= cutoff) continue
+        const finalStatus =
+          job.stats.scraped > 0 ? "completed_with_errors" : "failed"
+        await ctx.db.patch(job._id, {
+          status: finalStatus,
+          finishReason: "reaped: no callback activity",
+          error:
+            finalStatus === "failed"
+              ? "Crawl timed out: no callback activity"
+              : undefined,
+          completedAt: Date.now()
+        })
+        reaped++
+      }
+    }
+    return { reaped }
   }
 })

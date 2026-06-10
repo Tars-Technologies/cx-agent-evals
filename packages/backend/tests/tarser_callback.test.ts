@@ -96,6 +96,117 @@ describe("POST /tarser/cb", () => {
     expect(docs.length).toBe(1) // idempotent — second callback did not duplicate
   })
 
+  it("rejects a callback whose token does not match the stored job token", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    await seedTarserJob(
+      t,
+      kbId as unknown as string,
+      userId as unknown as string
+    )
+    // Valid signature over (svc-1 | "wrong"), but the stored job token is "tok".
+    const sig = await computeCallbackSignature({
+      jobId: "svc-1",
+      token: "wrong",
+      secret: SECRET
+    })
+    const res = await t.fetch("/tarser/cb?jobId=svc-1&token=wrong", {
+      method: "POST",
+      headers: { "X-Tarser-Signature": sig, "X-Tarser-Job-Id": "svc-1" },
+      body: JSON.stringify({
+        event: "url_done",
+        service_job_id: "svc-1",
+        url: "https://example.com/p",
+        status: "ok",
+        finish_reason: "finished",
+        markdown: "# Hello",
+        metadata: { title: "x", depth: 0 }
+      })
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it("counts a url_done failure toward the job's failed stat", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const jobId = await seedTarserJob(
+      t,
+      kbId as unknown as string,
+      userId as unknown as string
+    )
+    const sig = await computeCallbackSignature({
+      jobId: "svc-1",
+      token: "tok",
+      secret: SECRET
+    })
+    const res = await t.fetch("/tarser/cb?jobId=svc-1&token=tok", {
+      method: "POST",
+      headers: { "X-Tarser-Signature": sig, "X-Tarser-Job-Id": "svc-1" },
+      body: JSON.stringify({
+        event: "url_done",
+        service_job_id: "svc-1",
+        url: "https://example.com/bad",
+        status: "failed",
+        finish_reason: "fetch_error",
+        error: "boom"
+      })
+    })
+    expect(res.status).toBe(200)
+    const job = await t.run(async (ctx) => ctx.db.get(jobId))
+    expect(job?.stats.failed).toBe(1)
+    const docs = await t.run(async (ctx) =>
+      ctx.db
+        .query("documents")
+        .withIndex("by_kb", (q) => q.eq("kbId", kbId))
+        .collect()
+    )
+    expect(docs.length).toBe(0) // a failure is not stored as a document
+  })
+
+  it("ignores a page callback for a cancelled job", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const jobId = await t.run(async (ctx) =>
+      ctx.db.insert("crawlJobs", {
+        orgId: TEST_ORG_ID,
+        kbId,
+        userId,
+        startUrl: "https://example.com",
+        config: { maxPages: 10, maxDepth: 2 },
+        status: "cancelled",
+        stats: { discovered: 1, scraped: 0, failed: 0, skipped: 0 },
+        backend: "tarser",
+        serviceJobId: "svc-1",
+        callbackToken: "tok",
+        createdAt: Date.now()
+      })
+    )
+    const sig = await computeCallbackSignature({
+      jobId: "svc-1",
+      token: "tok",
+      secret: SECRET
+    })
+    const res = await t.fetch("/tarser/cb?jobId=svc-1&token=tok", {
+      method: "POST",
+      headers: { "X-Tarser-Signature": sig, "X-Tarser-Job-Id": "svc-1" },
+      body: JSON.stringify({
+        event: "url_done",
+        service_job_id: "svc-1",
+        url: "https://example.com/p",
+        status: "ok",
+        finish_reason: "finished",
+        markdown: "# Hello",
+        metadata: { title: "x", depth: 0 }
+      })
+    })
+    expect(res.status).toBe(200)
+    const job = await t.run(async (ctx) => ctx.db.get(jobId))
+    expect(job?.stats.scraped).toBe(0) // no ingestion after cancel
+  })
+
   it("rejects a callback whose body service_job_id differs from the signed job id", async () => {
     const t = setupTest()
     const userId = await seedUser(t)

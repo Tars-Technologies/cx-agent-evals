@@ -7,7 +7,12 @@ import { internal } from "../_generated/api"
 import type { Doc } from "../_generated/dataModel"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
+import { capContent } from "../lib/contentCap"
 import { computeDocId } from "../lib/docId"
+
+// Documents left in parseStatus:"parsing" past this age are presumed orphaned
+// (lost/failed remote callback) and swept to "failed" by the reaper cron.
+const PARSE_STALE_MS = 30 * 60 * 1000
 
 type DocSummary = Pick<
   Doc<"documents">,
@@ -333,14 +338,17 @@ export const createFromScrape = internalMutation({
     sourceType: v.optional(v.string())
   },
   handler: async (ctx, args) => {
+    const capped = capContent(args.content)
     const docRowId = await ctx.db.insert("documents", {
       orgId: args.orgId,
       kbId: args.kbId,
       docId: await computeDocId({ sourceUrl: args.sourceUrl }),
       title: args.title,
-      content: args.content,
-      contentLength: args.content.length,
-      metadata: {},
+      content: capped.content,
+      contentLength: capped.content.length,
+      metadata: capped.truncated
+        ? { truncated: true, originalLength: capped.originalLength }
+        : {},
       sourceUrl: args.sourceUrl,
       sourceType: args.sourceType,
       createdAt: Date.now()
@@ -359,6 +367,53 @@ export const createFromScrape = internalMutation({
 })
 
 /** Create a document placeholder while a remote parse is in flight. */
+/**
+ * Return the per-job parse token for a parsing document, so the callback handler
+ * can verify the request token against what we stored (defense-in-depth beyond the
+ * global HMAC secret). Null if no such parsing document exists.
+ */
+export const getParseTokenByServiceJob = internalQuery({
+  args: { parseServiceJobId: v.string() },
+  handler: async (ctx, args): Promise<string | null> => {
+    const doc = await ctx.db
+      .query("documents")
+      .withIndex("by_parse_service_job", (q) =>
+        q.eq("parseServiceJobId", args.parseServiceJobId)
+      )
+      .first()
+    return doc?.parseToken ?? null
+  }
+})
+
+/**
+ * Reaper: fail documents stuck in parseStatus:"parsing" past PARSE_STALE_MS.
+ * Without this a lost/failed remote parse callback strands a document in "parsing"
+ * forever (it still counts toward documentCount and never becomes indexable).
+ */
+export const reapStaleParsing = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - PARSE_STALE_MS
+    const stale = await ctx.db
+      .query("documents")
+      .withIndex("by_parse_status", (q) => q.eq("parseStatus", "parsing"))
+      .collect()
+    let reaped = 0
+    for (const doc of stale) {
+      if (doc.createdAt >= cutoff) continue
+      await ctx.db.patch(doc._id, {
+        parseStatus: "failed",
+        metadata: {
+          ...doc.metadata,
+          error: "Parse timed out: no completion callback received"
+        }
+      })
+      reaped++
+    }
+    return { reaped }
+  }
+})
+
 export const createParsing = internalMutation({
   args: {
     orgId: v.string(),
@@ -421,10 +476,20 @@ export const finishParse = internalMutation({
     // parse is surfaced rather than stored as a silently-empty "done" document
     // (e.g. Tarser returns ok+empty for formats it cannot extract).
     if (args.status === "ok" && content.trim().length > 0) {
+      const capped = capContent(content)
       await ctx.db.patch(doc._id, {
-        content,
-        contentLength: content.length,
-        parseStatus: "done"
+        content: capped.content,
+        contentLength: capped.content.length,
+        parseStatus: "done",
+        ...(capped.truncated
+          ? {
+              metadata: {
+                ...doc.metadata,
+                truncated: true,
+                originalLength: capped.originalLength
+              }
+            }
+          : {})
       })
     } else {
       // Persist why it failed (the remote error, or a content-less "ok") so the
@@ -449,15 +514,18 @@ export const createParsed = internalMutation({
     fileId: v.optional(v.id("_storage"))
   },
   handler: async (ctx, args) => {
+    const capped = capContent(args.content)
     const docRowId = await ctx.db.insert("documents", {
       orgId: args.orgId,
       kbId: args.kbId,
       docId: await computeDocId({ fileId: args.fileId ?? undefined }),
       title: args.title,
-      content: args.content,
+      content: capped.content,
       fileId: args.fileId,
-      contentLength: args.content.length,
-      metadata: {},
+      contentLength: capped.content.length,
+      metadata: capped.truncated
+        ? { truncated: true, originalLength: capped.originalLength }
+        : {},
       sourceType: "upload",
       mimeType: args.mimeType,
       parseBackend: "inprocess",
