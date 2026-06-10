@@ -136,39 +136,35 @@ describe("chunks: getChunksByRetrieverPage", () => {
     const authedT = t.withIdentity(testIdentity)
 
     // First page
-    const page1 = await authedT.query(
-      api.kb.chunks.getChunksByRetrieverPage,
-      { kbId, indexConfigHash: "hash-abc", cursor: null, pageSize: 25 }
-    )
+    const page1 = await authedT.query(api.kb.chunks.getChunksByRetrieverPage, {
+      kbId,
+      indexConfigHash: "hash-abc",
+      cursor: null,
+      pageSize: 25
+    })
 
     expect(page1.chunks).toHaveLength(25)
     expect(page1.isDone).toBe(false)
     expect(page1.continueCursor).toBeDefined()
 
     // Second page
-    const page2 = await authedT.query(
-      api.kb.chunks.getChunksByRetrieverPage,
-      {
-        kbId,
-        indexConfigHash: "hash-abc",
-        cursor: page1.continueCursor,
-        pageSize: 25
-      }
-    )
+    const page2 = await authedT.query(api.kb.chunks.getChunksByRetrieverPage, {
+      kbId,
+      indexConfigHash: "hash-abc",
+      cursor: page1.continueCursor,
+      pageSize: 25
+    })
 
     expect(page2.chunks).toHaveLength(25)
     expect(page2.isDone).toBe(false)
 
     // Third page
-    const page3 = await authedT.query(
-      api.kb.chunks.getChunksByRetrieverPage,
-      {
-        kbId,
-        indexConfigHash: "hash-abc",
-        cursor: page2.continueCursor,
-        pageSize: 25
-      }
-    )
+    const page3 = await authedT.query(api.kb.chunks.getChunksByRetrieverPage, {
+      kbId,
+      indexConfigHash: "hash-abc",
+      cursor: page2.continueCursor,
+      pageSize: 25
+    })
 
     expect(page3.chunks).toHaveLength(10)
     expect(page3.isDone).toBe(true)

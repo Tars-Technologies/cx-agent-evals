@@ -63,17 +63,14 @@ describe("experimentRuns", () => {
     })
 
     const authedT = t.withIdentity(testIdentity)
-    const result = await authedT.mutation(
-      api.kb.experimentRuns.create,
-      {
-        name: "My Experiment Run",
-        kbId,
-        datasetId,
-        retrieverIds: [retriever1Id, retriever2Id],
-        metricNames: ["recall", "precision"],
-        scoringWeights: { recall: 0.5, precision: 0.5 }
-      }
-    )
+    const result = await authedT.mutation(api.kb.experimentRuns.create, {
+      name: "My Experiment Run",
+      kbId,
+      datasetId,
+      retrieverIds: [retriever1Id, retriever2Id],
+      metricNames: ["recall", "precision"],
+      scoringWeights: { recall: 0.5, precision: 0.5 }
+    })
 
     expect(result).toHaveProperty("runId")
     const { runId } = result

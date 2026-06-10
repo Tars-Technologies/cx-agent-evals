@@ -76,6 +76,7 @@ import type * as langsmith_syncRetry from "../langsmith/syncRetry.js";
 import type * as lib_agentLoop from "../lib/agentLoop.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_auth_tenant from "../lib/auth/tenant.js";
+import type * as lib_contentCap from "../lib/contentCap.js";
 import type * as lib_docId from "../lib/docId.js";
 import type * as lib_experimentConcurrency from "../lib/experimentConcurrency.js";
 import type * as lib_labels from "../lib/labels.js";
@@ -160,6 +161,7 @@ declare const fullApi: ApiFromModules<{
   "lib/agentLoop": typeof lib_agentLoop;
   "lib/auth": typeof lib_auth;
   "lib/auth/tenant": typeof lib_auth_tenant;
+  "lib/contentCap": typeof lib_contentCap;
   "lib/docId": typeof lib_docId;
   "lib/experimentConcurrency": typeof lib_experimentConcurrency;
   "lib/labels": typeof lib_labels;

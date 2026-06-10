@@ -132,7 +132,9 @@ export async function embedInBatches(
     batches.push(texts.slice(i, i + batchSize))
   }
 
-  return (await mapWithConcurrency(batches, (batch) => embedder.embed(batch), 3)).flat()
+  return (
+    await mapWithConcurrency(batches, (batch) => embedder.embed(batch), 3)
+  ).flat()
 }
 
 export async function matchQuestionsToDocuments(

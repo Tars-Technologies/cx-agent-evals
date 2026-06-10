@@ -215,10 +215,9 @@ export const evaluateAgentQuestion = internalAction({
     }> = []
 
     for (const retrieverId of agent.retrieverIds) {
-      const retriever = await ctx.runQuery(
-        internal.kb.retrievers.getInternal,
-        { id: retrieverId }
-      )
+      const retriever = await ctx.runQuery(internal.kb.retrievers.getInternal, {
+        id: retrieverId
+      })
       if (!retriever || retriever.status !== "ready") continue
       const kb = await ctx.runQuery(internal.kb.core.getInternal, {
         id: retriever.kbId

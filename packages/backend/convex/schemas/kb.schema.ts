@@ -320,6 +320,8 @@ export const kbTables = {
     .index("by_kb_priority", ["kbId", "priority"])
     .index("by_org", ["orgId"])
     .index("by_parse_service_job", ["parseServiceJobId"])
+    // Lets the reaper cron sweep documents stuck in parseStatus:"parsing".
+    .index("by_parse_status", ["parseStatus"])
     .searchIndex("search_content", {
       searchField: "content",
       filterFields: ["kbId"]
@@ -435,7 +437,9 @@ export const kbTables = {
     .index("by_org", ["orgId"])
     .index("by_kb", ["kbId"])
     .index("by_status", ["orgId", "status"])
-    .index("by_service_job", ["serviceJobId"]),
+    .index("by_service_job", ["serviceJobId"])
+    // Cross-org sweep by status for the stale-crawl reaper cron.
+    .index("by_global_status", ["status"]),
 
   // ─── Crawl URLs (URL frontier for crawl jobs) ───
   crawlUrls: defineTable({
