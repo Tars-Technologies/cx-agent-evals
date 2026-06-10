@@ -42,7 +42,7 @@ export class DenseSearchStrategy implements SearchStrategy {
     const { embedder, vectorStore } = deps
 
     const queryEmbedding = await embedder.embedQuery(query)
-    const results = await vectorStore.search(queryEmbedding, k)
+    const results = await vectorStore.search(queryEmbedding, { k })
 
     // VectorStore now returns real similarity scores — use them directly.
     return results.map(({ chunk, score }) => ({ chunk, score }))
