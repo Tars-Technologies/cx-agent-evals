@@ -14,8 +14,10 @@ import {
   type Corpus,
   createCorpusFromDocuments,
   DocumentId,
+  type Embedder,
   type PipelineLLM,
   PositionAwareChunkId,
+  QdrantVectorStore,
   type Reranker,
   type ScoredChunk,
   StatelessQueryRetriever,
@@ -30,6 +32,7 @@ import { backendConfig } from "../config"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
 import { assertIndexableDimension } from "./dimension_guard"
 import { resolveRerankerSelection } from "./reranker_selection"
+import { qdrantCollectionName, resolveVectorBackend } from "./vector_backend"
 
 /** Convert raw Convex chunk rows + the vector-search score map to results. */
 export function rawChunksToResults(
@@ -86,6 +89,30 @@ export function buildNativeVectorStore(
       })
       return rawChunksToResults(chunks, scoreMap)
     }
+  })
+}
+
+/**
+ * Qdrant-backed VectorStore for an index whose config selects the qdrant
+ * backend. Fails loudly when the deployment has no QDRANT_URL configured.
+ */
+export function buildQdrantStore(opts: {
+  collection: string
+  dimension: number
+}): VectorStore {
+  const qdrant = backendConfig.qdrant
+  if (!qdrant) {
+    throw new Error(
+      "This index is configured for the Qdrant vector store, but QDRANT_URL " +
+        "is not set in the deployment environment. Set QDRANT_URL (and " +
+        "QDRANT_API_KEY if required), restart the Convex worker, and retry."
+    )
+  }
+  return new QdrantVectorStore({
+    url: qdrant.url,
+    apiKey: qdrant.apiKey,
+    collection: opts.collection,
+    dimension: opts.dimension
   })
 }
 
@@ -246,11 +273,84 @@ export async function rerankerAvailable(
   )
 }
 
+/**
+ * Parent-child swap over an external (Qdrant) store: replace child results
+ * with their Convex parent chunk rows, mirroring the native swap semantics in
+ * lib/vectorSearch.ts (first-seen child's score, dedupe parents, fall back to
+ * the child when the parent row is missing).
+ */
+function wrapWithParentSwap(ctx: ActionCtx, inner: VectorStore): VectorStore {
+  return new CallbackVectorStore({
+    name: `${inner.name}+parent-swap`,
+    search: async (queryEmbedding, opts) => {
+      const children = await inner.search(queryEmbedding, opts)
+      const parentIds = [
+        ...new Set(
+          children
+            .map((r) => r.chunk.metadata?.parentChunkId as string | undefined)
+            .filter((id): id is string => Boolean(id))
+        )
+      ]
+      if (parentIds.length === 0) return children
+      const parents: Array<{
+        _id: unknown
+        chunkId: string
+        content: string
+        documentId: Id<"documents">
+        start: number
+        end: number
+        metadata?: Record<string, unknown>
+      }> = await ctx.runQuery(internal.kb.chunks.fetchChunksByIds, {
+        ids: parentIds as unknown as Id<"documentChunks">[]
+      })
+      const docIdMap: Record<string, string> = await ctx.runQuery(
+        internal.kb.chunks.fetchDocIdMap,
+        { documentIds: [...new Set(parents.map((p) => p.documentId))] }
+      )
+      const parentMap = new Map(parents.map((p) => [String(p._id), p]))
+      const seen = new Set<string>()
+      const swapped: typeof children = []
+      for (const child of children) {
+        const parentId = child.chunk.metadata?.parentChunkId as
+          | string
+          | undefined
+        if (parentId && !seen.has(parentId)) {
+          seen.add(parentId)
+          const parent = parentMap.get(parentId)
+          swapped.push(
+            parent
+              ? {
+                  chunk: {
+                    id: PositionAwareChunkId(parent.chunkId),
+                    content: parent.content,
+                    docId: DocumentId(
+                      docIdMap[String(parent.documentId)] ?? ""
+                    ),
+                    start: parent.start,
+                    end: parent.end,
+                    metadata: parent.metadata ?? {}
+                  },
+                  score: child.score
+                }
+              : child
+          )
+        } else if (!parentId) {
+          swapped.push(child)
+        }
+        // children of an already-swapped parent are dropped (dedup)
+      }
+      return swapped
+    }
+  })
+}
+
 export interface BuildRetrieverOpts {
   readonly kbId: Id<"knowledgeBases">
   readonly indexConfigHash: string
   readonly retrieverConfig: Record<string, unknown>
   readonly preloadedCorpus?: Corpus
+  /** Stored on the retriever at creation; falls back to the computed name. */
+  readonly qdrantCollection?: string
 }
 
 /** Compose the unified retriever from a retriever/experiment config. */
@@ -269,8 +369,42 @@ export async function buildStatelessRetriever(
     ? (opts.retrieverConfig.refinement as Array<Record<string, unknown>>)
     : []
 
-  const embedder = createEmbedder(embeddingModel)
-  assertIndexableDimension(embedder.dimension, embeddingModel)
+  const vectorBackend = resolveVectorBackend(indexSettings.vectorBackend)
+
+  let embedder: Embedder
+  if (vectorBackend === "qdrant") {
+    const { makeEmbedder } = await import(
+      "@tars-inc/eval-lib/embedders/make-embedder"
+    )
+    embedder = await makeEmbedder({
+      provider: ((indexSettings.embeddingProvider as string) ??
+        "openai") as never,
+      model: embeddingModel
+    })
+  } else {
+    embedder = createEmbedder(embeddingModel)
+    assertIndexableDimension(embedder.dimension, embeddingModel)
+  }
+
+  const baseStore =
+    vectorBackend === "qdrant"
+      ? buildQdrantStore({
+          collection:
+            opts.qdrantCollection ??
+            qdrantCollectionName(String(opts.kbId), opts.indexConfigHash),
+          dimension: embedder.dimension
+        })
+      : buildNativeVectorStore(ctx, {
+          kbId: opts.kbId,
+          indexConfigHash: opts.indexConfigHash,
+          indexStrategy
+        })
+
+  const vectorStore =
+    vectorBackend === "qdrant" && indexStrategy === "parent-child"
+      ? wrapWithParentSwap(ctx, baseStore)
+      : baseStore
+
   const llm = await buildQueryLLM(
     opts.retrieverConfig.query as Record<string, unknown> | undefined
   )
@@ -280,11 +414,7 @@ export async function buildStatelessRetriever(
 
   return new StatelessQueryRetriever({
     config: opts.retrieverConfig as never,
-    vectorStore: buildNativeVectorStore(ctx, {
-      kbId: opts.kbId,
-      indexConfigHash: opts.indexConfigHash,
-      indexStrategy
-    }),
+    vectorStore,
     chunkSource: buildConvexChunkSource(ctx, {
       kbId: opts.kbId,
       indexConfigHash: opts.indexConfigHash,

@@ -19,6 +19,7 @@ import {
   buildStatelessRetriever,
   scoredToChunkResults
 } from "./retrieval_runtime"
+import { qdrantCollectionName, resolveVectorBackend } from "./vector_backend"
 
 // ─── Create Retriever ───
 
@@ -58,6 +59,15 @@ export const create = tenantAction({
 
     const name = config.name ?? `retriever-${retrieverConfigHash.slice(0, 8)}`
 
+    // Stamp the vector backend and (for qdrant) the collection name at
+    // creation time so retrieval never has to recompute it.
+    const indexSettings = (config.index ?? {}) as Record<string, unknown>
+    const vectorBackend = resolveVectorBackend(indexSettings.vectorBackend)
+    const qdrantCollection =
+      vectorBackend === "qdrant"
+        ? qdrantCollectionName(String(args.kbId), indexConfigHash)
+        : undefined
+
     const retrieverId = await ctx.runMutation(
       internal.kb.retrievers.insertRetriever,
       {
@@ -68,6 +78,8 @@ export const create = tenantAction({
         indexConfigHash,
         retrieverConfigHash,
         defaultK: k,
+        vectorBackend,
+        qdrantCollection,
         status: "configuring",
         createdBy: userId
       }
@@ -118,14 +130,22 @@ export const startIndexing = tenantAction({
             parentChunkSize: (indexSettings.parentChunkSize as number) ?? 1000,
             childOverlap: (indexSettings.childOverlap as number) ?? 0,
             parentOverlap: (indexSettings.parentOverlap as number) ?? 100,
-            embeddingModel
+            embeddingModel,
+            vectorBackend: indexSettings.vectorBackend as string | undefined,
+            embeddingProvider: indexSettings.embeddingProvider as
+              | string
+              | undefined
           }
         : {
             strategy: "plain" as const,
             chunkSize: (indexSettings.chunkSize as number) ?? 1000,
             chunkOverlap: (indexSettings.chunkOverlap as number) ?? 200,
             separators: indexSettings.separators as string[] | undefined,
-            embeddingModel
+            embeddingModel,
+            vectorBackend: indexSettings.vectorBackend as string | undefined,
+            embeddingProvider: indexSettings.embeddingProvider as
+              | string
+              | undefined
           }
 
     // Trigger indexing
@@ -216,7 +236,8 @@ export const retrieve = tenantAction({
     const unified = await buildStatelessRetriever(ctx, {
       kbId: retriever.kbId,
       indexConfigHash: retriever.indexConfigHash,
-      retrieverConfig: config as unknown as Record<string, unknown>
+      retrieverConfig: config as unknown as Record<string, unknown>,
+      qdrantCollection: retriever.qdrantCollection
     })
     try {
       const scored = await unified.retrieveScored(args.query, topK)

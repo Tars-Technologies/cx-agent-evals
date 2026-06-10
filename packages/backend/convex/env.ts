@@ -12,7 +12,9 @@ const envSchema = z.object({
   TARSER_BASE_URL: z.string().optional(),
   TARSER_API_TOKEN: z.string().optional(),
   TARSER_CALLBACK_HMAC_SECRET: z.string().optional(),
-  TARSER_CALLBACK_BASE_URL: z.string().optional() // local-dev override for the callback host (e.g. host.docker.internal)
+  TARSER_CALLBACK_BASE_URL: z.string().optional(), // local-dev override for the callback host (e.g. host.docker.internal)
+  QDRANT_URL: z.string().optional(),
+  QDRANT_API_KEY: z.string().optional()
 })
 
 type Env = z.infer<typeof envSchema>
@@ -38,7 +40,9 @@ function parseEnv(): Env {
       TARSER_BASE_URL: partial.TARSER_BASE_URL,
       TARSER_API_TOKEN: partial.TARSER_API_TOKEN,
       TARSER_CALLBACK_HMAC_SECRET: partial.TARSER_CALLBACK_HMAC_SECRET,
-      TARSER_CALLBACK_BASE_URL: partial.TARSER_CALLBACK_BASE_URL
+      TARSER_CALLBACK_BASE_URL: partial.TARSER_CALLBACK_BASE_URL,
+      QDRANT_URL: partial.QDRANT_URL,
+      QDRANT_API_KEY: partial.QDRANT_API_KEY
     }
   }
   const result = envSchema.safeParse(snapshot)

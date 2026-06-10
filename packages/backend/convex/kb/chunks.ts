@@ -58,6 +58,23 @@ export const patchChunkEmbeddings = internalMutation({
 })
 
 /**
+ * Stamp chunks whose vectors were upserted to an external store.
+ * Phase B checkpoint for the qdrant path, mirrors patchChunkEmbeddings.
+ */
+export const markChunksVectorized = internalMutation({
+  args: {
+    ids: v.array(v.id("documentChunks")),
+    vectorIndexId: v.string()
+  },
+  handler: async (ctx, args) => {
+    for (const id of args.ids) {
+      await ctx.db.patch(id, { vectorIndexId: args.vectorIndexId })
+    }
+    return { patched: args.ids.length }
+  }
+})
+
+/**
  * Delete multiple chunks by ID in one transaction.
  */
 export const deleteChunkBatch = internalMutation({

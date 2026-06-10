@@ -90,6 +90,8 @@ export const retrieverValidator = v.object({
   indexConfigHash: v.string(),
   retrieverConfigHash: v.string(),
   defaultK: v.number(),
+  vectorBackend: v.optional(v.string()),
+  qdrantCollection: v.optional(v.string()),
   indexingJobId: v.optional(v.id("indexingJobs")),
   qdrantCollection: v.optional(v.string()),
   vectorBackend: v.optional(v.string()),
@@ -269,6 +271,8 @@ export const documentChunkValidator = v.object({
   start: v.number(),
   end: v.number(),
   embedding: v.optional(v.array(v.float64())),
+  /** Set when this chunk's vector lives in an external store (the collection name). */
+  vectorIndexId: v.optional(v.string()),
   metadata: v.any()
 })
 export type DocumentChunk = Infer<typeof documentChunkValidator>
@@ -279,6 +283,8 @@ export const indexingJobValidator = v.object({
   kbId: v.id("knowledgeBases"),
   indexConfigHash: v.string(),
   indexConfig: v.any(),
+  vectorBackend: v.optional(v.string()),
+  qdrantCollection: v.optional(v.string()),
   status: v.union(
     v.literal("pending"),
     v.literal("running"),

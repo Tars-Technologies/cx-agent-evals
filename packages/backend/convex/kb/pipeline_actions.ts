@@ -143,7 +143,8 @@ export const rewriteQuery = tenantAction({
     const unified = await buildStatelessRetriever(ctx, {
       kbId: retriever.kbId,
       indexConfigHash: retriever.indexConfigHash,
-      retrieverConfig: retriever.retrieverConfig as Record<string, unknown>
+      retrieverConfig: retriever.retrieverConfig as Record<string, unknown>,
+      qdrantCollection: retriever.qdrantCollection
     })
     try {
       const trace = await unified.expandQuery(args.query)
@@ -201,7 +202,8 @@ export const searchWithQueries = tenantAction({
     const unified = await buildStatelessRetriever(ctx, {
       kbId: retriever.kbId,
       indexConfigHash: retriever.indexConfigHash,
-      retrieverConfig: config as unknown as Record<string, unknown>
+      retrieverConfig: config as unknown as Record<string, unknown>,
+      qdrantCollection: retriever.qdrantCollection
     })
     try {
       const trace = await unified.searchQueries(args.queries, topK)
@@ -266,7 +268,8 @@ export const refine = tenantAction({
     const unified = await buildStatelessRetriever(ctx, {
       kbId: retriever.kbId,
       indexConfigHash: retriever.indexConfigHash,
-      retrieverConfig: config as unknown as Record<string, unknown>
+      retrieverConfig: config as unknown as Record<string, unknown>,
+      qdrantCollection: retriever.qdrantCollection
     })
     try {
       if (
@@ -348,7 +351,8 @@ export const retrieveWithTrace = tenantAction({
     const unified = await buildStatelessRetriever(ctx, {
       kbId: retriever.kbId,
       indexConfigHash: retriever.indexConfigHash,
-      retrieverConfig: config as unknown as Record<string, unknown>
+      retrieverConfig: config as unknown as Record<string, unknown>,
+      qdrantCollection: retriever.qdrantCollection
     })
     try {
       const trace = await unified.retrieveWithTrace(args.query, k)
