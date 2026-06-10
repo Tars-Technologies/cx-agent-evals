@@ -1,20 +1,58 @@
+import { lookup } from "node:dns/promises"
 import { htmlToMarkdown } from "../file-processing/html-to-markdown.js"
 import type { ScrapedPage, ScrapeOptions } from "./types.js"
-import { assertPublicHttpUrl } from "./url-guard.js"
+import { assertPublicHttpUrl, isBlockedHost } from "./url-guard.js"
+
+/** Resolve a hostname to its IP address strings. Injectable for tests. */
+export type DnsLookup = (host: string) => Promise<string[]>
+
+const defaultDnsLookup: DnsLookup = async (host) => {
+  const records = await lookup(host, { all: true })
+  return records.map((r) => r.address)
+}
 
 export interface ContentScraperConfig {
   userAgent?: string
   defaultHeaders?: Record<string, string>
+  /**
+   * Resolver used to re-check each hop's host against the SSRF denylist after DNS
+   * resolution. Defaults to node:dns. Override in tests to avoid real network lookups.
+   */
+  dnsLookup?: DnsLookup
 }
 
 export class ContentScraper {
   private userAgent: string
   private defaultHeaders: Record<string, string>
+  private dnsLookup: DnsLookup
 
   constructor(config?: ContentScraperConfig) {
     this.userAgent =
       config?.userAgent ?? "Mozilla/5.0 (compatible; RAGEvalBot/1.0)"
     this.defaultHeaders = config?.defaultHeaders ?? {}
+    this.dnsLookup = config?.dnsLookup ?? defaultDnsLookup
+  }
+
+  /**
+   * Resolve `host` and reject if any resolved address is a private/loopback/metadata IP.
+   * Blocks DNS names that point into internal space and the validation-time rebind.
+   * A fetch-based client still re-resolves DNS itself, so a narrow TOCTOU window
+   * remains; fully closing it requires IP pinning via a custom dispatcher.
+   */
+  private async assertHostResolvesPublic(host: string): Promise<void> {
+    let addresses: string[]
+    try {
+      addresses = await this.dnsLookup(host)
+    } catch {
+      throw new Error(`DNS resolution failed for host: ${host}`)
+    }
+    for (const addr of addresses) {
+      if (isBlockedHost(addr)) {
+        throw new Error(
+          `Blocked host resolves to private/loopback/metadata IP: ${host} -> ${addr}`
+        )
+      }
+    }
   }
 
   async scrape(url: string, options?: ScrapeOptions): Promise<ScrapedPage> {
@@ -30,6 +68,8 @@ export class ContentScraper {
 
       // Manual redirect loop so each hop's host is re-validated (SSRF defense).
       for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+        // Re-resolve and re-check the host's IPs before every fetch (DNS rebinding).
+        await this.assertHostResolvesPublic(new URL(current).hostname)
         response = await fetch(current, {
           headers: {
             "User-Agent": this.userAgent,
@@ -52,6 +92,12 @@ export class ContentScraper {
       }
       if (!response) throw new Error("No response")
 
+      // Treat any non-2xx final response as a failure so it reaches markUrlFailed
+      // instead of being parsed and stored as KB content.
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(`Request failed with status ${response.status}`)
+      }
+
       const contentType = response.headers.get("content-type") ?? ""
       if (
         contentType &&
@@ -66,10 +112,7 @@ export class ContentScraper {
         throw new Error(`Response too large: ${declaredLength} bytes`)
       }
 
-      const html = await response.text()
-      if (html.length > MAX_BYTES) {
-        throw new Error(`Response too large: ${html.length} bytes`)
-      }
+      const html = await readBodyWithCap(response, MAX_BYTES)
 
       const result = await htmlToMarkdown(html, {
         onlyMainContent: options?.onlyMainContent ?? true,
@@ -97,4 +140,43 @@ export class ContentScraper {
       clearTimeout(timer)
     }
   }
+}
+
+/**
+ * Read a response body as text, aborting once accumulated bytes exceed `maxBytes`.
+ * Streams chunk-by-chunk so a server that omits or lies about Content-Length, or
+ * streams forever, cannot exhaust memory. Falls back to response.text() only when no
+ * readable body stream is available (e.g. test mocks).
+ */
+async function readBodyWithCap(
+  response: Response,
+  maxBytes: number
+): Promise<string> {
+  if (!response.body) {
+    const text = await response.text()
+    if (text.length > maxBytes) {
+      throw new Error(`Response too large: ${text.length} bytes`)
+    }
+    return text
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let received = 0
+  let result = ""
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      received += value.byteLength
+      if (received > maxBytes) {
+        throw new Error(`Response too large: exceeded ${maxBytes} bytes`)
+      }
+      result += decoder.decode(value, { stream: true })
+    }
+  } finally {
+    await reader.cancel().catch(() => {})
+  }
+  result += decoder.decode()
+  return result
 }

@@ -22,7 +22,9 @@ afterEach(() => {
 
 describe("InProcessScraper", () => {
   it("scrapePage returns ScrapedPage markdown + metadata (parity with ContentScraper)", async () => {
-    const scraper = new InProcessScraper()
+    const scraper = new InProcessScraper({
+      dnsLookup: async () => ["93.184.216.34"]
+    })
     const page = await scraper.scrapePage("https://example.com/page")
     expect(scraper.name).toBe("inprocess")
     expect(page.url).toBe("https://example.com/page")
