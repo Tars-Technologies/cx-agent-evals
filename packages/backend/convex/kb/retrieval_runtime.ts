@@ -191,9 +191,10 @@ export function buildConvexChunkSource(
     },
     getCorpus: async () => {
       if (opts.preloadedCorpus) return opts.preloadedCorpus
-      const docs = await ctx.runQuery(internal.kb.documents.listByKbInternal, {
-        kbId: opts.kbId
-      })
+      const docs: Array<{ docId: string; content: string }> =
+        await ctx.runQuery(internal.kb.documents.listByKbInternal, {
+          kbId: opts.kbId
+        })
       return createCorpusFromDocuments(
         docs.map((d) => ({ id: d.docId, content: d.content }))
       )

@@ -1,229 +1,122 @@
 "use node"
 
 /**
- * Retrieval pipeline: query rewrite, vector search, Cohere rerank/refine, traced retrieve.
- *
- * Actions live here ("use node") because they import openai and cohere,
- * which depend on Node.js built-ins unavailable in the Convex edge runtime.
+ * Retrieval pipeline stage actions: query rewrite, search, refinement, and the
+ * full traced retrieve. All four collapse onto the eval-lib
+ * StatelessQueryRetriever (composed in retrieval_runtime.ts); this file only
+ * loads/validates the retriever, drives the retriever's stage methods, and maps
+ * the trace back to the frozen public response shapes the playground tabs read.
  */
 import type {
-  HydeQueryConfig,
-  MultiQueryConfig,
   PipelineConfig,
-  PositionAwareChunk,
-  QueryConfig,
   RefinementStepConfig,
-  RewriteQueryConfig,
-  SearchConfig,
-  StepBackQueryConfig
+  SearchConfig
 } from "@tars-inc/eval-lib"
-import { createEmbedder, createLLMClient } from "@tars-inc/eval-lib/llm"
 import { v } from "convex/values"
-import MiniSearch from "minisearch"
-import { api, internal } from "../_generated/api"
-import type { Id } from "../_generated/dataModel"
-import type { ActionCtx } from "../_generated/server"
-import { backendConfig } from "../config"
+import { internal } from "../_generated/api"
+import type { Doc } from "../_generated/dataModel"
 import { tenantAction } from "../lib/auth/tenant"
-import { assertIndexableDimension } from "./dimension_guard"
 import {
-  type RerankerSelection,
-  resolveRerankerSelection
-} from "./reranker_selection"
-import { buildNativeVectorStore } from "./retrieval_runtime"
+  buildStatelessRetriever,
+  type ChunkResultShape,
+  chunkResultsToScored,
+  rerankerAvailable,
+  scoredToChunkResults
+} from "./retrieval_runtime"
 
 // ---------------------------------------------------------------------------
-// Shared types
+// Response shapes (frozen: the playground tabs consume these as-is). The
+// explicit aliases double as the action handlers' return-type annotations,
+// which Convex codegen needs to break circular type inference. They are type
+// aliases (not interfaces) so the frontend can still cast results to its own
+// Record-based view types via implicit index signatures.
 // ---------------------------------------------------------------------------
 
-interface ChunkResult {
-  readonly chunkId: string
-  readonly content: string
-  readonly docId: string
-  readonly start: number
-  readonly end: number
-  readonly score: number
-  readonly metadata: Record<string, unknown>
+type SearchConfigMeta = {
+  strategy: string
+  denseWeight?: number
+  sparseWeight?: number
+  fusionMethod?: string
+  candidateMultiplier?: number
+  k: number
+}
+
+type RewriteResponse = {
+  strategy: string
+  original: string
+  rewrittenQueries: string[]
+  hypotheticalAnswer?: string
+  latencyMs: number
+}
+
+type SearchResponse = {
+  searchConfig: SearchConfigMeta
+  perQueryResults: Array<{ query: string; chunks: ChunkResultShape[] }>
+  fusedResults: ChunkResultShape[]
+  latencyMs: number
+}
+
+type RefinementStageResult = {
+  name: string
+  config: Record<string, unknown>
+  inputCount: number
+  outputCount: number
+  outputChunks: ChunkResultShape[]
+  latencyMs: number
+}
+
+type RefineResponse = {
+  stages: RefinementStageResult[]
+  finalChunks: ChunkResultShape[]
+}
+
+type RetrieveWithTraceResponse = {
+  rewriting: RewriteResponse
+  search: SearchResponse
+  refinement: RefineResponse & { latencyMs: number }
+  finalChunks: ChunkResultShape[]
+  totalLatencyMs: number
 }
 
 // ---------------------------------------------------------------------------
-// LLM helper
+// Shared helpers
 // ---------------------------------------------------------------------------
 
-const QUERY_MODEL = "gpt-4o-mini"
-
-async function llmComplete(prompt: string, temperature = 0.7): Promise<string> {
-  const client = createLLMClient()
-  const result = await client.complete({
-    model: QUERY_MODEL,
-    messages: [{ role: "user", content: prompt }]
-  })
-  return result
-}
-
-// ---------------------------------------------------------------------------
-// Default prompts (mirrored from eval-lib — not exported via sub-path)
-// ---------------------------------------------------------------------------
-
-const DEFAULT_HYDE_PROMPT =
-  "Write a short passage (100-200 words) that would answer the following question. Do not include the question itself, just the answer passage.\n\nQuestion: "
-
-const DEFAULT_MULTI_QUERY_PROMPT =
-  "Generate {n} different search queries that would help find information to answer the following question. Return one query per line, no numbering.\n\nQuestion: "
-
-const DEFAULT_STEP_BACK_PROMPT =
-  "Given the following question, generate a more general, abstract version that would retrieve broader background knowledge. Return only the abstract question.\n\nOriginal question: "
-
-const DEFAULT_REWRITE_PROMPT =
-  "Rewrite the following question to be more precise and optimized for document retrieval. Return only the rewritten question.\n\nOriginal question: "
-
-// ---------------------------------------------------------------------------
-// Strategy executors
-// ---------------------------------------------------------------------------
-
-interface RewriteResult {
-  readonly strategy: string
-  readonly original: string
-  readonly rewrittenQueries: string[]
-  readonly hypotheticalAnswer?: string
-  readonly latencyMs: number
-}
-
-async function executeIdentity(query: string): Promise<RewriteResult> {
-  return {
-    strategy: "identity",
-    original: query,
-    rewrittenQueries: [query],
-    latencyMs: 0
+/** Display metadata echoed back with search responses (shape frozen). */
+function buildSearchConfigMeta(
+  searchConfig: SearchConfig,
+  k: number
+): SearchConfigMeta {
+  const meta: SearchConfigMeta = { strategy: searchConfig.strategy, k }
+  if (searchConfig.strategy === "hybrid") {
+    meta.denseWeight = searchConfig.denseWeight ?? 0.7
+    meta.sparseWeight = searchConfig.sparseWeight ?? 0.3
+    meta.fusionMethod = searchConfig.fusionMethod ?? "rrf"
+    meta.candidateMultiplier = searchConfig.candidateMultiplier ?? 3
   }
+  return meta
 }
 
-async function executeMultiQuery(
-  query: string,
-  config: MultiQueryConfig
-): Promise<RewriteResult> {
-  const n = config.numQueries ?? 3
-  const prompt = (
-    config.generationPrompt ?? DEFAULT_MULTI_QUERY_PROMPT
-  ).replace("{n}", String(n))
-
-  const start = performance.now()
-  const raw = await llmComplete(prompt + query)
-  const latencyMs = Math.round(performance.now() - start)
-
-  const queries = raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-
-  return {
-    strategy: "multi-query",
-    original: query,
-    rewrittenQueries: queries,
-    latencyMs
-  }
+/** Loud failure preserved from the old runRefinementStage rerank branch. */
+function rerankUnavailableError(
+  refinementSteps: readonly RefinementStepConfig[]
+): Error {
+  const step = refinementSteps.find((s) => s.type === "rerank") as
+    | { provider?: string }
+    | undefined
+  return new Error(
+    `Rerank step has no usable reranker for provider ` +
+      `"${step?.provider ?? "cohere"}": check the provider name and that ` +
+      `its API key is set (COHERE_API_KEY / JINA_API_KEY / VOYAGE_API_KEY).`
+  )
 }
 
-async function executeHyde(
-  query: string,
-  config: HydeQueryConfig
-): Promise<RewriteResult> {
-  const prompt = config.hydePrompt ?? DEFAULT_HYDE_PROMPT
-
-  const start = performance.now()
-  const hypotheticalAnswer = await llmComplete(prompt + query)
-  const latencyMs = Math.round(performance.now() - start)
-
-  return {
-    strategy: "hyde",
-    original: query,
-    rewrittenQueries: [hypotheticalAnswer],
-    hypotheticalAnswer,
-    latencyMs
-  }
-}
-
-async function executeStepBack(
-  query: string,
-  config: StepBackQueryConfig
-): Promise<RewriteResult> {
-  const prompt = config.stepBackPrompt ?? DEFAULT_STEP_BACK_PROMPT
-  const includeOriginal = config.includeOriginal ?? true
-
-  const start = performance.now()
-  const stepBackQuery = (await llmComplete(prompt + query)).trim()
-  const latencyMs = Math.round(performance.now() - start)
-
-  const rewrittenQueries = includeOriginal
-    ? [query, stepBackQuery]
-    : [stepBackQuery]
-
-  return {
-    strategy: "step-back",
-    original: query,
-    rewrittenQueries,
-    latencyMs
-  }
-}
-
-async function executeRewrite(
-  query: string,
-  config: RewriteQueryConfig
-): Promise<RewriteResult> {
-  const prompt = config.rewritePrompt ?? DEFAULT_REWRITE_PROMPT
-
-  const start = performance.now()
-  const rewritten = (await llmComplete(prompt + query)).trim()
-  const latencyMs = Math.round(performance.now() - start)
-
-  return {
-    strategy: "rewrite",
-    original: query,
-    rewrittenQueries: [rewritten],
-    latencyMs
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Dispatcher
-// ---------------------------------------------------------------------------
-
-function dispatchQueryStrategy(
-  query: string,
-  queryConfig: QueryConfig | undefined
-): Promise<RewriteResult> {
-  if (!queryConfig || queryConfig.strategy === "identity") {
-    return executeIdentity(query)
-  }
-
-  switch (queryConfig.strategy) {
-    case "multi-query":
-      return executeMultiQuery(query, queryConfig)
-    case "hyde":
-      return executeHyde(query, queryConfig)
-    case "step-back":
-      return executeStepBack(query, queryConfig)
-    case "rewrite":
-      return executeRewrite(query, queryConfig)
-    default: {
-      // Exhaustive check — TypeScript will error if a strategy is unhandled
-      const _exhaustive: never = queryConfig
-      return executeIdentity(query)
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Public action
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Rewrite Query (Stage 1)
+// ===========================================================================
 
 /**
  * Rewrite a query according to a retriever's query strategy configuration.
- *
- * Takes a retriever ID and raw query string, loads the retriever's pipeline
- * config, and executes the configured query rewriting strategy (identity,
- * multi-query, HyDE, step-back, or rewrite).
- *
  * Returns the strategy name, original query, rewritten queries, and latency.
  */
 export const rewriteQuery = tenantAction({
@@ -231,10 +124,11 @@ export const rewriteQuery = tenantAction({
     retrieverId: v.id("retrievers"),
     query: v.string()
   },
-  handler: async (ctx, args) => {
-    const retriever = await ctx.runQuery(internal.kb.retrievers.getInternal, {
-      id: args.retrieverId
-    })
+  handler: async (ctx, args): Promise<RewriteResponse> => {
+    const retriever: Doc<"retrievers"> = await ctx.runQuery(
+      internal.kb.retrievers.getInternal,
+      { id: args.retrieverId }
+    )
 
     if (retriever.orgId !== ctx.orgId) {
       throw new Error("Retriever not found")
@@ -246,439 +140,41 @@ export const rewriteQuery = tenantAction({
       )
     }
 
-    const config = retriever.retrieverConfig as PipelineConfig
-    const queryConfig = config.query as QueryConfig | undefined
-
-    const result = await dispatchQueryStrategy(args.query, queryConfig)
-
-    return result
+    const unified = await buildStatelessRetriever(ctx, {
+      kbId: retriever.kbId,
+      indexConfigHash: retriever.indexConfigHash,
+      retrieverConfig: retriever.retrieverConfig as Record<string, unknown>
+    })
+    try {
+      const trace = await unified.expandQuery(args.query)
+      return {
+        strategy: trace.strategy,
+        original: trace.original,
+        rewrittenQueries: [...trace.queries],
+        hypotheticalAnswer: trace.hypotheticalAnswer,
+        latencyMs: trace.latencyMs
+      }
+    } finally {
+      unified.cleanup()
+    }
   }
 })
 
 // ===========================================================================
-// Search With Queries
+// Search With Queries (Stage 2)
 // ===========================================================================
 
-// ---------------------------------------------------------------------------
-// Chunk loading helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Load all chunks for a (kbId, indexConfigHash) via paginated public query.
- * Each page gets its own 16MB read budget.
- */
-async function loadAllChunks(
-  ctx: ActionCtx,
-  kbId: Id<"knowledgeBases">,
-  indexConfigHash: string
-): Promise<
-  Array<{
-    _id: string
-    chunkId: string
-    documentId: string
-    content: string
-    start: number
-    end: number
-    metadata: Record<string, unknown>
-  }>
-> {
-  const allChunks: Array<{
-    _id: string
-    chunkId: string
-    documentId: string
-    content: string
-    start: number
-    end: number
-    metadata: Record<string, unknown>
-  }> = []
-  let cursor: string | null = null
-  let isDone = false
-
-  while (!isDone) {
-    const page: {
-      chunks: Array<{
-        _id: string
-        chunkId: string
-        documentId: string
-        content: string
-        start: number
-        end: number
-        metadata: Record<string, unknown>
-      }>
-      isDone: boolean
-      continueCursor: string
-    } = await ctx.runQuery(api.kb.chunks.getChunksByRetrieverPage, {
-      kbId,
-      indexConfigHash,
-      cursor,
-      pageSize: 100
-    })
-    allChunks.push(...page.chunks)
-    isDone = page.isDone
-    cursor = page.continueCursor
-  }
-
-  return allChunks
-}
-
-// ---------------------------------------------------------------------------
-// Dense search (single query)
-// ---------------------------------------------------------------------------
-
-async function denseSearch(
-  ctx: ActionCtx,
-  queryText: string,
-  kbId: Id<"knowledgeBases">,
-  indexConfigHash: string,
-  embeddingModel: string,
-  topK: number,
-  indexStrategy?: string
-): Promise<ChunkResult[]> {
-  const embedder = createEmbedder(embeddingModel)
-  assertIndexableDimension(embedder.dimension, embeddingModel)
-  const queryEmbedding = await embedder.embedQuery(queryText)
-
-  const store = buildNativeVectorStore(ctx, {
-    kbId,
-    indexConfigHash,
-    indexStrategy
-  })
-  const results = await store.search(queryEmbedding, { k: topK })
-
-  return results.map(({ chunk, score }) => ({
-    chunkId: String(chunk.id),
-    content: chunk.content,
-    docId: String(chunk.docId),
-    start: chunk.start,
-    end: chunk.end,
-    score,
-    metadata: (chunk.metadata ?? {}) as Record<string, unknown>
-  }))
-}
-
-// ---------------------------------------------------------------------------
-// BM25 search (single query)
-// ---------------------------------------------------------------------------
-
-interface BM25Index {
-  miniSearch: MiniSearch
-  chunkMap: Map<
-    string,
-    {
-      chunkId: string
-      content: string
-      docId: string
-      start: number
-      end: number
-      metadata: Record<string, unknown>
-    }
-  >
-}
-
-/**
- * Build a MiniSearch index from all chunks. The index is returned so it can
- * be reused across multiple queries in the same invocation.
- */
-async function buildBM25Index(
-  ctx: ActionCtx,
-  kbId: Id<"knowledgeBases">,
-  indexConfigHash: string
-): Promise<BM25Index> {
-  const allChunks = await loadAllChunks(ctx, kbId, indexConfigHash)
-
-  const chunkMap = new Map<
-    string,
-    {
-      chunkId: string
-      content: string
-      docId: string
-      start: number
-      end: number
-      metadata: Record<string, unknown>
-    }
-  >()
-
-  const docs: Array<{ id: string; content: string }> = []
-
-  for (const c of allChunks) {
-    const id = c._id
-    chunkMap.set(id, {
-      chunkId: c.chunkId,
-      content: c.content,
-      docId: c.documentId,
-      start: c.start,
-      end: c.end,
-      metadata: c.metadata
-    })
-    docs.push({ id, content: c.content })
-  }
-
-  const miniSearch = new MiniSearch({
-    fields: ["content"],
-    storeFields: ["content"],
-    idField: "id"
-  })
-  miniSearch.addAll(docs)
-
-  return { miniSearch, chunkMap }
-}
-
-function bm25Search(
-  index: BM25Index,
-  queryText: string,
-  topK: number,
-  k1 = 1.2,
-  b = 0.75
-): ChunkResult[] {
-  const results = index.miniSearch.search(queryText, {
-    boost: { content: 1 },
-    bm25: { k: k1, b, d: 0.5 }
-  })
-
-  return results.slice(0, topK).map((r) => {
-    const chunk = index.chunkMap.get(r.id)!
-    return {
-      chunkId: chunk.chunkId,
-      content: chunk.content,
-      docId: chunk.docId,
-      start: chunk.start,
-      end: chunk.end,
-      score: r.score,
-      metadata: chunk.metadata
-    }
-  })
-}
-
-// ---------------------------------------------------------------------------
-// Fusion helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Reciprocal Rank Fusion: merge multiple result lists into one.
- * `score = sum(1 / (k + rank + 1))` across all lists.
- */
-function rrfFuse(resultLists: ChunkResult[][], rrfK = 60): ChunkResult[] {
-  const scores = new Map<string, { chunk: ChunkResult; score: number }>()
-
-  for (const results of resultLists) {
-    for (let i = 0; i < results.length; i++) {
-      const chunk = results[i]
-      const key = chunk.chunkId
-      const rrfContribution = 1 / (rrfK + i + 1)
-      const existing = scores.get(key)
-      if (existing) {
-        existing.score += rrfContribution
-      } else {
-        scores.set(key, { chunk, score: rrfContribution })
-      }
-    }
-  }
-
-  return [...scores.values()]
-    .sort((a, b) => b.score - a.score)
-    .map(({ chunk, score }) => ({ ...chunk, score }))
-}
-
-/**
- * Weighted score fusion: for each chunk, fusedScore = denseWeight * denseScore + sparseWeight * sparseScore.
- * Only chunks appearing in at least one list are included.
- */
-function weightedScoreFuse(
-  denseResults: ChunkResult[],
-  sparseResults: ChunkResult[],
-  denseWeight: number,
-  sparseWeight: number
-): ChunkResult[] {
-  const scores = new Map<
-    string,
-    { chunk: ChunkResult; denseScore: number; sparseScore: number }
-  >()
-
-  for (const chunk of denseResults) {
-    scores.set(chunk.chunkId, {
-      chunk,
-      denseScore: chunk.score,
-      sparseScore: 0
-    })
-  }
-
-  for (const chunk of sparseResults) {
-    const existing = scores.get(chunk.chunkId)
-    if (existing) {
-      existing.sparseScore = chunk.score
-    } else {
-      scores.set(chunk.chunkId, {
-        chunk,
-        denseScore: 0,
-        sparseScore: chunk.score
-      })
-    }
-  }
-
-  return [...scores.values()]
-    .map(({ chunk, denseScore, sparseScore }) => ({
-      ...chunk,
-      score: denseWeight * denseScore + sparseWeight * sparseScore
-    }))
-    .sort((a, b) => b.score - a.score)
-}
-
-// ---------------------------------------------------------------------------
-// Hybrid search (single query)
-// ---------------------------------------------------------------------------
-
-async function hybridSearch(
-  ctx: ActionCtx,
-  queryText: string,
-  kbId: Id<"knowledgeBases">,
-  indexConfigHash: string,
-  embeddingModel: string,
-  bm25Index: BM25Index,
-  topK: number,
-  config: {
-    denseWeight: number
-    sparseWeight: number
-    fusionMethod: "weighted" | "rrf"
-    candidateMultiplier: number
-    k1: number
-    b: number
-    rrfK: number
-  }
-): Promise<ChunkResult[]> {
-  const candidateK = topK * config.candidateMultiplier
-
-  // Run dense and BM25 in parallel
-  const [denseResults, sparseResults] = await Promise.all([
-    denseSearch(
-      ctx,
-      queryText,
-      kbId,
-      indexConfigHash,
-      embeddingModel,
-      candidateK
-    ),
-    Promise.resolve(
-      bm25Search(bm25Index, queryText, candidateK, config.k1, config.b)
-    )
-  ])
-
-  let fused: ChunkResult[]
-  if (config.fusionMethod === "rrf") {
-    fused = rrfFuse([denseResults, sparseResults], config.rrfK)
-  } else {
-    fused = weightedScoreFuse(
-      denseResults,
-      sparseResults,
-      config.denseWeight,
-      config.sparseWeight
-    )
-  }
-
-  return fused.slice(0, topK)
-}
-
-// ---------------------------------------------------------------------------
-// Search dispatcher (single query)
-// ---------------------------------------------------------------------------
-
-async function searchSingleQuery(
-  ctx: ActionCtx,
-  queryText: string,
-  kbId: Id<"knowledgeBases">,
-  indexConfigHash: string,
-  embeddingModel: string,
-  searchConfig: SearchConfig,
-  topK: number,
-  bm25Index: BM25Index | null
-): Promise<ChunkResult[]> {
-  switch (searchConfig.strategy) {
-    case "dense":
-      return denseSearch(
-        ctx,
-        queryText,
-        kbId,
-        indexConfigHash,
-        embeddingModel,
-        topK
-      )
-
-    case "bm25": {
-      if (!bm25Index) {
-        throw new Error("BM25 index not initialized")
-      }
-      const k1 = searchConfig.k1 ?? 1.2
-      const b = searchConfig.b ?? 0.75
-      return bm25Search(bm25Index, queryText, topK, k1, b)
-    }
-
-    case "hybrid": {
-      if (!bm25Index) {
-        throw new Error("BM25 index not initialized")
-      }
-      return hybridSearch(
-        ctx,
-        queryText,
-        kbId,
-        indexConfigHash,
-        embeddingModel,
-        bm25Index,
-        topK,
-        {
-          denseWeight: searchConfig.denseWeight ?? 0.7,
-          sparseWeight: searchConfig.sparseWeight ?? 0.3,
-          fusionMethod: searchConfig.fusionMethod ?? "rrf",
-          candidateMultiplier: searchConfig.candidateMultiplier ?? 3,
-          k1: searchConfig.k1 ?? 1.2,
-          b: searchConfig.b ?? 0.75,
-          rrfK: searchConfig.rrfK ?? 60
-        }
-      )
-    }
-
-    default: {
-      const _exhaustive: never = searchConfig
-      return denseSearch(
-        ctx,
-        queryText,
-        kbId,
-        indexConfigHash,
-        embeddingModel,
-        topK
-      )
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Public action — searchWithQueries
-// ---------------------------------------------------------------------------
-
-/**
- * Execute search for one or more rewritten queries against a retriever's
- * search configuration.
- *
- * Takes a retriever ID and an array of query strings (typically from the
- * `rewriteQuery` action output). Runs the retriever's configured search
- * strategy (dense, BM25, or hybrid) for each query, then fuses results
- * across queries using Reciprocal Rank Fusion when multiple queries are
- * provided.
- *
- * Returns per-query results plus fused results with search config metadata
- * and latency.
- */
 export const searchWithQueries = tenantAction({
   args: {
     retrieverId: v.id("retrievers"),
     queries: v.array(v.string()),
     k: v.optional(v.number())
   },
-  handler: async (ctx, args) => {
-    const start = performance.now()
-
-    // Load retriever
-    const retriever = await ctx.runQuery(internal.kb.retrievers.getInternal, {
-      id: args.retrieverId
-    })
+  handler: async (ctx, args): Promise<SearchResponse> => {
+    const retriever: Doc<"retrievers"> = await ctx.runQuery(
+      internal.kb.retrievers.getInternal,
+      { id: args.retrieverId }
+    )
 
     if (retriever.orgId !== ctx.orgId) {
       throw new Error("Retriever not found")
@@ -702,351 +198,32 @@ export const searchWithQueries = tenantAction({
     }
     const topK = args.k ?? retriever.defaultK
 
-    // Resolve embedding model from index config
-    const indexSettings = (config.index ?? {}) as Record<string, unknown>
-    const embeddingModel =
-      (indexSettings.embeddingModel as string) ?? "text-embedding-3-small"
-
-    // Pre-build BM25 index if needed (reused across all queries)
-    let bm25Index: BM25Index | null = null
-    if (
-      searchConfig.strategy === "bm25" ||
-      searchConfig.strategy === "hybrid"
-    ) {
-      bm25Index = await buildBM25Index(
-        ctx,
-        retriever.kbId,
-        retriever.indexConfigHash
-      )
-    }
-
-    // Execute search for each query
-    const perQueryResults: Array<{ query: string; chunks: ChunkResult[] }> = []
-
-    for (const queryText of args.queries) {
-      const chunks = await searchSingleQuery(
-        ctx,
-        queryText,
-        retriever.kbId,
-        retriever.indexConfigHash,
-        embeddingModel,
-        searchConfig,
-        topK,
-        bm25Index
-      )
-      perQueryResults.push({ query: queryText, chunks })
-    }
-
-    // Fuse across queries if multiple
-    let fusedResults: ChunkResult[]
-    if (perQueryResults.length === 1) {
-      fusedResults = perQueryResults[0].chunks
-    } else {
-      const allChunkLists = perQueryResults.map((r) => r.chunks)
-      fusedResults = rrfFuse(allChunkLists).slice(0, topK)
-    }
-
-    const latencyMs = Math.round(performance.now() - start)
-
-    // Build search config metadata for the response
-    const searchConfigMeta: Record<string, unknown> = {
-      strategy: searchConfig.strategy,
-      k: topK
-    }
-    if (searchConfig.strategy === "hybrid") {
-      searchConfigMeta.denseWeight = searchConfig.denseWeight ?? 0.7
-      searchConfigMeta.sparseWeight = searchConfig.sparseWeight ?? 0.3
-      searchConfigMeta.fusionMethod = searchConfig.fusionMethod ?? "rrf"
-      searchConfigMeta.candidateMultiplier =
-        searchConfig.candidateMultiplier ?? 3
-    }
-
-    return {
-      searchConfig: searchConfigMeta,
-      perQueryResults,
-      fusedResults,
-      latencyMs
+    const unified = await buildStatelessRetriever(ctx, {
+      kbId: retriever.kbId,
+      indexConfigHash: retriever.indexConfigHash,
+      retrieverConfig: config as unknown as Record<string, unknown>
+    })
+    try {
+      const trace = await unified.searchQueries(args.queries, topK)
+      return {
+        searchConfig: buildSearchConfigMeta(searchConfig, topK),
+        perQueryResults: trace.perQueryResults.map((r) => ({
+          query: r.query,
+          chunks: scoredToChunkResults(r.chunks)
+        })),
+        fusedResults: scoredToChunkResults(trace.fusedResults.slice(0, topK)),
+        latencyMs: trace.latencyMs
+      }
+    } finally {
+      unified.cleanup()
     }
   }
 })
 
 // ===========================================================================
-// Refine (Stage 4 — post-retrieval refinement)
+// Refine (Stage 3, post-retrieval refinement)
 // ===========================================================================
 
-// ---------------------------------------------------------------------------
-// Refinement helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Compute the ratio of character-span overlap between two chunks from the
- * same document. Returns 0 when chunks are from different documents.
- */
-function computeOverlapRatio(a: ChunkResult, b: ChunkResult): number {
-  if (a.docId !== b.docId) return 0
-  const overlapStart = Math.max(a.start, b.start)
-  const overlapEnd = Math.min(a.end, b.end)
-  const overlap = Math.max(0, overlapEnd - overlapStart)
-  const minLen = Math.min(a.end - a.start, b.end - b.start)
-  return minLen === 0 ? 0 : overlap / minLen
-}
-
-function applyThreshold(
-  chunks: ChunkResult[],
-  minScore: number
-): ChunkResult[] {
-  return chunks.filter((c) => c.score >= minScore)
-}
-
-function applyDedup(
-  chunks: ChunkResult[],
-  method: "exact" | "overlap",
-  threshold: number
-): ChunkResult[] {
-  if (method === "exact") {
-    const seen = new Set<string>()
-    return chunks.filter((c) => {
-      if (seen.has(c.content)) return false
-      seen.add(c.content)
-      return true
-    })
-  }
-
-  // Overlap method: greedily keep chunks that don't overlap with already-kept ones
-  const kept: ChunkResult[] = []
-  for (const chunk of chunks) {
-    const isDuplicate = kept.some(
-      (existing) =>
-        existing.docId === chunk.docId &&
-        computeOverlapRatio(existing, chunk) >= threshold
-    )
-    if (!isDuplicate) kept.push(chunk)
-  }
-  return kept
-}
-
-/**
- * Maximal Marginal Relevance: iteratively select chunks that balance
- * relevance (score) against diversity (low overlap with already-selected).
- */
-function applyMmr(
-  chunks: ChunkResult[],
-  k: number,
-  lambda: number
-): ChunkResult[] {
-  if (chunks.length === 0) return []
-
-  const candidates = [...chunks]
-  const selected: ChunkResult[] = []
-
-  while (selected.length < k && candidates.length > 0) {
-    let bestIdx = 0
-    let bestScore = -Infinity
-
-    for (let i = 0; i < candidates.length; i++) {
-      const c = candidates[i]
-      const relevance = c.score
-
-      let maxSim = 0
-      for (const s of selected) {
-        const sim = computeOverlapRatio(s, c)
-        if (sim > maxSim) maxSim = sim
-      }
-
-      const mmrScore = lambda * relevance - (1 - lambda) * maxSim
-      if (mmrScore > bestScore) {
-        bestScore = mmrScore
-        bestIdx = i
-      }
-    }
-
-    selected.push(candidates.splice(bestIdx, 1)[0])
-  }
-
-  return selected
-}
-
-/**
- * Rerank chunks through eval-lib's makeReranker, honoring the provider and model
- * selected on the rerank refinement step (no direct provider HTTP here). Re-scores
- * survivors by descending rank - matching the retrieve/experiment paths - so a
- * downstream threshold or the final output reflects rerank order.
- */
-async function applyRerank(
-  query: string,
-  chunks: ChunkResult[],
-  topK: number,
-  selection: RerankerSelection
-): Promise<ChunkResult[]> {
-  const { makeReranker } = await import(
-    "@tars-inc/eval-lib/rerankers/make-reranker"
-  )
-  const reranker = await makeReranker(selection)
-  // The reranker reads only `.content` and maps result indices back to the same
-  // objects we pass, so ChunkResult round-trips safely through the cast.
-  const reranked = (await reranker.rerank(
-    query,
-    chunks as unknown as PositionAwareChunk[],
-    topK
-  )) as unknown as ChunkResult[]
-  const count = reranked.length
-  return reranked.map((chunk, i) => ({ ...chunk, score: (count - i) / count }))
-}
-
-/**
- * Expand each chunk's character window by `windowChars` in both directions,
- * clamped to the source document boundaries.
- *
- * Requires fetching document content from Convex to produce the expanded text.
- */
-async function applyExpandContext(
-  ctx: ActionCtx,
-  chunks: ChunkResult[],
-  kbId: Id<"knowledgeBases">,
-  windowChars: number
-): Promise<ChunkResult[]> {
-  // Fetch all documents in the KB so we can look up content by docId
-  const docs: Array<{ docId: string; content: string }> = await ctx.runQuery(
-    internal.kb.documents.listByKbInternal,
-    { kbId }
-  )
-
-  const docContentMap = new Map<string, string>()
-  for (const doc of docs) {
-    docContentMap.set(doc.docId, doc.content)
-  }
-
-  return chunks.map((chunk) => {
-    const fullContent = docContentMap.get(chunk.docId)
-    if (!fullContent) return chunk // Document not found — return unchanged
-
-    const newStart = Math.max(0, chunk.start - windowChars)
-    const newEnd = Math.min(fullContent.length, chunk.end + windowChars)
-    const expandedContent = fullContent.slice(newStart, newEnd)
-
-    return {
-      ...chunk,
-      content: expandedContent,
-      start: newStart,
-      end: newEnd
-    }
-  })
-}
-
-// ---------------------------------------------------------------------------
-// Stage runner
-// ---------------------------------------------------------------------------
-
-interface StageResult {
-  readonly name: string
-  readonly config: Record<string, unknown>
-  readonly inputCount: number
-  readonly outputCount: number
-  readonly outputChunks: ChunkResult[]
-  readonly latencyMs: number
-}
-
-/**
- * Run a single refinement stage and return its result with timing.
- */
-async function runRefinementStage(
-  ctx: ActionCtx,
-  step: RefinementStepConfig,
-  chunks: ChunkResult[],
-  query: string,
-  kbId: Id<"knowledgeBases">,
-  k: number
-): Promise<StageResult> {
-  const inputCount = chunks.length
-  const start = performance.now()
-  let outputChunks: ChunkResult[]
-  let config: Record<string, unknown>
-
-  switch (step.type) {
-    case "threshold": {
-      config = { type: "threshold", minScore: step.minScore }
-      outputChunks = applyThreshold(chunks, step.minScore)
-      break
-    }
-
-    case "dedup": {
-      const method = step.method ?? "overlap"
-      const overlapThreshold = step.overlapThreshold ?? 0.5
-      config = { type: "dedup", method, overlapThreshold }
-      outputChunks = applyDedup(chunks, method, overlapThreshold)
-      break
-    }
-
-    case "mmr": {
-      const lambda = step.lambda ?? 0.7
-      config = { type: "mmr", lambda, k }
-      outputChunks = applyMmr(chunks, k, lambda)
-      break
-    }
-
-    case "rerank": {
-      const rerankTopN = step.topN ?? k
-      const selection = resolveRerankerSelection(
-        [step as unknown as Record<string, unknown>],
-        backendConfig.ai
-      )
-      if (!selection) {
-        throw new Error(
-          `Rerank step has no usable reranker for provider ` +
-            `"${step.provider ?? "cohere"}": check the provider name and that ` +
-            `its API key is set (COHERE_API_KEY / JINA_API_KEY / VOYAGE_API_KEY).`
-        )
-      }
-      config = {
-        type: "rerank",
-        provider: selection.provider,
-        model: selection.model ?? "(provider default)",
-        topK: rerankTopN
-      }
-      outputChunks = await applyRerank(query, chunks, rerankTopN, selection)
-      break
-    }
-
-    case "expand-context": {
-      const windowChars = step.windowChars ?? 500
-      config = { type: "expand-context", windowChars }
-      outputChunks = await applyExpandContext(ctx, chunks, kbId, windowChars)
-      break
-    }
-
-    default: {
-      const _exhaustive: never = step
-      config = { type: "unknown" }
-      outputChunks = chunks
-    }
-  }
-
-  const latencyMs = Math.round(performance.now() - start)
-
-  return {
-    name: step.type,
-    config,
-    inputCount,
-    outputCount: outputChunks.length,
-    outputChunks,
-    latencyMs
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Public action — refine
-// ---------------------------------------------------------------------------
-
-/**
- * Apply the retriever's refinement pipeline to a set of search result chunks.
- *
- * Takes a retriever ID, the original query, and an array of chunk results
- * (typically from the `searchWithQueries` action). Runs each refinement
- * stage (threshold, dedup, MMR, rerank, expand-context) sequentially,
- * capturing per-stage input/output counts and timing.
- *
- * Returns per-stage details and the final refined chunks.
- */
 export const refine = tenantAction({
   args: {
     retrieverId: v.id("retrievers"),
@@ -1064,11 +241,11 @@ export const refine = tenantAction({
     ),
     k: v.optional(v.number())
   },
-  handler: async (ctx, args) => {
-    // Load and validate retriever
-    const retriever = await ctx.runQuery(internal.kb.retrievers.getInternal, {
-      id: args.retrieverId
-    })
+  handler: async (ctx, args): Promise<RefineResponse> => {
+    const retriever: Doc<"retrievers"> = await ctx.runQuery(
+      internal.kb.retrievers.getInternal,
+      { id: args.retrieverId }
+    )
 
     if (retriever.orgId !== ctx.orgId) {
       throw new Error("Retriever not found")
@@ -1083,208 +260,48 @@ export const refine = tenantAction({
     const config = retriever.retrieverConfig as PipelineConfig
     const refinementSteps =
       (config.refinement as RefinementStepConfig[] | undefined) ?? []
-
     const k = args.k ?? retriever.defaultK
+    const needsReranker = refinementSteps.some((s) => s.type === "rerank")
 
-    // Cast input chunks to ChunkResult (validator guarantees shape)
-    let currentChunks: ChunkResult[] = args.chunks.map((c) => ({
-      chunkId: c.chunkId,
-      content: c.content,
-      docId: c.docId,
-      start: c.start,
-      end: c.end,
-      score: c.score,
-      metadata: (c.metadata ?? {}) as Record<string, unknown>
-    }))
-
-    // No refinement configured — return input unchanged
-    if (refinementSteps.length === 0) {
-      return {
-        stages: [] as StageResult[],
-        finalChunks: currentChunks
+    const unified = await buildStatelessRetriever(ctx, {
+      kbId: retriever.kbId,
+      indexConfigHash: retriever.indexConfigHash,
+      retrieverConfig: config as unknown as Record<string, unknown>
+    })
+    try {
+      if (
+        needsReranker &&
+        !(await rerankerAvailable(
+          refinementSteps as unknown as Array<Record<string, unknown>>
+        ))
+      ) {
+        throw rerankUnavailableError(refinementSteps)
       }
-    }
-
-    // Run each refinement stage sequentially
-    const stages: StageResult[] = []
-    for (const step of refinementSteps) {
-      const stageResult = await runRefinementStage(
-        ctx,
-        step,
-        currentChunks,
+      const { stages, finalChunks } = await unified.refineChunks(
         args.query,
-        retriever.kbId,
+        chunkResultsToScored(args.chunks),
         k
       )
-      stages.push(stageResult)
-      currentChunks = stageResult.outputChunks
-    }
-
-    return {
-      stages,
-      finalChunks: currentChunks
+      return {
+        stages: stages.map((s) => ({
+          ...s,
+          outputChunks: scoredToChunkResults(s.outputChunks)
+        })),
+        finalChunks: scoredToChunkResults(finalChunks)
+      }
+    } finally {
+      unified.cleanup()
     }
   }
 })
 
 // ===========================================================================
-// Retrieve With Trace (full pipeline — single action)
+// Retrieve With Trace (full pipeline, single action)
 // ===========================================================================
 
-// ---------------------------------------------------------------------------
-// Core search logic (extracted from searchWithQueries handler)
-// ---------------------------------------------------------------------------
-
-interface SearchTraceResult {
-  readonly searchConfig: {
-    readonly strategy: string
-    readonly denseWeight?: number
-    readonly sparseWeight?: number
-    readonly fusionMethod?: string
-    readonly candidateMultiplier?: number
-    readonly k: number
-  }
-  readonly perQueryResults: ReadonlyArray<{
-    readonly query: string
-    readonly chunks: ChunkResult[]
-  }>
-  readonly fusedResults: ChunkResult[]
-  readonly latencyMs: number
-}
-
 /**
- * Core search logic shared by `searchWithQueries` action and
- * `retrieveWithTrace`. Executes the configured search strategy for each
- * query, fuses results across queries, and returns the trace.
- */
-async function executeSearch(
-  ctx: ActionCtx,
-  queries: string[],
-  kbId: Id<"knowledgeBases">,
-  indexConfigHash: string,
-  embeddingModel: string,
-  searchConfig: SearchConfig,
-  topK: number
-): Promise<SearchTraceResult> {
-  const start = performance.now()
-
-  // Pre-build BM25 index if needed (reused across all queries)
-  let bm25Index: BM25Index | null = null
-  if (searchConfig.strategy === "bm25" || searchConfig.strategy === "hybrid") {
-    bm25Index = await buildBM25Index(ctx, kbId, indexConfigHash)
-  }
-
-  // Execute search for each query
-  const perQueryResults: Array<{ query: string; chunks: ChunkResult[] }> = []
-
-  for (const queryText of queries) {
-    const chunks = await searchSingleQuery(
-      ctx,
-      queryText,
-      kbId,
-      indexConfigHash,
-      embeddingModel,
-      searchConfig,
-      topK,
-      bm25Index
-    )
-    perQueryResults.push({ query: queryText, chunks })
-  }
-
-  // Fuse across queries if multiple
-  let fusedResults: ChunkResult[]
-  if (perQueryResults.length === 1) {
-    fusedResults = perQueryResults[0].chunks
-  } else {
-    const allChunkLists = perQueryResults.map((r) => r.chunks)
-    fusedResults = rrfFuse(allChunkLists).slice(0, topK)
-  }
-
-  const latencyMs = Math.round(performance.now() - start)
-
-  // Build search config metadata
-  const searchConfigMeta: {
-    strategy: string
-    denseWeight?: number
-    sparseWeight?: number
-    fusionMethod?: string
-    candidateMultiplier?: number
-    k: number
-  } = {
-    strategy: searchConfig.strategy,
-    k: topK
-  }
-  if (searchConfig.strategy === "hybrid") {
-    searchConfigMeta.denseWeight = searchConfig.denseWeight ?? 0.7
-    searchConfigMeta.sparseWeight = searchConfig.sparseWeight ?? 0.3
-    searchConfigMeta.fusionMethod = searchConfig.fusionMethod ?? "rrf"
-    searchConfigMeta.candidateMultiplier = searchConfig.candidateMultiplier ?? 3
-  }
-
-  return {
-    searchConfig: searchConfigMeta,
-    perQueryResults,
-    fusedResults,
-    latencyMs
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Core refinement logic (extracted from refine handler)
-// ---------------------------------------------------------------------------
-
-interface RefinementTraceResult {
-  readonly stages: StageResult[]
-  readonly finalChunks: ChunkResult[]
-}
-
-/**
- * Core refinement logic shared by `refine` action and `retrieveWithTrace`.
- * Runs each refinement stage sequentially on the input chunks.
- */
-async function executeRefinement(
-  ctx: ActionCtx,
-  chunks: ChunkResult[],
-  refinementSteps: RefinementStepConfig[],
-  query: string,
-  kbId: Id<"knowledgeBases">,
-  k: number
-): Promise<RefinementTraceResult> {
-  let currentChunks = chunks
-
-  if (refinementSteps.length === 0) {
-    return { stages: [], finalChunks: currentChunks }
-  }
-
-  const stages: StageResult[] = []
-  for (const step of refinementSteps) {
-    const stageResult = await runRefinementStage(
-      ctx,
-      step,
-      currentChunks,
-      query,
-      kbId,
-      k
-    )
-    stages.push(stageResult)
-    currentChunks = stageResult.outputChunks
-  }
-
-  return { stages, finalChunks: currentChunks }
-}
-
-// ---------------------------------------------------------------------------
-// Public action — retrieveWithTrace
-// ---------------------------------------------------------------------------
-
-/**
- * Execute the full retrieval pipeline and return all intermediate results.
- *
- * Composes query rewriting, search, and refinement into a single action call
- * (no extra HTTP round-trips). Each stage's output and latency are captured
- * in the returned trace so the caller can inspect every step.
- *
- * Returns: `{ rewriting, search, refinement, finalChunks, totalLatencyMs }`.
+ * Execute the full retrieval pipeline and return all intermediate results:
+ * `{ rewriting, search, refinement, finalChunks, totalLatencyMs }`.
  */
 export const retrieveWithTrace = tenantAction({
   args: {
@@ -1292,13 +309,11 @@ export const retrieveWithTrace = tenantAction({
     query: v.string(),
     k: v.optional(v.number())
   },
-  handler: async (ctx, args) => {
-    const totalStart = performance.now()
-
-    // Load and validate retriever
-    const retriever = await ctx.runQuery(internal.kb.retrievers.getInternal, {
-      id: args.retrieverId
-    })
+  handler: async (ctx, args): Promise<RetrieveWithTraceResponse> => {
+    const retriever: Doc<"retrievers"> = await ctx.runQuery(
+      internal.kb.retrievers.getInternal,
+      { id: args.retrieverId }
+    )
 
     if (retriever.orgId !== ctx.orgId) {
       throw new Error("Retriever not found")
@@ -1312,58 +327,64 @@ export const retrieveWithTrace = tenantAction({
 
     const config = retriever.retrieverConfig as PipelineConfig
     const k = args.k ?? retriever.defaultK
-
-    // ----- Step 1: Query rewriting -----
-    const queryConfig = config.query as QueryConfig | undefined
-    const rewriting = await dispatchQueryStrategy(args.query, queryConfig)
-
-    // ----- Step 2: Search -----
     const searchConfig: SearchConfig = (config.search as
       | SearchConfig
       | undefined) ?? {
       strategy: "dense"
     }
-    const indexSettings = (config.index ?? {}) as Record<string, unknown>
-    const embeddingModel =
-      (indexSettings.embeddingModel as string) ?? "text-embedding-3-small"
-
-    const search = await executeSearch(
-      ctx,
-      rewriting.rewrittenQueries,
-      retriever.kbId,
-      retriever.indexConfigHash,
-      embeddingModel,
-      searchConfig,
-      k
-    )
-
-    // ----- Step 3: Refinement -----
     const refinementSteps =
       (config.refinement as RefinementStepConfig[] | undefined) ?? []
+    const needsReranker = refinementSteps.some((s) => s.type === "rerank")
 
-    const refinementStart = performance.now()
-    const refinementResult = await executeRefinement(
-      ctx,
-      search.fusedResults,
-      refinementSteps,
-      args.query,
-      retriever.kbId,
-      k
-    )
-    const refinementLatencyMs = Math.round(performance.now() - refinementStart)
+    if (
+      needsReranker &&
+      !(await rerankerAvailable(
+        refinementSteps as unknown as Array<Record<string, unknown>>
+      ))
+    ) {
+      throw rerankUnavailableError(refinementSteps)
+    }
 
-    const totalLatencyMs = Math.round(performance.now() - totalStart)
-
-    return {
-      rewriting,
-      search,
-      refinement: {
-        stages: refinementResult.stages,
-        finalChunks: refinementResult.finalChunks,
-        latencyMs: refinementLatencyMs
-      },
-      finalChunks: refinementResult.finalChunks,
-      totalLatencyMs
+    const unified = await buildStatelessRetriever(ctx, {
+      kbId: retriever.kbId,
+      indexConfigHash: retriever.indexConfigHash,
+      retrieverConfig: config as unknown as Record<string, unknown>
+    })
+    try {
+      const trace = await unified.retrieveWithTrace(args.query, k)
+      const finalChunks = scoredToChunkResults(trace.finalChunks)
+      return {
+        rewriting: {
+          strategy: trace.query.strategy,
+          original: trace.query.original,
+          rewrittenQueries: [...trace.query.queries],
+          hypotheticalAnswer: trace.query.hypotheticalAnswer,
+          latencyMs: trace.query.latencyMs
+        },
+        search: {
+          searchConfig: buildSearchConfigMeta(searchConfig, k),
+          perQueryResults: trace.search.perQueryResults.map((r) => ({
+            query: r.query,
+            chunks: scoredToChunkResults(r.chunks)
+          })),
+          fusedResults: scoredToChunkResults(
+            trace.search.fusedResults.slice(0, k)
+          ),
+          latencyMs: trace.search.latencyMs
+        },
+        refinement: {
+          stages: trace.refinement.map((s) => ({
+            ...s,
+            outputChunks: scoredToChunkResults(s.outputChunks)
+          })),
+          finalChunks,
+          latencyMs: trace.refinement.reduce((sum, s) => sum + s.latencyMs, 0)
+        },
+        finalChunks,
+        totalLatencyMs: trace.totalLatencyMs
+      }
+    } finally {
+      unified.cleanup()
     }
   }
 })
