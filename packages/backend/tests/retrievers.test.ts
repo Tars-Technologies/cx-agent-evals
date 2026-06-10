@@ -165,10 +165,9 @@ describe("retrievers: resetAfterCancel", () => {
     })
 
     const authedT = t.withIdentity(testIdentity)
-    const result = await authedT.mutation(
-      api.kb.retrievers.resetAfterCancel,
-      { id: retrieverId }
-    )
+    const result = await authedT.mutation(api.kb.retrievers.resetAfterCancel, {
+      id: retrieverId
+    })
     expect(result).toEqual({ reset: true })
 
     const retriever = await t.run(async (ctx) => ctx.db.get(retrieverId))

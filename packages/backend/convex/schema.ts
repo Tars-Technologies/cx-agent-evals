@@ -6,5 +6,5 @@ import { sharedTables } from "./schemas/shared.schema"
 export default defineSchema({
   ...kbTables,
   ...agentTables,
-  ...sharedTables,
+  ...sharedTables
 })

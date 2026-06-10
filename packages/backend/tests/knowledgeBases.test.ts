@@ -73,10 +73,7 @@ describe("knowledgeBases: listByIndustry", () => {
       })
     })
     const authedT = t.withIdentity(testIdentity)
-    const results = await authedT.query(
-      api.kb.core.listByIndustry,
-      {}
-    )
+    const results = await authedT.query(api.kb.core.listByIndustry, {})
     expect(results).toHaveLength(2)
   })
 
@@ -101,12 +98,9 @@ describe("knowledgeBases: listByIndustry", () => {
       })
     })
     const authedT = t.withIdentity(testIdentity)
-    const results = await authedT.query(
-      api.kb.core.listByIndustry,
-      {
-        industry: "finance"
-      }
-    )
+    const results = await authedT.query(api.kb.core.listByIndustry, {
+      industry: "finance"
+    })
     expect(results).toHaveLength(1)
     expect(results[0].name).toBe("Finance KB")
   })
@@ -139,10 +133,7 @@ describe("knowledgeBases: listWithDocCounts", () => {
     await t.run(async (ctx) => ctx.db.patch(kb1, { documentCount: 3 }))
 
     const authedT = t.withIdentity(testIdentity)
-    const results = await authedT.query(
-      api.kb.core.listWithDocCounts,
-      {}
-    )
+    const results = await authedT.query(api.kb.core.listWithDocCounts, {})
 
     expect(results).toHaveLength(2)
     const kbWithDocs = results.find((kb) => kb.name === "Test KB")
@@ -173,10 +164,9 @@ describe("knowledgeBases: listWithDocCounts", () => {
     })
 
     const authedT = t.withIdentity(testIdentity)
-    const results = await authedT.query(
-      api.kb.core.listWithDocCounts,
-      { industry: "finance" }
-    )
+    const results = await authedT.query(api.kb.core.listWithDocCounts, {
+      industry: "finance"
+    })
     expect(results).toHaveLength(1)
     expect(results[0].name).toBe("Finance KB")
     expect(results[0].documentCount).toBe(0)

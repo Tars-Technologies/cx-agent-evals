@@ -121,10 +121,9 @@ export const runValidation = internalAction({
       const questions = await ctx.runQuery(
         internal.kb.questions.byDatasetInternal,
         {
-          datasetId: (await ctx.runQuery(
-            internal.kb.experiments.getInternal,
-            { id: config.experimentId }
-          ))!.datasetId
+          datasetId: (await ctx.runQuery(internal.kb.experiments.getInternal, {
+            id: config.experimentId
+          }))!.datasetId
         }
       )
       const questionMap = new Map(

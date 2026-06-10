@@ -105,7 +105,8 @@ describe("PythonContentService HTTP", () => {
       config: { crawlMode: "http" },
       callbackUrl: "https://cb"
     })
-    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock
+      .calls[0]
     expect(init.signal).toBeInstanceOf(AbortSignal)
   })
 })

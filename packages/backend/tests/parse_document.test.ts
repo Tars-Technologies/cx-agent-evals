@@ -203,4 +203,44 @@ describe("parse document mutations", () => {
     expect(doc?.parseBackend).toBe("tarser")
     expect(doc?.content).toBe("")
   })
+
+  it("reapStaleParsing fails old parsing docs but leaves fresh ones", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+
+    // Fresh parsing doc (just created) — must be left alone.
+    const freshId = await t.mutation(internal.kb.documents.createParsing, {
+      orgId: TEST_ORG_ID,
+      kbId,
+      title: "fresh.pdf",
+      mimeType: "application/pdf",
+      parseServiceJobId: "psvc-fresh",
+      parseToken: "tok-fresh"
+    })
+    // Stale parsing doc — backdate createdAt past the 30-min TTL.
+    const staleId = await t.mutation(internal.kb.documents.createParsing, {
+      orgId: TEST_ORG_ID,
+      kbId,
+      title: "stale.pdf",
+      mimeType: "application/pdf",
+      parseServiceJobId: "psvc-stale",
+      parseToken: "tok-stale"
+    })
+    await t.run(async (ctx) =>
+      ctx.db.patch(staleId, { createdAt: Date.now() - 60 * 60 * 1000 })
+    )
+
+    const { reaped } = await t.mutation(
+      internal.kb.documents.reapStaleParsing,
+      {}
+    )
+    expect(reaped).toBe(1)
+
+    const fresh = await t.run(async (ctx) => ctx.db.get(freshId))
+    const stale = await t.run(async (ctx) => ctx.db.get(staleId))
+    expect(fresh?.parseStatus).toBe("parsing")
+    expect(stale?.parseStatus).toBe("failed")
+    expect(stale?.metadata?.error).toMatch(/timed out/i)
+  })
 })
