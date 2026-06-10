@@ -18,12 +18,14 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
           {
             value: "text-embedding-3-small",
             label: "text-embedding-3-small",
+            dimensions: 1536,
             description:
               "1536 dims — fast, cost-effective, recommended for most use cases"
           },
           {
             value: "text-embedding-3-large",
             label: "text-embedding-3-large",
+            dimensions: 3072,
             description: "3072 dims — highest quality, 6x more expensive"
           }
         ],
@@ -49,11 +51,13 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
           {
             value: "openai/text-embedding-3-small",
             label: "openai/text-embedding-3-small",
+            dimensions: 1536,
             description: "1536 dims - fast, cost-effective"
           },
           {
             value: "openai/text-embedding-3-large",
             label: "openai/text-embedding-3-large",
+            dimensions: 3072,
             description: "3072 dims - highest quality"
           }
         ],
@@ -79,12 +83,14 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
           {
             value: "embed-english-v3.0",
             label: "embed-english-v3.0",
+            dimensions: 1024,
             description:
               "1024 dims — English-optimized, best for English-only corpora"
           },
           {
             value: "embed-multilingual-v3.0",
             label: "embed-multilingual-v3.0",
+            dimensions: 1024,
             description: "1024 dims — supports 100+ languages"
           }
         ],
@@ -110,21 +116,25 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
           {
             value: "voyage-3.5",
             label: "voyage-3.5",
+            dimensions: 1024,
             description: "1024 dims — latest general-purpose model"
           },
           {
             value: "voyage-3.5-lite",
             label: "voyage-3.5-lite",
+            dimensions: 512,
             description: "512 dims — faster, lower cost, slightly less accurate"
           },
           {
             value: "voyage-3",
             label: "voyage-3",
+            dimensions: 1024,
             description: "1024 dims — previous generation"
           },
           {
             value: "voyage-code-3",
             label: "voyage-code-3",
+            dimensions: 1024,
             description: "1024 dims — optimized for code retrieval"
           }
         ],
@@ -150,6 +160,7 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
           {
             value: "jina-embeddings-v3",
             label: "jina-embeddings-v3",
+            dimensions: 1024,
             description:
               "Up to 1024 dims — supports Matryoshka dimension reduction"
           }

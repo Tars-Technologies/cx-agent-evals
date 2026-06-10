@@ -34,6 +34,19 @@ describe("EMBEDDER_REGISTRY", () => {
     expect(openrouter.status).toBe("available")
   })
 
+  it("every embedder model choice declares its dimensions", () => {
+    for (const entry of EMBEDDER_REGISTRY) {
+      const modelOption = entry.options.find((o) => o.key === "model")
+      expect(modelOption?.choices?.length).toBeGreaterThan(0)
+      for (const choice of modelOption?.choices ?? []) {
+        expect(
+          choice.dimensions,
+          `${entry.id}/${choice.value} missing dimensions`
+        ).toBeGreaterThan(0)
+      }
+    }
+  })
+
   it("providers wired into makeEmbedder are available; others are unavailable", () => {
     const status = (id: string) =>
       EMBEDDER_REGISTRY.find((e) => e.id === id)!.status
