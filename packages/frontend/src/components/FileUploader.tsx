@@ -23,7 +23,10 @@ export function FileUploader({ kbId }: FileUploaderProps) {
   const generateUploadUrl = useMutation(api.kb.documents.generateUploadUrl)
   const parseUpload = useMutation(api.kb.documents.parseUpload)
   const availability = useQuery(api.kb.providers.getScraperAvailability, {})
-  const tarserAvailable = availability?.tarser ?? false
+  // `undefined` = still loading (don't assert "unavailable"); only a resolved
+  // `false` means Tarser is genuinely unavailable.
+  const tarserAvailable = availability?.tarser === true
+  const availabilityLoading = availability === undefined
   const [backend, setBackend] = useState<"inprocess" | "tarser">("inprocess")
   const [ocr, setOcr] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -102,6 +105,7 @@ export function FileUploader({ kbId }: FileUploaderProps) {
         value={backend}
         onChange={setBackend}
         tarserAvailable={tarserAvailable}
+        loading={availabilityLoading}
         disabled={uploading}
       />
 
