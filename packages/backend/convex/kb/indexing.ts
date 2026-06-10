@@ -17,6 +17,7 @@ import { components, internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
+import { qdrantCollectionName, resolveVectorBackend } from "./vector_backend"
 
 // ─── WorkPool Instance ───
 
@@ -128,12 +129,25 @@ export const startIndexing = internalMutation({
       maxParallelism: parallelism
     })
 
+    // Extract chunking/embedding config
+    const indexConfig = args.indexConfig as Record<string, any>
+
+    // Resolve the vector backend; the qdrant collection name is computed
+    // once here and stamped on the job (and retriever) at creation time.
+    const vectorBackend = resolveVectorBackend(indexConfig.vectorBackend)
+    const qdrantCollection =
+      vectorBackend === "qdrant"
+        ? qdrantCollectionName(String(args.kbId), args.indexConfigHash)
+        : undefined
+
     // Create job record
     const jobId = await ctx.db.insert("indexingJobs", {
       orgId: args.orgId,
       kbId: args.kbId,
       indexConfigHash: args.indexConfigHash,
       indexConfig: args.indexConfig,
+      vectorBackend,
+      qdrantCollection,
       status: "running",
       totalDocs,
       processedDocs: 0,
@@ -143,9 +157,6 @@ export const startIndexing = internalMutation({
       createdBy: args.createdBy,
       createdAt: Date.now()
     })
-
-    // Extract chunking/embedding config
-    const indexConfig = args.indexConfig as Record<string, any>
 
     // Enqueue one action per document. Use ctx.runQuery per page so each
     // paginate() call is its own function invocation (Convex allows only one
@@ -170,10 +181,13 @@ export const startIndexing = internalMutation({
             chunkSize: indexConfig.chunkSize,
             chunkOverlap: indexConfig.chunkOverlap,
             embeddingModel: indexConfig.embeddingModel,
+            embeddingProvider: indexConfig.embeddingProvider,
             childChunkSize: indexConfig.childChunkSize,
             parentChunkSize: indexConfig.parentChunkSize,
             childOverlap: indexConfig.childOverlap,
-            parentOverlap: indexConfig.parentOverlap
+            parentOverlap: indexConfig.parentOverlap,
+            vectorBackend,
+            qdrantCollection
           },
           {
             context: { jobId, documentId: doc._id },
@@ -436,7 +450,9 @@ export const cleanupIndex = tenantMutation({
         kbId: args.kbId,
         indexConfigHash: args.indexConfigHash,
         jobId: job?._id,
-        deleteDocuments: args.deleteDocuments
+        deleteDocuments: args.deleteDocuments,
+        vectorBackend: job?.vectorBackend,
+        qdrantCollection: job?.qdrantCollection
       }
     )
 

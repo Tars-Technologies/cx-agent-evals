@@ -109,7 +109,16 @@ export const runExperiment = internalAction({
           chunkSize: (indexSettings.chunkSize as number) ?? 1000,
           chunkOverlap: (indexSettings.chunkOverlap as number) ?? 200,
           separators: indexSettings.separators as string[] | undefined,
-          embeddingModel
+          embeddingModel,
+          vectorBackend: indexSettings.vectorBackend as
+            | "native"
+            | "qdrant"
+            | undefined,
+          embeddingProvider: indexSettings.embeddingProvider as
+            | "openai"
+            | "openrouter"
+            | "cohere"
+            | undefined
         }
         indexConfigHash = computeIndexConfigHash({
           name: retrieverConfig.name ?? "experiment",
@@ -291,12 +300,16 @@ export const runEvaluation = internalAction({
     }
 
     // Resolve retriever/experiment config for the unified retriever.
+    // The legacy path (no retriever record) carries no stored collection
+    // name; buildStatelessRetriever falls back to the computed one.
     let retrieverConfigObj: Record<string, any> = {}
+    let qdrantCollection: string | undefined
     if (experiment.retrieverId) {
       const ret = await ctx.runQuery(internal.kb.retrievers.getInternal, {
         id: experiment.retrieverId
       })
       retrieverConfigObj = (ret.retrieverConfig ?? {}) as Record<string, any>
+      qdrantCollection = ret.qdrantCollection
     } else {
       retrieverConfigObj = (experiment.retrieverConfig ?? {}) as Record<
         string,
@@ -312,7 +325,8 @@ export const runEvaluation = internalAction({
       kbId: args.kbId,
       indexConfigHash: args.indexConfigHash,
       retrieverConfig: retrieverConfigObj,
-      preloadedCorpus: corpus
+      preloadedCorpus: corpus,
+      qdrantCollection
     })
 
     const retriever = new CallbackRetriever({

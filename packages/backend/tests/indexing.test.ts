@@ -1,7 +1,8 @@
 import type { convexTest } from "convex-test"
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { internal } from "../convex/_generated/api"
 import type { Id } from "../convex/_generated/dataModel"
+import { qdrantCollectionName } from "../convex/kb/vector_backend"
 import { seedKB, seedUser, setupTest, TEST_ORG_ID } from "./helpers"
 
 // ─── Domain-Specific Seeders ───
@@ -63,6 +64,106 @@ async function seedDocument(
 }
 
 // ─── Tests ───
+
+describe("indexing: startIndexing vector backend", () => {
+  it("stamps vectorBackend and qdrantCollection on the job for qdrant configs", async () => {
+    vi.useFakeTimers()
+    try {
+      const t = setupTest()
+      const userId = await seedUser(t)
+      const kbId = await seedKB(t, userId)
+      await seedDocument(t, kbId, 1)
+      // startIndexing reads the denormalized documentCount
+      await t.run(async (ctx) => {
+        await ctx.db.patch(kbId, { documentCount: 1 })
+      })
+
+      const hash = "qdrant-hash-0123456789abcdef"
+      const result = await t.mutation(internal.kb.indexing.startIndexing, {
+        orgId: TEST_ORG_ID,
+        kbId,
+        indexConfigHash: hash,
+        indexConfig: { strategy: "plain", vectorBackend: "qdrant" },
+        createdBy: userId
+      })
+
+      const job = await t.run(async (ctx) => ctx.db.get(result.jobId))
+      expect(job!.vectorBackend).toBe("qdrant")
+      expect(job!.qdrantCollection).toBe(qdrantCollectionName(kbId, hash))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("stamps native backend with no qdrantCollection by default", async () => {
+    vi.useFakeTimers()
+    try {
+      const t = setupTest()
+      const userId = await seedUser(t)
+      const kbId = await seedKB(t, userId)
+      await seedDocument(t, kbId, 1)
+      await t.run(async (ctx) => {
+        await ctx.db.patch(kbId, { documentCount: 1 })
+      })
+
+      const result = await t.mutation(internal.kb.indexing.startIndexing, {
+        orgId: TEST_ORG_ID,
+        kbId,
+        indexConfigHash: "native-hash-1",
+        indexConfig: { strategy: "plain" },
+        createdBy: userId
+      })
+
+      const job = await t.run(async (ctx) => ctx.db.get(result.jobId))
+      expect(job!.vectorBackend).toBe("native")
+      expect(job!.qdrantCollection).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe("chunks: markChunksVectorized", () => {
+  it("stamps vectorIndexId on every chunk in the batch", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const documentId = await seedDocument(t, kbId, 1)
+
+    const chunkIds = await t.run(async (ctx) => {
+      const ids: Id<"documentChunks">[] = []
+      for (let i = 0; i < 2; i++) {
+        ids.push(
+          await ctx.db.insert("documentChunks", {
+            documentId,
+            kbId,
+            indexConfigHash: "hash-1",
+            chunkId: `chunk-${i}`,
+            content: `chunk content ${i}`,
+            start: i * 10,
+            end: i * 10 + 10,
+            metadata: {}
+          })
+        )
+      }
+      return ids
+    })
+
+    const result = await t.mutation(internal.kb.chunks.markChunksVectorized, {
+      ids: chunkIds,
+      vectorIndexId: "kb_test_collection"
+    })
+    expect(result.patched).toBe(2)
+
+    const chunks = await t.run(async (ctx) =>
+      Promise.all(chunkIds.map((id) => ctx.db.get(id)))
+    )
+    for (const chunk of chunks) {
+      expect(chunk!.vectorIndexId).toBe("kb_test_collection")
+      expect(chunk!.embedding).toBeUndefined()
+    }
+  })
+})
 
 describe("indexing: onDocumentIndexed", () => {
   let t: ReturnType<typeof convexTest>

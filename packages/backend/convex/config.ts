@@ -12,6 +12,10 @@ export type BackendConfig = {
     apiToken: string
     hmacSecret: string
   } | null
+  qdrant: {
+    url: string
+    apiKey: string | undefined
+  } | null
 }
 
 const isNonEmpty = (v: string | undefined): v is string =>
@@ -28,6 +32,12 @@ function createBackendConfig(): BackendConfig {
           hmacSecret: env.TARSER_CALLBACK_HMAC_SECRET.trim()
         }
       : null
+  const qdrant = isNonEmpty(env.QDRANT_URL)
+    ? {
+        url: env.QDRANT_URL.trim(),
+        apiKey: env.QDRANT_API_KEY?.trim() || undefined
+      }
+    : null
   return {
     ai: {
       openaiApiKey: env.OPENAI_API_KEY,
@@ -35,7 +45,8 @@ function createBackendConfig(): BackendConfig {
       jinaApiKey: env.JINA_API_KEY,
       voyageApiKey: env.VOYAGE_API_KEY
     },
-    tarser
+    tarser,
+    qdrant
   }
 }
 
@@ -55,4 +66,9 @@ export const backendConfig: BackendConfig = new Proxy({} as BackendConfig, {
 /** True when all Tarser connection vars are configured. */
 export function isTarserAvailable(): boolean {
   return backendConfig.tarser !== null
+}
+
+/** True when QDRANT_URL is configured. */
+export function isQdrantAvailable(): boolean {
+  return backendConfig.qdrant !== null
 }

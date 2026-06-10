@@ -90,6 +90,8 @@ export const insertRetriever = internalMutation({
     indexConfigHash: v.string(),
     retrieverConfigHash: v.string(),
     defaultK: v.number(),
+    vectorBackend: v.optional(v.string()),
+    qdrantCollection: v.optional(v.string()),
     indexingJobId: v.optional(v.id("indexingJobs")),
     status: v.union(
       v.literal("configuring"),
@@ -109,6 +111,8 @@ export const insertRetriever = internalMutation({
       indexConfigHash: args.indexConfigHash,
       retrieverConfigHash: args.retrieverConfigHash,
       defaultK: args.defaultK,
+      vectorBackend: args.vectorBackend,
+      qdrantCollection: args.qdrantCollection,
       indexingJobId: args.indexingJobId,
       status: args.status,
       chunkCount: args.chunkCount,
