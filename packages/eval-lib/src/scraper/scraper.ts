@@ -154,8 +154,9 @@ async function readBodyWithCap(
 ): Promise<string> {
   if (!response.body) {
     const text = await response.text()
-    if (text.length > maxBytes) {
-      throw new Error(`Response too large: ${text.length} bytes`)
+    const byteLength = Buffer.byteLength(text, "utf8")
+    if (byteLength > maxBytes) {
+      throw new Error(`Response too large: ${byteLength} bytes`)
     }
     return text
   }
