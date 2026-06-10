@@ -71,6 +71,7 @@ import type * as kb_providers from "../kb/providers.js";
 import type * as kb_questions from "../kb/questions.js";
 import type * as kb_reranker_selection from "../kb/reranker_selection.js";
 import type * as kb_results from "../kb/results.js";
+import type * as kb_retrieval_runtime from "../kb/retrieval_runtime.js";
 import type * as kb_retrieve_actions from "../kb/retrieve_actions.js";
 import type * as kb_retrievers from "../kb/retrievers.js";
 import type * as kb_tarser_callback from "../kb/tarser_callback.js";
@@ -157,6 +158,7 @@ declare const fullApi: ApiFromModules<{
   "kb/questions": typeof kb_questions;
   "kb/reranker_selection": typeof kb_reranker_selection;
   "kb/results": typeof kb_results;
+  "kb/retrieval_runtime": typeof kb_retrieval_runtime;
   "kb/retrieve_actions": typeof kb_retrieve_actions;
   "kb/retrievers": typeof kb_retrievers;
   "kb/tarser_callback": typeof kb_tarser_callback;

@@ -25,11 +25,11 @@ import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
 import { backendConfig } from "../config"
 import { tenantAction } from "../lib/auth/tenant"
-import { vectorSearchWithFilter } from "../lib/vectorSearch"
 import {
   type RerankerSelection,
   resolveRerankerSelection
 } from "./reranker_selection"
+import { buildNativeVectorStore } from "./retrieval_runtime"
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -330,26 +330,27 @@ async function denseSearch(
   kbId: Id<"knowledgeBases">,
   indexConfigHash: string,
   embeddingModel: string,
-  topK: number
+  topK: number,
+  indexStrategy?: string
 ): Promise<ChunkResult[]> {
   const embedder = createEmbedder(embeddingModel)
   const queryEmbedding = await embedder.embedQuery(queryText)
 
-  const { chunks, scoreMap } = await vectorSearchWithFilter(ctx, {
-    queryEmbedding,
+  const store = buildNativeVectorStore(ctx, {
     kbId,
     indexConfigHash,
-    topK
+    indexStrategy
   })
+  const results = await store.search(queryEmbedding, { k: topK })
 
-  return chunks.map((c: any) => ({
-    chunkId: c.chunkId as string,
-    content: c.content as string,
-    docId: (c.docId ?? "") as string,
-    start: c.start as number,
-    end: c.end as number,
-    score: scoreMap.get(c._id.toString()) ?? 0,
-    metadata: (c.metadata ?? {}) as Record<string, unknown>
+  return results.map(({ chunk, score }) => ({
+    chunkId: String(chunk.id),
+    content: chunk.content,
+    docId: String(chunk.docId),
+    start: chunk.start,
+    end: chunk.end,
+    score,
+    metadata: (chunk.metadata ?? {}) as Record<string, unknown>
   }))
 }
 
