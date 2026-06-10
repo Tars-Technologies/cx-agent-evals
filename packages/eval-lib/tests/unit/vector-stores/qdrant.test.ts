@@ -1,0 +1,228 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import {
+  DocumentId,
+  type PositionAwareChunk,
+  PositionAwareChunkId
+} from "../../../src/types/index.js"
+import {
+  QdrantVectorStore,
+  qdrantPointId
+} from "../../../src/vector-stores/qdrant.js"
+
+function chunk(id: string, content = "text"): PositionAwareChunk {
+  return {
+    id: PositionAwareChunkId(id),
+    content,
+    docId: DocumentId("doc-1"),
+    start: 0,
+    end: content.length,
+    metadata: { level: "child" }
+  }
+}
+
+const okJson = (body: unknown) =>
+  new Response(JSON.stringify(body), { status: 200 })
+
+function collectionInfo(size: number) {
+  return okJson({
+    status: "ok",
+    result: { config: { params: { vectors: { size, distance: "Cosine" } } } }
+  })
+}
+
+describe("QdrantVectorStore", () => {
+  let fetchMock: ReturnType<typeof vi.fn>
+  let store: QdrantVectorStore
+
+  beforeEach(() => {
+    fetchMock = vi.fn()
+    vi.stubGlobal("fetch", fetchMock)
+    store = new QdrantVectorStore({
+      url: "http://qdrant.local:6333",
+      apiKey: "test-key",
+      collection: "kb_x_abcdef",
+      dimension: 3,
+      retry: { maxRetries: 0 }
+    })
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it("derives a deterministic UUID-format point id from the chunk id", () => {
+    const a = qdrantPointId("chunk-1")
+    expect(a).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    )
+    expect(qdrantPointId("chunk-1")).toBe(a)
+    expect(qdrantPointId("chunk-2")).not.toBe(a)
+  })
+
+  it("add(): ensures the collection then upserts self-contained points", async () => {
+    fetchMock
+      .mockResolvedValueOnce(collectionInfo(3)) // GET collection
+      .mockResolvedValueOnce(
+        okJson({ status: "ok", result: { status: "completed" } })
+      ) // upsert
+    await store.add([chunk("c1", "hello")], [[1, 0, 0]], {
+      kbId: "kb1",
+      indexConfigHash: "h1",
+      documentId: "cvx1"
+    })
+
+    const [getUrl, getInit] = fetchMock.mock.calls[0]
+    expect(getUrl).toBe("http://qdrant.local:6333/collections/kb_x_abcdef")
+    expect(getInit.headers["api-key"]).toBe("test-key")
+
+    const [upsertUrl, upsertInit] = fetchMock.mock.calls[1]
+    expect(upsertUrl).toBe(
+      "http://qdrant.local:6333/collections/kb_x_abcdef/points?wait=true"
+    )
+    expect(upsertInit.method).toBe("PUT")
+    const body = JSON.parse(upsertInit.body)
+    expect(body.points).toHaveLength(1)
+    expect(body.points[0].id).toBe(qdrantPointId("c1"))
+    expect(body.points[0].vector).toEqual([1, 0, 0])
+    expect(body.points[0].payload).toEqual({
+      chunkId: "c1",
+      content: "hello",
+      docId: "doc-1",
+      start: 0,
+      end: 5,
+      metadata: { level: "child" },
+      kbId: "kb1",
+      indexConfigHash: "h1",
+      documentId: "cvx1"
+    })
+  })
+
+  it("add(): creates the collection when missing (404)", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response("not found", { status: 404 }))
+      .mockResolvedValueOnce(okJson({ status: "ok", result: true })) // PUT create
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // upsert
+    await store.add([chunk("c1")], [[1, 0, 0]])
+    const [createUrl, createInit] = fetchMock.mock.calls[1]
+    expect(createUrl).toBe("http://qdrant.local:6333/collections/kb_x_abcdef")
+    expect(createInit.method).toBe("PUT")
+    expect(JSON.parse(createInit.body)).toEqual({
+      vectors: { size: 3, distance: "Cosine" }
+    })
+  })
+
+  it("add(): throws loudly on collection dimension mismatch", async () => {
+    fetchMock.mockResolvedValueOnce(collectionInfo(1536))
+    await expect(store.add([chunk("c1")], [[1, 0, 0]])).rejects.toThrow(
+      /dimension 1536.*expected 3/i
+    )
+  })
+
+  it("add(): validates lengths and embedding dimension", async () => {
+    await expect(store.add([chunk("c1")], [])).rejects.toThrow(/1 chunks but 0/)
+    await expect(store.add([chunk("c1")], [[1, 0]])).rejects.toThrow(
+      /dimension 2.*expected 3/i
+    )
+  })
+
+  it("search(): queries with the vector and maps payloads back to chunks", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        status: "ok",
+        result: {
+          points: [
+            {
+              id: "x",
+              score: 0.9,
+              payload: {
+                chunkId: "c1",
+                content: "hello",
+                docId: "doc-1",
+                start: 0,
+                end: 5,
+                metadata: { level: "child" },
+                kbId: "kb1",
+                indexConfigHash: "h1",
+                documentId: "cvx1"
+              }
+            }
+          ]
+        }
+      })
+    )
+    const results = await store.search([1, 0, 0], { k: 5 })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe(
+      "http://qdrant.local:6333/collections/kb_x_abcdef/points/query"
+    )
+    expect(JSON.parse(init.body)).toEqual({
+      query: [1, 0, 0],
+      limit: 5,
+      with_payload: true
+    })
+    expect(results).toHaveLength(1)
+    expect(String(results[0].chunk.id)).toBe("c1")
+    expect(results[0].chunk.content).toBe("hello")
+    expect(String(results[0].chunk.docId)).toBe("doc-1")
+    expect(results[0].score).toBe(0.9)
+  })
+
+  it("search(): sends a payload filter for documentId", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okJson({ status: "ok", result: { points: [] } })
+    )
+    await store.search([1, 0, 0], { k: 2, filter: { documentId: "cvx1" } })
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).filter).toEqual({
+      must: [{ key: "documentId", match: { value: "cvx1" } }]
+    })
+  })
+
+  it("deleteByDocument(): deletes points by payload filter", async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ status: "ok", result: {} }))
+    await store.deleteByDocument("cvx1")
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe(
+      "http://qdrant.local:6333/collections/kb_x_abcdef/points/delete?wait=true"
+    )
+    expect(JSON.parse(init.body)).toEqual({
+      filter: { must: [{ key: "documentId", match: { value: "cvx1" } }] }
+    })
+  })
+
+  it("deleteByKnowledgeBase()/clear(): drop the collection", async () => {
+    // Fresh Response per call: a Response body can only be read once.
+    fetchMock.mockImplementation(async () =>
+      okJson({ status: "ok", result: true })
+    )
+    await store.deleteByKnowledgeBase("kb1")
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "http://qdrant.local:6333/collections/kb_x_abcdef"
+    )
+    expect(fetchMock.mock.calls[0][1].method).toBe("DELETE")
+    await store.clear()
+    expect(fetchMock.mock.calls[1][1].method).toBe("DELETE")
+  })
+
+  it("checkHealth(): true when reachable+compatible, false otherwise", async () => {
+    fetchMock.mockResolvedValueOnce(collectionInfo(3))
+    expect(await store.checkHealth()).toBe(true)
+    fetchMock.mockRejectedValueOnce(new Error("ECONNREFUSED"))
+    expect(await store.checkHealth()).toBe(false)
+  })
+
+  it("omits the api-key header when no key configured", async () => {
+    const open = new QdrantVectorStore({
+      url: "http://localhost:6333",
+      collection: "c",
+      dimension: 3,
+      retry: { maxRetries: 0 }
+    })
+    fetchMock.mockResolvedValueOnce(collectionInfo(3))
+    await open.checkHealth()
+    expect(fetchMock.mock.calls[0][1].headers["api-key"]).toBeUndefined()
+  })
+
+  it("non-2xx responses throw with provider/status/body", async () => {
+    fetchMock.mockResolvedValue(new Response("boom", { status: 500 }))
+    await expect(store.search([1, 0, 0], { k: 1 })).rejects.toThrow(
+      /Qdrant API error: 500/
+    )
+  })
+})

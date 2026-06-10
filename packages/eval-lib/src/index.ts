@@ -59,6 +59,7 @@ export {
 } from "./types/index.js"
 export type {
   CallbackVectorStoreConfig,
+  QdrantVectorStoreConfig,
   VectorFilter,
   VectorSearchOptions,
   VectorSearchResult,
@@ -67,7 +68,12 @@ export type {
   VectorStoreHooks
 } from "./vector-stores/index.js"
 // Vector Store
-export { CallbackVectorStore, makeVectorStore } from "./vector-stores/index.js"
+export {
+  CallbackVectorStore,
+  makeVectorStore,
+  QdrantVectorStore,
+  qdrantPointId
+} from "./vector-stores/index.js"
 
 // InMemoryVectorStore moved to "@tars-inc/eval-lib/pipeline/internals"
 

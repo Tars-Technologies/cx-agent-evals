@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { makeVectorStore } from "../../../src/vector-stores/factory.js"
 import { InMemoryVectorStore } from "../../../src/vector-stores/in-memory.js"
+import { QdrantVectorStore } from "../../../src/vector-stores/qdrant.js"
 
 describe("makeVectorStore", () => {
   it("memory returns a fresh InMemoryVectorStore", () => {
@@ -23,6 +24,17 @@ describe("makeVectorStore", () => {
     )
     expect(store.name).toBe("convex-native")
     expect(await store.search([1], { k: 1 })).toEqual([])
+  })
+
+  it("qdrant builds a QdrantVectorStore from the config", () => {
+    const store = makeVectorStore({
+      backend: "qdrant",
+      url: "http://localhost:6333",
+      collection: "kb_x_hash",
+      dimension: 1536
+    })
+    expect(store).toBeInstanceOf(QdrantVectorStore)
+    expect(store.name).toBe("qdrant")
   })
 
   it("unknown backend throws", () => {

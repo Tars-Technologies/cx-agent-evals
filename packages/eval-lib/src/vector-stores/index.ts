@@ -3,6 +3,8 @@ export { CallbackVectorStore } from "./callback.js"
 export type { VectorStoreConfig, VectorStoreHooks } from "./factory.js"
 export { makeVectorStore } from "./factory.js"
 export { InMemoryVectorStore } from "./in-memory.js"
+export type { QdrantVectorStoreConfig } from "./qdrant.js"
+export { QdrantVectorStore, qdrantPointId } from "./qdrant.js"
 export type {
   VectorFilter,
   VectorSearchOptions,
