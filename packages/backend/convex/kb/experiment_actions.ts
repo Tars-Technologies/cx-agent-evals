@@ -48,9 +48,9 @@ import type { ActionCtx } from "../_generated/server"
 import { internalAction } from "../_generated/server"
 import { backendConfig } from "../config"
 import { resolveMaxConcurrency } from "../lib/experimentConcurrency"
-import { vectorSearchWithFilter } from "../lib/vectorSearch"
 import { assertIndexableDimension } from "./dimension_guard"
 import { resolveRerankerSelection } from "./reranker_selection"
+import { buildNativeVectorStore } from "./retrieval_runtime"
 
 // ─── Helpers: search-strategy dispatch ───
 
@@ -626,22 +626,11 @@ export const runEvaluation = internalAction({
     // ── Build search function based on strategy ──
     let bm25Cleanup: (() => void) | undefined
 
-    // Helper: convert raw Convex chunks to ScoredChunk[]
-    const convexToScored = (
-      raw: any[],
-      scoreMap: Map<string, number>
-    ): ScoredChunk[] =>
-      raw.map((c: any) => ({
-        chunk: {
-          id: PositionAwareChunkId(c.chunkId),
-          content: c.content,
-          docId: DocumentId(c.docId),
-          start: c.start,
-          end: c.end,
-          metadata: c.metadata ?? {}
-        },
-        score: scoreMap.get(c._id.toString()) ?? 0
-      }))
+    const vectorStore = buildNativeVectorStore(ctx, {
+      kbId: args.kbId,
+      indexConfigHash: args.indexConfigHash,
+      indexStrategy
+    })
 
     // Build the doSearch function that returns ScoredChunk[]
     let doSearch: (q: string, topK: number) => Promise<ScoredChunk[]>
@@ -684,17 +673,9 @@ export const runEvaluation = internalAction({
       doSearch = async (q: string, topK: number) => {
         const candidateK = topK * candidateMultiplier
         const queryEmbedding = await embedder.embedQuery(q)
-        const { chunks: denseRaw, scoreMap } = await vectorSearchWithFilter(
-          ctx,
-          {
-            queryEmbedding,
-            kbId: args.kbId,
-            indexConfigHash: args.indexConfigHash,
-            topK: candidateK,
-            indexStrategy
-          }
-        )
-        const denseResults = convexToScored(denseRaw, scoreMap)
+        const denseResults = await vectorStore.search(queryEmbedding, {
+          k: candidateK
+        })
         const sparseResults: ScoredChunk[] = [
           ...bm25.searchWithScores(q, candidateK)
         ]
@@ -718,17 +699,7 @@ export const runEvaluation = internalAction({
     } else {
       doSearch = async (q: string, topK: number) => {
         const queryEmbedding = await embedder.embedQuery(q)
-        const { chunks: filtered, scoreMap } = await vectorSearchWithFilter(
-          ctx,
-          {
-            queryEmbedding,
-            kbId: args.kbId,
-            indexConfigHash: args.indexConfigHash,
-            topK,
-            indexStrategy
-          }
-        )
-        return convexToScored(filtered, scoreMap)
+        return vectorStore.search(queryEmbedding, { k: topK })
       }
     }
 

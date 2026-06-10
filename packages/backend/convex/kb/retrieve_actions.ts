@@ -39,9 +39,9 @@ import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
 import { backendConfig } from "../config"
 import { tenantAction } from "../lib/auth/tenant"
-import { vectorSearchWithFilter } from "../lib/vectorSearch"
 import { assertIndexableDimension } from "./dimension_guard"
 import { resolveRerankerSelection } from "./reranker_selection"
+import { buildNativeVectorStore } from "./retrieval_runtime"
 
 // ─── Helpers ───
 
@@ -434,22 +434,11 @@ export const retrieve = tenantAction({
       ? await createRerankerForRetriever(refinementSteps)
       : undefined
 
-    // Helper to convert Convex results to ScoredChunk[]
-    const convexToScored = (
-      raw: any[],
-      scoreMap: Map<string, number>
-    ): ScoredChunk[] =>
-      raw.map((c: any) => ({
-        chunk: {
-          id: PositionAwareChunkId(c.chunkId),
-          content: c.content,
-          docId: DocumentId(c.docId),
-          start: c.start,
-          end: c.end,
-          metadata: c.metadata ?? {}
-        },
-        score: scoreMap.get(c._id.toString()) ?? 0
-      }))
+    const vectorStore = buildNativeVectorStore(ctx, {
+      kbId: retriever.kbId,
+      indexConfigHash: retriever.indexConfigHash,
+      indexStrategy
+    })
 
     // Build doSearch function based on strategy
     let doSearch: (q: string, k: number) => Promise<ScoredChunk[]>
@@ -492,17 +481,9 @@ export const retrieve = tenantAction({
         const embedder = createEmbedder(embeddingModel)
         assertIndexableDimension(embedder.dimension, embeddingModel)
         const queryEmbedding = await embedder.embedQuery(q)
-        const { chunks: denseRaw, scoreMap } = await vectorSearchWithFilter(
-          ctx,
-          {
-            queryEmbedding,
-            kbId: retriever.kbId,
-            indexConfigHash: retriever.indexConfigHash,
-            topK: candidateK,
-            indexStrategy
-          }
-        )
-        const denseResults = convexToScored(denseRaw, scoreMap)
+        const denseResults = await vectorStore.search(queryEmbedding, {
+          k: candidateK
+        })
         const sparseResults: ScoredChunk[] = [
           ...bm25.searchWithScores(q, candidateK)
         ]
@@ -528,17 +509,7 @@ export const retrieve = tenantAction({
         const embedder = createEmbedder(embeddingModel)
         assertIndexableDimension(embedder.dimension, embeddingModel)
         const queryEmbedding = await embedder.embedQuery(q)
-        const { chunks: filtered, scoreMap } = await vectorSearchWithFilter(
-          ctx,
-          {
-            queryEmbedding,
-            kbId: retriever.kbId,
-            indexConfigHash: retriever.indexConfigHash,
-            topK: k,
-            indexStrategy
-          }
-        )
-        return convexToScored(filtered, scoreMap)
+        return vectorStore.search(queryEmbedding, { k })
       }
     }
 
