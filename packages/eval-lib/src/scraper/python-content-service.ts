@@ -10,7 +10,11 @@ export interface PythonContentServiceConfig {
   baseUrl: string
   apiToken: string
   hmacSecret: string
+  /** Per-request timeout for outbound calls to Tarser. Defaults to 30s. */
+  timeoutMs?: number
 }
+
+const DEFAULT_TIMEOUT_MS = 30_000
 
 /**
  * Remote crawler + parser backed by the Tarser HTTP service. Implements BOTH ports.
@@ -29,9 +33,17 @@ export class PythonContentService implements Scraper, Parser {
     }
   }
 
+  /** AbortSignal that fires after the configured timeout, so a hung Tarser
+   * instance cannot stall the action until the Convex ~10-min kill. */
+  private timeoutSignal(): AbortSignal {
+    return AbortSignal.timeout(this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+  }
+
   async checkHealth(): Promise<boolean> {
     try {
-      const res = await fetch(`${this.config.baseUrl}/healthz`)
+      const res = await fetch(`${this.config.baseUrl}/healthz`, {
+        signal: this.timeoutSignal()
+      })
       return res.status === 200
     } catch {
       return false
@@ -46,6 +58,7 @@ export class PythonContentService implements Scraper, Parser {
     const res = await fetch(`${this.config.baseUrl}/jobs`, {
       method: "POST",
       headers: this.authHeaders,
+      signal: this.timeoutSignal(),
       body: JSON.stringify({
         type: "crawl",
         startUrl: args.startUrl,
@@ -65,6 +78,7 @@ export class PythonContentService implements Scraper, Parser {
     const res = await fetch(`${this.config.baseUrl}/parse`, {
       method: "POST",
       headers: this.authHeaders,
+      signal: this.timeoutSignal(),
       body: JSON.stringify({
         fileUrl: args.fileUrl,
         mimeType: args.mimeType,
@@ -80,7 +94,8 @@ export class PythonContentService implements Scraper, Parser {
       `${this.config.baseUrl}/jobs/${encodeURIComponent(serviceJobId)}`,
       {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${this.config.apiToken}` }
+        headers: { Authorization: `Bearer ${this.config.apiToken}` },
+        signal: this.timeoutSignal()
       }
     )
     if (res.status < 200 || res.status >= 300) {
@@ -103,7 +118,18 @@ export class PythonContentService implements Scraper, Parser {
         `Tarser ${op} failed: HTTP ${res.status} ${await res.text()}`
       )
     }
-    const body = (await res.json()) as { serviceJobId?: string }
+    // Read text first, then parse: a proxy/gateway can return an empty or
+    // non-JSON 2xx, and res.json() would throw a confusing parse error that
+    // hides the real response.
+    const text = await res.text()
+    let body: { serviceJobId?: string }
+    try {
+      body = JSON.parse(text) as { serviceJobId?: string }
+    } catch {
+      throw new Error(
+        `Tarser ${op}: expected JSON, got HTTP ${res.status} body: ${text.slice(0, 200)}`
+      )
+    }
     if (!body.serviceJobId) {
       throw new Error(`Tarser ${op}: missing serviceJobId in response`)
     }

@@ -21,4 +21,4 @@ const remote = makeScraper({
 })
 ```
 
-The in-process scraper is hardened against SSRF: only `http`/`https` to public hosts are allowed (loopback, private, link-local, and metadata addresses are rejected), each redirect hop is re-validated, and responses are capped by content type and size. Adds `assertPublicHttpUrl` / `isBlockedHost` and callback signing helpers (`computeCallbackSignature` / `verifyCallbackSignature`).
+The in-process scraper is hardened against SSRF: only `http`/`https` to public hosts are allowed (loopback, private, link-local, and metadata addresses are rejected), each redirect hop is re-validated, and responses are capped by content type and size. Remote provider requests use a 30-second default timeout and report clear errors for empty or non-JSON successful responses. Adds `assertPublicHttpUrl` / `isBlockedHost` and callback signing helpers (`computeCallbackSignature` / `verifyCallbackSignature`).
