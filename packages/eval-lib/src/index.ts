@@ -104,6 +104,7 @@ export {
 export type {
   BM25SearchConfig,
   CallbackRetrieverConfig,
+  ChunkSource,
   ContextualIndexConfig,
   DedupRefinementStep,
   DenseSearchConfig,
@@ -120,12 +121,17 @@ export type {
   PipelineRetrieverDeps,
   PlainIndexConfig,
   QueryConfig,
+  QueryStageTrace,
+  RefinementStageTrace,
   RefinementStepConfig,
   RerankRefinementStep,
+  RetrievalTrace,
   Retriever,
   RewriteQueryConfig,
   ScoredChunk,
   SearchConfig,
+  SearchStageTrace,
+  StatelessQueryRetrieverDeps,
   StepBackQueryConfig,
   SummaryIndexConfig,
   ThresholdRefinementStep,
@@ -139,6 +145,7 @@ export {
   computeIndexConfigHash,
   computeRetrieverConfigHash,
   PipelineRetriever,
+  StatelessQueryRetriever,
   VectorRAGRetriever
 } from "./retrievers/index.js"
 
