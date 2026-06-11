@@ -235,6 +235,40 @@ Notes:
 - Remote health, submit, parse, and cancellation requests use a 30-second default timeout. Empty or non-JSON successful responses are rejected with an error that includes the HTTP status and a response-body snippet.
 - The in-process scraper enforces an SSRF guard (`assertPublicHttpUrl`): only `http` / `https` to public hosts, redirects re-validated per hop, and responses capped by content type and size.
 
+## Vector store providers
+
+`makeVectorStore` (main barrel) builds a `VectorStore` behind a unified interface, so callers pick a backend via config without depending on the implementation.
+
+| Backend | Selector | What it does |
+|---|---|---|
+| Host-backed | `"native"` | The host app supplies the search implementation through callbacks (e.g. a database's built-in vector index). |
+| In-process | `"memory"` | `InMemoryVectorStore` for tests and local experiments. |
+| Qdrant | `"qdrant"` | An external Qdrant collection over its REST API. Self-contained point payloads, deterministic point ids, any embedding dimension. |
+
+```ts
+import { makeVectorStore } from "@tars-inc/eval-lib"
+
+// In-process (tests, local experiments)
+const memory = makeVectorStore({ backend: "memory" })
+
+// Qdrant (any embedding dimension; one collection per index)
+const qdrant = makeVectorStore({
+  backend: "qdrant",
+  url: "https://xyz.cloud.qdrant.io:6333",
+  apiKey: process.env.QDRANT_API_KEY,
+  collection: "my-index",
+  dimension: 1024
+})
+
+// Host-backed (the host app supplies the search implementation)
+const native = makeVectorStore(
+  { backend: "native" },
+  { native: { name: "my-db", search: async (embedding, { k }) => [] } }
+)
+```
+
+`StatelessQueryRetriever` runs the query-time pipeline (query expansion, dense/BM25/hybrid search, refinement chain) over an existing index reached through a `VectorStore` plus a `ChunkSource`, with `retrieveWithTrace()` reporting every stage's inputs, outputs, and latency.
+
 ## Key concepts
 
 - **`PositionAwareChunker`** — chunkers that preserve `start`/`end` character offsets in the source document. Required for span-based metrics.
@@ -244,7 +278,7 @@ Notes:
 
 ## What this library is not
 
-- Not a vector database — `InMemoryVectorStore` is included for dev/test only
+- Not a vector database: it connects to external stores (Qdrant) and ships `InMemoryVectorStore` for dev/test, but vector storage itself is delegated
 - Not an LLM provider — wraps OpenAI / Cohere / Anthropic SDKs
 - Not a UI library or deployment platform
 - Not a multi-turn chat engine — focused on single-turn retrieval and conversation analysis
