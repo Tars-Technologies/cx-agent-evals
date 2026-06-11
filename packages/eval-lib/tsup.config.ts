@@ -18,6 +18,7 @@ export default defineConfig({
     "src/shared/index.ts",
     "src/file-processing/index.ts",
     "src/scraper/index.ts",
+    "src/scraper/link-extractor.ts",
     "src/registry/index.ts",
     "src/data-analysis/index.ts"
   ],
