@@ -123,6 +123,47 @@ describe("PythonContentService HTTP", () => {
     expect((err as Error).message.length).toBeLessThan(80 * 1024)
   })
 
+  it("caps a single oversized chunk to ~64 KB (no one-chunk overshoot)", async () => {
+    const enc = new TextEncoder()
+    let sent = false
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent) {
+          controller.close()
+          return
+        }
+        sent = true
+        controller.enqueue(enc.encode("a".repeat(256 * 1024))) // one 256 KB chunk
+      }
+    })
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 500, body }))
+    const err = await new PythonContentService(cfg)
+      .cancel("svc-1")
+      .catch((e: Error) => e)
+    // The "HTTP 500 " prefix + at most a 64 KB body slice; the chunk is sliced
+    // to the remaining budget before decode, so we don't keep the whole 256 KB.
+    expect((err as Error).message.length).toBeLessThan(64 * 1024 + 256)
+  })
+
+  it("does not hang on zero-length chunks", async () => {
+    const enc = new TextEncoder()
+    let count = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (count >= 3) {
+          controller.close()
+          return
+        }
+        count++
+        controller.enqueue(enc.encode("")) // empty chunk
+      }
+    })
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 500, body }))
+    await expect(new PythonContentService(cfg).cancel("svc-1")).rejects.toThrow(
+      /cancel failed: HTTP 500/
+    )
+  })
+
   it("passes an abort signal on outbound calls", async () => {
     mockFetchOnce({ serviceJobId: "svc-1" })
     await new PythonContentService(cfg).startCrawl({
