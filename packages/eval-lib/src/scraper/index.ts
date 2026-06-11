@@ -1,6 +1,10 @@
 export { makeParser, makeScraper } from "./factory.js"
 export type { CallbackSignatureArgs } from "./hmac.js"
-export { computeCallbackSignature, verifyCallbackSignature } from "./hmac.js"
+export {
+  computeBodyHash,
+  computeCallbackSignature,
+  verifyCallbackSignature
+} from "./hmac.js"
 export { InProcessParser } from "./in-process-parser.js"
 export { InProcessScraper } from "./in-process-scraper.js"
 export { filterLinks, normalizeUrl } from "./link-extractor.js"

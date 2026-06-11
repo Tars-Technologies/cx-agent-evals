@@ -38,7 +38,7 @@ export const parseDocument = internalAction({
           // Only send options when OCR is requested; otherwise let Tarser
           // apply its own defaults. OCR has no effect on the inprocess path.
           ...(args.ocr ? { options: { ocr: true } } : {}),
-          callbackUrl: tarserCallbackUrl("parse", parseToken)
+          callbackUrl: tarserCallbackUrl(parseToken)
         })
         serviceJobId = result.serviceJobId
       } catch (error) {

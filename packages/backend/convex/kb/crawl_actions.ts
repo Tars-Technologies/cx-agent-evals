@@ -154,10 +154,7 @@ export const submitTarserCrawl = internalAction({
           allowSubdomains: job.config.allowSubdomains,
           crawlMode: "http"
         },
-        callbackUrl: tarserCallbackUrl(
-          args.crawlJobId as string,
-          job.callbackToken ?? ""
-        )
+        callbackUrl: tarserCallbackUrl(job.callbackToken ?? "")
       })
       await ctx.runMutation(internal.kb.crawl.attachServiceJob, {
         crawlJobId: args.crawlJobId,
