@@ -13,10 +13,10 @@ export function assertIndexableDimension(
 ): void {
   if (dimension !== REQUIRED_EMBED_DIMENSION) {
     throw new Error(
-      `KB indexing requires a ${REQUIRED_EMBED_DIMENSION}-dimension embedder ` +
-        `(text-embedding-3-small). Model "${model ?? "text-embedding-3-small"}" ` +
-        `produces ${dimension} dimensions. Other dimensions will be supported ` +
-        `with the Qdrant vector store.`
+      `KB indexing requires ${REQUIRED_EMBED_DIMENSION}-dimension embeddings; ` +
+        `any model with that output size works (OpenAI text-embedding-3-small ` +
+        `is the default). Model "${model ?? "default"}" produces ${dimension} ` +
+        `dimensions.`
     )
   }
 }

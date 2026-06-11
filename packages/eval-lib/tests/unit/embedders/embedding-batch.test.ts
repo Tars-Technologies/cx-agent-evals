@@ -26,6 +26,26 @@ describe("reorderByIndex", () => {
     reorderByIndex(items)
     expect(items[0].index).toBe(1)
   })
+
+  it("throws on duplicate indices", () => {
+    const items = [
+      { index: 0, embedding: [0.1] },
+      { index: 0, embedding: [0.2] }
+    ]
+    expect(() => reorderByIndex(items)).toThrow(
+      /index mismatch at position 1 \(got 0\)/
+    )
+  })
+
+  it("throws on missing indices", () => {
+    const items = [
+      { index: 0, embedding: [0.1] },
+      { index: 2, embedding: [0.3] }
+    ]
+    expect(() => reorderByIndex(items)).toThrow(
+      /index mismatch at position 1 \(got 2\)/
+    )
+  })
 })
 
 describe("assertEmbeddingBatch", () => {
