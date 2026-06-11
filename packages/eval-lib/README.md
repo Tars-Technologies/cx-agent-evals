@@ -20,11 +20,12 @@ pnpm add @tars-inc/eval-lib@beta
 Optional peer dependencies — install whichever providers you use:
 
 ```bash
-pnpm add openai           # OpenAIEmbedder, pipeline LLM client
-pnpm add cohere-ai        # CohereEmbedder, CohereReranker
+pnpm add openai           # OpenAIEmbedder, OpenRouter embeddings, pipeline LLM client
 pnpm add @anthropic-ai/sdk  # Claude-based conversation classification
 pnpm add langsmith        # LangSmith dataset / experiment runner
 ```
+
+Cohere, Jina, and Voyage embedders/rerankers call the provider HTTP APIs directly, so they need no extra package, only the matching API key.
 
 ## Quick start: span-based evaluation with a custom retriever
 
@@ -137,9 +138,11 @@ Provider-specific code lives in sub-paths so you only pay for what you import:
 | `@tars-inc/eval-lib/embedders/cohere` | `CohereEmbedder` |
 | `@tars-inc/eval-lib/embedders/voyage` | `VoyageEmbedder` |
 | `@tars-inc/eval-lib/embedders/jina` | `JinaEmbedder` |
+| `@tars-inc/eval-lib/embedders/make-embedder` | `makeEmbedder` factory, `EmbedderConfig`, `EmbedderProvider` |
 | `@tars-inc/eval-lib/rerankers/cohere` | `CohereReranker` |
 | `@tars-inc/eval-lib/rerankers/jina` | `JinaReranker` |
 | `@tars-inc/eval-lib/rerankers/voyage` | `VoyageReranker` |
+| `@tars-inc/eval-lib/rerankers/make-reranker` | `makeReranker` factory, `RerankerConfig`, `RerankerProvider` |
 | `@tars-inc/eval-lib/pipeline/internals` | `BM25SearchIndex`, fusion (`weightedScoreFusion`, `reciprocalRankFusion`), dimension discovery, refinement defaults |
 | `@tars-inc/eval-lib/pipeline/llm-openai` | `OpenAIPipelineLLM` for query expansion / rewrite |
 | `@tars-inc/eval-lib/llm` | `createLLMClient`, `createEmbedder`, `getModel`, `DEFAULT_MODEL` (Node-only) |
@@ -150,6 +153,46 @@ Provider-specific code lives in sub-paths so you only pay for what you import:
 | `@tars-inc/eval-lib/scraper` | `makeScraper` / `makeParser` factories, `Scraper` / `Parser` interfaces, `ContentScraper`, `assertPublicHttpUrl`, callback signing helpers, `filterLinks`, `normalizeUrl` |
 | `@tars-inc/eval-lib/registry` | Component registries for embedders, rerankers, chunkers, strategies, presets |
 | `@tars-inc/eval-lib/data-analysis` | `parseTranscript`, `parseBotFlowInput`, `computeBasicStats`, `classifyMessageTypes`, `extractMicrotopics` |
+
+## Embedder and reranker providers
+
+`makeEmbedder` and `makeReranker` build an `Embedder` / `Reranker` behind the unified interfaces, so callers pick a provider via config without depending on the implementation. API keys fall back to each provider's env var; pass `apiKey` to override.
+
+Embedder providers:
+
+| Provider | Selector | Default model | API key env var |
+|---|---|---|---|
+| OpenAI (default) | `"openai"` (or omit `provider`) | `text-embedding-3-small` | `OPENAI_API_KEY` |
+| OpenRouter | `"openrouter"` | pass a vendor-prefixed id, e.g. `openai/text-embedding-3-large` | `OPENROUTER_API_KEY` |
+| Cohere | `"cohere"` | `embed-english-v3.0` | `COHERE_API_KEY` |
+
+Reranker providers:
+
+| Provider | Selector | Default model | API key env var |
+|---|---|---|---|
+| Cohere (default) | `"cohere"` (or omit `provider`) | `rerank-english-v3.0` | `COHERE_API_KEY` |
+| Jina | `"jina"` | `jina-reranker-v2-base-multilingual` | `JINA_API_KEY` |
+| Voyage | `"voyage"` | `rerank-2.5` | `VOYAGE_API_KEY` |
+
+```ts
+import { makeEmbedder } from "@tars-inc/eval-lib/embedders/make-embedder"
+import { makeReranker } from "@tars-inc/eval-lib/rerankers/make-reranker"
+
+// Defaults: OpenAI embeddings + Cohere reranking, keys from env
+const embedder = await makeEmbedder()
+const reranker = await makeReranker()
+
+// OpenRouter routes the same models under vendor-prefixed ids
+const openrouter = await makeEmbedder({
+  provider: "openrouter",
+  model: "openai/text-embedding-3-large"
+})
+
+// Explicit key instead of the env var
+const voyage = await makeReranker({ provider: "voyage", apiKey: "<key>" })
+```
+
+Note: Cohere, Jina, and Voyage are called over their plain HTTP APIs with retry/backoff; only `"openai"` and `"openrouter"` import the `openai` package.
 
 ## Scraper / parser providers
 
