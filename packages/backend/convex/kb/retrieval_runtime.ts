@@ -422,9 +422,16 @@ export async function buildStatelessRetriever(
     embedder,
     llm,
     reranker,
-    filter: {
-      kbId: String(opts.kbId),
-      indexConfigHash: opts.indexConfigHash
-    }
+    // The qdrant collection is already scoped to exactly this
+    // (kbId, indexConfigHash); sending the filter anyway requires payload
+    // indexes on strict-mode instances and buys nothing. The native store
+    // scopes via its own captured options.
+    filter:
+      vectorBackend === "qdrant"
+        ? {}
+        : {
+            kbId: String(opts.kbId),
+            indexConfigHash: opts.indexConfigHash
+          }
   })
 }

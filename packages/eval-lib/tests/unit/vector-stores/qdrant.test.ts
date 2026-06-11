@@ -94,10 +94,13 @@ describe("QdrantVectorStore", () => {
     })
   })
 
-  it("add(): creates the collection when missing (404)", async () => {
+  it("add(): creates the collection and payload indexes when missing (404)", async () => {
     fetchMock
       .mockResolvedValueOnce(new Response("not found", { status: 404 }))
       .mockResolvedValueOnce(okJson({ status: "ok", result: true })) // PUT create
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index kbId
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index indexConfigHash
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index documentId
       .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // upsert
     await store.add([chunk("c1")], [[1, 0, 0]])
     const [createUrl, createInit] = fetchMock.mock.calls[1]
@@ -106,6 +109,19 @@ describe("QdrantVectorStore", () => {
     expect(JSON.parse(createInit.body)).toEqual({
       vectors: { size: 3, distance: "Cosine" }
     })
+    const indexedFields = fetchMock.mock.calls
+      .slice(2, 5)
+      .map(([url, init]: [string, RequestInit]) => {
+        expect(url).toBe(
+          "http://qdrant.local:6333/collections/kb_x_abcdef/index?wait=true"
+        )
+        return JSON.parse(init.body as string)
+      })
+    expect(indexedFields).toEqual([
+      { field_name: "kbId", field_schema: "keyword" },
+      { field_name: "indexConfigHash", field_schema: "keyword" },
+      { field_name: "documentId", field_schema: "keyword" }
+    ])
   })
 
   it("add(): throws loudly on collection dimension mismatch", async () => {
@@ -124,10 +140,13 @@ describe("QdrantVectorStore", () => {
         })
       ) // PUT create lost the race
       .mockResolvedValueOnce(collectionInfo(3)) // re-verify GET
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index kbId
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index indexConfigHash
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index documentId
       .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // upsert
     await store.add([chunk("c1")], [[1, 0, 0]])
-    expect(fetchMock).toHaveBeenCalledTimes(4)
-    const [upsertUrl] = fetchMock.mock.calls[3]
+    expect(fetchMock).toHaveBeenCalledTimes(7)
+    const [upsertUrl] = fetchMock.mock.calls[6]
     expect(upsertUrl).toBe(
       "http://qdrant.local:6333/collections/kb_x_abcdef/points?wait=true"
     )
