@@ -361,8 +361,9 @@ export async function buildStatelessRetriever(
     string,
     unknown
   >
-  const embeddingModel =
-    (indexSettings.embeddingModel as string) ?? "text-embedding-3-small"
+  // Leave undefined so each embedder factory applies its per-provider
+  // default model, matching what indexDocument does at index time.
+  const embeddingModel = indexSettings.embeddingModel as string | undefined
   const indexStrategy = (indexSettings.strategy as string) ?? "plain"
   const refinementSteps = Array.isArray(opts.retrieverConfig.refinement)
     ? (opts.retrieverConfig.refinement as Array<Record<string, unknown>>)

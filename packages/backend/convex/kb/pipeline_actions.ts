@@ -91,8 +91,8 @@ function buildSearchConfigMeta(
   if (searchConfig.strategy === "hybrid") {
     meta.denseWeight = searchConfig.denseWeight ?? 0.7
     meta.sparseWeight = searchConfig.sparseWeight ?? 0.3
-    meta.fusionMethod = searchConfig.fusionMethod ?? "rrf"
-    meta.candidateMultiplier = searchConfig.candidateMultiplier ?? 3
+    meta.fusionMethod = searchConfig.fusionMethod ?? "weighted"
+    meta.candidateMultiplier = searchConfig.candidateMultiplier ?? 4
   }
   return meta
 }

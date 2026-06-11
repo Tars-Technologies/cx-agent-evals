@@ -67,8 +67,3 @@ export const backendConfig: BackendConfig = new Proxy({} as BackendConfig, {
 export function isTarserAvailable(): boolean {
   return backendConfig.tarser !== null
 }
-
-/** True when QDRANT_URL is configured. */
-export function isQdrantAvailable(): boolean {
-  return backendConfig.qdrant !== null
-}
