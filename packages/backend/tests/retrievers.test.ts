@@ -22,6 +22,8 @@ async function seedRetriever(
     indexingJobId: Id<"indexingJobs">
     chunkCount: number
     error: string
+    vectorBackend: string
+    qdrantCollection: string
   }> = {}
 ) {
   return await t.run(async (ctx) => {
@@ -33,6 +35,8 @@ async function seedRetriever(
       indexConfigHash: overrides.indexConfigHash ?? "idx-hash-123",
       retrieverConfigHash: "ret-hash-123",
       defaultK: 5,
+      vectorBackend: overrides.vectorBackend,
+      qdrantCollection: overrides.qdrantCollection,
       indexingJobId: overrides.indexingJobId,
       status: (overrides.status ?? "configuring") as any,
       chunkCount: overrides.chunkCount,
@@ -72,6 +76,16 @@ async function seedIndexingJob(
       createdAt: Date.now()
     })
   })
+}
+
+/** Args of cleanupAction calls enqueued on the scheduler during the test. */
+async function scheduledCleanupArgs(t: ReturnType<typeof setupTest>) {
+  const scheduled = await t.run(async (ctx) =>
+    ctx.db.system.query("_scheduled_functions").collect()
+  )
+  return scheduled
+    .filter((s) => s.name.includes("cleanupAction"))
+    .map((s) => s.args[0] as Record<string, unknown>)
 }
 
 // ─── Tests ───
@@ -143,6 +157,30 @@ describe("retrievers: deleteIndex", () => {
     expect(retriever!.chunkCount).toBeUndefined()
     expect(retriever!.indexingJobId).toBeUndefined()
   })
+
+  it("forwards vectorBackend and qdrantCollection to cleanupAction", async () => {
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const jobId = await seedIndexingJob(t, userId, kbId)
+
+    const retrieverId = await seedRetriever(t, userId, kbId, {
+      status: "ready",
+      indexingJobId: jobId,
+      chunkCount: 10,
+      vectorBackend: "qdrant",
+      qdrantCollection: "kb_test_col"
+    })
+
+    const authedT = t.withIdentity(testIdentity)
+    await authedT.mutation(api.kb.retrievers.deleteIndex, { id: retrieverId })
+
+    const cleanupCalls = await scheduledCleanupArgs(t)
+    expect(cleanupCalls).toHaveLength(1)
+    expect(cleanupCalls[0]).toMatchObject({
+      vectorBackend: "qdrant",
+      qdrantCollection: "kb_test_col"
+    })
+  })
 })
 
 describe("retrievers: resetAfterCancel", () => {
@@ -199,6 +237,30 @@ describe("retrievers: remove", () => {
 
     const retriever = await t.run(async (ctx) => ctx.db.get(retrieverId))
     expect(retriever).toBeNull()
+  })
+
+  it("forwards vectorBackend and qdrantCollection to cleanupAction", async () => {
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const jobId = await seedIndexingJob(t, userId, kbId)
+
+    const retrieverId = await seedRetriever(t, userId, kbId, {
+      status: "ready",
+      indexingJobId: jobId,
+      chunkCount: 10,
+      vectorBackend: "qdrant",
+      qdrantCollection: "kb_test_col"
+    })
+
+    const authedT = t.withIdentity(testIdentity)
+    await authedT.mutation(api.kb.retrievers.remove, { id: retrieverId })
+
+    const cleanupCalls = await scheduledCleanupArgs(t)
+    expect(cleanupCalls).toHaveLength(1)
+    expect(cleanupCalls[0]).toMatchObject({
+      vectorBackend: "qdrant",
+      qdrantCollection: "kb_test_col"
+    })
   })
 })
 

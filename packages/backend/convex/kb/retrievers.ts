@@ -202,7 +202,9 @@ export const remove = tenantMutation({
           {
             kbId: retriever.kbId,
             indexConfigHash: retriever.indexConfigHash,
-            jobId: retriever.indexingJobId
+            jobId: retriever.indexingJobId,
+            vectorBackend: retriever.vectorBackend,
+            qdrantCollection: retriever.qdrantCollection
           }
         )
       }
@@ -284,7 +286,9 @@ export const deleteIndex = tenantMutation({
         {
           kbId: retriever.kbId,
           indexConfigHash: retriever.indexConfigHash,
-          jobId: retriever.indexingJobId
+          jobId: retriever.indexingJobId,
+          vectorBackend: retriever.vectorBackend,
+          qdrantCollection: retriever.qdrantCollection
         }
       )
     }
