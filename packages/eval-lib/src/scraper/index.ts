@@ -19,8 +19,8 @@ export {
   PythonContentService,
   type PythonContentServiceConfig
 } from "./python-content-service.js"
-export type { ContentScraperConfig } from "./scraper.js"
-export { ContentScraper } from "./scraper.js"
+export type { ContentScraperConfig, DnsLookup } from "./scraper.js"
+export { assertHostResolvesPublic, ContentScraper } from "./scraper.js"
 export {
   getSeedEntitiesByIndustry,
   getSeedIndustries,

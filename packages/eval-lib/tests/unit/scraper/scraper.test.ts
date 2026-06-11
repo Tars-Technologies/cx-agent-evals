@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { ContentScraper } from "../../../src/scraper/scraper.js"
+import {
+  assertHostResolvesPublic,
+  ContentScraper
+} from "../../../src/scraper/scraper.js"
 
 const mockHtml =
   "<html><body><h1>Test Page</h1><p>Content</p><a href='/other'>Link</a></body></html>"
@@ -131,5 +134,29 @@ describe("ContentScraper SSRF + size guards", () => {
         "https://example.com/missing"
       )
     ).rejects.toThrow(/status 404/i)
+  })
+})
+
+describe("assertHostResolvesPublic", () => {
+  it("rejects a host that resolves to a private/metadata IP", async () => {
+    await expect(
+      assertHostResolvesPublic("evil.example.com", async () => [
+        "169.254.169.254"
+      ])
+    ).rejects.toThrow(/private\/loopback\/metadata/i)
+  })
+  it("allows a host that resolves only to public IPs", async () => {
+    await expect(
+      assertHostResolvesPublic("good.example.com", async () => [
+        "93.184.216.34"
+      ])
+    ).resolves.toBeUndefined()
+  })
+  it("rejects when DNS resolution fails", async () => {
+    await expect(
+      assertHostResolvesPublic("nx.example.com", async () => {
+        throw new Error("ENOTFOUND")
+      })
+    ).rejects.toThrow(/DNS resolution failed/i)
   })
 })
