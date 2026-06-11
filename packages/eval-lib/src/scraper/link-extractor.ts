@@ -1,19 +1,18 @@
 export function normalizeUrl(url: string): string {
   try {
     const parsed = new URL(url)
-    parsed.hostname = parsed.hostname.toLowerCase()
-    parsed.hash = ""
-    // Drop userinfo so `user:pass@host` and `host` dedup to one key, and
-    // credentials are never persisted into crawlUrls.
-    parsed.username = ""
-    parsed.password = ""
+    // Rebuild from getters rather than URL setters: Convex's non-Node runtime
+    // doesn't implement the username/password setters. Dropping userinfo also
+    // dedups `user:pass@host` to `host` and keeps credentials out of crawlUrls.
+    const host = parsed.hostname.toLowerCase()
+    const port = parsed.port ? `:${parsed.port}` : ""
     const params = new URLSearchParams(parsed.search)
-    const sorted = new URLSearchParams([...params.entries()].sort())
-    parsed.search = sorted.toString()
-    let result = parsed.href
-    if (result.endsWith("/") && parsed.pathname !== "/")
-      result = result.slice(0, -1)
-    if (result.endsWith("?")) result = result.slice(0, -1)
+    const search = new URLSearchParams([...params.entries()].sort()).toString()
+    let pathname = parsed.pathname
+    if (pathname.endsWith("/") && pathname !== "/")
+      pathname = pathname.slice(0, -1)
+    let result = `${parsed.protocol}//${host}${port}${pathname}`
+    if (search) result += `?${search}`
     return result
   } catch {
     return url
