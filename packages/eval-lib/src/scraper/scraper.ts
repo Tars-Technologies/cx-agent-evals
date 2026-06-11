@@ -11,6 +11,33 @@ const defaultDnsLookup: DnsLookup = async (host) => {
   return records.map((r) => r.address)
 }
 
+/**
+ * Resolve `host` and reject if any resolved address is a private/loopback/metadata IP.
+ * Blocks DNS names that point into internal space (the gap the string-only
+ * `assertPublicHttpUrl` can't see). Standalone so non-scraper callers (e.g. the
+ * Tarser submit path) run the same DNS-aware SSRF check the in-process crawler
+ * uses. A fetch-based client still re-resolves DNS itself, so a narrow TOCTOU
+ * window remains; fully closing it requires IP pinning via a custom dispatcher.
+ */
+export async function assertHostResolvesPublic(
+  host: string,
+  dnsLookup: DnsLookup = defaultDnsLookup
+): Promise<void> {
+  let addresses: string[]
+  try {
+    addresses = await dnsLookup(host)
+  } catch {
+    throw new Error(`DNS resolution failed for host: ${host}`)
+  }
+  for (const addr of addresses) {
+    if (isBlockedHost(addr)) {
+      throw new Error(
+        `Blocked host resolves to private/loopback/metadata IP: ${host} -> ${addr}`
+      )
+    }
+  }
+}
+
 export interface ContentScraperConfig {
   userAgent?: string
   defaultHeaders?: Record<string, string>
@@ -33,28 +60,6 @@ export class ContentScraper {
     this.dnsLookup = config?.dnsLookup ?? defaultDnsLookup
   }
 
-  /**
-   * Resolve `host` and reject if any resolved address is a private/loopback/metadata IP.
-   * Blocks DNS names that point into internal space and the validation-time rebind.
-   * A fetch-based client still re-resolves DNS itself, so a narrow TOCTOU window
-   * remains; fully closing it requires IP pinning via a custom dispatcher.
-   */
-  private async assertHostResolvesPublic(host: string): Promise<void> {
-    let addresses: string[]
-    try {
-      addresses = await this.dnsLookup(host)
-    } catch {
-      throw new Error(`DNS resolution failed for host: ${host}`)
-    }
-    for (const addr of addresses) {
-      if (isBlockedHost(addr)) {
-        throw new Error(
-          `Blocked host resolves to private/loopback/metadata IP: ${host} -> ${addr}`
-        )
-      }
-    }
-  }
-
   async scrape(url: string, options?: ScrapeOptions): Promise<ScrapedPage> {
     const MAX_BYTES = 10 * 1024 * 1024 // 10 MB cap
     const MAX_REDIRECTS = 5
@@ -69,7 +74,10 @@ export class ContentScraper {
       // Manual redirect loop so each hop's host is re-validated (SSRF defense).
       for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
         // Re-resolve and re-check the host's IPs before every fetch (DNS rebinding).
-        await this.assertHostResolvesPublic(new URL(current).hostname)
+        await assertHostResolvesPublic(
+          new URL(current).hostname,
+          this.dnsLookup
+        )
         response = await fetch(current, {
           headers: {
             "User-Agent": this.userAgent,
