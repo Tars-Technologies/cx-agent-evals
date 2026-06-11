@@ -9,6 +9,11 @@ Unified vector-store providers and a stateless, trace-capable retriever.
   an in-process store (memory), or a Qdrant collection over its REST API
   (qdrant: self-contained payloads, deterministic point ids, any embedding
   dimension).
+- The Qdrant store creates its collection on first `add`, including keyword
+  payload indexes for the filterable fields, so filtered search and delete
+  work on strict-mode instances such as Qdrant Cloud. Collection creation
+  tolerates concurrent writers racing to create the same collection and
+  fails loudly on a dimension mismatch with an existing collection.
 - The `VectorStore` interface gains scoped search filters, per-document and
   per-knowledge-base deletion, and health checks. `search` now takes an
   options object: `store.search(embedding, { k, filter })`.
@@ -21,5 +26,8 @@ Unified vector-store providers and a stateless, trace-capable retriever.
   values, so existing hashes are unchanged.
 - Embedder registry model choices now declare their output `dimensions` as
   structured data.
+- `OpenAIEmbedder` resolves the output dimension from vendor-prefixed model
+  ids (e.g. OpenRouter's `openai/text-embedding-3-large` reports 3072), so
+  vector stores are sized correctly for non-default embedding models.
 - `InMemoryVectorStore.add` now accumulates across calls instead of
   discarding prior contents.
