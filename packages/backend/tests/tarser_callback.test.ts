@@ -238,4 +238,46 @@ describe("POST /tarser/cb", () => {
     })
     expect(res.status).toBe(401)
   })
+
+  it("job_complete with remote failed=0 does not erase locally-counted failures", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    // A page-failed callback already bumped the local failed count to 1.
+    const jobId = await t.run(async (ctx) =>
+      ctx.db.insert("crawlJobs", {
+        orgId: TEST_ORG_ID,
+        kbId,
+        userId,
+        startUrl: "https://example.com",
+        config: { maxPages: 10, maxDepth: 2 },
+        status: "running",
+        stats: { discovered: 2, scraped: 1, failed: 1, skipped: 0 },
+        backend: "tarser",
+        serviceJobId: "svc-1",
+        callbackToken: "tok",
+        createdAt: Date.now()
+      })
+    )
+    const sig = await computeCallbackSignature({
+      jobId: "svc-1",
+      token: "tok",
+      secret: SECRET
+    })
+    // Remote final_stats omits failed (treated as 0) with a normal finish.
+    const res = await t.fetch("/tarser/cb?jobId=svc-1&token=tok", {
+      method: "POST",
+      headers: { "X-Tarser-Signature": sig, "X-Tarser-Job-Id": "svc-1" },
+      body: JSON.stringify({
+        event: "job_complete",
+        service_job_id: "svc-1",
+        final_stats: { visited: 2, skipped: 0 },
+        finish_reason: "finished"
+      })
+    })
+    expect(res.status).toBe(200)
+    const job = await t.run(async (ctx) => ctx.db.get(jobId))
+    // The local failure survives, so the job is flagged, not silently "completed".
+    expect(job?.status).toBe("completed_with_errors")
+  })
 })

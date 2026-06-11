@@ -5,6 +5,7 @@
  * to crawl_actions.ts because they import HTTP scraper dependencies.
  */
 import { type RunResult, vOnCompleteArgs, Workpool } from "@convex-dev/workpool"
+import { normalizeUrl } from "@tars-inc/eval-lib/scraper/link-extractor"
 import { v } from "convex/values"
 import { components, internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
@@ -18,6 +19,10 @@ const NORMAL_FINISH_REASONS = new Set(["finished", "completed", "ok", "done"])
 // Tarser crawls with no callback activity past this are presumed abandoned and
 // swept to a terminal status by the reaper cron.
 const CRAWL_STALE_MS = 30 * 60 * 1000
+
+// Max rows a single reaper run sweeps, so a large backlog can't blow the
+// per-transaction limits. Remaining rows are drained on subsequent cron ticks.
+const REAP_BATCH = 200
 
 // ─── WorkPool Instance ───
 
@@ -107,10 +112,8 @@ export const startCrawl = tenantMutation({
     })
 
     if (backend === "inprocess") {
-      // Normalize the start URL for dedup
-      const normalizedUrl =
-        startUrl.toLowerCase().replace(/#.*$/, "").replace(/\/+$/, "") ||
-        startUrl
+      // Normalize the start URL for dedup (same form as discovered URLs)
+      const normalizedUrl = normalizeUrl(startUrl)
 
       // Insert seed URL into frontier
       await ctx.db.insert("crawlUrls", {
@@ -486,8 +489,7 @@ export const handleTarserPage = internalMutation({
     if (!job) return
     // Don't keep ingesting in-flight pages after the job was cancelled.
     if (job.status === "cancelled") return
-    const normalizedUrl =
-      args.url.toLowerCase().replace(/#.*$/, "").replace(/\/+$/, "") || args.url
+    const normalizedUrl = normalizeUrl(args.url)
     // Idempotency: skip if a crawlUrl for this normalized URL is already done.
     const existing = await ctx.db
       .query("crawlUrls")
@@ -574,7 +576,11 @@ export const handleTarserJobComplete = internalMutation({
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.crawlJobId)
     if (!job || job.status === "cancelled") return
-    const failed = args.stats.failed ?? job.stats.failed
+    // Reconcile the remote aggregate with our locally-counted page failures:
+    // a remote `failed: 0` must not erase failures recorded via per-page
+    // callbacks (handleTarserPageFailed), which would mislabel the job
+    // "completed" instead of "completed_with_errors".
+    const failed = Math.max(args.stats.failed ?? 0, job.stats.failed)
     const scraped = job.stats.scraped
     // A finishReason other than a normal completion (e.g. timeout, site_failure)
     // means the crawl ended abnormally, so it must not be reported as a clean
@@ -605,8 +611,7 @@ export const handleTarserPageFailed = internalMutation({
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.crawlJobId)
     if (!job || job.status === "cancelled") return
-    const normalizedUrl =
-      args.url.toLowerCase().replace(/#.*$/, "").replace(/\/+$/, "") || args.url
+    const normalizedUrl = normalizeUrl(args.url)
     const existing = await ctx.db
       .query("crawlUrls")
       .withIndex("by_job_url", (q) =>
@@ -658,7 +663,7 @@ export const reapStaleCrawls = internalMutation({
       const jobs = await ctx.db
         .query("crawlJobs")
         .withIndex("by_global_status", (q) => q.eq("status", status))
-        .collect()
+        .take(REAP_BATCH)
       for (const job of jobs) {
         if (job.backend !== "tarser") continue
         const lastActivity =

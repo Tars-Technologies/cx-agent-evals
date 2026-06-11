@@ -14,6 +14,10 @@ import { computeDocId } from "../lib/docId"
 // (lost/failed remote callback) and swept to "failed" by the reaper cron.
 const PARSE_STALE_MS = 30 * 60 * 1000
 
+// Max documents a single reaper run sweeps, so a large backlog can't blow the
+// per-transaction limits. Remaining rows are drained on subsequent cron ticks.
+const REAP_BATCH = 200
+
 type DocSummary = Pick<
   Doc<"documents">,
   "_id" | "docId" | "title" | "contentLength" | "sourceType" | "priority"
@@ -394,10 +398,12 @@ export const reapStaleParsing = internalMutation({
   args: {},
   handler: async (ctx) => {
     const cutoff = Date.now() - PARSE_STALE_MS
+    // Oldest-first (index order), bounded: stale docs are the oldest, and any
+    // overflow is swept on the next cron tick once this batch leaves "parsing".
     const stale = await ctx.db
       .query("documents")
       .withIndex("by_parse_status", (q) => q.eq("parseStatus", "parsing"))
-      .collect()
+      .take(REAP_BATCH)
     let reaped = 0
     for (const doc of stale) {
       if (doc.createdAt >= cutoff) continue
