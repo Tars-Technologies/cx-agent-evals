@@ -37,6 +37,19 @@ describe("makeEmbedder", () => {
     })
   })
 
+  it("resolves dimensions for vendor-prefixed OpenRouter model ids", async () => {
+    const large = await makeEmbedder({
+      provider: "openrouter",
+      model: "openai/text-embedding-3-large"
+    })
+    expect(large.dimension).toBe(3072)
+    const small = await makeEmbedder({
+      provider: "openrouter",
+      model: "openai/text-embedding-3-small"
+    })
+    expect(small.dimension).toBe(1536)
+  })
+
   it("builds a Cohere embedder", async () => {
     const embedder = await makeEmbedder({ provider: "cohere" })
     expect(embedder.name).toBe("Cohere(embed-english-v3.0)")

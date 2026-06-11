@@ -24,7 +24,11 @@ export class OpenAIEmbedder implements Embedder {
       "text-embedding-3-large": 3072,
       "text-embedding-ada-002": 1536
     }
-    this.dimension = knownDims[this._model] ?? 1536
+    // OpenRouter routes the same models under vendor-prefixed ids
+    // ("openai/text-embedding-3-large"); look up the bare model name so the
+    // reported dimension matches the vectors the API actually returns.
+    const bareModel = this._model.split("/").pop() ?? this._model
+    this.dimension = knownDims[this._model] ?? knownDims[bareModel] ?? 1536
   }
 
   static async create(

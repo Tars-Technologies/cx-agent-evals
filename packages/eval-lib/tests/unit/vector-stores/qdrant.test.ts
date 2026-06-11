@@ -115,6 +115,34 @@ describe("QdrantVectorStore", () => {
     )
   })
 
+  it("add(): tolerates a concurrent collection create (409) and re-verifies", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response("not found", { status: 404 })) // GET
+      .mockResolvedValueOnce(
+        new Response("Collection `kb_x_abcdef` already exists!", {
+          status: 409
+        })
+      ) // PUT create lost the race
+      .mockResolvedValueOnce(collectionInfo(3)) // re-verify GET
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // upsert
+    await store.add([chunk("c1")], [[1, 0, 0]])
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    const [upsertUrl] = fetchMock.mock.calls[3]
+    expect(upsertUrl).toBe(
+      "http://qdrant.local:6333/collections/kb_x_abcdef/points?wait=true"
+    )
+  })
+
+  it("add(): 409 race still fails loudly when the winner's dimension differs", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response("not found", { status: 404 })) // GET
+      .mockResolvedValueOnce(new Response("exists", { status: 409 })) // PUT create
+      .mockResolvedValueOnce(collectionInfo(1536)) // re-verify GET: wrong dims
+    await expect(store.add([chunk("c1")], [[1, 0, 0]])).rejects.toThrow(
+      /dimension 1536.*expected 3/i
+    )
+  })
+
   it("add(): validates lengths and embedding dimension", async () => {
     await expect(store.add([chunk("c1")], [])).rejects.toThrow(/1 chunks but 0/)
     await expect(store.add([chunk("c1")], [[1, 0]])).rejects.toThrow(
