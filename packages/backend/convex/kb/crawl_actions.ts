@@ -7,6 +7,7 @@
  * that rely on Node.js built-ins unavailable in the Convex edge runtime.
  */
 import {
+  assertHostResolvesPublic,
   assertPublicHttpUrl,
   filterLinks,
   InProcessScraper,
@@ -137,7 +138,12 @@ export const submitTarserCrawl = internalAction({
     }
     const scraper = makeScraper({ backend: "tarser", ...tarser })
     try {
-      assertPublicHttpUrl(job.startUrl) // SSRF: reject private/loopback/metadata before handing to Tarser
+      // SSRF: reject private/loopback/metadata before handing the URL to Tarser.
+      // assertPublicHttpUrl is string-only, so also resolve the host and check
+      // each IP (a public DNS name can still point at an internal address),
+      // matching the in-process scraper's guard.
+      const startHost = assertPublicHttpUrl(job.startUrl).hostname
+      await assertHostResolvesPublic(startHost)
       const { serviceJobId } = await scraper.startCrawl({
         startUrl: job.startUrl,
         config: {
