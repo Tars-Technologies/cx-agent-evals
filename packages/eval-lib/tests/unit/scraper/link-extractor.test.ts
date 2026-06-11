@@ -32,6 +32,11 @@ describe("normalizeUrl", () => {
       normalizeUrl("https://example.com/")
     )
   })
+  it("strips userinfo so credentials don't leak into the dedup key", () => {
+    expect(normalizeUrl("https://user:pass@example.com/foo")).toBe(
+      "https://example.com/foo"
+    )
+  })
 })
 
 describe("filterLinks", () => {
@@ -69,5 +74,22 @@ describe("filterLinks", () => {
     )
     expect(result).not.toContain("https://evilexample.com/page")
     expect(result).toContain("https://sub.example.com/page")
+  })
+  it("does not throw on a malformed glob pattern", () => {
+    // One mistyped include/exclude pattern must not crash the whole crawl.
+    expect(() =>
+      filterLinks(["https://example.com/foo"], base, {
+        includePaths: ["/foo(("]
+      })
+    ).not.toThrow()
+  })
+  it("treats '.' in a pattern as a literal, not a wildcard", () => {
+    const result = filterLinks(
+      ["https://example.com/api.v1/x", "https://example.com/apiXv1/x"],
+      base,
+      { includePaths: ["/api.v1/*"] }
+    )
+    expect(result).toContain("https://example.com/api.v1/x")
+    expect(result).not.toContain("https://example.com/apiXv1/x")
   })
 })
