@@ -339,13 +339,13 @@ function RetrieversPageContent() {
                 try {
                   const pConfig: PipelineConfig = {
                     name,
-                    index: {
-                      strategy: (config.index?.strategy ?? "plain") as "plain",
-                      chunkSize: config.index?.chunkSize as number | undefined,
-                      chunkOverlap: config.index?.chunkOverlap as
-                        | number
-                        | undefined
-                    },
+                    // Pass the wizard's index config through wholesale:
+                    // rebuilding it field-by-field here silently dropped
+                    // embeddingModel/embeddingProvider/vectorBackend and the
+                    // parent-child chunk sizes.
+                    index: (config.index ?? {
+                      strategy: "plain"
+                    }) as PipelineConfig["index"],
                     search: config.search as PipelineConfig["search"],
                     query: config.query as PipelineConfig["query"],
                     refinement:
