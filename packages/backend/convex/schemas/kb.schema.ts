@@ -464,5 +464,12 @@ export const kbTables = {
     callbackReceivedAt: v.optional(v.number())
   })
     .index("by_job_status", ["crawlJobId", "status"])
-    .index("by_job_url", ["crawlJobId", "normalizedUrl"])
+    .index("by_job_url", ["crawlJobId", "normalizedUrl"]),
+
+  // ─── Tarser callback nonces (replay protection for /tarser/cb) ───
+  tarserCallbackNonces: defineTable({
+    nonce: v.string(),
+    serviceJobId: v.string(),
+    claimedAt: v.number()
+  }).index("by_nonce", ["nonce"])
 }

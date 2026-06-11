@@ -19,11 +19,13 @@ export const getScraperAvailability = tenantQuery({
  * e.g. http://host.docker.internal:<port>), else CONVEX_SITE_URL (the deployment .convex.site).
  * Server-only helper used by submit actions — NOT a Convex function.
  */
-export function tarserCallbackUrl(jobId: string, token: string): string {
+export function tarserCallbackUrl(token: string): string {
   const base = env.TARSER_CALLBACK_BASE_URL ?? process.env.CONVEX_SITE_URL ?? ""
   if (!base)
     throw new Error(
       "No callback base URL: set TARSER_CALLBACK_BASE_URL or CONVEX_SITE_URL"
     )
-  return `${base.replace(/\/+$/, "")}/tarser/cb?jobId=${encodeURIComponent(jobId)}&token=${encodeURIComponent(token)}`
+  // Only the token rides on the URL; the job id comes back in the
+  // X-Tarser-Job-Id header, so passing it here was dead/confusing.
+  return `${base.replace(/\/+$/, "")}/tarser/cb?token=${encodeURIComponent(token)}`
 }

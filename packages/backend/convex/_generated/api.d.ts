@@ -72,6 +72,7 @@ import type * as kb_results from "../kb/results.js";
 import type * as kb_retrieve_actions from "../kb/retrieve_actions.js";
 import type * as kb_retrievers from "../kb/retrievers.js";
 import type * as kb_tarser_callback from "../kb/tarser_callback.js";
+import type * as kb_tarser_nonce from "../kb/tarser_nonce.js";
 import type * as langsmith_syncRetry from "../langsmith/syncRetry.js";
 import type * as lib_agentLoop from "../lib/agentLoop.js";
 import type * as lib_auth from "../lib/auth.js";
@@ -157,6 +158,7 @@ declare const fullApi: ApiFromModules<{
   "kb/retrieve_actions": typeof kb_retrieve_actions;
   "kb/retrievers": typeof kb_retrievers;
   "kb/tarser_callback": typeof kb_tarser_callback;
+  "kb/tarser_nonce": typeof kb_tarser_nonce;
   "langsmith/syncRetry": typeof langsmith_syncRetry;
   "lib/agentLoop": typeof lib_agentLoop;
   "lib/auth": typeof lib_auth;

@@ -19,17 +19,26 @@ http.route({
     const token = url.searchParams.get("token") ?? ""
     const jobId = req.headers.get("X-Tarser-Job-Id") ?? ""
     const signature = req.headers.get("X-Tarser-Signature") ?? ""
+    const timestamp = req.headers.get("X-Tarser-Timestamp") ?? ""
+    const nonce = req.headers.get("X-Tarser-Nonce") ?? ""
 
-    let body: Record<string, unknown>
-    try {
-      body = (await req.json()) as Record<string, unknown>
-    } catch {
-      return new Response("invalid json", { status: 400 })
+    // Reject oversized callbacks by declared length before buffering; the
+    // post-read check is a sanity cap for chunked/length-absent requests.
+    const MAX_BODY_BYTES = 5_000_000
+    const declaredLen = Number(req.headers.get("Content-Length") ?? "")
+    if (Number.isFinite(declaredLen) && declaredLen > MAX_BODY_BYTES) {
+      return new Response("payload too large", { status: 413 })
+    }
+
+    // Raw bytes only: the action hashes/verifies and JSON-parses the body.
+    const rawBody = await req.text()
+    if (rawBody.length > MAX_BODY_BYTES) {
+      return new Response("payload too large", { status: 413 })
     }
 
     const { status } = await ctx.runAction(
       internal.kb.tarser_callback.handleTarserCallback,
-      { token, jobId, signature, body }
+      { token, jobId, signature, timestamp, nonce, rawBody }
     )
     return new Response(status === 200 ? "ok" : "error", { status })
   })
