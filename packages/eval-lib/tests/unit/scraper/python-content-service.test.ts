@@ -98,6 +98,31 @@ describe("PythonContentService HTTP", () => {
     ).rejects.toThrow(/expected JSON/i)
   })
 
+  it("caps an oversized error-response body instead of buffering it whole", async () => {
+    // A hostile/huge control-plane response must not be read unbounded.
+    const TOTAL = 200 * 1024
+    const enc = new TextEncoder()
+    let sent = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent >= TOTAL) {
+          controller.close()
+          return
+        }
+        const n = Math.min(16 * 1024, TOTAL - sent)
+        sent += n
+        controller.enqueue(enc.encode("a".repeat(n)))
+      }
+    })
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 500, body }))
+    const err = await new PythonContentService(cfg)
+      .cancel("svc-1")
+      .catch((e: Error) => e)
+    expect((err as Error).message).toMatch(/cancel failed: HTTP 500/)
+    // Body portion was capped well below the 200 KB the server streamed.
+    expect((err as Error).message.length).toBeLessThan(80 * 1024)
+  })
+
   it("passes an abort signal on outbound calls", async () => {
     mockFetchOnce({ serviceJobId: "svc-1" })
     await new PythonContentService(cfg).startCrawl({
