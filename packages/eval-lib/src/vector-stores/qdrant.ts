@@ -94,29 +94,46 @@ export class QdrantVectorStore implements VectorStore {
   async ensureCollection(): Promise<void> {
     if (this._collectionEnsured) return
     try {
-      // No retry on this GET: withRetry retries every error, and a 404 here
-      // is the expected "collection missing" signal, not a transient failure.
-      const info = await this._request<{
-        result?: { config?: { params?: { vectors?: { size?: number } } } }
-      }>("GET", `/collections/${this._cfg.collection}`, undefined, {
-        maxRetries: 0
-      })
-      const size = info.result?.config?.params?.vectors?.size
-      if (size !== undefined && size !== this._cfg.dimension) {
-        throw new Error(
-          `Qdrant collection "${this._cfg.collection}" has dimension ${size}, expected ${this._cfg.dimension}`
-        )
-      }
+      await this._verifyCollectionDimension()
     } catch (err) {
       if (err instanceof QdrantHttpError && err.status === 404) {
-        await this._request("PUT", `/collections/${this._cfg.collection}`, {
-          vectors: { size: this._cfg.dimension, distance: "Cosine" }
-        })
+        try {
+          await this._request("PUT", `/collections/${this._cfg.collection}`, {
+            vectors: { size: this._cfg.dimension, distance: "Cosine" }
+          })
+        } catch (createErr) {
+          // Concurrent indexers race to create the same collection; the
+          // losers get a 409. Treat it as created, but re-verify dimension.
+          if (
+            createErr instanceof QdrantHttpError &&
+            createErr.status === 409
+          ) {
+            await this._verifyCollectionDimension()
+          } else {
+            throw createErr
+          }
+        }
       } else {
         throw err
       }
     }
     this._collectionEnsured = true
+  }
+
+  private async _verifyCollectionDimension(): Promise<void> {
+    // No retry on this GET: withRetry retries every error, and a 404 here
+    // is the expected "collection missing" signal, not a transient failure.
+    const info = await this._request<{
+      result?: { config?: { params?: { vectors?: { size?: number } } } }
+    }>("GET", `/collections/${this._cfg.collection}`, undefined, {
+      maxRetries: 0
+    })
+    const size = info.result?.config?.params?.vectors?.size
+    if (size !== undefined && size !== this._cfg.dimension) {
+      throw new Error(
+        `Qdrant collection "${this._cfg.collection}" has dimension ${size}, expected ${this._cfg.dimension}`
+      )
+    }
   }
 
   async add(
