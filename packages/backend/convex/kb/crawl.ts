@@ -16,6 +16,18 @@ import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 // (timeout, site_failure, ...) is treated as an abnormal end.
 const NORMAL_FINISH_REASONS = new Set(["finished", "completed", "ok", "done"])
 
+// Terminal crawl-job statuses. Tarser delivery is at-least-once, so a per-page
+// callback can arrive after job_complete or after the reaper finalized the job.
+// Every callback handler bails when the job is already terminal so a late/duplicate
+// callback can't re-ingest documents or resurrect a finished job (mirrors
+// finishParse's parseStatus guard on the parse path).
+const TERMINAL_CRAWL_STATUSES = new Set([
+  "completed",
+  "completed_with_errors",
+  "failed",
+  "cancelled"
+])
+
 // Tarser crawls with no callback activity past this are presumed abandoned and
 // swept to a terminal status by the reaper cron.
 const CRAWL_STALE_MS = 30 * 60 * 1000
@@ -487,8 +499,11 @@ export const handleTarserPage = internalMutation({
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.crawlJobId)
     if (!job) return
-    // Don't keep ingesting in-flight pages after the job was cancelled.
-    if (job.status === "cancelled") return
+    // Ignore late/duplicate callbacks once the job is terminal.
+    if (TERMINAL_CRAWL_STATUSES.has(job.status)) return
+    // A page callback with no url can't be attributed or deduped (normalizeUrl("")
+    // == ""); treat it as a no-op rather than inserting an orphan document.
+    if (args.url.trim().length === 0) return
     const normalizedUrl = normalizeUrl(args.url)
     // Idempotency: skip if a crawlUrl for this normalized URL is already done.
     const existing = await ctx.db
@@ -575,7 +590,9 @@ export const handleTarserJobComplete = internalMutation({
   },
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.crawlJobId)
-    if (!job || job.status === "cancelled") return
+    // Ignore a duplicate/late job_complete once the job is terminal, so it can't
+    // overwrite a reaped "failed" job back to "completed".
+    if (!job || TERMINAL_CRAWL_STATUSES.has(job.status)) return
     // Reconcile the remote aggregate with our locally-counted page failures:
     // a remote `failed: 0` must not erase failures recorded via per-page
     // callbacks (handleTarserPageFailed), which would mislabel the job
@@ -610,7 +627,8 @@ export const handleTarserPageFailed = internalMutation({
   },
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.crawlJobId)
-    if (!job || job.status === "cancelled") return
+    // Ignore late/duplicate failure callbacks once the job is terminal.
+    if (!job || TERMINAL_CRAWL_STATUSES.has(job.status)) return
     const normalizedUrl = normalizeUrl(args.url)
     const existing = await ctx.db
       .query("crawlUrls")
@@ -660,12 +678,16 @@ export const reapStaleCrawls = internalMutation({
     const cutoff = Date.now() - CRAWL_STALE_MS
     let reaped = 0
     for (const status of ["running", "pending"] as const) {
+      // Scope the bounded batch to Tarser jobs at the index level. Filtering
+      // backend after a status-only take() would let never-reaped in-process
+      // "running" rows fill the batch and starve stale Tarser crawls forever.
       const jobs = await ctx.db
         .query("crawlJobs")
-        .withIndex("by_global_status", (q) => q.eq("status", status))
+        .withIndex("by_backend_status", (q) =>
+          q.eq("backend", "tarser").eq("status", status)
+        )
         .take(REAP_BATCH)
       for (const job of jobs) {
-        if (job.backend !== "tarser") continue
         const lastActivity =
           job.lastCallbackAt ?? job.submittedAt ?? job.createdAt
         if (lastActivity >= cutoff) continue
