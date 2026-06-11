@@ -22,11 +22,12 @@ const DEFAULT_TIMEOUT_MS = 30_000
 const MAX_CONTROL_RESPONSE_BYTES = 64 * 1024
 
 /**
- * Read a response body as text, stopping once ~maxBytes have been consumed.
- * Streams chunk-by-chunk so a server that omits or lies about Content-Length,
- * or streams forever, cannot exhaust memory. Truncates rather than throwing, so
- * the bounded text is usable for both JSON parsing and error diagnostics. Falls
- * back to response.text() when no readable body stream is available (test mocks).
+ * Read a response body as text, decoding at most ~maxBytes. Streams
+ * chunk-by-chunk and slices each chunk to the remaining budget before decoding,
+ * so a server that omits or lies about Content-Length never has more than
+ * maxBytes decoded into memory here. Truncates rather than throwing, so the
+ * bounded text is usable for both JSON parsing and error diagnostics. Falls back
+ * to response.text() when no readable body stream is available (test mocks).
  */
 async function readCappedText(
   res: Response,
@@ -35,7 +36,7 @@ async function readCappedText(
   if (!res.body) {
     const text = await res.text()
     return Buffer.byteLength(text, "utf8") > maxBytes
-      ? text.slice(0, maxBytes)
+      ? Buffer.from(text, "utf8").subarray(0, maxBytes).toString("utf8")
       : text
   }
   const reader = res.body.getReader()
@@ -46,8 +47,11 @@ async function readCappedText(
     while (received < maxBytes) {
       const { done, value } = await reader.read()
       if (done) break
-      received += value.byteLength
-      result += decoder.decode(value, { stream: true })
+      const remaining = maxBytes - received
+      const slice =
+        value.byteLength > remaining ? value.subarray(0, remaining) : value
+      received += slice.byteLength
+      result += decoder.decode(slice, { stream: true })
     }
   } finally {
     await reader.cancel().catch(() => {})
