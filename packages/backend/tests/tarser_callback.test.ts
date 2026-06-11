@@ -1,5 +1,6 @@
 import { computeCallbackSignature } from "@tars-inc/eval-lib/scraper"
 import { beforeAll, describe, expect, it } from "vitest"
+import { internal } from "../convex/_generated/api"
 import { seedKB, seedUser, setupTest, TEST_ORG_ID } from "./helpers"
 
 const SECRET = "test-secret"
@@ -279,5 +280,151 @@ describe("POST /tarser/cb", () => {
     const job = await t.run(async (ctx) => ctx.db.get(jobId))
     // The local failure survives, so the job is flagged, not silently "completed".
     expect(job?.status).toBe("completed_with_errors")
+  })
+})
+
+describe("crawl callback terminal/empty-url guards", () => {
+  async function seedJob(
+    t: ReturnType<typeof setupTest>,
+    kbId: string,
+    userId: string,
+    status: "running" | "completed" | "completed_with_errors" | "failed",
+    finishReason?: string
+  ) {
+    return await t.run(async (ctx) =>
+      ctx.db.insert("crawlJobs", {
+        orgId: TEST_ORG_ID,
+        kbId,
+        userId,
+        startUrl: "https://example.com",
+        config: { maxPages: 10, maxDepth: 2 },
+        status,
+        stats: { discovered: 1, scraped: 0, failed: 0, skipped: 0 },
+        backend: "tarser",
+        serviceJobId: "svc-1",
+        callbackToken: "tok",
+        createdAt: Date.now(),
+        ...(finishReason ? { finishReason } : {})
+      })
+    )
+  }
+
+  async function kbDocCount(t: ReturnType<typeof setupTest>, kbId: string) {
+    const docs = await t.run(async (ctx) =>
+      ctx.db
+        .query("documents")
+        .withIndex("by_kb", (q) => q.eq("kbId", kbId))
+        .collect()
+    )
+    return docs.length
+  }
+
+  it("ignores a page callback for an already-terminal job (no late re-ingest)", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const jobId = await seedJob(
+      t,
+      kbId as unknown as string,
+      userId as unknown as string,
+      "completed"
+    )
+    await t.mutation(internal.kb.crawl.handleTarserPage, {
+      crawlJobId: jobId,
+      url: "https://example.com/late",
+      title: "Late",
+      markdown: "# Late page content"
+    })
+    expect(await kbDocCount(t, kbId as unknown as string)).toBe(0)
+  })
+
+  it("does not let a late job_complete resurrect a reaped (failed) job", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const jobId = await seedJob(
+      t,
+      kbId as unknown as string,
+      userId as unknown as string,
+      "failed",
+      "reaped: no callback activity"
+    )
+    await t.mutation(internal.kb.crawl.handleTarserJobComplete, {
+      crawlJobId: jobId,
+      finishReason: "finished",
+      stats: { visited: 1, failed: 0 }
+    })
+    const job = await t.run(async (ctx) => ctx.db.get(jobId))
+    expect(job?.status).toBe("failed")
+    expect(job?.finishReason).toBe("reaped: no callback activity")
+  })
+
+  it("skips a page callback with an empty url (no orphan document)", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const jobId = await seedJob(
+      t,
+      kbId as unknown as string,
+      userId as unknown as string,
+      "running"
+    )
+    await t.mutation(internal.kb.crawl.handleTarserPage, {
+      crawlJobId: jobId,
+      url: "",
+      title: "",
+      markdown: "# Has content but no url"
+    })
+    expect(await kbDocCount(t, kbId as unknown as string)).toBe(0)
+  })
+})
+
+describe("reapStaleCrawls backend scoping", () => {
+  it("reaps a stale Tarser crawl and leaves in-process jobs untouched", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const old = Date.now() - 60 * 60 * 1000 // 1h ago, past CRAWL_STALE_MS
+
+    // An orphaned in-process job sits as an older "running" row; it must neither
+    // be reaped here nor starve the bounded Tarser batch.
+    const inproc = await t.run(async (ctx) =>
+      ctx.db.insert("crawlJobs", {
+        orgId: TEST_ORG_ID,
+        kbId,
+        userId,
+        startUrl: "https://a.example.com",
+        config: { maxPages: 5, maxDepth: 1 },
+        status: "running",
+        stats: { discovered: 1, scraped: 0, failed: 0, skipped: 0 },
+        backend: "inprocess",
+        createdAt: old
+      })
+    )
+    const tarser = await t.run(async (ctx) =>
+      ctx.db.insert("crawlJobs", {
+        orgId: TEST_ORG_ID,
+        kbId,
+        userId,
+        startUrl: "https://b.example.com",
+        config: { maxPages: 5, maxDepth: 1 },
+        status: "running",
+        stats: { discovered: 1, scraped: 0, failed: 0, skipped: 0 },
+        backend: "tarser",
+        serviceJobId: "svc-stale",
+        callbackToken: "tok",
+        submittedAt: old,
+        createdAt: old
+      })
+    )
+
+    const res = await t.mutation(internal.kb.crawl.reapStaleCrawls, {})
+    expect(res.reaped).toBe(1)
+    expect((await t.run(async (ctx) => ctx.db.get(tarser)))?.status).toBe(
+      "failed"
+    )
+    expect((await t.run(async (ctx) => ctx.db.get(inproc)))?.status).toBe(
+      "running"
+    )
   })
 })

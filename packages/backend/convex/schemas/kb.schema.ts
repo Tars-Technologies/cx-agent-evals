@@ -438,8 +438,10 @@ export const kbTables = {
     .index("by_kb", ["kbId"])
     .index("by_status", ["orgId", "status"])
     .index("by_service_job", ["serviceJobId"])
-    // Cross-org sweep by status for the stale-crawl reaper cron.
-    .index("by_global_status", ["status"]),
+    // Cross-org sweep by (backend, status) for the stale-crawl reaper cron, so a
+    // bounded take() returns only reapable Tarser jobs (never-reaped in-process
+    // "running" rows would otherwise starve the batch).
+    .index("by_backend_status", ["backend", "status"]),
 
   // ─── Crawl URLs (URL frontier for crawl jobs) ───
   crawlUrls: defineTable({
