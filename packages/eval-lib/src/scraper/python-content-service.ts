@@ -16,6 +16,46 @@ export interface PythonContentServiceConfig {
 
 const DEFAULT_TIMEOUT_MS = 30_000
 
+// Control-plane responses (job-accepted envelopes, error bodies) are tiny.
+// Cap the read so a large or hostile Tarser/proxy response cannot be buffered
+// unbounded into the action before JSON.parse / error formatting.
+const MAX_CONTROL_RESPONSE_BYTES = 64 * 1024
+
+/**
+ * Read a response body as text, stopping once ~maxBytes have been consumed.
+ * Streams chunk-by-chunk so a server that omits or lies about Content-Length,
+ * or streams forever, cannot exhaust memory. Truncates rather than throwing, so
+ * the bounded text is usable for both JSON parsing and error diagnostics. Falls
+ * back to response.text() when no readable body stream is available (test mocks).
+ */
+async function readCappedText(
+  res: Response,
+  maxBytes = MAX_CONTROL_RESPONSE_BYTES
+): Promise<string> {
+  if (!res.body) {
+    const text = await res.text()
+    return Buffer.byteLength(text, "utf8") > maxBytes
+      ? text.slice(0, maxBytes)
+      : text
+  }
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let received = 0
+  let result = ""
+  try {
+    while (received < maxBytes) {
+      const { done, value } = await reader.read()
+      if (done) break
+      received += value.byteLength
+      result += decoder.decode(value, { stream: true })
+    }
+  } finally {
+    await reader.cancel().catch(() => {})
+  }
+  result += decoder.decode()
+  return result
+}
+
 /**
  * Remote crawler + parser backed by the Tarser HTTP service. Implements BOTH ports.
  * Submit/cancel/health go over HTTP here; results arrive later as HMAC-signed callbacks
@@ -100,28 +140,24 @@ export class PythonContentService implements Scraper, Parser {
     )
     if (res.status < 200 || res.status >= 300) {
       throw new Error(
-        `Tarser cancel failed: HTTP ${res.status} ${await res.text()}`
+        `Tarser cancel failed: HTTP ${res.status} ${await readCappedText(res)}`
       )
     }
   }
 
   private async parseJobAccepted(
-    res: {
-      status: number
-      json: () => Promise<unknown>
-      text: () => Promise<string>
-    },
+    res: Response,
     op: string
   ): Promise<{ serviceJobId: string }> {
     if (res.status < 200 || res.status >= 300) {
       throw new Error(
-        `Tarser ${op} failed: HTTP ${res.status} ${await res.text()}`
+        `Tarser ${op} failed: HTTP ${res.status} ${await readCappedText(res)}`
       )
     }
     // Read text first, then parse: a proxy/gateway can return an empty or
     // non-JSON 2xx, and res.json() would throw a confusing parse error that
     // hides the real response.
-    const text = await res.text()
+    const text = await readCappedText(res)
     let body: { serviceJobId?: string }
     try {
       body = JSON.parse(text) as { serviceJobId?: string }
