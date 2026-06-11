@@ -267,6 +267,12 @@ const native = makeVectorStore(
 )
 ```
 
+Notes on the Qdrant backend:
+
+- The collection is created on first `add`, with keyword payload indexes for the filterable fields (`kbId`, `indexConfigHash`, `documentId`), so filtered search and delete work on strict-mode instances such as Qdrant Cloud.
+- Collection creation is safe under concurrent writers (a lost create race is re-verified instead of failing) and throws loudly when an existing collection's dimension does not match the configured one.
+- Point payloads carry the chunk text and character offsets, so search results need no separate hydration step; upserts are idempotent via point ids derived from the chunk id.
+
 `StatelessQueryRetriever` runs the query-time pipeline (query expansion, dense/BM25/hybrid search, refinement chain) over an existing index reached through a `VectorStore` plus a `ChunkSource`, with `retrieveWithTrace()` reporting every stage's inputs, outputs, and latency.
 
 ## Key concepts
