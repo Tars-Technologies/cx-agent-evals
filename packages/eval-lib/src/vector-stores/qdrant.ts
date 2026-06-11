@@ -113,11 +113,33 @@ export class QdrantVectorStore implements VectorStore {
             throw createErr
           }
         }
+        await this._createPayloadIndexes()
       } else {
         throw err
       }
     }
     this._collectionEnsured = true
+  }
+
+  /**
+   * Index the payload fields VectorFilter can target. Strict-mode instances
+   * (e.g. Qdrant Cloud) reject filtered search/delete on unindexed fields.
+   */
+  private async _createPayloadIndexes(): Promise<void> {
+    for (const field of ["kbId", "indexConfigHash", "documentId"] as const) {
+      try {
+        await this._request(
+          "PUT",
+          `/collections/${this._cfg.collection}/index?wait=true`,
+          { field_name: field, field_schema: "keyword" }
+        )
+      } catch (err) {
+        // A concurrent indexer may have created it between our calls.
+        if (!(err instanceof QdrantHttpError && err.status === 409)) {
+          throw err
+        }
+      }
+    }
   }
 
   private async _verifyCollectionDimension(): Promise<void> {
