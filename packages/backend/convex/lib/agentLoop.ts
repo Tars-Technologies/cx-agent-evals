@@ -129,7 +129,8 @@ export async function runAgentLoop(
       system: config.systemPrompt,
       messages,
       tools: hasTools ? tools : undefined,
-      maxSteps: 12
+      maxSteps: 12,
+      maxRetries: 5
     })
 
     let finalText = result.text
@@ -156,7 +157,8 @@ export async function runAgentLoop(
         system:
           config.systemPrompt +
           "\n\nYou have already gathered information using tools. Provide your best response to the user based on what you found. Do not call any more tools.",
-        messages: followupMessages as any
+        messages: followupMessages as any,
+        maxRetries: 5
       })
 
       finalText = recovery.text

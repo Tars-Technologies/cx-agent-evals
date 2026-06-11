@@ -71,6 +71,7 @@ function StatusOrProgress({ result }: { result: RankedResult }) {
 interface ResultsTableProps {
   results: RankedResult[]
   metricNames: string[] // which optional columns to show (f1, iou)
+  kbId: string // owning KB id, used to build experiment-detail links
 }
 
 function NumericCell({ value }: { value: number | undefined }) {
@@ -85,7 +86,11 @@ function NumericCell({ value }: { value: number | undefined }) {
   )
 }
 
-export function ResultsTable({ results, metricNames }: ResultsTableProps) {
+export function ResultsTable({
+  results,
+  metricNames,
+  kbId,
+}: ResultsTableProps) {
   const [expanded, setExpanded] = useState(false)
 
   const showF1 = metricNames.includes("f1")
@@ -227,7 +232,7 @@ export function ResultsTable({ results, metricNames }: ResultsTableProps) {
                   >
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link
-                        href={`/retrievers/results/${result.experimentId}`}
+                        href={`/kb/${kbId}/evaluate/experiments/${result.experimentId}`}
                         className="hover:underline"
                         style={{ color: "var(--color-text)" }}
                       >
