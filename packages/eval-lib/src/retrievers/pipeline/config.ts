@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import type { RerankerProvider } from "../../rerankers/make-reranker.js"
 import {
   DEFAULT_CONTEXT_PROMPT,
   DEFAULT_SUMMARY_PROMPT
@@ -180,7 +181,7 @@ export interface RerankRefinementStep {
    */
   readonly topN?: number
   /** Reranker provider for this step. Defaults to "cohere" when omitted. */
-  readonly provider?: "cohere" | "jina" | "voyage"
+  readonly provider?: RerankerProvider
   /** Reranker model id. Falls back to the provider's default. */
   readonly model?: string
 }

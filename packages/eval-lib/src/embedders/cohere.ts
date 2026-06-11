@@ -82,6 +82,8 @@ export class CohereEmbedder implements Embedder {
       input_type: "search_query",
       embedding_types: ["float"]
     })
-    return response.embeddings.float[0]
+    const vectors = response.embeddings.float
+    assertEmbeddingBatch(vectors, 1, this.name)
+    return vectors[0]
   }
 }
