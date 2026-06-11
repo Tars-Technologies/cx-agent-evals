@@ -25,6 +25,13 @@ describe("normalizeUrl", () => {
       "https://example.com/?a=1&b=2"
     )
   })
+  it("gives a bare host and its trailing-slash form the same key", () => {
+    // Crawl dedup relies on this: a seed URL and a discovered link to the home
+    // page must normalize identically or the home page re-scrapes as a duplicate.
+    expect(normalizeUrl("https://example.com")).toBe(
+      normalizeUrl("https://example.com/")
+    )
+  })
 })
 
 describe("filterLinks", () => {
