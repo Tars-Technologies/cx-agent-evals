@@ -60,7 +60,7 @@ function RetrieverListItemWithProgress({
   onToggleCheck?: () => void
 }) {
   const job = useQuery(
-    api.kb.indexing.getJob,
+    api.retrieval.indexing.getJob,
     retriever.status === "indexing" && retriever.indexingJobId
       ? { jobId: retriever.indexingJobId }
       : "skip"
@@ -95,18 +95,22 @@ export function RetrieverSidebar({
 }: RetrieverSidebarProps) {
   // --- Data fetching ---
   const retrievers = useQuery(
-    api.kb.retrievers.byKb,
+    api.crud.retrievers.byKb,
     selectedKbId ? { kbId: selectedKbId } : "skip"
   )
 
   // --- Actions & Mutations ---
-  const startIndexingAction = useAction(api.kb.retrieve_actions.startIndexing)
-  const removeRetriever = useMutation(api.kb.retrievers.remove)
-  const deleteIndexMutation = useMutation(api.kb.retrievers.deleteIndex)
-  const resetAfterCancelMutation = useMutation(
-    api.kb.retrievers.resetAfterCancel
+  const startIndexingAction = useAction(
+    api.retrieval.retrieverActions.startIndexing
   )
-  const cancelIndexingMutation = useMutation(api.kb.indexing.cancelIndexing)
+  const removeRetriever = useMutation(api.crud.retrievers.remove)
+  const deleteIndexMutation = useMutation(api.crud.retrievers.deleteIndex)
+  const resetAfterCancelMutation = useMutation(
+    api.crud.retrievers.resetAfterCancel
+  )
+  const cancelIndexingMutation = useMutation(
+    api.retrieval.indexing.cancelIndexing
+  )
 
   // --- Local UI state ---
   const [expandedId, setExpandedId] = useState<Id<"retrievers"> | null>(null)

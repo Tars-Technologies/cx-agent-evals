@@ -10,6 +10,7 @@ import { SoloScoreCard } from "./SoloScoreCard"
 
 interface ExperimentResultsProps {
   runId: Id<"experimentRuns"> | null
+  kbId: Id<"knowledgeBases">
 }
 
 type RunStatus =
@@ -73,9 +74,9 @@ function formatDate(ts: number): string {
   })
 }
 
-export function ExperimentResults({ runId }: ExperimentResultsProps) {
+export function ExperimentResults({ runId, kbId }: ExperimentResultsProps) {
   const data = useQuery(
-    api.kb.experimentRuns.getWithScores,
+    api.experimentRuns.orchestration.getWithScores,
     runId ? { id: runId } : "skip"
   )
 
@@ -218,7 +219,11 @@ export function ExperimentResults({ runId }: ExperimentResultsProps) {
         )}
 
         {/* Results table (all results, including running/failed) */}
-        <ResultsTable results={rankedResults} metricNames={data.metricNames} />
+        <ResultsTable
+          results={rankedResults}
+          metricNames={data.metricNames}
+          kbId={kbId}
+        />
       </div>
     </div>
   )

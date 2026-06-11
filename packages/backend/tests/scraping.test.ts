@@ -69,7 +69,7 @@ describe("scraping: startCrawl", () => {
   it("creates a crawl job and seed URL", async () => {
     await seedUser(t)
     const authedT = t.withIdentity(testIdentity)
-    const kbId = await authedT.mutation(api.kb.core.create, {
+    const kbId = await authedT.mutation(api.crud.knowledgeBases.create, {
       name: "Test KB"
     })
 
@@ -77,7 +77,7 @@ describe("scraping: startCrawl", () => {
     // We wrap in try/catch and verify the records were created regardless.
     let jobId: Id<"crawlJobs"> | undefined
     try {
-      jobId = await authedT.mutation(api.kb.crawl.startCrawl, {
+      jobId = await authedT.mutation(api.scraping.orchestration.startCrawl, {
         kbId,
         startUrl: "https://example.com"
       })
@@ -119,7 +119,7 @@ describe("scraping: cancelCrawl", () => {
     const jobId = await seedCrawlJob(t, userId, kbId, { status: "running" })
 
     const authedT = t.withIdentity(testIdentity)
-    await authedT.mutation(api.kb.crawl.cancelCrawl, { jobId })
+    await authedT.mutation(api.scraping.orchestration.cancelCrawl, { jobId })
 
     const job = await t.run(async (ctx) => ctx.db.get(jobId))
     expect(job!.status).toBe("cancelled")
@@ -134,7 +134,7 @@ describe("scraping: cancelCrawl", () => {
 
     const authedT = t.withIdentity(testIdentity)
     await expect(
-      authedT.mutation(api.kb.crawl.cancelCrawl, { jobId })
+      authedT.mutation(api.scraping.orchestration.cancelCrawl, { jobId })
     ).rejects.toThrow("Cannot cancel job in status: completed")
   })
 })
@@ -150,7 +150,7 @@ describe("scraping: persistScrapedPage", () => {
     const kbId = await seedKB(t, userId)
 
     // Test createFromScrape directly (the mutation called by persistScrapedPage)
-    const docId = await t.mutation(internal.kb.documents.createFromScrape, {
+    const docId = await t.mutation(internal.crud.documents.createFromScrape, {
       orgId: TEST_ORG_ID,
       kbId,
       title: "Test Page",
@@ -176,7 +176,7 @@ describe("scraping: persistScrapedPage", () => {
       url: "https://example.com"
     })
 
-    await t.mutation(internal.kb.crawl.persistScrapedPage, {
+    await t.mutation(internal.scraping.orchestration.persistScrapedPage, {
       crawlJobId: jobId,
       crawlUrlId: urlId,
       title: "Test Page",
@@ -242,7 +242,7 @@ describe("scraping: persistScrapedPage", () => {
     })
 
     // First persist: scrape example.com which discovers page1 and page2
-    await t.mutation(internal.kb.crawl.persistScrapedPage, {
+    await t.mutation(internal.scraping.orchestration.persistScrapedPage, {
       crawlJobId: jobId,
       crawlUrlId: urlId,
       title: "Test",
@@ -289,7 +289,7 @@ describe("scraping: persistScrapedPage", () => {
     expect(page1Url).not.toBeNull()
 
     // Second persist: scrape page1 which tries to discover page1 again (self-ref) and page2 again
-    await t.mutation(internal.kb.crawl.persistScrapedPage, {
+    await t.mutation(internal.scraping.orchestration.persistScrapedPage, {
       crawlJobId: jobId,
       crawlUrlId: page1Url!._id,
       title: "Test 2",
@@ -355,7 +355,7 @@ describe("scraping: persistScrapedPage", () => {
       url: "https://example.com"
     })
 
-    await t.mutation(internal.kb.crawl.persistScrapedPage, {
+    await t.mutation(internal.scraping.orchestration.persistScrapedPage, {
       crawlJobId: jobId,
       crawlUrlId: urlId,
       title: "Root",
@@ -403,7 +403,7 @@ describe("scraping: markUrlFailed", () => {
     const jobId = await seedCrawlJob(t, userId, kbId)
     const urlId = await seedCrawlUrl(t, jobId)
 
-    await t.mutation(internal.kb.crawl.markUrlFailed, {
+    await t.mutation(internal.scraping.orchestration.markUrlFailed, {
       crawlJobId: jobId,
       crawlUrlId: urlId,
       error: "Connection timeout"
@@ -425,12 +425,12 @@ describe("scraping: markUrlFailed", () => {
     const urlId = await seedCrawlUrl(t, jobId)
 
     // Fail twice
-    await t.mutation(internal.kb.crawl.markUrlFailed, {
+    await t.mutation(internal.scraping.orchestration.markUrlFailed, {
       crawlJobId: jobId,
       crawlUrlId: urlId,
       error: "Timeout 1"
     })
-    await t.mutation(internal.kb.crawl.markUrlFailed, {
+    await t.mutation(internal.scraping.orchestration.markUrlFailed, {
       crawlJobId: jobId,
       crawlUrlId: urlId,
       error: "Timeout 2"
@@ -459,7 +459,7 @@ describe("scraping: onBatchComplete", () => {
     })
     // No pending URLs exist
 
-    await t.mutation(internal.kb.crawl.onBatchComplete, {
+    await t.mutation(internal.scraping.orchestration.onBatchComplete, {
       workId: "test-work-id",
       context: { jobId },
       result: { kind: "success", returnValue: {} }
@@ -475,7 +475,7 @@ describe("scraping: onBatchComplete", () => {
     const kbId = await seedKB(t, userId)
     const jobId = await seedCrawlJob(t, userId, kbId)
 
-    await t.mutation(internal.kb.crawl.onBatchComplete, {
+    await t.mutation(internal.scraping.orchestration.onBatchComplete, {
       workId: "test-work-id",
       context: { jobId },
       result: { kind: "failed", error: "Action crashed" }
@@ -494,7 +494,7 @@ describe("scraping: onBatchComplete", () => {
       stats: { discovered: 3, scraped: 0, failed: 3, skipped: 0 }
     })
 
-    await t.mutation(internal.kb.crawl.onBatchComplete, {
+    await t.mutation(internal.scraping.orchestration.onBatchComplete, {
       workId: "test-work-id",
       context: { jobId },
       result: { kind: "success", returnValue: {} }
@@ -513,7 +513,7 @@ describe("scraping: onBatchComplete", () => {
       stats: { discovered: 5, scraped: 3, failed: 2, skipped: 0 }
     })
 
-    await t.mutation(internal.kb.crawl.onBatchComplete, {
+    await t.mutation(internal.scraping.orchestration.onBatchComplete, {
       workId: "test-work-id",
       context: { jobId },
       result: { kind: "success", returnValue: {} }
@@ -532,7 +532,7 @@ describe("scraping: onBatchComplete", () => {
       status: "cancelled"
     })
 
-    await t.mutation(internal.kb.crawl.onBatchComplete, {
+    await t.mutation(internal.scraping.orchestration.onBatchComplete, {
       workId: "test-work-id",
       context: { jobId },
       result: { kind: "success", returnValue: {} }

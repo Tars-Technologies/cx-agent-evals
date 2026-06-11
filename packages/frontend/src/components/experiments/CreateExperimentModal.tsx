@@ -35,13 +35,13 @@ export function CreateExperimentModal({
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const allDatasets = useQuery(api.kb.datasets.byKb, { kbId })
+  const allDatasets = useQuery(api.crud.datasets.byKb, { kbId })
   const datasets = (allDatasets ?? []).filter(
     (d) => !d.type || d.type === "questions"
   )
-  const retrievers = useQuery(api.kb.retrievers.byKb, { kbId })
+  const retrievers = useQuery(api.crud.retrievers.byKb, { kbId })
   const readyRetrievers = (retrievers ?? []).filter((r) => r.status === "ready")
-  const createRun = useMutation(api.kb.experimentRuns.create)
+  const createRun = useMutation(api.experimentRuns.orchestration.create)
 
   if (!open) return null
 

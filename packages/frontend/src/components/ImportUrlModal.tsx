@@ -21,7 +21,7 @@ export function ImportUrlModal({
   defaultUrl,
   onStarted
 }: ImportUrlModalProps) {
-  const startCrawl = useMutation(api.kb.crawl.startCrawl)
+  const startCrawl = useMutation(api.scraping.orchestration.startCrawl)
 
   // Primary fields
   const [url, setUrl] = useState("")

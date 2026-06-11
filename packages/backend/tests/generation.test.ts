@@ -82,7 +82,7 @@ describe("generation: onQuestionGenerated", () => {
       processedItems: 1
     })
 
-    await t.mutation(internal.kb.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_2" },
       result: { kind: "success", returnValue: {} }
@@ -102,7 +102,7 @@ describe("generation: onQuestionGenerated", () => {
       totalItems: 2
     })
 
-    await t.mutation(internal.kb.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_1" },
       result: { kind: "failed", error: "LLM timeout" }
@@ -123,7 +123,7 @@ describe("generation: onQuestionGenerated", () => {
       totalItems: 2
     })
 
-    await t.mutation(internal.kb.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_1" },
       result: { kind: "canceled" }
@@ -146,7 +146,7 @@ describe("generation: onQuestionGenerated", () => {
     // Seed a question that would have been created by the generation action
     await seedQuestion(t, datasetId, 1)
 
-    await t.mutation(internal.kb.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_1" },
       result: { kind: "success", returnValue: {} }
@@ -171,7 +171,7 @@ describe("generation: onQuestionGenerated", () => {
       totalItems: 1
     })
 
-    await t.mutation(internal.kb.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_1" },
       result: { kind: "failed", error: "API error" }
@@ -191,7 +191,7 @@ describe("generation: onQuestionGenerated", () => {
       totalItems: 1
     })
 
-    await t.mutation(internal.kb.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_1" },
       result: { kind: "canceled" }
@@ -211,7 +211,7 @@ describe("generation: onQuestionGenerated", () => {
       totalItems: 2
     })
 
-    await t.mutation(internal.kb.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_1" },
       result: { kind: "success", returnValue: {} }
@@ -231,7 +231,7 @@ describe("generation: onQuestionGenerated", () => {
       totalItems: 2
     })
 
-    await t.mutation(internal.kb.generation.onQuestionGenerated, {
+    await t.mutation(internal.generation.orchestration.onQuestionGenerated, {
       workId: "w_fake",
       context: { jobId, itemKey: "doc_1" },
       result: { kind: "success", returnValue: {} }
@@ -259,7 +259,7 @@ describe("generation: onGroundTruthAssigned", () => {
       processedItems: 1
     })
 
-    await t.mutation(internal.kb.generation.onGroundTruthAssigned, {
+    await t.mutation(internal.generation.orchestration.onGroundTruthAssigned, {
       workId: "w_fake",
       context: { jobId, itemKey: "q_1" },
       result: { kind: "success", returnValue: {} }
@@ -281,7 +281,7 @@ describe("generation: onGroundTruthAssigned", () => {
       processedItems: 0
     })
 
-    await t.mutation(internal.kb.generation.onGroundTruthAssigned, {
+    await t.mutation(internal.generation.orchestration.onGroundTruthAssigned, {
       workId: "w_fake",
       context: { jobId, itemKey: "q_1" },
       result: { kind: "success", returnValue: {} }
@@ -325,7 +325,7 @@ describe("generation: onGroundTruthAssigned", () => {
       })
     })
 
-    await t.mutation(internal.kb.generation.onGroundTruthAssigned, {
+    await t.mutation(internal.generation.orchestration.onGroundTruthAssigned, {
       workId: "w_fake",
       context: { jobId, itemKey: "q_1" },
       result: { kind: "success", returnValue: {} }
@@ -345,7 +345,7 @@ describe("generation: onGroundTruthAssigned", () => {
       totalItems: 1
     })
 
-    await t.mutation(internal.kb.generation.onGroundTruthAssigned, {
+    await t.mutation(internal.generation.orchestration.onGroundTruthAssigned, {
       workId: "w_fake",
       context: { jobId, itemKey: "q_1" },
       result: { kind: "canceled" }
@@ -376,7 +376,7 @@ describe("generation: getJob", () => {
     })
 
     const authedT = t.withIdentity(testIdentity)
-    const job = await authedT.query(internal.kb.generation.getJob, {
+    const job = await authedT.query(internal.generation.orchestration.getJob, {
       jobId
     })
 
@@ -408,7 +408,7 @@ describe("generation: getJob", () => {
     })
 
     const authedT = t.withIdentity(testIdentity)
-    const job = await authedT.query(internal.kb.generation.getJob, {
+    const job = await authedT.query(internal.generation.orchestration.getJob, {
       jobId
     })
     expect(job).toBeNull()

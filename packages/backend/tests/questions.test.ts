@@ -33,7 +33,7 @@ describe("updateQuestion", () => {
 
     // Update question text
     const authedT = t.withIdentity(testIdentity)
-    await authedT.mutation(api.kb.questions.updateQuestion, {
+    await authedT.mutation(api.crud.questions.updateQuestion, {
       questionId,
       queryText: "Updated question?"
     })
@@ -69,7 +69,7 @@ describe("updateQuestion", () => {
     ]
 
     const authedT = t.withIdentity(testIdentity)
-    await authedT.mutation(api.kb.questions.updateQuestion, {
+    await authedT.mutation(api.crud.questions.updateQuestion, {
       questionId,
       relevantSpans: newSpans
     })
@@ -104,7 +104,7 @@ describe("updateQuestion", () => {
 
     const wrongAuthedT = t.withIdentity(wrongOrgIdentity)
     await expect(
-      wrongAuthedT.mutation(api.kb.questions.updateQuestion, {
+      wrongAuthedT.mutation(api.crud.questions.updateQuestion, {
         questionId,
         queryText: "Hacked!"
       })

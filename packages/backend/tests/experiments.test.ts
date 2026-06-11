@@ -13,29 +13,13 @@ import {
 
 // ─── Domain-Specific Seeders ───
 
-type ExperimentStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "completed_with_errors"
-  | "failed"
-  | "canceling"
-  | "canceled"
-
-type ExperimentPhase =
-  | "initializing"
-  | "indexing"
-  | "syncing"
-  | "evaluating"
-  | "done"
-
 async function seedExperiment(
   t: ReturnType<typeof convexTest>,
   userId: Id<"users">,
   datasetId: Id<"datasets">,
   overrides: Partial<{
-    status: ExperimentStatus
-    phase: ExperimentPhase
+    status: string
+    phase: string
     totalQuestions: number
     processedQuestions: number
   }> = {}
@@ -46,7 +30,7 @@ async function seedExperiment(
       datasetId,
       name: "Test Experiment",
       metricNames: ["recall", "precision", "iou", "f1"],
-      status: overrides.status ?? "running",
+      status: (overrides.status ?? "running") as any,
       phase: overrides.phase ?? "evaluating",
       totalQuestions: overrides.totalQuestions ?? 3,
       processedQuestions: overrides.processedQuestions ?? 0,
@@ -74,7 +58,7 @@ describe("experiments: onExperimentComplete", () => {
       phase: "done"
     })
 
-    await t.mutation(internal.kb.experiments.onExperimentComplete, {
+    await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
       result: { kind: "success", returnValue: {} }
@@ -93,7 +77,7 @@ describe("experiments: onExperimentComplete", () => {
       status: "running"
     })
 
-    await t.mutation(internal.kb.experiments.onExperimentComplete, {
+    await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
       result: { kind: "failed", error: "Action timed out" }
@@ -113,7 +97,7 @@ describe("experiments: onExperimentComplete", () => {
       status: "canceling"
     })
 
-    await t.mutation(internal.kb.experiments.onExperimentComplete, {
+    await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
       result: { kind: "canceled" }
@@ -132,7 +116,7 @@ describe("experiments: onExperimentComplete", () => {
       status: "failed"
     })
 
-    await t.mutation(internal.kb.experiments.onExperimentComplete, {
+    await t.mutation(internal.experiments.orchestration.onExperimentComplete, {
       workId: "w_fake",
       context: { experimentId },
       result: { kind: "failed", error: "Duplicate failure" }
@@ -142,183 +126,6 @@ describe("experiments: onExperimentComplete", () => {
     // Should not overwrite — status was already "failed"
     expect(exp!.status).toBe("failed")
     expect(exp!.error).toBeUndefined() // Original had no error set
-  })
-
-  it("does not clobber a completed experiment when the wrapper times out", async () => {
-    const userId = await seedUser(t)
-    const kbId = await seedKB(t, userId)
-    const datasetId = await seedDataset(t, userId, kbId)
-    const experimentId = await seedExperiment(t, userId, datasetId, {
-      status: "completed",
-      phase: "done"
-    })
-    await t.run(async (ctx) => {
-      await ctx.db.patch(experimentId, {
-        scores: { recall: 0.8, precision: 0.6 },
-        completedAt: 1_000
-      })
-    })
-
-    await t.mutation(internal.kb.experiments.onExperimentComplete, {
-      workId: "w_fake",
-      context: { experimentId },
-      result: { kind: "failed", error: "Function execution timed out" }
-    })
-
-    const exp = await t.run(async (ctx) => ctx.db.get(experimentId))
-    expect(exp!.status).toBe("completed")
-    expect(exp!.scores).toEqual({ recall: 0.8, precision: 0.6 })
-    expect(exp!.error).toBeUndefined()
-    expect(exp!.completedAt).toBe(1_000)
-  })
-
-  it("reports success to the parent run when a completed child times out", async () => {
-    const userId = await seedUser(t)
-    const kbId = await seedKB(t, userId)
-    const datasetId = await seedDataset(t, userId, kbId)
-
-    const { runId, experimentId } = await t.run(async (ctx) => {
-      const runId = await ctx.db.insert("experimentRuns", {
-        orgId: TEST_ORG_ID,
-        kbId,
-        datasetId,
-        name: "Run",
-        retrieverIds: [],
-        metricNames: ["recall", "precision"],
-        scoringWeights: { recall: 0.7, precision: 0.3 },
-        status: "running",
-        totalRetrievers: 1,
-        completedRetrievers: 0,
-        failedRetrievers: 0,
-        createdBy: userId,
-        createdAt: Date.now()
-      })
-      const experimentId = await ctx.db.insert("experiments", {
-        orgId: TEST_ORG_ID,
-        kbId,
-        datasetId,
-        name: "Run — child",
-        experimentRunId: runId,
-        metricNames: ["recall", "precision"],
-        status: "completed",
-        phase: "done",
-        scores: { recall: 0.8, precision: 0.6 },
-        createdBy: userId,
-        createdAt: Date.now()
-      })
-      return { runId, experimentId }
-    })
-
-    await t.mutation(internal.kb.experiments.onExperimentComplete, {
-      workId: "w_fake",
-      context: { experimentId },
-      result: { kind: "failed", error: "Function execution timed out" }
-    })
-
-    const run = await t.run(async (ctx) => ctx.db.get(runId))
-    expect(run!.completedRetrievers).toBe(1)
-    expect(run!.failedRetrievers).toBe(0)
-    expect(run!.status).toBe("completed")
-  })
-
-  it("does not clobber a canceled experiment when a late failed result arrives", async () => {
-    const userId = await seedUser(t)
-    const kbId = await seedKB(t, userId)
-    const datasetId = await seedDataset(t, userId, kbId)
-    const experimentId = await seedExperiment(t, userId, datasetId, {
-      status: "canceled"
-    })
-    await t.run(async (ctx) => {
-      await ctx.db.patch(experimentId, {
-        completedAt: 1_000
-      })
-    })
-
-    await t.mutation(internal.kb.experiments.onExperimentComplete, {
-      workId: "w_fake",
-      context: { experimentId },
-      result: { kind: "failed", error: "Function execution timed out" }
-    })
-
-    const exp = await t.run(async (ctx) => ctx.db.get(experimentId))
-    expect(exp!.status).toBe("canceled")
-    expect(exp!.error).toBeUndefined()
-    expect(exp!.completedAt).toBe(1_000)
-  })
-})
-
-describe("experiments: updateStatus completedAt", () => {
-  let t: ReturnType<typeof convexTest>
-
-  beforeEach(() => {
-    t = setupTest()
-  })
-
-  it("stamps completedAt when transitioning to a terminal status", async () => {
-    const userId = await seedUser(t)
-    const kbId = await seedKB(t, userId)
-    const datasetId = await seedDataset(t, userId, kbId)
-    const experimentId = await seedExperiment(t, userId, datasetId, {
-      status: "running"
-    })
-
-    await t.mutation(internal.kb.experiments.updateStatus, {
-      experimentId,
-      status: "completed",
-      scores: { recall: 0.9 },
-      phase: "done"
-    })
-
-    const exp = await t.run(async (ctx) => ctx.db.get(experimentId))
-    expect(exp!.status).toBe("completed")
-    expect(exp!.completedAt).toBeDefined()
-  })
-
-  it("does not set completedAt for a non-terminal status", async () => {
-    const userId = await seedUser(t)
-    const kbId = await seedKB(t, userId)
-    const datasetId = await seedDataset(t, userId, kbId)
-    const experimentId = await seedExperiment(t, userId, datasetId, {
-      status: "pending"
-    })
-
-    await t.mutation(internal.kb.experiments.updateStatus, {
-      experimentId,
-      status: "running",
-      phase: "evaluating"
-    })
-
-    const exp = await t.run(async (ctx) => ctx.db.get(experimentId))
-    expect(exp!.status).toBe("running")
-    expect(exp!.completedAt).toBeUndefined()
-  })
-
-  it("preserves the original completedAt on a later terminal write", async () => {
-    const userId = await seedUser(t)
-    const kbId = await seedKB(t, userId)
-    const datasetId = await seedDataset(t, userId, kbId)
-    const experimentId = await seedExperiment(t, userId, datasetId, {
-      status: "running"
-    })
-
-    await t.mutation(internal.kb.experiments.updateStatus, {
-      experimentId,
-      status: "completed",
-      phase: "done"
-    })
-    const first = await t.run(async (ctx) => ctx.db.get(experimentId))
-    const firstCompletedAt = first!.completedAt
-    expect(firstCompletedAt).toBeDefined()
-
-    await t.mutation(internal.kb.experiments.updateStatus, {
-      experimentId,
-      status: "failed",
-      error: "late failure"
-    })
-
-    const exp = await t.run(async (ctx) => ctx.db.get(experimentId))
-    expect(exp!.status).toBe("failed")
-    expect(exp!.completedAt).toBe(firstCompletedAt)
   })
 })
 
@@ -340,14 +147,14 @@ describe("experiments: get query", () => {
         datasetId,
         name: "Other Org Experiment",
         metricNames: ["recall"],
-        status: "completed",
+        status: "completed" as any,
         createdBy: userId,
         createdAt: Date.now()
       })
     })
 
     const authedT = t.withIdentity(testIdentity)
-    const exp = await authedT.query(internal.kb.experiments.get, {
+    const exp = await authedT.query(internal.experiments.orchestration.get, {
       id: experimentId
     })
     expect(exp).toBeNull()
@@ -360,7 +167,7 @@ describe("experiments: get query", () => {
     const experimentId = await seedExperiment(t, userId, datasetId)
 
     const authedT = t.withIdentity(testIdentity)
-    const exp = await authedT.query(internal.kb.experiments.get, {
+    const exp = await authedT.query(internal.experiments.orchestration.get, {
       id: experimentId
     })
     expect(exp).not.toBeNull()

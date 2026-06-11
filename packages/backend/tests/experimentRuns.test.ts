@@ -64,7 +64,7 @@ describe("experimentRuns", () => {
 
     const authedT = t.withIdentity(testIdentity)
     const result = await authedT.mutation(
-      api.kb.experimentRuns.create,
+      api.experimentRuns.orchestration.create,
       {
         name: "My Experiment Run",
         kbId,
@@ -111,7 +111,7 @@ describe("experimentRuns", () => {
 
     const authedT = t.withIdentity(testIdentity)
     await expect(
-      authedT.mutation(api.kb.experimentRuns.create, {
+      authedT.mutation(api.experimentRuns.orchestration.create, {
         name: "Bad Weights Run",
         kbId,
         datasetId,
@@ -135,7 +135,7 @@ describe("experimentRuns", () => {
 
     const authedT = t.withIdentity(testIdentity)
     await expect(
-      authedT.mutation(api.kb.experimentRuns.create, {
+      authedT.mutation(api.experimentRuns.orchestration.create, {
         name: "Not Ready Run",
         kbId,
         datasetId,
@@ -214,7 +214,7 @@ describe("experimentRuns", () => {
     )
 
     // Fire onChildComplete for first child — run should still be "running"
-    await t.mutation(internal.kb.experimentRuns.onChildComplete, {
+    await t.mutation(internal.experimentRuns.orchestration.onChildComplete, {
       experimentRunId,
       experimentId: child1Id,
       success: true
@@ -227,7 +227,7 @@ describe("experimentRuns", () => {
     expect(runAfterFirst!.completedRetrievers).toBe(1)
 
     // Fire onChildComplete for second child — run should now be "completed"
-    await t.mutation(internal.kb.experimentRuns.onChildComplete, {
+    await t.mutation(internal.experimentRuns.orchestration.onChildComplete, {
       experimentRunId,
       experimentId: child2Id,
       success: true
@@ -312,14 +312,14 @@ describe("experimentRuns", () => {
     )
 
     // First child succeeds
-    await t.mutation(internal.kb.experimentRuns.onChildComplete, {
+    await t.mutation(internal.experimentRuns.orchestration.onChildComplete, {
       experimentRunId,
       experimentId: child1Id,
       success: true
     })
 
     // Second child fails
-    await t.mutation(internal.kb.experimentRuns.onChildComplete, {
+    await t.mutation(internal.experimentRuns.orchestration.onChildComplete, {
       experimentRunId,
       experimentId: child2Id,
       success: false

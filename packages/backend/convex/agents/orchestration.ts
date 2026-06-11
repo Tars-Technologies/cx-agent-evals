@@ -1,7 +1,7 @@
-import { v } from "convex/values"
-import { internal } from "../_generated/api"
-import { mutation } from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { mutation } from "../_generated/server";
+import { internal } from "../_generated/api";
+import { v } from "convex/values";
+import { getAuthContext } from "../lib/auth";
 
 /**
  * Sends a user message and triggers agent execution.
@@ -11,32 +11,30 @@ export const sendMessage = mutation({
   args: {
     conversationId: v.id("conversations"),
     agentId: v.id("agents"),
-    content: v.string()
+    content: v.string(),
   },
   handler: async (ctx, { conversationId, agentId, content }) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = await getAuthContext(ctx);
 
     // Verify conversation belongs to org
-    const conv = await ctx.db.get(conversationId)
+    const conv = await ctx.db.get(conversationId);
     if (!conv || conv.orgId !== orgId) {
-      throw new Error("Conversation not found")
+      throw new Error("Conversation not found");
     }
 
     // Verify agent belongs to org
-    const agent = await ctx.db.get(agentId)
+    const agent = await ctx.db.get(agentId);
     if (!agent || agent.orgId !== orgId) {
-      throw new Error("Agent not found")
+      throw new Error("Agent not found");
     }
 
     // Get next order number
     const lastMessage = await ctx.db
       .query("messages")
-      .withIndex("by_conversation", (q) =>
-        q.eq("conversationId", conversationId)
-      )
+      .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
       .order("desc")
-      .first()
-    const nextOrder = lastMessage ? lastMessage.order + 1 : 0
+      .first();
+    const nextOrder = lastMessage ? lastMessage.order + 1 : 0;
 
     // Insert user message
     await ctx.db.insert("messages", {
@@ -45,8 +43,8 @@ export const sendMessage = mutation({
       role: "user",
       content,
       status: "complete",
-      createdAt: Date.now()
-    })
+      createdAt: Date.now(),
+    });
 
     // Create pending assistant message
     const assistantMessageId = await ctx.db.insert("messages", {
@@ -56,19 +54,19 @@ export const sendMessage = mutation({
       content: "",
       agentId,
       status: "streaming",
-      createdAt: Date.now()
-    })
+      createdAt: Date.now(),
+    });
 
     // Schedule agent action
     await ctx.scheduler.runAfter(0, internal.agents.actions.runAgent, {
       conversationId,
       agentId,
-      assistantMessageId
-    })
+      assistantMessageId,
+    });
 
-    return assistantMessageId
-  }
-})
+    return assistantMessageId;
+  },
+});
 
 /**
  * Gets or creates a playground conversation for an agent.
@@ -77,28 +75,26 @@ export const sendMessage = mutation({
 export const getOrCreatePlayground = mutation({
   args: { agentId: v.id("agents") },
   handler: async (ctx, { agentId }) => {
-    const { orgId } = await getAuthContext(ctx)
+    const { orgId } = await getAuthContext(ctx);
 
-    const agent = await ctx.db.get(agentId)
+    const agent = await ctx.db.get(agentId);
     if (!agent || agent.orgId !== orgId) {
-      throw new Error("Agent not found")
+      throw new Error("Agent not found");
     }
 
-    // Look for existing active playground conversation for this agent.
+    // Look for the most recent playground conversation for this agent.
     const existing = await ctx.db
       .query("conversations")
       .withIndex("by_org", (q) => q.eq("orgId", orgId))
-      .filter((q) => q.eq(q.field("status"), "active"))
-      .collect()
+      .collect();
 
-    const playground = existing.find(
-      (c) =>
-        c.agentIds.length === 1 &&
-        c.agentIds[0] === agentId &&
-        (!c.source || c.source === "playground")
-    )
+    const playground = existing
+      .filter(
+        (c) => c.agentIds.length === 1 && c.agentIds[0] === agentId && (!c.source || c.source === "playground"),
+      )
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
 
-    if (playground) return playground._id
+    if (playground) return playground._id;
 
     // Create new playground conversation
     return ctx.db.insert("conversations", {
@@ -106,10 +102,33 @@ export const getOrCreatePlayground = mutation({
       agentIds: [agentId],
       title: `${agent.name} Playground`,
       status: "active",
-      createdAt: Date.now()
-    })
-  }
-})
+      createdAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Creates a fresh playground conversation for an agent.
+ * Older playground conversations remain in the database and surface
+ * in the conversations tab.
+ */
+export const newPlayground = mutation({
+  args: { agentId: v.id("agents") },
+  handler: async (ctx, { agentId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const agent = await ctx.db.get(agentId);
+    if (!agent || agent.orgId !== orgId) {
+      throw new Error("Agent not found");
+    }
+    return ctx.db.insert("conversations", {
+      orgId,
+      agentIds: [agentId],
+      title: `${agent.name} Playground`,
+      status: "active",
+      createdAt: Date.now(),
+    });
+  },
+});
 
 /**
  * Triggers URL context extraction for an agent.
@@ -118,33 +137,18 @@ export const getOrCreatePlayground = mutation({
 export const triggerUrlExtraction = mutation({
   args: {
     agentId: v.id("agents"),
-    url: v.string()
+    url: v.string(),
   },
   handler: async (ctx, { agentId, url }) => {
-    const { orgId } = await getAuthContext(ctx)
-    const agent = await ctx.db.get(agentId)
+    const { orgId } = await getAuthContext(ctx);
+    const agent = await ctx.db.get(agentId);
     if (!agent || agent.orgId !== orgId) {
-      throw new Error("Agent not found")
+      throw new Error("Agent not found");
     }
     await ctx.scheduler.runAfter(0, internal.agents.actions.extractUrlContext, {
       agentId,
-      url
-    })
-  }
-})
+      url,
+    });
+  },
+});
 
-/**
- * Clears a playground conversation by archiving it.
- * Next getOrCreatePlayground call will create a fresh one.
- */
-export const clearPlayground = mutation({
-  args: { conversationId: v.id("conversations") },
-  handler: async (ctx, { conversationId }) => {
-    const { orgId } = await getAuthContext(ctx)
-    const conv = await ctx.db.get(conversationId)
-    if (!conv || conv.orgId !== orgId) {
-      throw new Error("Conversation not found")
-    }
-    await ctx.db.patch(conversationId, { status: "archived" })
-  }
-})

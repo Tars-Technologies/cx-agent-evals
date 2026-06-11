@@ -62,7 +62,9 @@ export function PlaygroundTab({
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set())
   const [errorMap, setErrorMap] = useState<Map<string, string>>(new Map())
 
-  const retrieveAction = useAction(api.kb.pipeline_actions.retrieveWithTrace)
+  const retrieveAction = useAction(
+    api.retrieval.pipelineActions.retrieveWithTrace
+  )
 
   const isRunning = loadingIds.size > 0
 

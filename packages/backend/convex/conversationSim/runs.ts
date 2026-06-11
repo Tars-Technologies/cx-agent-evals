@@ -1,6 +1,6 @@
-import { v } from "convex/values"
-import { internalMutation, internalQuery, query } from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+import { query, internalQuery, internalMutation } from "../_generated/server";
+import { v } from "convex/values";
+import { getAuthContext } from "../lib/auth";
 
 // ─── Public Queries ───
 
@@ -8,56 +8,56 @@ import { getAuthContext } from "../lib/auth"
 export const bySimulation = query({
   args: { simulationId: v.id("conversationSimulations") },
   handler: async (ctx, { simulationId }) => {
-    const { orgId } = await getAuthContext(ctx)
-    const sim = await ctx.db.get(simulationId)
-    if (!sim || sim.orgId !== orgId) throw new Error("Simulation not found")
+    const { orgId } = await getAuthContext(ctx);
+    const sim = await ctx.db.get(simulationId);
+    if (!sim || sim.orgId !== orgId) throw new Error("Simulation not found");
     const runs = await ctx.db
       .query("conversationSimRuns")
       .withIndex("by_simulation", (q) => q.eq("simulationId", simulationId))
-      .collect()
+      .collect();
 
     // Batch-load scenario topics
-    const scenarioIds = [...new Set(runs.map((r) => r.scenarioId))]
-    const scenarioMap = new Map<string, string>()
+    const scenarioIds = [...new Set(runs.map(r => r.scenarioId))];
+    const scenarioMap = new Map<string, string>();
     for (const sid of scenarioIds) {
-      const scenario = await ctx.db.get(sid)
-      if (scenario) scenarioMap.set(sid.toString(), scenario.topic)
+      const scenario = await ctx.db.get(sid);
+      if (scenario) scenarioMap.set(sid.toString(), scenario.topic);
     }
 
-    return runs.map((r) => ({
+    return runs.map(r => ({
       ...r,
-      scenarioTopic: scenarioMap.get(r.scenarioId.toString()) ?? ""
-    }))
-  }
-})
+      scenarioTopic: scenarioMap.get(r.scenarioId.toString()) ?? "",
+    }));
+  },
+});
 
 // Runs for a specific scenario within a simulation
 export const bySimulationScenario = query({
   args: {
     simulationId: v.id("conversationSimulations"),
-    scenarioId: v.id("conversationScenarios")
+    scenarioId: v.id("conversationScenarios"),
   },
   handler: async (ctx, { simulationId, scenarioId }) => {
-    const { orgId } = await getAuthContext(ctx)
-    const sim = await ctx.db.get(simulationId)
-    if (!sim || sim.orgId !== orgId) throw new Error("Simulation not found")
+    const { orgId } = await getAuthContext(ctx);
+    const sim = await ctx.db.get(simulationId);
+    if (!sim || sim.orgId !== orgId) throw new Error("Simulation not found");
     return ctx.db
       .query("conversationSimRuns")
       .withIndex("by_simulation_scenario", (q) =>
-        q.eq("simulationId", simulationId).eq("scenarioId", scenarioId)
+        q.eq("simulationId", simulationId).eq("scenarioId", scenarioId),
       )
-      .collect()
-  }
-})
+      .collect();
+  },
+});
 
 // Get single run
 export const get = query({
   args: { id: v.id("conversationSimRuns") },
   handler: async (ctx, { id }) => {
-    await getAuthContext(ctx) // auth gate
-    return ctx.db.get(id)
-  }
-})
+    await getAuthContext(ctx); // auth gate
+    return ctx.db.get(id);
+  },
+});
 
 // ─── Internal Mutations ───
 
@@ -68,15 +68,15 @@ export const createRun = internalMutation({
     scenarioId: v.id("conversationScenarios"),
     agentId: v.id("agents"),
     kIndex: v.number(),
-    seed: v.number()
+    seed: v.number(),
   },
   handler: async (ctx, args) => {
     return ctx.db.insert("conversationSimRuns", {
       ...args,
-      status: "pending"
-    })
-  }
-})
+      status: "pending",
+    });
+  },
+});
 
 // Update run status and results
 export const updateRun = internalMutation({
@@ -87,8 +87,8 @@ export const updateRun = internalMutation({
         v.literal("pending"),
         v.literal("running"),
         v.literal("completed"),
-        v.literal("failed")
-      )
+        v.literal("failed"),
+      ),
     ),
     conversationId: v.optional(v.id("conversations")),
     terminationReason: v.optional(
@@ -97,8 +97,8 @@ export const updateRun = internalMutation({
         v.literal("agent_stop"),
         v.literal("max_turns"),
         v.literal("timeout"),
-        v.literal("error")
-      )
+        v.literal("error"),
+      ),
     ),
     turnCount: v.optional(v.number()),
     evaluatorResults: v.optional(
@@ -108,32 +108,64 @@ export const updateRun = internalMutation({
           evaluatorName: v.string(),
           passed: v.boolean(),
           justification: v.string(),
-          required: v.boolean()
-        })
-      )
+          required: v.boolean(),
+        }),
+      ),
     ),
     score: v.optional(v.number()),
     passed: v.optional(v.boolean()),
     toolCallCount: v.optional(v.number()),
     totalTokens: v.optional(v.number()),
     latencyMs: v.optional(v.number()),
-    annotations: v.optional(v.string())
   },
   handler: async (ctx, { runId, ...patch }) => {
-    const updates: Record<string, unknown> = {}
+    const updates: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(patch)) {
-      if (value !== undefined) updates[key] = value
+      if (value !== undefined) updates[key] = value;
     }
     if (Object.keys(updates).length > 0) {
-      await ctx.db.patch(runId, updates)
+      await ctx.db.patch(runId, updates);
     }
-  }
-})
+  },
+});
+
+// Append evaluator results to a sim run (used by autoApply)
+export const appendEvaluatorResultsInternal = internalMutation({
+  args: {
+    runId: v.id("conversationSimRuns"),
+    results: v.array(
+      v.object({
+        evaluatorId: v.id("evaluators"),
+        evaluatorName: v.string(),
+        passed: v.boolean(),
+        justification: v.string(),
+        required: v.boolean(),
+      }),
+    ),
+  },
+  handler: async (ctx, { runId, results }) => {
+    const run = await ctx.db.get(runId);
+    if (!run) return;
+    const existing = run.evaluatorResults ?? [];
+    await ctx.db.patch(runId, { evaluatorResults: [...existing, ...results] });
+  },
+});
 
 // ─── Internal Queries ───
 
 // Get run (for actions)
 export const getInternal = internalQuery({
   args: { id: v.id("conversationSimRuns") },
-  handler: async (ctx, { id }) => ctx.db.get(id)
-})
+  handler: async (ctx, { id }) => ctx.db.get(id),
+});
+
+// All runs for a simulation (for actions — no auth)
+export const bySimulationInternal = internalQuery({
+  args: { simulationId: v.id("conversationSimulations") },
+  handler: async (ctx, { simulationId }) => {
+    return await ctx.db
+      .query("conversationSimRuns")
+      .withIndex("by_simulation", (q) => q.eq("simulationId", simulationId))
+      .collect();
+  },
+});

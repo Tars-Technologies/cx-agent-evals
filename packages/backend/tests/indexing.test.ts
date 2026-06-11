@@ -80,7 +80,7 @@ describe("indexing: onDocumentIndexed", () => {
       processedDocs: 1
     })
 
-    await t.mutation(internal.kb.indexing.onDocumentIndexed, {
+    await t.mutation(internal.retrieval.indexing.onDocumentIndexed, {
       workId: "w_fake",
       context: { jobId, documentId },
       result: {
@@ -104,7 +104,7 @@ describe("indexing: onDocumentIndexed", () => {
       totalChunks: 10
     })
 
-    await t.mutation(internal.kb.indexing.onDocumentIndexed, {
+    await t.mutation(internal.retrieval.indexing.onDocumentIndexed, {
       workId: "w_fake",
       context: { jobId, documentId },
       result: {
@@ -125,7 +125,7 @@ describe("indexing: onDocumentIndexed", () => {
       totalDocs: 3
     })
 
-    await t.mutation(internal.kb.indexing.onDocumentIndexed, {
+    await t.mutation(internal.retrieval.indexing.onDocumentIndexed, {
       workId: "w_fake",
       context: { jobId, documentId },
       result: {
@@ -147,7 +147,7 @@ describe("indexing: onDocumentIndexed", () => {
       totalDocs: 2
     })
 
-    await t.mutation(internal.kb.indexing.onDocumentIndexed, {
+    await t.mutation(internal.retrieval.indexing.onDocumentIndexed, {
       workId: "w_fake",
       context: { jobId, documentId },
       result: { kind: "failed", error: "Embedding API error" }
@@ -168,7 +168,7 @@ describe("indexing: onDocumentIndexed", () => {
       totalDocs: 2
     })
 
-    await t.mutation(internal.kb.indexing.onDocumentIndexed, {
+    await t.mutation(internal.retrieval.indexing.onDocumentIndexed, {
       workId: "w_fake",
       context: { jobId, documentId },
       result: { kind: "canceled" }
@@ -188,7 +188,7 @@ describe("indexing: onDocumentIndexed", () => {
       processedDocs: 0
     })
 
-    await t.mutation(internal.kb.indexing.onDocumentIndexed, {
+    await t.mutation(internal.retrieval.indexing.onDocumentIndexed, {
       workId: "w_fake",
       context: { jobId, documentId },
       result: {
@@ -210,7 +210,7 @@ describe("indexing: onDocumentIndexed", () => {
       totalDocs: 1
     })
 
-    await t.mutation(internal.kb.indexing.onDocumentIndexed, {
+    await t.mutation(internal.retrieval.indexing.onDocumentIndexed, {
       workId: "w_fake",
       context: { jobId, documentId },
       result: { kind: "failed", error: "Fatal error" }
@@ -231,7 +231,7 @@ describe("indexing: onDocumentIndexed", () => {
     })
 
     // First doc succeeds
-    await t.mutation(internal.kb.indexing.onDocumentIndexed, {
+    await t.mutation(internal.retrieval.indexing.onDocumentIndexed, {
       workId: "w_fake1",
       context: { jobId, documentId: doc1Id },
       result: {
@@ -241,7 +241,7 @@ describe("indexing: onDocumentIndexed", () => {
     })
 
     // Second doc fails
-    await t.mutation(internal.kb.indexing.onDocumentIndexed, {
+    await t.mutation(internal.retrieval.indexing.onDocumentIndexed, {
       workId: "w_fake2",
       context: { jobId, documentId: doc2Id },
       result: { kind: "failed", error: "Timeout" }
@@ -261,7 +261,7 @@ describe("indexing: onDocumentIndexed", () => {
       totalDocs: 1
     })
 
-    await t.mutation(internal.kb.indexing.onDocumentIndexed, {
+    await t.mutation(internal.retrieval.indexing.onDocumentIndexed, {
       workId: "w_fake",
       context: { jobId, documentId },
       result: { kind: "canceled" }
@@ -281,7 +281,7 @@ describe("indexing: onDocumentIndexed", () => {
       totalDocs: 2
     })
 
-    await t.mutation(internal.kb.indexing.onDocumentIndexed, {
+    await t.mutation(internal.retrieval.indexing.onDocumentIndexed, {
       workId: "w_fake",
       context: { jobId, documentId },
       result: {

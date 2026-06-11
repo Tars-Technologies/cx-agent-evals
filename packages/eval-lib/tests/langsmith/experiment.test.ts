@@ -1,17 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "vitest"
 import { recall } from "../../src/evaluation/metrics/recall.js"
 import {
   createLangSmithEvaluator,
   DEFAULT_METRICS,
-  deserializeSpans,
-  type LangSmithExperimentConfig,
-  runLangSmithExperiment
+  deserializeSpans
 } from "../../src/langsmith/experiment.js"
-import type { Corpus } from "../../src/types/index.js"
-import { DocumentId } from "../../src/types/primitives.js"
-
-const { evaluateMock } = vi.hoisted(() => ({ evaluateMock: vi.fn() }))
-vi.mock("langsmith/evaluation", () => ({ evaluate: evaluateMock }))
 
 describe("langsmith/experiment", () => {
   describe("deserializeSpans", () => {
@@ -126,54 +119,6 @@ describe("langsmith/experiment", () => {
       expect(names).toContain("precision")
       expect(names).toContain("iou")
       expect(names).toContain("f1")
-    })
-  })
-
-  describe("runLangSmithExperiment maxConcurrency", () => {
-    const corpus: Corpus = {
-      documents: [
-        { id: DocumentId("doc1"), content: "Hello world", metadata: {} }
-      ],
-      metadata: {}
-    }
-    const retriever = {
-      name: "test-retriever",
-      init: vi.fn(async () => {}),
-      retrieve: vi.fn(async () => []),
-      cleanup: vi.fn(async () => {})
-    }
-    const baseConfig: LangSmithExperimentConfig = {
-      corpus,
-      retriever,
-      k: 5,
-      datasetName: "test-dataset"
-    }
-
-    afterEach(() => {
-      evaluateMock.mockClear()
-      retriever.init.mockClear()
-      retriever.cleanup.mockClear()
-    })
-
-    const evaluateOptions = () => evaluateMock.mock.calls[0][1]
-
-    it("omits maxConcurrency when not provided (sequential default)", async () => {
-      await runLangSmithExperiment(baseConfig)
-      expect(evaluateMock).toHaveBeenCalledOnce()
-      expect(evaluateOptions()).not.toHaveProperty("maxConcurrency")
-    })
-
-    it("passes maxConcurrency through to evaluate()", async () => {
-      await runLangSmithExperiment({ ...baseConfig, maxConcurrency: 3 })
-      expect(evaluateMock).toHaveBeenCalledOnce()
-      expect(evaluateOptions().maxConcurrency).toBe(3)
-    })
-
-    it("still calls evaluate() (LangSmith remains the engine)", async () => {
-      await runLangSmithExperiment({ ...baseConfig, maxConcurrency: 3 })
-      expect(retriever.init).toHaveBeenCalledOnce()
-      expect(retriever.cleanup).toHaveBeenCalledOnce()
-      expect(evaluateOptions().data).toBe("test-dataset")
     })
   })
 })

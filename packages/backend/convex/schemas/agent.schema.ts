@@ -1,8 +1,11 @@
-import { defineTable } from "convex/server"
-import { v } from "convex/values"
+import { defineTable } from "convex/server";
+import { v } from "convex/values";
 
+// Agent-domain tables. Eval system is the re-haul design
+// (evaluators + evaluatorLabels + evaluationRuns/Results + error analysis);
+// main's older eval tables (evaluatorConfigs/Runs/Results/Sets, agentExperimentResults,
+// failureModeQuestionMappings) are intentionally dropped.
 export const agentTables = {
-  // ── Livechat uploads ──
   livechatUploads: defineTable({
     orgId: v.string(),
     createdBy: v.id("users"),
@@ -14,7 +17,7 @@ export const agentTables = {
       v.literal("parsing"),
       v.literal("ready"),
       v.literal("failed"),
-      v.literal("deleting")
+      v.literal("deleting"),
     ),
     error: v.optional(v.string()),
 
@@ -25,7 +28,7 @@ export const agentTables = {
     createdAt: v.number(),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
-    workIds: v.optional(v.array(v.string()))
+    workIds: v.optional(v.array(v.string())),
   })
     .index("by_org", ["orgId"])
     .index("by_org_created", ["orgId", "createdAt"]),
@@ -53,10 +56,10 @@ export const agentTables = {
         role: v.union(
           v.literal("user"),
           v.literal("human_agent"),
-          v.literal("workflow_input")
+          v.literal("workflow_input"),
         ),
-        text: v.string()
-      })
+        text: v.string(),
+      }),
     ),
 
     metadata: v.any(),
@@ -64,8 +67,8 @@ export const agentTables = {
     botFlowInput: v.optional(
       v.object({
         intent: v.string(),
-        language: v.string()
-      })
+        language: v.string(),
+      }),
     ),
 
     messageTypes: v.optional(v.any()),
@@ -76,7 +79,7 @@ export const agentTables = {
       v.literal("none"),
       v.literal("running"),
       v.literal("done"),
-      v.literal("failed")
+      v.literal("failed"),
     ),
     classificationError: v.optional(v.string()),
 
@@ -84,207 +87,234 @@ export const agentTables = {
       v.array(
         v.object({
           id: v.number(),
-          text: v.string()
-        })
-      )
+          text: v.string(),
+        }),
+      ),
     ),
     translationStatus: v.union(
       v.literal("none"),
       v.literal("running"),
       v.literal("done"),
-      v.literal("failed")
+      v.literal("failed"),
     ),
-    translationError: v.optional(v.string())
+    translationError: v.optional(v.string()),
   })
     .index("by_upload", ["uploadId"])
     .index("by_upload_classification", ["uploadId", "classificationStatus"])
     .index("by_org", ["orgId"]),
 
-  // ─── Agent Experiment Results (per-question agent answers + tool calls) ───
-  // NOTE: experiments + experimentRuns tables moved to kb.schema.ts (they are
-  // KB-owned; agent eval depends on them). agentId on `experiments` is now a
-  // plain string there — cast to Id<"agents"> at read time below.
-  agentExperimentResults: defineTable({
-    experimentId: v.id("experiments"),
-    questionId: v.id("questions"),
-    answerText: v.string(),
-    toolCalls: v.array(
-      v.object({
-        toolName: v.string(),
-        query: v.string(),
-        retrieverId: v.optional(v.string()),
-        chunks: v.array(
-          v.object({
-            content: v.string(),
-            docId: v.string(),
-            start: v.number(),
-            end: v.number()
-          })
-        )
-      })
-    ),
-    retrievedChunks: v.array(
-      v.object({
-        content: v.string(),
-        docId: v.string(),
-        start: v.number(),
-        end: v.number()
-      })
-    ),
-    scores: v.optional(v.record(v.string(), v.number())),
-    usage: v.optional(
-      v.object({
-        promptTokens: v.number(),
-        completionTokens: v.number()
-      })
-    ),
-    latencyMs: v.number(),
-    status: v.union(v.literal("complete"), v.literal("error")),
-    error: v.optional(v.string()),
-    createdAt: v.number()
-  }).index("by_experiment", ["experimentId"]),
-
-  // ─── Annotations (human ratings for agent experiment results) ───
   annotations: defineTable({
     orgId: v.string(),
-    experimentId: v.id("experiments"),
-    resultId: v.id("agentExperimentResults"),
-    questionId: v.id("questions"),
+    errorAnalysisId: v.id("errorAnalyses"),
+    source: v.union(
+      v.object({ kind: v.literal("conversation"), conversationId: v.id("conversations") }),
+      v.object({ kind: v.literal("transcript"),   transcriptId:   v.id("livechatConversations") }),
+    ),
     rating: v.union(
-      v.literal("great"),
-      v.literal("good_enough"),
-      v.literal("bad"),
-      v.literal("pass"),
-      v.literal("fail")
+      v.literal("great"), v.literal("good_enough"),
+      v.literal("bad"),   v.literal("pass"), v.literal("fail"),
     ),
     comment: v.optional(v.string()),
-    tags: v.optional(v.array(v.string())),
+    tags: v.array(v.string()),
     ratedBy: v.id("users"),
     createdAt: v.number(),
-    updatedAt: v.optional(v.number())
+    updatedAt: v.optional(v.number()),
   })
-    .index("by_experiment", ["experimentId"])
-    .index("by_result", ["resultId"]),
+    .index("by_org", ["orgId"])
+    .index("by_analysis", ["errorAnalysisId"])
+    .index("by_conversation", ["source.conversationId"])
+    .index("by_transcript",   ["source.transcriptId"]),
 
   // ─── Failure Modes (axial codes grouping failure patterns) ───
   failureModes: defineTable({
     orgId: v.string(),
-    experimentId: v.id("experiments"),
+    agentId: v.id("agents"),
+    errorAnalysisId: v.id("errorAnalyses"),
     name: v.string(),
     description: v.string(),
     order: v.number(),
     createdAt: v.number(),
-    updatedAt: v.optional(v.number())
-  }).index("by_experiment", ["experimentId"]),
-
-  // ─── Failure Mode Question Mappings (many-to-many) ───
-  failureModeQuestionMappings: defineTable({
-    orgId: v.string(),
-    failureModeId: v.id("failureModes"),
-    questionId: v.id("questions"),
-    experimentId: v.id("experiments"),
-    createdAt: v.number()
+    updatedAt: v.optional(v.number()),
   })
-    .index("by_failure_mode", ["failureModeId"])
-    .index("by_experiment", ["experimentId"])
-    .index("by_question", ["questionId"]),
+    .index("by_agent", ["agentId"])
+    .index("by_analysis", ["errorAnalysisId"]),
 
-  // ─── Evaluator Configs (LLM-as-Judge per failure mode) ───
-  evaluatorConfigs: defineTable({
+  // ─── Error Analyses (containers for annotation + axial coding work) ───
+  errorAnalyses: defineTable({
     orgId: v.string(),
-    experimentId: v.id("experiments"),
-    failureModeId: v.id("failureModes"),
+    agentId: v.id("agents"),
     name: v.string(),
-    judgePrompt: v.string(),
-    outputFormatJson: v.optional(v.string()),
-    fewShotExampleIds: v.array(v.id("questions")),
-    maxFewShotExamples: v.optional(v.number()),
-    modelId: v.string(),
-    splitConfig: v.object({
-      trainPct: v.number(),
-      devPct: v.number(),
-      testPct: v.number()
-    }),
-    splitSeed: v.number(),
-    status: v.union(
-      v.literal("draft"),
-      v.literal("validating"),
-      v.literal("validated"),
-      v.literal("ready")
-    ),
-    devMetrics: v.optional(
-      v.object({
-        tpr: v.number(),
-        tnr: v.number(),
-        accuracy: v.number(),
-        total: v.number()
-      })
-    ),
-    testMetrics: v.optional(
-      v.object({
-        tpr: v.number(),
-        tnr: v.number(),
-        accuracy: v.number(),
-        total: v.number()
-      })
+    origin: v.union(
+      v.object({ kind: v.literal("simulation"), simulationId: v.id("conversationSimulations") }),
+      v.object({ kind: v.literal("upload"),     uploadId:     v.id("livechatUploads") }),
+      v.object({ kind: v.literal("playground") }),
+      v.object({ kind: v.literal("custom") }),
     ),
     createdAt: v.number(),
-    updatedAt: v.optional(v.number())
+    updatedAt: v.optional(v.number()),
   })
-    .index("by_experiment", ["experimentId"])
-    .index("by_failure_mode", ["failureModeId"]),
+    .index("by_org", ["orgId"])
+    .index("by_agent", ["agentId"])
+    .index("by_agent_origin_simulation", ["agentId", "origin.simulationId"])
+    .index("by_agent_origin_upload",     ["agentId", "origin.uploadId"]),
 
-  // ─── Evaluator Runs (execution of judge on traces) ───
-  evaluatorRuns: defineTable({
+  errorAnalysisMembers: defineTable({
     orgId: v.string(),
-    evaluatorConfigId: v.id("evaluatorConfigs"),
-    targetExperimentId: v.id("experiments"),
-    runType: v.union(v.literal("dev"), v.literal("test"), v.literal("full")),
+    errorAnalysisId: v.id("errorAnalyses"),
+    source: v.union(
+      v.object({ kind: v.literal("conversation"), conversationId: v.id("conversations") }),
+      v.object({ kind: v.literal("transcript"),   transcriptId:   v.id("livechatConversations") }),
+    ),
+    addedVia: v.union(v.literal("annotation"), v.literal("import")),
+    addedAt: v.number(),
+  })
+    .index("by_analysis", ["errorAnalysisId"])
+    .index("by_analysis_conversation", ["errorAnalysisId", "source.conversationId"])
+    .index("by_analysis_transcript",   ["errorAnalysisId", "source.transcriptId"]),
+
+  // ─── Failure Mode Memberships (many-to-many) ───
+  failureModeMemberships: defineTable({
+    orgId: v.string(),
+    failureModeId: v.id("failureModes"),
+    source: v.union(
+      v.object({ kind: v.literal("conversation"), conversationId: v.id("conversations") }),
+      v.object({ kind: v.literal("transcript"),   transcriptId:   v.id("livechatConversations") }),
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_failure_mode", ["failureModeId"])
+    .index("by_conversation", ["source.conversationId"])
+    .index("by_transcript",   ["source.transcriptId"]),
+
+  // ─── Evaluator Templates (catalog of pre-built evaluator configs) ───
+  evaluatorTemplates: defineTable({
+    name: v.string(),
+    description: v.string(),
+    category: v.string(),
+    type: v.union(v.literal("code"), v.literal("llm_judge")),
+    prefilledConfig: v.any(),
+  })
+    .index("by_category", ["category"]),
+
+  // ─── Evaluator Labels (human pass/fail labels for calibration) ───
+  evaluatorLabels: defineTable({
+    orgId: v.string(),
+    evaluatorId: v.id("evaluators"),
+    failureModeId: v.optional(v.id("failureModes")),
+    source: v.union(
+      v.object({ kind: v.literal("conversation"), conversationId: v.id("conversations") }),
+      v.object({ kind: v.literal("transcript"),   transcriptId:   v.id("livechatConversations") }),
+    ),
+    humanLabel: v.union(v.literal("pass"), v.literal("fail")),
+    splitAssignment: v.optional(v.union(
+      v.literal("train"), v.literal("dev"), v.literal("test"),
+    )),
+    origin: v.union(
+      v.object({ kind: v.literal("axial_coding"),        failureModeId: v.id("failureModes") }),
+      v.object({ kind: v.literal("inferred_negative") }),
+      v.object({ kind: v.literal("calibration_pass") }),
+      v.object({ kind: v.literal("imported_annotation"), annotationId:  v.id("annotations") }),
+    ),
+    ratedBy: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_evaluator", ["evaluatorId"])
+    .index("by_evaluator_split", ["evaluatorId", "splitAssignment"]),
+
+  evaluationRuns: defineTable({
+    orgId: v.string(),
+    agentId: v.id("agents"),
+    evaluatorId: v.id("evaluators"),
+    cohort: v.object({
+      kind: v.literal("simulation"),
+      simulationId: v.id("conversationSimulations"),
+    }),
+    n: v.number(),
+    observedPassRate: v.number(),
+    correctedPassRate: v.number(),
+    ci: v.object({ lower: v.number(), upper: v.number() }),
+    corrected: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_evaluator", ["evaluatorId"])
+    .index("by_simulation", ["cohort.simulationId"]),
+
+  evaluationResults: defineTable({
+    orgId: v.string(),
+    evaluationRunId: v.id("evaluationRuns"),
+    source: v.union(
+      v.object({
+        kind: v.literal("conversation"),
+        conversationId: v.id("conversations"),
+      }),
+      v.object({
+        kind: v.literal("transcript"),
+        transcriptId: v.id("livechatConversations"),
+      }),
+    ),
+    passed: v.boolean(),
+    justification: v.string(),
+  }).index("by_run", ["evaluationRunId"]),
+
+  crawlJobs: defineTable({
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    userId: v.id("users"),
+    startUrl: v.string(),
+    config: v.object({
+      maxDepth: v.optional(v.number()),
+      maxPages: v.optional(v.number()),
+      includePaths: v.optional(v.array(v.string())),
+      excludePaths: v.optional(v.array(v.string())),
+      allowSubdomains: v.optional(v.boolean()),
+      onlyMainContent: v.optional(v.boolean()),
+      delay: v.optional(v.number()),
+      concurrency: v.optional(v.number()),
+    }),
     status: v.union(
       v.literal("pending"),
       v.literal("running"),
       v.literal("completed"),
-      v.literal("failed")
+      v.literal("completed_with_errors"),
+      v.literal("failed"),
+      v.literal("cancelled"),
     ),
-    totalTraces: v.number(),
-    processedTraces: v.number(),
-    failedTraces: v.number(),
-    rawPassRate: v.optional(v.number()),
-    correctedPassRate: v.optional(v.number()),
-    confidenceInterval: v.optional(
-      v.object({
-        lower: v.number(),
-        upper: v.number()
-      })
-    ),
-    tprUsed: v.optional(v.number()),
-    tnrUsed: v.optional(v.number()),
+    stats: v.object({
+      discovered: v.number(),
+      scraped: v.number(),
+      failed: v.number(),
+      skipped: v.number(),
+    }),
     error: v.optional(v.string()),
     createdAt: v.number(),
-    completedAt: v.optional(v.number())
+    completedAt: v.optional(v.number()),
   })
-    .index("by_evaluator_config", ["evaluatorConfigId"])
-    .index("by_target_experiment", ["targetExperimentId"]),
+    .index("by_org", ["orgId"])
+    .index("by_kb", ["kbId"])
+    .index("by_status", ["orgId", "status"]),
 
-  // ─── Evaluator Results (per-question judge verdict) ───
-  evaluatorResults: defineTable({
-    orgId: v.string(),
-    runId: v.id("evaluatorRuns"),
-    questionId: v.id("questions"),
-    resultId: v.id("agentExperimentResults"),
-    judgeVerdict: v.union(v.literal("pass"), v.literal("fail")),
-    judgeReasoning: v.string(),
-    humanLabel: v.optional(v.union(v.literal("pass"), v.literal("fail"))),
-    agreesWithHuman: v.optional(v.boolean()),
-    usage: v.optional(
-      v.object({
-        promptTokens: v.number(),
-        completionTokens: v.number()
-      })
+  // ─── Crawl URLs (URL frontier for crawl jobs) ───
+  crawlUrls: defineTable({
+    crawlJobId: v.id("crawlJobs"),
+    url: v.string(),
+    normalizedUrl: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("scraping"),
+      v.literal("done"),
+      v.literal("failed"),
+      v.literal("skipped"),
     ),
-    latencyMs: v.optional(v.number()),
-    createdAt: v.number()
-  }).index("by_run", ["runId"]),
+    depth: v.number(),
+    parentUrl: v.optional(v.string()),
+    documentId: v.optional(v.id("documents")),
+    error: v.optional(v.string()),
+    retryCount: v.optional(v.number()),
+    scrapedAt: v.optional(v.number()),
+  })
+    .index("by_job_status", ["crawlJobId", "status"])
+    .index("by_job_url", ["crawlJobId", "normalizedUrl"]),
 
   // ── Agents ──────────────────────────────────────────────
   agents: defineTable({
@@ -298,18 +328,18 @@ export const agentTables = {
       companyUrl: v.optional(v.string()),
       companyContext: v.optional(v.string()),
       roleDescription: v.string(),
-      brandVoice: v.optional(v.string())
+      brandVoice: v.optional(v.string()),
     }),
     guardrails: v.object({
       outOfScope: v.optional(v.string()),
       escalationRules: v.optional(v.string()),
-      compliance: v.optional(v.string())
+      compliance: v.optional(v.string()),
     }),
     responseStyle: v.object({
       formatting: v.optional(v.string()),
       length: v.optional(v.string()),
       formality: v.optional(v.string()),
-      language: v.optional(v.string())
+      language: v.optional(v.string()),
     }),
     additionalInstructions: v.optional(v.string()),
 
@@ -317,24 +347,27 @@ export const agentTables = {
     enableReflection: v.boolean(),
     retrieverIds: v.array(v.id("retrievers")),
 
-    status: v.union(v.literal("draft"), v.literal("ready"), v.literal("error")),
-    createdAt: v.number()
-  }).index("by_org", ["orgId"]),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("ready"),
+      v.literal("error"),
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_org", ["orgId"]),
 
   conversations: defineTable({
     orgId: v.string(),
     title: v.optional(v.string()),
     agentIds: v.array(v.id("agents")),
     status: v.union(v.literal("active"), v.literal("archived")),
-    source: v.optional(
-      v.union(
-        v.literal("playground"),
-        v.literal("simulation"),
-        v.literal("experiment")
-      )
-    ),
-    createdAt: v.number()
-  }).index("by_org", ["orgId"]),
+    source: v.optional(v.union(
+      v.literal("playground"), v.literal("simulation"),
+    )),
+    createdAt: v.number(),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_org_source", ["orgId", "source"]),
 
   messages: defineTable({
     conversationId: v.id("conversations"),
@@ -344,7 +377,7 @@ export const agentTables = {
       v.literal("user"),
       v.literal("assistant"),
       v.literal("tool_call"),
-      v.literal("tool_result")
+      v.literal("tool_result"),
     ),
     content: v.string(),
     agentId: v.optional(v.id("agents")),
@@ -353,177 +386,192 @@ export const agentTables = {
         toolCallId: v.string(),
         toolName: v.string(),
         toolArgs: v.string(),
-        retrieverId: v.optional(v.id("retrievers"))
-      })
+        retrieverId: v.optional(v.id("retrievers")),
+      }),
     ),
     toolResult: v.optional(
       v.object({
         toolCallId: v.string(),
         toolName: v.string(),
         result: v.string(),
-        retrieverId: v.optional(v.id("retrievers"))
-      })
+        retrieverId: v.optional(v.id("retrievers")),
+      }),
     ),
     status: v.union(
       v.literal("pending"),
       v.literal("streaming"),
       v.literal("complete"),
-      v.literal("error")
+      v.literal("error"),
     ),
     usage: v.optional(
       v.object({
         promptTokens: v.number(),
-        completionTokens: v.number()
-      })
+        completionTokens: v.number(),
+      }),
     ),
-    createdAt: v.number()
-  }).index("by_conversation", ["conversationId", "order"]),
+    createdAt: v.number(),
+  })
+    .index("by_conversation", ["conversationId", "order"]),
 
   streamDeltas: defineTable({
     messageId: v.id("messages"),
     start: v.number(),
     end: v.number(),
-    text: v.string()
-  }).index("by_message", ["messageId", "start"]),
+    text: v.string(),
+  })
+    .index("by_message", ["messageId", "start"]),
 
   // === Conversation Simulation ===
 
   conversationScenarios: defineTable({
-    datasetId: v.id("datasets"),
     orgId: v.string(),
+    agentId: v.id("agents"),
+    scenarioSetId: v.id("scenarioSets"),
+    source: v.union(
+      v.object({ kind: v.literal("synthetic"),  kbId: v.id("knowledgeBases") }),
+      v.object({ kind: v.literal("grounded"),   transcriptUploadId: v.id("livechatUploads") }),
+    ),
     persona: v.object({
       type: v.string(),
       traits: v.array(v.string()),
       communicationStyle: v.string(),
-      patienceLevel: v.union(
-        v.literal("low"),
-        v.literal("medium"),
-        v.literal("high")
-      )
+      patienceLevel: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
     }),
     topic: v.string(),
     intent: v.string(),
-    complexity: v.union(
-      v.literal("low"),
-      v.literal("medium"),
-      v.literal("high")
-    ),
+    complexity: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
     reasonForContact: v.string(),
     knownInfo: v.string(),
     unknownInfo: v.string(),
     instruction: v.string(),
-    referenceMessages: v.optional(
-      v.array(
-        v.object({
-          role: v.literal("user"),
-          content: v.string(),
-          turnIndex: v.number()
-        })
-      )
-    ),
-    sourceType: v.optional(
-      v.union(v.literal("transcript_grounded"), v.literal("synthetic"))
-    ),
-    sourceTranscriptId: v.optional(v.id("livechatConversations")),
+    referenceMessages: v.optional(v.array(v.object({
+      role: v.literal("user"),
+      content: v.string(),
+      turnIndex: v.number(),
+    }))),
     languages: v.optional(v.array(v.string())),
-    // ── New: user-simulator fidelity (additive) ──
-    referenceTranscript: v.optional(
-      v.array(
-        v.object({
-          id: v.number(),
-          role: v.union(
-            v.literal("user"),
-            v.literal("human_agent"),
-            v.literal("workflow_input")
-          ),
-          text: v.string()
-        })
-      )
-    ),
-    referenceExemplars: v.optional(
-      v.array(
-        v.object({
-          sourceTranscriptId: v.id("livechatConversations"),
-          messages: v.array(
-            v.object({
-              id: v.number(),
-              role: v.union(
-                v.literal("user"),
-                v.literal("human_agent"),
-                v.literal("workflow_input")
-              ),
-              text: v.string()
-            })
-          )
-        })
-      )
-    ),
-    userMessageLengthStats: v.optional(
-      v.object({
-        median: v.number(),
-        p90: v.number()
-      })
-    ),
-    behaviorAnchors: v.optional(v.array(v.string()))
+    referenceTranscript: v.optional(v.array(v.object({
+      id: v.number(),
+      role: v.union(v.literal("user"), v.literal("human_agent"), v.literal("workflow_input")),
+      text: v.string(),
+    }))),
+    referenceExemplars: v.optional(v.array(v.object({
+      sourceTranscriptId: v.id("livechatConversations"),
+      messages: v.array(v.object({
+        id: v.number(),
+        role: v.union(v.literal("user"), v.literal("human_agent"), v.literal("workflow_input")),
+        text: v.string(),
+      })),
+    }))),
+    userMessageLengthStats: v.optional(v.object({
+      median: v.number(),
+      p90: v.number(),
+    })),
+    behaviorAnchors: v.optional(v.array(v.string())),
+    createdAt: v.number(),
   })
-    .index("by_dataset", ["datasetId"])
-    .index("by_org", ["orgId"]),
+    .index("by_agent", ["agentId"])
+    .index("by_set", ["scenarioSetId"])
+    .index("by_kb", ["source.kbId"])
+    .index("by_transcript_upload", ["source.transcriptUploadId"]),
 
   evaluators: defineTable({
     orgId: v.string(),
+    agentId: v.id("agents"),
     name: v.string(),
     description: v.string(),
     type: v.union(v.literal("code"), v.literal("llm_judge")),
-    scope: v.union(v.literal("session"), v.literal("turn")),
-    codeConfig: v.optional(
-      v.object({
-        checkType: v.union(
-          v.literal("tool_call_match"),
-          v.literal("string_contains"),
-          v.literal("regex_match"),
-          v.literal("response_format")
-        ),
-        params: v.any()
-      })
-    ),
-    judgeConfig: v.optional(
-      v.object({
+    codeJudgeConfig: v.optional(v.object({
+      checkType: v.union(
+        v.literal("tool_call_match"),
+        v.literal("string_contains"),
+        v.literal("regex_match"),
+        v.literal("response_format"),
+      ),
+      params: v.any(),
+    })),
+    llmJudgeConfig: v.optional(v.object({
+      dimensions: v.array(v.object({
+        failureModeId: v.optional(v.id("failureModes")),
+        name: v.string(),
         rubric: v.string(),
         passExamples: v.array(v.string()),
         failExamples: v.array(v.string()),
-        model: v.string(),
-        inputContext: v.array(
-          v.union(
-            v.literal("transcript"),
-            v.literal("tool_calls"),
-            v.literal("kb_documents")
-          )
-        )
-      })
+      })),
+      outputFormat: v.union(v.literal("per_dimension"), v.literal("aggregate")),
+      model: v.string(),
+      inputContext: v.array(v.union(
+        v.literal("transcript"),
+        v.literal("tool_calls"),
+        v.literal("kb_documents"),
+      )),
+    })),
+    source: v.union(
+      v.object({ kind: v.literal("manual") }),
+      v.object({ kind: v.literal("template"),       templateId:    v.id("evaluatorTemplates") }),
+      v.object({
+        kind: v.literal("error_analysis"),
+        failureModeId: v.id("failureModes"),
+        errorAnalysisId: v.id("errorAnalyses"),
+      }),
     ),
-    createdFrom: v.union(
-      v.literal("template"),
-      v.literal("error_analysis"),
-      v.literal("manual")
+    status: v.union(
+      v.literal("draft"), v.literal("calibrating"),
+      v.literal("validated"), v.literal("ready"),
     ),
-    tags: v.array(v.string())
-  }).index("by_org", ["orgId"]),
-
-  evaluatorSets: defineTable({
-    orgId: v.string(),
-    name: v.string(),
-    description: v.string(),
-    evaluatorIds: v.array(v.id("evaluators")),
-    requiredEvaluatorIds: v.array(v.id("evaluators")),
-    passThreshold: v.number()
-  }).index("by_org", ["orgId"]),
+    splitConfig: v.optional(v.object({
+      trainPct: v.number(),
+      devPct: v.number(),
+      testPct: v.number(),
+    })),
+    splitSeed: v.optional(v.number()),
+    devMetrics: v.optional(v.object({
+      tpr: v.number(),
+      tnr: v.number(),
+      agreement: v.number(),
+    })),
+    testMetrics: v.optional(
+      v.object({
+        tpr: v.number(),
+        tnr: v.number(),
+        agreement: v.number(),
+        n: v.number(),
+      }),
+    ),
+    devMetricsCI: v.optional(
+      v.object({
+        tpr: v.object({ lower: v.number(), upper: v.number() }),
+        tnr: v.object({ lower: v.number(), upper: v.number() }),
+      }),
+    ),
+    testMetricsCI: v.optional(
+      v.object({
+        tpr: v.object({ lower: v.number(), upper: v.number() }),
+        tnr: v.object({ lower: v.number(), upper: v.number() }),
+      }),
+    ),
+    labelCounts: v.optional(
+      v.object({
+        passDev: v.number(),
+        failDev: v.number(),
+        passTest: v.number(),
+        failTest: v.number(),
+      }),
+    ),
+    validatedAt: v.optional(v.number()),
+    tags: v.array(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_agent", ["agentId"])
+    .index("by_agent_status", ["agentId", "status"]),
 
   conversationSimulations: defineTable({
     orgId: v.string(),
     userId: v.id("users"),
-    datasetId: v.id("datasets"),
     agentId: v.id("agents"),
-    evaluatorSetId: v.optional(v.id("evaluatorSets")),
+    scenarioSetId: v.id("scenarioSets"),
     k: v.number(),
     passThreshold: v.optional(v.number()),
     concurrency: v.number(),
@@ -532,11 +580,8 @@ export const agentTables = {
     userSimModel: v.string(),
     seed: v.optional(v.number()),
     status: v.union(
-      v.literal("pending"),
-      v.literal("running"),
-      v.literal("completed"),
-      v.literal("failed"),
-      v.literal("cancelled")
+      v.literal("pending"), v.literal("running"), v.literal("completed"),
+      v.literal("failed"), v.literal("cancelled"),
     ),
     totalRuns: v.number(),
     completedRuns: v.number(),
@@ -544,24 +589,12 @@ export const agentTables = {
     overallPassRate: v.optional(v.number()),
     avgScore: v.optional(v.number()),
     workIds: v.optional(v.array(v.string())),
-    evaluationStatus: v.optional(
-      v.union(
-        v.literal("not_started"),
-        v.literal("running"),
-        v.literal("completed"),
-        v.literal("failed")
-      )
-    ),
-    evaluationEvaluatorSetId: v.optional(v.id("evaluatorSets")),
-    evaluationCompletedRuns: v.optional(v.number()),
-    evaluationFailedRuns: v.optional(v.number()),
-    evaluationWorkIds: v.optional(v.array(v.string())),
     startedAt: v.optional(v.number()),
-    completedAt: v.optional(v.number())
+    completedAt: v.optional(v.number()),
   })
     .index("by_org", ["orgId"])
     .index("by_agent", ["agentId"])
-    .index("by_dataset", ["datasetId"]),
+    .index("by_set", ["scenarioSetId"]),
 
   conversationSimRuns: defineTable({
     simulationId: v.id("conversationSimulations"),
@@ -571,38 +604,26 @@ export const agentTables = {
     seed: v.number(),
     conversationId: v.optional(v.id("conversations")),
     status: v.union(
-      v.literal("pending"),
-      v.literal("running"),
-      v.literal("completed"),
-      v.literal("failed")
+      v.literal("pending"), v.literal("running"),
+      v.literal("completed"), v.literal("failed"),
     ),
-    terminationReason: v.optional(
-      v.union(
-        v.literal("user_stop"),
-        v.literal("agent_stop"),
-        v.literal("max_turns"),
-        v.literal("timeout"),
-        v.literal("error")
-      )
-    ),
+    terminationReason: v.optional(v.union(
+      v.literal("user_stop"), v.literal("agent_stop"),
+      v.literal("max_turns"), v.literal("timeout"), v.literal("error"),
+    )),
     turnCount: v.optional(v.number()),
-    evaluatorResults: v.optional(
-      v.array(
-        v.object({
-          evaluatorId: v.id("evaluators"),
-          evaluatorName: v.string(),
-          passed: v.boolean(),
-          justification: v.string(),
-          required: v.boolean()
-        })
-      )
-    ),
+    evaluatorResults: v.optional(v.array(v.object({
+      evaluatorId: v.id("evaluators"),
+      evaluatorName: v.string(),
+      passed: v.boolean(),
+      justification: v.string(),
+      required: v.boolean(),
+    }))),
     score: v.optional(v.number()),
     passed: v.optional(v.boolean()),
     toolCallCount: v.optional(v.number()),
     totalTokens: v.optional(v.number()),
     latencyMs: v.optional(v.number()),
-    annotations: v.optional(v.string())
   })
     .index("by_simulation", ["simulationId"])
     .index("by_scenario", ["scenarioId"])
@@ -610,13 +631,18 @@ export const agentTables = {
 
   scenarioGenJobs: defineTable({
     orgId: v.string(),
-    kbId: v.id("knowledgeBases"),
-    datasetId: v.id("datasets"),
+    agentId: v.id("agents"),
+    scenarioSetId: v.id("scenarioSets"),
+    // Inputs available for generation. A single job can run both synthetic
+    // (kbId) and grounded (transcriptUploadId) tracks; the per-scenario row
+    // still carries its own source discriminator.
+    kbId: v.optional(v.id("knowledgeBases")),
+    transcriptUploadId: v.optional(v.id("livechatUploads")),
     status: v.union(
       v.literal("pending"),
       v.literal("running"),
       v.literal("completed"),
-      v.literal("failed")
+      v.literal("failed"),
     ),
     targetCount: v.number(),
     generatedCount: v.number(),
@@ -624,13 +650,41 @@ export const agentTables = {
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
     transcriptUploadIds: v.optional(v.array(v.id("livechatUploads"))),
-    transcriptConversationIds: v.optional(
-      v.array(v.id("livechatConversations"))
-    ),
-    distribution: v.optional(v.number()), // 0-100, % transcript-grounded
-    fidelity: v.optional(v.number()) // 0-100, high = faithful
+    transcriptConversationIds: v.optional(v.array(v.id("livechatConversations"))),
+    distribution: v.optional(v.number()),  // 0-100, % transcript-grounded
+    fidelity: v.optional(v.number()),      // 0-100, high = faithful
   })
     .index("by_org", ["orgId"])
     .index("by_org_status", ["orgId", "status"])
-    .index("by_dataset", ["datasetId"])
-}
+    .index("by_agent", ["agentId"]),
+
+  scenarioSets: defineTable({
+    orgId: v.string(),
+    agentId: v.id("agents"),
+    name: v.string(),
+    source: v.union(
+      v.literal("synthetic"),
+      v.literal("grounded"),
+      v.literal("mixed"),
+    ),
+    generationConfig: v.object({
+      kbId: v.optional(v.id("knowledgeBases")),
+      transcriptUploadId: v.optional(v.id("livechatUploads")),
+      transcriptConversationIds: v.optional(
+        v.array(v.id("livechatConversations")),
+      ),
+      targetCount: v.number(),
+      distribution: v.optional(v.number()),
+      fidelity: v.optional(v.number()),
+      complexityDistribution: v.optional(
+        v.object({ low: v.number(), medium: v.number(), high: v.number() }),
+      ),
+      model: v.optional(v.string()),
+    }),
+    scenarioCount: v.number(),
+    generationJobId: v.optional(v.id("scenarioGenJobs")),
+    createdAt: v.number(),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_org", ["orgId"]),
+};

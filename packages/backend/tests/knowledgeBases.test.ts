@@ -18,7 +18,7 @@ describe("knowledgeBases: create with metadata", () => {
   it("creates a KB with industry and company metadata", async () => {
     await seedUser(t)
     const authedT = t.withIdentity(testIdentity)
-    const kbId = await authedT.mutation(api.kb.core.create, {
+    const kbId = await authedT.mutation(api.crud.knowledgeBases.create, {
       name: "JPMorgan Chase Support",
       description: "Customer support KB",
       industry: "finance",
@@ -37,7 +37,7 @@ describe("knowledgeBases: create with metadata", () => {
   it("creates a KB without metadata (backward compatible)", async () => {
     await seedUser(t)
     const authedT = t.withIdentity(testIdentity)
-    const kbId = await authedT.mutation(api.kb.core.create, {
+    const kbId = await authedT.mutation(api.crud.knowledgeBases.create, {
       name: "Basic KB"
     })
     const kb = await t.run(async (ctx) => ctx.db.get(kbId))
@@ -74,7 +74,7 @@ describe("knowledgeBases: listByIndustry", () => {
     })
     const authedT = t.withIdentity(testIdentity)
     const results = await authedT.query(
-      api.kb.core.listByIndustry,
+      api.crud.knowledgeBases.listByIndustry,
       {}
     )
     expect(results).toHaveLength(2)
@@ -102,7 +102,7 @@ describe("knowledgeBases: listByIndustry", () => {
     })
     const authedT = t.withIdentity(testIdentity)
     const results = await authedT.query(
-      api.kb.core.listByIndustry,
+      api.crud.knowledgeBases.listByIndustry,
       {
         industry: "finance"
       }
@@ -140,7 +140,7 @@ describe("knowledgeBases: listWithDocCounts", () => {
 
     const authedT = t.withIdentity(testIdentity)
     const results = await authedT.query(
-      api.kb.core.listWithDocCounts,
+      api.crud.knowledgeBases.listWithDocCounts,
       {}
     )
 
@@ -174,7 +174,7 @@ describe("knowledgeBases: listWithDocCounts", () => {
 
     const authedT = t.withIdentity(testIdentity)
     const results = await authedT.query(
-      api.kb.core.listWithDocCounts,
+      api.crud.knowledgeBases.listWithDocCounts,
       { industry: "finance" }
     )
     expect(results).toHaveLength(1)

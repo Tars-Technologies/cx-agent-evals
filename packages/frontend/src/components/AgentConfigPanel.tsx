@@ -24,8 +24,8 @@ export default function AgentConfigPanel({ agentId }: AgentConfigPanelProps) {
   const triggerExtract = useMutation(
     api.agents.orchestration.triggerUrlExtraction
   )
-  const allRetrievers = useQuery(api.kb.retrievers.byOrg, {}) ?? []
-  const allKbs = useQuery(api.kb.core.list, {}) ?? []
+  const allRetrievers = useQuery(api.crud.retrievers.byOrg, {}) ?? []
+  const allKbs = useQuery(api.crud.knowledgeBases.list, {}) ?? []
 
   // Form state
   const [name, setName] = useState("")

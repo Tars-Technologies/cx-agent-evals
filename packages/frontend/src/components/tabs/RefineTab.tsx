@@ -307,9 +307,11 @@ export function RefineTab({ retriever, query, onQueryChange }: RefineTabProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const rewriteAction = useAction(api.kb.pipeline_actions.rewriteQuery)
-  const searchAction = useAction(api.kb.pipeline_actions.searchWithQueries)
-  const refineAction = useAction(api.kb.pipeline_actions.refine)
+  const rewriteAction = useAction(api.retrieval.pipelineActions.rewriteQuery)
+  const searchAction = useAction(
+    api.retrieval.pipelineActions.searchWithQueries
+  )
+  const refineAction = useAction(api.retrieval.pipelineActions.refine)
 
   const resolved = resolveConfig(retriever.retrieverConfig as PipelineConfig)
 

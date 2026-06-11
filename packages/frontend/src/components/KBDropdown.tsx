@@ -10,7 +10,7 @@ interface KBDropdownProps {
 }
 
 export function KBDropdown({ selectedKbId, onSelect }: KBDropdownProps) {
-  const kbs = useQuery(api.kb.core.listWithDocCounts, {})
+  const kbs = useQuery(api.crud.knowledgeBases.listWithDocCounts, {})
 
   if (kbs === undefined) {
     return (

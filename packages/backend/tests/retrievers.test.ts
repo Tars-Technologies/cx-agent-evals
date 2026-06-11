@@ -101,7 +101,7 @@ describe("retrievers: deleteIndex", () => {
     })
 
     const authedT = t.withIdentity(testIdentity)
-    const result = await authedT.mutation(api.kb.retrievers.deleteIndex, {
+    const result = await authedT.mutation(api.crud.retrievers.deleteIndex, {
       id: retriever1Id
     })
     expect(result).toEqual({ deleted: true })
@@ -132,7 +132,7 @@ describe("retrievers: deleteIndex", () => {
     })
 
     const authedT = t.withIdentity(testIdentity)
-    const result = await authedT.mutation(api.kb.retrievers.deleteIndex, {
+    const result = await authedT.mutation(api.crud.retrievers.deleteIndex, {
       id: retrieverId
     })
     expect(result).toEqual({ deleted: true })
@@ -166,7 +166,7 @@ describe("retrievers: resetAfterCancel", () => {
 
     const authedT = t.withIdentity(testIdentity)
     const result = await authedT.mutation(
-      api.kb.retrievers.resetAfterCancel,
+      api.crud.retrievers.resetAfterCancel,
       { id: retrieverId }
     )
     expect(result).toEqual({ reset: true })
@@ -193,7 +193,7 @@ describe("retrievers: remove", () => {
     const retrieverId = await seedRetriever(t, userId, kbId)
 
     const authedT = t.withIdentity(testIdentity)
-    const result = await authedT.mutation(api.kb.retrievers.remove, {
+    const result = await authedT.mutation(api.crud.retrievers.remove, {
       id: retrieverId
     })
     expect(result).toEqual({ deleted: true })
@@ -215,7 +215,7 @@ describe("retrievers: insertRetriever", () => {
     const kbId = await seedKB(t, userId)
 
     const retrieverId = await t.mutation(
-      internal.kb.retrievers.insertRetriever,
+      internal.crud.retrievers.insertRetriever,
       {
         orgId: TEST_ORG_ID,
         kbId,
@@ -262,7 +262,7 @@ describe("retrievers: syncStatusFromIndexingJob", () => {
       indexingJobId: jobId
     })
 
-    await t.mutation(internal.kb.retrievers.syncStatusFromIndexingJob, {
+    await t.mutation(internal.crud.retrievers.syncStatusFromIndexingJob, {
       retrieverId
     })
 
@@ -302,7 +302,7 @@ describe("retrievers: syncStatusFromIndexingJob", () => {
       indexingJobId: jobId
     })
 
-    await t.mutation(internal.kb.retrievers.syncStatusFromIndexingJob, {
+    await t.mutation(internal.crud.retrievers.syncStatusFromIndexingJob, {
       retrieverId
     })
 
@@ -324,7 +324,7 @@ describe("retrievers: syncStatusFromIndexingJob", () => {
       chunkCount: 5
     })
 
-    await t.mutation(internal.kb.retrievers.syncStatusFromIndexingJob, {
+    await t.mutation(internal.crud.retrievers.syncStatusFromIndexingJob, {
       retrieverId
     })
 

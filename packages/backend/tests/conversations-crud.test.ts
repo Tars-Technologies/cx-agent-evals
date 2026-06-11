@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { api } from "../convex/_generated/api"
-import { seedUser, setupTest, testIdentity } from "./helpers"
+import { api, internal } from "../convex/_generated/api"
+import { seedUser, setupTest, TEST_ORG_ID, testIdentity } from "./helpers"
 
 const DEFAULT_AGENT_ARGS = {
   name: "Test Agent",
@@ -126,4 +126,47 @@ describe("conversations CRUD", () => {
     expect(deltas[0].text).toBe("Hello")
     expect(deltas[1].text).toBe(" world")
   })
+
+  it("listForOrg never returns more than the sidebar cap", async () => {
+    const t = setupTest()
+    await seedUser(t)
+    const authed = t.withIdentity(testIdentity)
+    const agentId = await authed.mutation(api.crud.agents.create, DEFAULT_AGENT_ARGS)
+    for (let i = 0; i < 105; i++) {
+      await t.mutation(internal.crud.conversations.createInternal, {
+        orgId: TEST_ORG_ID,
+        agentIds: [agentId],
+        title: `c${i}`,
+        source: "playground",
+      })
+    }
+    const rows = await authed.query(api.crud.conversations.listForOrg, {})
+    expect(rows.length).toBeLessThanOrEqual(100)
+  })
+
+  it("count/list by agent+source share a result and respect source", async () => {
+    const t = setupTest();
+    await seedUser(t);
+    const authed = t.withIdentity(testIdentity);
+    const agentId = await authed.mutation(api.crud.agents.create, DEFAULT_AGENT_ARGS);
+    await t.mutation(internal.crud.conversations.createInternal, { orgId: TEST_ORG_ID, agentIds: [agentId], source: "playground" });
+    await t.mutation(internal.crud.conversations.createInternal, { orgId: TEST_ORG_ID, agentIds: [agentId], source: "playground" });
+    await t.mutation(internal.crud.conversations.createInternal, { orgId: TEST_ORG_ID, agentIds: [agentId], source: "simulation" });
+    const count = await authed.query(api.crud.conversations.countByAgentAndSource, { agentId, source: "playground" });
+    const list = await authed.query(api.crud.conversations.listByAgentAndSource, { agentId, source: "playground" });
+    expect(count).toBe(2);
+    expect(list).toHaveLength(2);
+    expect(count).toBe(list.length);
+  });
+
+  it("get returns null and listMessages returns [] for a cross-org id", async () => {
+    const t = setupTest();
+    await seedUser(t);
+    const owner = t.withIdentity(testIdentity);
+    const agentId = await owner.mutation(api.crud.agents.create, DEFAULT_AGENT_ARGS);
+    const convId = await owner.mutation(api.crud.conversations.create, { agentIds: [agentId] });
+    const intruder = t.withIdentity({ ...testIdentity, subject: "user_other", org_id: "org_other" });
+    expect(await intruder.query(api.crud.conversations.get, { id: convId })).toBeNull();
+    expect(await intruder.query(api.crud.conversations.listMessages, { conversationId: convId })).toEqual([]);
+  });
 })

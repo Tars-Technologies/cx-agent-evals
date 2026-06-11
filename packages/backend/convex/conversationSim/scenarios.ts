@@ -1,11 +1,10 @@
-import { v } from "convex/values"
 import {
-  internalMutation,
+  query,
   internalQuery,
-  mutation,
-  query
-} from "../_generated/server"
-import { getAuthContext } from "../lib/auth"
+  internalMutation,
+} from "../_generated/server";
+import { v } from "convex/values";
+import { getAuthContext } from "../lib/auth";
 
 // ─── Shared validators ───
 
@@ -16,54 +15,62 @@ const personaValidator = v.object({
   patienceLevel: v.union(
     v.literal("low"),
     v.literal("medium"),
-    v.literal("high")
-  )
-})
+    v.literal("high"),
+  ),
+});
 
 const complexityValidator = v.union(
   v.literal("low"),
   v.literal("medium"),
-  v.literal("high")
-)
+  v.literal("high"),
+);
 
 const referenceMessagesArrayValidator = v.array(
   v.object({
     role: v.literal("user"),
     content: v.string(),
-    turnIndex: v.number()
-  })
-)
-const referenceMessagesValidator = v.optional(referenceMessagesArrayValidator)
+    turnIndex: v.number(),
+  }),
+);
+const referenceMessagesValidator = v.optional(referenceMessagesArrayValidator);
 
 const messageValidator = v.object({
   id: v.number(),
   role: v.union(
     v.literal("user"),
     v.literal("human_agent"),
-    v.literal("workflow_input")
+    v.literal("workflow_input"),
   ),
-  text: v.string()
-})
+  text: v.string(),
+});
 
-const referenceTranscriptValidator = v.optional(v.array(messageValidator))
+const referenceTranscriptValidator = v.optional(v.array(messageValidator));
 const referenceExemplarsValidator = v.optional(
   v.array(
     v.object({
       sourceTranscriptId: v.id("livechatConversations"),
-      messages: v.array(messageValidator)
-    })
-  )
-)
+      messages: v.array(messageValidator),
+    }),
+  ),
+);
 const userMessageLengthStatsValidator = v.optional(
   v.object({
     median: v.number(),
-    p90: v.number()
-  })
-)
-const behaviorAnchorsValidator = v.optional(v.array(v.string()))
+    p90: v.number(),
+  }),
+);
+const behaviorAnchorsValidator = v.optional(v.array(v.string()));
+const languagesValidator = v.optional(v.array(v.string()));
 
-const scenarioFields = {
-  datasetId: v.id("datasets"),
+const sourceValidator = v.union(
+  v.object({ kind: v.literal("synthetic"), kbId: v.id("knowledgeBases") }),
+  v.object({
+    kind: v.literal("grounded"),
+    transcriptUploadId: v.id("livechatUploads"),
+  }),
+);
+
+const contentFields = {
   persona: personaValidator,
   topic: v.string(),
   intent: v.string(),
@@ -72,36 +79,27 @@ const scenarioFields = {
   knownInfo: v.string(),
   unknownInfo: v.string(),
   instruction: v.string(),
-  referenceMessages: referenceMessagesValidator
-}
+  referenceMessages: referenceMessagesValidator,
+  languages: languagesValidator,
+  referenceTranscript: referenceTranscriptValidator,
+  referenceExemplars: referenceExemplarsValidator,
+  userMessageLengthStats: userMessageLengthStatsValidator,
+  behaviorAnchors: behaviorAnchorsValidator,
+};
 
 // ─── Queries ───
-
-export const byDataset = query({
-  args: { datasetId: v.id("datasets") },
-  handler: async (ctx, { datasetId }) => {
-    const { orgId } = await getAuthContext(ctx)
-    const dataset = await ctx.db.get(datasetId)
-    if (!dataset || dataset.orgId !== orgId)
-      throw new Error("Dataset not found")
-    return ctx.db
-      .query("conversationScenarios")
-      .withIndex("by_dataset", (q) => q.eq("datasetId", datasetId))
-      .collect()
-  }
-})
 
 export const get = query({
   args: { id: v.id("conversationScenarios") },
   handler: async (ctx, { id }) => {
-    const { orgId } = await getAuthContext(ctx)
-    const scenario = await ctx.db.get(id)
+    const { orgId } = await getAuthContext(ctx);
+    const scenario = await ctx.db.get(id);
     if (!scenario || scenario.orgId !== orgId) {
-      throw new Error("Scenario not found")
+      throw new Error("Scenario not found");
     }
-    return scenario
-  }
-})
+    return scenario;
+  },
+});
 
 // Like `get`, but returns null instead of throwing when the scenario is missing
 // or belongs to a different org. Used by views that link to scenarios which may
@@ -109,89 +107,91 @@ export const get = query({
 export const getMaybe = query({
   args: { id: v.id("conversationScenarios") },
   handler: async (ctx, { id }) => {
-    const { orgId } = await getAuthContext(ctx)
-    const scenario = await ctx.db.get(id)
-    if (!scenario || scenario.orgId !== orgId) return null
-    return scenario
-  }
-})
-
-// ─── Mutations ───
-
-export const create = mutation({
-  args: scenarioFields,
-  handler: async (ctx, args) => {
-    const { orgId } = await getAuthContext(ctx)
-    return await ctx.db.insert("conversationScenarios", { orgId, ...args })
-  }
-})
-
-export const update = mutation({
-  args: {
-    id: v.id("conversationScenarios"),
-    persona: v.optional(personaValidator),
-    topic: v.optional(v.string()),
-    intent: v.optional(v.string()),
-    complexity: v.optional(complexityValidator),
-    reasonForContact: v.optional(v.string()),
-    knownInfo: v.optional(v.string()),
-    unknownInfo: v.optional(v.string()),
-    instruction: v.optional(v.string()),
-    referenceMessages: v.optional(referenceMessagesArrayValidator),
-    referenceTranscript: referenceTranscriptValidator,
-    referenceExemplars: referenceExemplarsValidator,
-    userMessageLengthStats: userMessageLengthStatsValidator,
-    behaviorAnchors: behaviorAnchorsValidator
+    const { orgId } = await getAuthContext(ctx);
+    const scenario = await ctx.db.get(id);
+    if (!scenario || scenario.orgId !== orgId) return null;
+    return scenario;
   },
-  handler: async (ctx, { id, ...updates }) => {
-    const { orgId } = await getAuthContext(ctx)
-    const existing = await ctx.db.get(id)
-    if (!existing || existing.orgId !== orgId) {
-      throw new Error("Scenario not found")
-    }
-    const filtered = Object.fromEntries(
-      Object.entries(updates).filter(([_, v]) => v !== undefined)
-    )
-    await ctx.db.patch(id, filtered)
-  }
-})
+});
 
-export const remove = mutation({
-  args: { id: v.id("conversationScenarios") },
-  handler: async (ctx, { id }) => {
-    const { orgId } = await getAuthContext(ctx)
-    const existing = await ctx.db.get(id)
-    if (!existing || existing.orgId !== orgId) {
-      throw new Error("Scenario not found")
-    }
-    await ctx.db.delete(id)
-  }
-})
+export const byAgent = query({
+  args: { agentId: v.id("agents") },
+  handler: async (ctx, { agentId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const agent = await ctx.db.get(agentId);
+    if (!agent || agent.orgId !== orgId) throw new Error("Agent not found");
+    return await ctx.db
+      .query("conversationScenarios")
+      .withIndex("by_agent", (q) => q.eq("agentId", agentId))
+      .collect();
+  },
+});
+
+// Impact analysis: which scenarios depend on a given KB?
+export const byKb = query({
+  args: { kbId: v.id("knowledgeBases") },
+  handler: async (ctx, { kbId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const kb = await ctx.db.get(kbId);
+    if (!kb || kb.orgId !== orgId) throw new Error("Knowledge base not found");
+    return await ctx.db
+      .query("conversationScenarios")
+      .withIndex("by_kb", (q) => q.eq("source.kbId", kbId))
+      .collect();
+  },
+});
+
+// Impact analysis: which scenarios depend on a given transcript upload?
+export const byTranscriptUpload = query({
+  args: { transcriptUploadId: v.id("livechatUploads") },
+  handler: async (ctx, { transcriptUploadId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const upload = await ctx.db.get(transcriptUploadId);
+    if (!upload || upload.orgId !== orgId)
+      throw new Error("Transcript upload not found");
+    return await ctx.db
+      .query("conversationScenarios")
+      .withIndex("by_transcript_upload", (q) =>
+        q.eq("source.transcriptUploadId", transcriptUploadId),
+      )
+      .collect();
+  },
+});
+
+export const bySet = query({
+  args: { scenarioSetId: v.id("scenarioSets") },
+  handler: async (ctx, { scenarioSetId }) => {
+    const { orgId } = await getAuthContext(ctx);
+    const set = await ctx.db.get(scenarioSetId);
+    if (!set || set.orgId !== orgId) throw new Error("Set not found");
+    return ctx.db
+      .query("conversationScenarios")
+      .withIndex("by_set", (q) => q.eq("scenarioSetId", scenarioSetId))
+      .collect();
+  },
+});
 
 // ─── Internal ───
 
 export const getInternal = internalQuery({
   args: { id: v.id("conversationScenarios") },
   handler: async (ctx, { id }) => {
-    return await ctx.db.get(id)
-  }
-})
+    return await ctx.db.get(id);
+  },
+});
 
 export const createInternal = internalMutation({
   args: {
-    ...scenarioFields,
     orgId: v.string(),
-    sourceType: v.optional(
-      v.union(v.literal("transcript_grounded"), v.literal("synthetic"))
-    ),
-    sourceTranscriptId: v.optional(v.id("livechatConversations")),
-    languages: v.optional(v.array(v.string())),
-    referenceTranscript: referenceTranscriptValidator,
-    referenceExemplars: referenceExemplarsValidator,
-    userMessageLengthStats: userMessageLengthStatsValidator,
-    behaviorAnchors: behaviorAnchorsValidator
+    agentId: v.id("agents"),
+    scenarioSetId: v.id("scenarioSets"),
+    source: sourceValidator,
+    ...contentFields,
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("conversationScenarios", args)
-  }
-})
+    return await ctx.db.insert("conversationScenarios", {
+      ...args,
+      createdAt: Date.now(),
+    });
+  },
+});

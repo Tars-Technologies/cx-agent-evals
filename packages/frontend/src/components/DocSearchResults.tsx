@@ -33,7 +33,7 @@ export function DocSearchResults({
 }: DocSearchResultsProps) {
   const trimmed = query.trim()
   const results = useQuery(
-    api.kb.documents.searchDocsByTitle,
+    api.crud.documents.searchDocsByTitle,
     trimmed ? { kbId, query: trimmed, limit } : "skip"
   )
 
