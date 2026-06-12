@@ -161,13 +161,12 @@ export class StatelessQueryRetriever {
     }) as Record<string, unknown> & { strategy: string }
 
     const perQueryK = queries.length > 1 ? k * 2 : k
-    const perQueryResults: Array<{ query: string; chunks: ScoredChunk[] }> = []
-    for (const q of queries) {
-      perQueryResults.push({
+    const perQueryResults = await Promise.all(
+      queries.map(async (q) => ({
         query: q,
         chunks: await this._searchSingle(q, perQueryK, searchCfg)
-      })
-    }
+      }))
+    )
 
     const fusedResults =
       perQueryResults.length === 1
