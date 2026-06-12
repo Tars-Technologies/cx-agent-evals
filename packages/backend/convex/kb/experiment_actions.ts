@@ -49,6 +49,7 @@ import { internalAction } from "../_generated/server"
 import { backendConfig } from "../config"
 import { resolveMaxConcurrency } from "../lib/experimentConcurrency"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
+import { assertIndexableDimension } from "./dimension_guard"
 import { resolveRerankerSelection } from "./reranker_selection"
 
 // ─── Helpers: search-strategy dispatch ───
@@ -566,6 +567,7 @@ export const runEvaluation = internalAction({
 
     // Create embedder for query embedding
     const embedder = createEmbedder(args.embeddingModel)
+    assertIndexableDimension(embedder.dimension, args.embeddingModel)
 
     // Build query → questionId lookup for onResult callback.
     // Only include questions with ground truth spans so retriever
