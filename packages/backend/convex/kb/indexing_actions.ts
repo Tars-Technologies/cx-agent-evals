@@ -352,6 +352,21 @@ export const cleanupAction = internalAction({
   handler: async (ctx, args) => {
     let totalDeleted = 0
 
+    // Drop the external Qdrant collection FIRST, before removing local chunks.
+    // If this throws, the local chunks remain as a reconcilable record and the
+    // retried cleanup re-drops the collection idempotently. Dropping local
+    // chunks first would risk leaving orphaned vectors that still match
+    // (kbId, indexConfigHash) filters and get served as stale results.
+    if (args.vectorBackend === "qdrant" && args.qdrantCollection) {
+      const store = buildQdrantStore({
+        collection: args.qdrantCollection,
+        dimension: 1 // dimension is irrelevant for collection deletion
+      })
+      // deleteByKnowledgeBase is an optional VectorStore capability, but
+      // QdrantVectorStore always implements it (drops the collection).
+      await store.deleteByKnowledgeBase!(String(args.kbId))
+    }
+
     // Paginated chunk deletion
     let hasMore = true
     while (hasMore) {
@@ -365,18 +380,6 @@ export const cleanupAction = internalAction({
       )
       totalDeleted += result.deleted
       hasMore = result.hasMore
-    }
-
-    // Drop the external Qdrant collection. No try/catch: a half-cleaned dual
-    // store must fail loudly rather than silently leak vectors.
-    if (args.vectorBackend === "qdrant" && args.qdrantCollection) {
-      const store = buildQdrantStore({
-        collection: args.qdrantCollection,
-        dimension: 1 // dimension is irrelevant for collection deletion
-      })
-      // deleteByKnowledgeBase is an optional VectorStore capability, but
-      // QdrantVectorStore always implements it (drops the collection).
-      await store.deleteByKnowledgeBase!(String(args.kbId))
     }
 
     // Optionally delete source documents
