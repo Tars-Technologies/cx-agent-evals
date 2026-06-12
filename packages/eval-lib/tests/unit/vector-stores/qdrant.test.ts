@@ -58,7 +58,10 @@ describe("QdrantVectorStore", () => {
 
   it("add(): ensures the collection then upserts self-contained points", async () => {
     fetchMock
-      .mockResolvedValueOnce(collectionInfo(3)) // GET collection
+      .mockResolvedValueOnce(collectionInfo(3)) // GET collection (exists)
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index kbId
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index indexConfigHash
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index documentId
       .mockResolvedValueOnce(
         okJson({ status: "ok", result: { status: "completed" } })
       ) // upsert
@@ -72,7 +75,7 @@ describe("QdrantVectorStore", () => {
     expect(getUrl).toBe("http://qdrant.local:6333/collections/kb_x_abcdef")
     expect(getInit.headers["api-key"]).toBe("test-key")
 
-    const [upsertUrl, upsertInit] = fetchMock.mock.calls[1]
+    const [upsertUrl, upsertInit] = fetchMock.mock.calls[4]
     expect(upsertUrl).toBe(
       "http://qdrant.local:6333/collections/kb_x_abcdef/points?wait=true"
     )
@@ -247,9 +250,17 @@ describe("QdrantVectorStore", () => {
     expect(fetchMock.mock.calls[1][1].method).toBe("DELETE")
   })
 
+  it("deleteByKnowledgeBase(): treats a missing collection (404) as already dropped", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("not found", { status: 404 }))
+    await expect(store.deleteByKnowledgeBase("kb1")).resolves.toBeUndefined()
+  })
+
   it("checkHealth(): true when reachable+compatible, false otherwise", async () => {
-    fetchMock.mockResolvedValueOnce(collectionInfo(3))
+    fetchMock
+      .mockResolvedValueOnce(collectionInfo(3)) // GET
+      .mockImplementation(async () => okJson({ status: "ok", result: {} })) // index PUTs
     expect(await store.checkHealth()).toBe(true)
+    fetchMock.mockReset()
     fetchMock.mockRejectedValueOnce(new Error("ECONNREFUSED"))
     expect(await store.checkHealth()).toBe(false)
   })
@@ -262,6 +273,9 @@ describe("QdrantVectorStore", () => {
       retry: { maxRetries: 0 }
     })
     fetchMock.mockResolvedValueOnce(collectionInfo(3))
+    fetchMock.mockImplementation(async () =>
+      okJson({ status: "ok", result: {} })
+    )
     await open.checkHealth()
     expect(fetchMock.mock.calls[0][1].headers["api-key"]).toBeUndefined()
   })
