@@ -31,6 +31,7 @@ export interface ParseOptions {
 export interface Scraper {
   readonly name: string
   checkHealth(): Promise<boolean>
+  scrapePage(url: string, options?: ScrapeOptions): Promise<ScrapedPage>
   startCrawl(args: {
     startUrl: string
     config: ScraperCrawlConfig
@@ -42,6 +43,7 @@ export interface Scraper {
 export interface Parser {
   readonly name: string
   checkHealth(): Promise<boolean>
+  parseFile(bytes: Uint8Array, mimeType: string): Promise<ParsedFile>
   startParse(args: {
     fileUrl: string
     mimeType: string

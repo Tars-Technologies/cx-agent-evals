@@ -10,7 +10,6 @@ import {
   assertHostResolvesPublic,
   assertPublicHttpUrl,
   filterLinks,
-  InProcessScraper,
   makeScraper,
   normalizeUrl
 } from "@tars-inc/eval-lib/scraper"
@@ -27,7 +26,7 @@ export const batchScrape = internalAction({
   args: { crawlJobId: v.id("crawlJobs") },
   handler: async (ctx, args) => {
     const startTime = Date.now()
-    const scraper = new InProcessScraper()
+    const scraper = makeScraper()
 
     while (Date.now() - startTime < TIME_BUDGET_MS - 30_000) {
       // Check if job was cancelled
