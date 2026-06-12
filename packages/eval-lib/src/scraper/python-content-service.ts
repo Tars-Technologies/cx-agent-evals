@@ -1,10 +1,14 @@
 import type {
   NormalizedCallback,
+  ParsedFile,
   ParseOptions,
   Parser,
+  ScrapedPage,
+  ScrapeOptions,
   Scraper,
   ScraperCrawlConfig
 } from "./ports.js"
+import { NotSupportedError } from "./ports.js"
 import { FinishReason } from "./wire.js"
 
 export interface PythonContentServiceConfig {
@@ -95,6 +99,13 @@ export class PythonContentService implements Scraper, Parser {
     }
   }
 
+  async scrapePage(
+    _url: string,
+    _options?: ScrapeOptions
+  ): Promise<ScrapedPage> {
+    throw new NotSupportedError("scrapePage", this.name)
+  }
+
   async startCrawl(args: {
     startUrl: string
     config: ScraperCrawlConfig
@@ -112,6 +123,10 @@ export class PythonContentService implements Scraper, Parser {
       })
     })
     return this.parseJobAccepted(res, "startCrawl")
+  }
+
+  async parseFile(_bytes: Uint8Array, _mimeType: string): Promise<ParsedFile> {
+    throw new NotSupportedError("parseFile", this.name)
   }
 
   async startParse(args: {

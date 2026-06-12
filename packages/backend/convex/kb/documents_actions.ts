@@ -5,7 +5,8 @@
  * - inprocess: parse synchronously here (InProcessParser.parseFile) and create the doc.
  * - tarser: create a "parsing" placeholder and submit to Tarser; parse_done fills it via http.ts.
  */
-import { InProcessParser, makeParser } from "@tars-inc/eval-lib/scraper"
+import { makeParser } from "@tars-inc/eval-lib/scraper"
+import type { ParsedFile } from "@tars-inc/eval-lib/scraper"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
@@ -74,8 +75,8 @@ export const parseDocument = internalAction({
     const blob = await ctx.storage.get(args.storageId)
     if (!blob) throw new Error("Uploaded file not found")
     const bytes = new Uint8Array(await blob.arrayBuffer())
-    const parser = new InProcessParser()
-    let parsed: Awaited<ReturnType<typeof parser.parseFile>>
+    const parser = makeParser()
+    let parsed: ParsedFile
     try {
       parsed = await parser.parseFile(bytes, args.mimeType)
     } catch (error) {
