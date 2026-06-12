@@ -120,7 +120,7 @@ export class ContentScraper {
         throw new Error(`Response too large: ${declaredLength} bytes`)
       }
 
-      const html = await readBodyWithCap(response, MAX_BYTES)
+      const html = await readBodyWithCap(response, MAX_BYTES, charsetFromContentType(contentType))
 
       const result = await htmlToMarkdown(html, {
         onlyMainContent: options?.onlyMainContent ?? true,
@@ -150,6 +150,11 @@ export class ContentScraper {
   }
 }
 
+function charsetFromContentType(contentType: string): string {
+  const m = contentType.match(/charset=([\w-]+)/i)
+  return m?.[1] ?? "utf-8"
+}
+
 /**
  * Read a response body as text, aborting once accumulated bytes exceed `maxBytes`.
  * Streams chunk-by-chunk so a server that omits or lies about Content-Length, or
@@ -158,7 +163,8 @@ export class ContentScraper {
  */
 async function readBodyWithCap(
   response: Response,
-  maxBytes: number
+  maxBytes: number,
+  charset = "utf-8"
 ): Promise<string> {
   if (!response.body) {
     const text = await response.text()
@@ -170,7 +176,12 @@ async function readBodyWithCap(
   }
 
   const reader = response.body.getReader()
-  const decoder = new TextDecoder()
+  let decoder: TextDecoder
+  try {
+    decoder = new TextDecoder(charset)
+  } catch {
+    decoder = new TextDecoder()
+  }
   let received = 0
   let result = ""
   try {

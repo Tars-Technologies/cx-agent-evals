@@ -3,6 +3,22 @@ import { pdfToMarkdown } from "../file-processing/pdf-to-markdown.js"
 import type { ParsedFile, ParseOptions, Parser } from "./ports.js"
 import { NotSupportedError } from "./ports.js"
 
+function sniffHtmlCharset(bytes: Uint8Array): string {
+  // Read only the first 1024 bytes as ASCII (safe regardless of encoding) to find
+  // the charset declaration before we commit to a full decode.
+  const head = new TextDecoder("ascii", { fatal: false }).decode(bytes.subarray(0, 1024))
+  const m = head.match(/charset=["']?([\w-]+)/i)
+  return m?.[1] ?? "utf-8"
+}
+
+function decodeBytes(bytes: Uint8Array, charset = "utf-8"): string {
+  try {
+    return new TextDecoder(charset).decode(bytes)
+  } catch {
+    return new TextDecoder().decode(bytes)
+  }
+}
+
 /**
  * In-process parser. Converts uploaded file bytes to markdown synchronously by
  * mime type. The async startParse() is unsupported here: in-process parsing returns
@@ -22,11 +38,11 @@ export class InProcessParser implements Parser {
       return { markdown: r.content, title: r.title }
     }
     if (type.includes("html")) {
-      const r = await htmlToMarkdown(new TextDecoder().decode(bytes))
+      const r = await htmlToMarkdown(decodeBytes(bytes, sniffHtmlCharset(bytes)))
       return { markdown: r.content, title: r.title }
     }
     if (type.includes("text") || type.includes("markdown")) {
-      return { markdown: new TextDecoder().decode(bytes) }
+      return { markdown: decodeBytes(bytes) }
     }
     throw new NotSupportedError(`parseFile(${mimeType})`, this.name)
   }
