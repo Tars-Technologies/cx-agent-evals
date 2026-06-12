@@ -288,7 +288,10 @@ export const remove = tenantMutation({
 })
 
 /**
- * Internal query: list all documents in a KB (no auth check).
+ * Internal query: list all *done* documents in a KB (no auth check).
+ * Filters to parseStatus:"done" so parsing/failed placeholders (empty content)
+ * are never fed to indexing, generation, or experiment callers — they would
+ * produce 0 chunks, inflate stats, and burn read budget for nothing.
  * Used by generation/experiment actions.
  */
 export const listByKbInternal = internalQuery({
@@ -297,6 +300,7 @@ export const listByKbInternal = internalQuery({
     return await ctx.db
       .query("documents")
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
+      .filter((q) => q.eq(q.field("parseStatus"), "done"))
       .collect()
   }
 })
@@ -431,6 +435,9 @@ export const createParsing = internalMutation({
     parseToken: v.string()
   },
   handler: async (ctx, args) => {
+    // documentCount is incremented only when the doc reaches "done" (finishParse
+    // success). Counting placeholders here inflated KB counts permanently when
+    // parses failed or timed out and the reaper swept them.
     const docRowId = await ctx.db.insert("documents", {
       orgId: args.orgId,
       kbId: args.kbId,
@@ -451,12 +458,6 @@ export const createParsing = internalMutation({
       parseStatus: "parsing",
       createdAt: Date.now()
     })
-    const kb = await ctx.db.get(args.kbId)
-    if (kb) {
-      await ctx.db.patch(args.kbId, {
-        documentCount: (kb.documentCount ?? 0) + 1
-      })
-    }
     return docRowId
   }
 })
@@ -497,6 +498,14 @@ export const finishParse = internalMutation({
             }
           : {})
       })
+      // Increment only on successful parse so failed/reaped placeholders never
+      // inflate the KB count. createParsing deliberately skips the increment.
+      const kb = await ctx.db.get(doc.kbId)
+      if (kb) {
+        await ctx.db.patch(doc.kbId, {
+          documentCount: (kb.documentCount ?? 0) + 1
+        })
+      }
     } else {
       // Persist why it failed (the remote error, or a content-less "ok") so the
       // reason is visible on the document, matching recordParseFailure.
@@ -564,6 +573,7 @@ export const recordParseFailure = internalMutation({
     error: v.string()
   },
   handler: async (ctx, args) => {
+    // Failed docs are never counted: documentCount only increments on "done".
     const docRowId = await ctx.db.insert("documents", {
       orgId: args.orgId,
       kbId: args.kbId,
@@ -579,12 +589,6 @@ export const recordParseFailure = internalMutation({
       parseStatus: "failed",
       createdAt: Date.now()
     })
-    const kb = await ctx.db.get(args.kbId)
-    if (kb) {
-      await ctx.db.patch(args.kbId, {
-        documentCount: (kb.documentCount ?? 0) + 1
-      })
-    }
     return docRowId
   }
 })
