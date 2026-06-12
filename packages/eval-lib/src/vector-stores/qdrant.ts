@@ -22,6 +22,8 @@ export interface QdrantVectorStoreConfig {
   /** Vector dimension; the collection is created/validated against it. */
   readonly dimension: number
   readonly retry?: { readonly maxRetries?: number; readonly backoffMs?: number }
+  /** Per-request timeout in ms; aborts a hung fetch so withRetry can retry. Default 30000. */
+  readonly timeoutMs?: number
 }
 
 /** Deterministic UUID-format point id derived from the chunk id (sha256). */
@@ -77,16 +79,26 @@ export class QdrantVectorStore implements VectorStore {
         "Content-Type": "application/json"
       }
       if (this._cfg.apiKey) headers["api-key"] = this._cfg.apiKey
-      const response = await fetch(`${this._cfg.url}${path}`, {
-        method,
-        headers,
-        body: body === undefined ? undefined : JSON.stringify(body)
-      })
-      if (!response.ok) {
-        const text = await response.text()
-        throw new QdrantHttpError(response.status, text)
+      const controller = new AbortController()
+      const timeout = setTimeout(
+        () => controller.abort(),
+        this._cfg.timeoutMs ?? 30_000
+      )
+      try {
+        const response = await fetch(`${this._cfg.url}${path}`, {
+          method,
+          headers,
+          body: body === undefined ? undefined : JSON.stringify(body),
+          signal: controller.signal
+        })
+        if (!response.ok) {
+          const text = await response.text()
+          throw new QdrantHttpError(response.status, text)
+        }
+        return (await response.json()) as T
+      } finally {
+        clearTimeout(timeout)
       }
-      return (await response.json()) as T
     }, retryOverride ?? this._cfg.retry)
   }
 
@@ -113,11 +125,15 @@ export class QdrantVectorStore implements VectorStore {
             throw createErr
           }
         }
-        await this._createPayloadIndexes()
       } else {
         throw err
       }
     }
+    // Ensure payload indexes whether the collection was just created or
+    // already existed: a collection created before these indexes were added
+    // must be back-filled, or strict-mode Qdrant rejects filtered
+    // search/delete. Idempotent (tolerates 409), so safe on every ensure.
+    await this._createPayloadIndexes()
     this._collectionEnsured = true
   }
 
@@ -260,7 +276,12 @@ export class QdrantVectorStore implements VectorStore {
   }
 
   private async _dropCollection(): Promise<void> {
-    await this._request("DELETE", `/collections/${this._cfg.collection}`)
+    try {
+      await this._request("DELETE", `/collections/${this._cfg.collection}`)
+    } catch (err) {
+      // A missing collection is the desired end-state; cleanup may be replayed.
+      if (!(err instanceof QdrantHttpError && err.status === 404)) throw err
+    }
     this._collectionEnsured = false
   }
 }
