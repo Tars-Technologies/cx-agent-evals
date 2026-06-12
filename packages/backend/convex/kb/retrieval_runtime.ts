@@ -323,7 +323,8 @@ function wrapWithParentSwap(ctx: ActionCtx, inner: VectorStore): VectorStore {
                     id: PositionAwareChunkId(parent.chunkId),
                     content: parent.content,
                     docId: DocumentId(
-                      docIdMap[String(parent.documentId)] ?? ""
+                      docIdMap[String(parent.documentId)] ??
+                        String(child.chunk.docId)
                     ),
                     start: parent.start,
                     end: parent.end,
