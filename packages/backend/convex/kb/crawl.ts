@@ -457,6 +457,18 @@ export const onBatchComplete = internalMutation({
 export const attachServiceJob = internalMutation({
   args: { crawlJobId: v.id("crawlJobs"), serviceJobId: v.string() },
   handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.crawlJobId)
+    if (!job) return
+
+    if (job.status !== "pending") {
+      await ctx.db.patch(args.crawlJobId, { serviceJobId: args.serviceJobId })
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.crawl_actions.cancelTarserCrawl,
+        { crawlJobId: args.crawlJobId }
+      )
+      return
+    }
     await ctx.db.patch(args.crawlJobId, {
       serviceJobId: args.serviceJobId,
       submittedAt: Date.now(),
@@ -505,6 +517,9 @@ export const handleTarserPage = internalMutation({
     // A page callback with no url can't be attributed or deduped (normalizeUrl("")
     // == ""); treat it as a no-op rather than inserting an orphan document.
     if (args.url.trim().length === 0) return
+    // Enforce the per-job page cap (mirrors persistScrapedPage on the in-process path).
+    const maxPages = job.config.maxPages ?? 100
+    if (job.stats.scraped >= maxPages) return
     const normalizedUrl = normalizeUrl(args.url)
     // Idempotency: skip if a crawlUrl for this normalized URL is already done.
     const existing = await ctx.db

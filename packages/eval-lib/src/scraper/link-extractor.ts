@@ -72,11 +72,19 @@ function compileGlobs(patterns?: string[]): RegExp[] {
  * `*` -> `[^/]*` (within a segment). Returns null if the result can't compile.
  */
 function globToRegExp(pattern: string): RegExp | null {
+  // Reject pathological inputs before compiling: an overlong pattern or one with
+  // many globstars can produce a regex that catastrophically backtracks (ReDoS),
+  // and these flow from tenant-controlled crawl args into per-link filtering.
+  if (pattern.length > 200) return null
+  if ((pattern.match(/\*\*/g)?.length ?? 0) > 10) return null
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&")
   const regexStr = escaped
     .replace(/\*\*/g, "<<GLOBSTAR>>")
     .replace(/\*/g, "[^/]*")
     .replace(/<<GLOBSTAR>>/g, ".*")
+    // Collapse runs of `.*.*...` into a single `.*` — they're equivalent but a
+    // run of them is the source of the catastrophic backtracking.
+    .replace(/(\.\*){2,}/g, ".*")
   try {
     return new RegExp(`^${regexStr}$`)
   } catch {

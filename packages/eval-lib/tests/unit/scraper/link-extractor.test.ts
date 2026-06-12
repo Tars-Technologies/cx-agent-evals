@@ -92,4 +92,34 @@ describe("filterLinks", () => {
     expect(result).toContain("https://example.com/api.v1/x")
     expect(result).not.toContain("https://example.com/apiXv1/x")
   })
+  it("does not hang on a ReDoS-style globstar pattern", () => {
+    // `/**********x` would compile to `^\/.*.*...x$` and catastrophically
+    // backtrack against non-matching paths. The guard/collapse must keep this
+    // well under a millisecond rather than hanging the crawl WorkPool.
+    const start = performance.now()
+    expect(() =>
+      filterLinks(["https://example.com/aaaaaaaaaaaaaaaaaaaaaaaa"], base, {
+        includePaths: ["/**********x"]
+      })
+    ).not.toThrow()
+    expect(performance.now() - start).toBeLessThan(50)
+  })
+  it("still matches normal '**' and '*' globs correctly", () => {
+    const docs = filterLinks(
+      ["https://example.com/docs/intro", "https://example.com/blog/post"],
+      base,
+      { includePaths: ["/docs/**"] }
+    )
+    expect(docs).toContain("https://example.com/docs/intro")
+    expect(docs).not.toContain("https://example.com/blog/post")
+
+    const blog = filterLinks(
+      ["https://example.com/blog/post", "https://example.com/blog/a/b"],
+      base,
+      { includePaths: ["/blog/*"] }
+    )
+    expect(blog).toContain("https://example.com/blog/post")
+    // single `*` stays within one segment
+    expect(blog).not.toContain("https://example.com/blog/a/b")
+  })
 })

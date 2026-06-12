@@ -29,6 +29,32 @@ describe("isBlockedHost", () => {
       expect(isBlockedHost(h)).toBe(true)
     }
   })
+  it("blocks NAT64, 6to4, site-local, multicast, and expanded IPv4-mapped IPv6", () => {
+    for (const h of [
+      "64:ff9b::7f00:1", // NAT64 of 127.0.0.1
+      "64:ff9b::a9fe:a9fe", // NAT64 of 169.254.169.254 (cloud metadata)
+      "2002:7f00:1::", // 6to4 wrapping loopback
+      "fec0::1", // deprecated site-local
+      "ff02::1", // multicast
+      "ff01::1", // multicast
+      "0:0:0:0:0:ffff:7f00:1" // expanded IPv4-mapped loopback
+    ]) {
+      expect(isBlockedHost(h)).toBe(true)
+    }
+  })
+  it("blocks decimal/octal/hex/short IPv4 encodings of loopback", () => {
+    // URL parsing normalizes these before they reach isBlockedHost; assert the
+    // canonical loopback forms they resolve to are blocked.
+    for (const raw of [
+      "http://2130706433", // decimal 127.0.0.1
+      "http://0x7f000001", // hex 127.0.0.1
+      "http://0177.0.0.1", // octal first octet
+      "http://127.1" // short form 127.0.0.1
+    ]) {
+      const host = new URL(raw).hostname
+      expect(isBlockedHost(host)).toBe(true)
+    }
+  })
   it("allows public hosts, incl. names starting with IPv6-like prefixes", () => {
     for (const h of [
       "example.com",
