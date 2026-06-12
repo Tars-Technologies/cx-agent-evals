@@ -1,8 +1,13 @@
 name: CI
 
-# Build + test + codegen gate. Verifies the workspace compiles, the eval-lib
-# and backend test suites pass, and the committed convex/_generated bindings are
-# in sync with the current convex/ source.
+# Build + typecheck + test gate. Verifies the eval-lib builds, both packages
+# typecheck, and the eval-lib and backend test suites pass.
+#
+# Note: this does NOT regenerate or diff convex/_generated. `convex codegen`
+# requires a configured deployment (CONVEX_DEPLOYMENT / a deploy key), which CI
+# does not have, so a codegen-drift gate would need a Convex deploy-key secret.
+# Tracked as a follow-up; until then _generated drift is caught by the backend
+# typecheck, not a dedicated codegen step.
 
 on:
   pull_request:
@@ -17,11 +22,11 @@ concurrency:
 
 jobs:
   ci:
-    name: build · typecheck · test · codegen
+    name: build · typecheck · test
     runs-on: ubuntu-latest
     env:
-      # Backend test + codegen must not require real secrets in CI. env.ts
-      # falls back to "" for required vars so code fails clearly downstream.
+      # Backend tests must not require real secrets in CI. env.ts falls back
+      # to "" for required vars so code fails clearly downstream.
       SKIP_ENV_VALIDATION: "1"
     steps:
       - name: Checkout
