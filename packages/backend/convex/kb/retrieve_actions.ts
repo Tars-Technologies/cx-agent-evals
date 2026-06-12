@@ -40,6 +40,7 @@ import type { ActionCtx } from "../_generated/server"
 import { backendConfig } from "../config"
 import { tenantAction } from "../lib/auth/tenant"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
+import { assertIndexableDimension } from "./dimension_guard"
 import { resolveRerankerSelection } from "./reranker_selection"
 
 // ─── Helpers ───
@@ -489,6 +490,7 @@ export const retrieve = tenantAction({
       doSearch = async (q, k) => {
         const candidateK = k * candidateMultiplier
         const embedder = createEmbedder(embeddingModel)
+        assertIndexableDimension(embedder.dimension, embeddingModel)
         const queryEmbedding = await embedder.embedQuery(q)
         const { chunks: denseRaw, scoreMap } = await vectorSearchWithFilter(
           ctx,
@@ -524,6 +526,7 @@ export const retrieve = tenantAction({
     } else {
       doSearch = async (q, k) => {
         const embedder = createEmbedder(embeddingModel)
+        assertIndexableDimension(embedder.dimension, embeddingModel)
         const queryEmbedding = await embedder.embedQuery(q)
         const { chunks: filtered, scoreMap } = await vectorSearchWithFilter(
           ctx,

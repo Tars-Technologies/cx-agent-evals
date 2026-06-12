@@ -26,6 +26,7 @@ import type { ActionCtx } from "../_generated/server"
 import { backendConfig } from "../config"
 import { tenantAction } from "../lib/auth/tenant"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
+import { assertIndexableDimension } from "./dimension_guard"
 import {
   type RerankerSelection,
   resolveRerankerSelection
@@ -333,6 +334,7 @@ async function denseSearch(
   topK: number
 ): Promise<ChunkResult[]> {
   const embedder = createEmbedder(embeddingModel)
+  assertIndexableDimension(embedder.dimension, embeddingModel)
   const queryEmbedding = await embedder.embedQuery(queryText)
 
   const { chunks, scoreMap } = await vectorSearchWithFilter(ctx, {
