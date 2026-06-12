@@ -1,0 +1,59 @@
+name: CI
+
+# Build + test + codegen gate. Verifies the workspace compiles, the eval-lib
+# and backend test suites pass, and the committed convex/_generated bindings are
+# in sync with the current convex/ source.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: build · typecheck · test · codegen
+    runs-on: ubuntu-latest
+    env:
+      # Backend test + codegen must not require real secrets in CI. env.ts
+      # falls back to "" for required vars so code fails clearly downstream.
+      SKIP_ENV_VALIDATION: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # eval-lib must build first: the backend imports @tars-inc/eval-lib, so
+      # codegen bundling and the backend typecheck resolve it from dist/.
+      - name: Build eval-lib
+        run: pnpm build
+
+      - name: Typecheck eval-lib
+        run: pnpm typecheck
+
+      - name: Typecheck backend
+        run: pnpm typecheck:backend
+
+      - name: Test eval-lib
+        run: pnpm test
+
+      - name: Test backend
+        run: pnpm -C packages/backend test
