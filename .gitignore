@@ -56,3 +56,6 @@ data/uploads/
 
 # Local implementation working docs (plans, progress, discoveries)
 .implementation/
+
+# Git worktrees
+.worktrees/
