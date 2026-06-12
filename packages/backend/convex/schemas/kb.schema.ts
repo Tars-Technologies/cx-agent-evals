@@ -91,6 +91,8 @@ export const retrieverValidator = v.object({
   retrieverConfigHash: v.string(),
   defaultK: v.number(),
   indexingJobId: v.optional(v.id("indexingJobs")),
+  qdrantCollection: v.optional(v.string()),
+  vectorBackend: v.optional(v.string()),
   status: v.union(
     v.literal("configuring"),
     v.literal("indexing"),
@@ -261,6 +263,7 @@ export const documentChunkValidator = v.object({
   documentId: v.id("documents"),
   kbId: v.id("knowledgeBases"),
   indexConfigHash: v.optional(v.string()),
+  vectorIndexId: v.optional(v.string()),
   chunkId: v.string(),
   content: v.string(),
   start: v.number(),
@@ -290,6 +293,8 @@ export const indexingJobValidator = v.object({
   failedDocs: v.number(),
   skippedDocs: v.number(),
   totalChunks: v.number(),
+  qdrantCollection: v.optional(v.string()),
+  vectorBackend: v.optional(v.string()),
   workIds: v.optional(v.array(v.string())),
   error: v.optional(v.string()),
   failedDocDetails: v.optional(
@@ -320,11 +325,8 @@ export const kbTables = {
     .index("by_kb_priority", ["kbId", "priority"])
     .index("by_org", ["orgId"])
     .index("by_parse_service_job", ["parseServiceJobId"])
-<<<<<<< HEAD
     // Lets the reaper cron sweep documents stuck in parseStatus:"parsing".
     .index("by_parse_status", ["parseStatus"])
-=======
->>>>>>> e3fb0b9 (feat(backend): Tarser schema fields, env/config, availability query)
     .searchIndex("search_content", {
       searchField: "content",
       filterFields: ["kbId"]
@@ -440,15 +442,11 @@ export const kbTables = {
     .index("by_org", ["orgId"])
     .index("by_kb", ["kbId"])
     .index("by_status", ["orgId", "status"])
-<<<<<<< HEAD
     .index("by_service_job", ["serviceJobId"])
     // Cross-org sweep by (backend, status) for the stale-crawl reaper cron, so a
     // bounded take() returns only reapable Tarser jobs (never-reaped in-process
     // "running" rows would otherwise starve the batch).
     .index("by_backend_status", ["backend", "status"]),
-=======
-    .index("by_service_job", ["serviceJobId"]),
->>>>>>> e3fb0b9 (feat(backend): Tarser schema fields, env/config, availability query)
 
   // ─── Crawl URLs (URL frontier for crawl jobs) ───
   crawlUrls: defineTable({
