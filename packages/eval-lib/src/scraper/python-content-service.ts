@@ -5,6 +5,7 @@ import type {
   Scraper,
   ScraperCrawlConfig
 } from "./ports.js"
+import { FinishReason } from "./wire.js"
 
 export interface PythonContentServiceConfig {
   baseUrl: string
@@ -180,6 +181,7 @@ export class PythonContentService implements Scraper, Parser {
   static normalizeCallback(raw: Record<string, unknown>): NormalizedCallback {
     const event = String(raw.event ?? "")
     const serviceJobId = String(raw.service_job_id ?? "")
+    if (!serviceJobId) return { kind: "ignored", event }
 
     if (event === "url_done") {
       const status = String(raw.status ?? "")
@@ -191,7 +193,7 @@ export class PythonContentService implements Scraper, Parser {
           serviceJobId,
           url,
           error: raw.error == null ? undefined : String(raw.error),
-          finishReason: String(raw.finish_reason ?? "unknown"),
+          finishReason: String(raw.finish_reason ?? FinishReason.Unknown),
           errorCategory:
             raw.error_category == null ? undefined : String(raw.error_category)
         }
@@ -239,7 +241,7 @@ export class PythonContentService implements Scraper, Parser {
       return {
         kind: "job_complete",
         serviceJobId,
-        finishReason: String(raw.finish_reason ?? "unknown"),
+        finishReason: String(raw.finish_reason ?? FinishReason.Unknown),
         stats: {
           visited: stats.visited,
           failed: stats.failed,
