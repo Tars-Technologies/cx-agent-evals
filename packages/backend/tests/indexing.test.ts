@@ -95,6 +95,108 @@ describe("indexing: startIndexing vector backend", () => {
     }
   })
 
+  it("enqueues only parsed docs and derives totalDocs from enqueued work", async () => {
+    vi.useFakeTimers()
+    try {
+      const t = setupTest()
+      const userId = await seedUser(t)
+      const kbId = await seedKB(t, userId)
+      // One parsed (done) doc plus two empty placeholders that the parse path
+      // creates. Only the done doc has real content and should be indexed.
+      await t.run(async (ctx) => {
+        await ctx.db.insert("documents", {
+          orgId: TEST_ORG_ID,
+          kbId,
+          docId: "done",
+          title: "Done",
+          content: "real content",
+          contentLength: 12,
+          metadata: {},
+          parseStatus: "done",
+          createdAt: Date.now()
+        })
+        await ctx.db.insert("documents", {
+          orgId: TEST_ORG_ID,
+          kbId,
+          docId: "parsing",
+          title: "Parsing",
+          content: "",
+          contentLength: 0,
+          metadata: {},
+          parseStatus: "parsing",
+          createdAt: Date.now()
+        })
+        await ctx.db.insert("documents", {
+          orgId: TEST_ORG_ID,
+          kbId,
+          docId: "failed",
+          title: "Failed",
+          content: "",
+          contentLength: 0,
+          metadata: {},
+          parseStatus: "failed",
+          createdAt: Date.now()
+        })
+        // Denormalized count drifts above the true done-doc count to prove
+        // totalDocs is derived from enqueued work, not documentCount.
+        await ctx.db.patch(kbId, { documentCount: 5 })
+      })
+
+      const result = await t.mutation(internal.kb.indexing.startIndexing, {
+        orgId: TEST_ORG_ID,
+        kbId,
+        indexConfigHash: "placeholder-hash-1",
+        indexConfig: { strategy: "plain" },
+        createdBy: userId
+      })
+
+      const job = await t.run(async (ctx) => ctx.db.get(result.jobId))
+      // Only the parsed doc is enqueued and counted, not the placeholders.
+      expect(job!.totalDocs).toBe(1)
+      expect(job!.workIds).toHaveLength(1)
+      expect(result.totalDocs).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("throws when every document is an unparsed placeholder", async () => {
+    vi.useFakeTimers()
+    try {
+      const t = setupTest()
+      const userId = await seedUser(t)
+      const kbId = await seedKB(t, userId)
+      await t.run(async (ctx) => {
+        await ctx.db.insert("documents", {
+          orgId: TEST_ORG_ID,
+          kbId,
+          docId: "parsing",
+          title: "Parsing",
+          content: "",
+          contentLength: 0,
+          metadata: {},
+          parseStatus: "parsing",
+          createdAt: Date.now()
+        })
+        // documentCount drifted to 1, but the only row is an empty placeholder,
+        // so enumeration must find nothing indexable and refuse to start.
+        await ctx.db.patch(kbId, { documentCount: 1 })
+      })
+
+      await expect(
+        t.mutation(internal.kb.indexing.startIndexing, {
+          orgId: TEST_ORG_ID,
+          kbId,
+          indexConfigHash: "placeholder-hash-2",
+          indexConfig: { strategy: "plain" },
+          createdBy: userId
+        })
+      ).rejects.toThrow(/no .*document/i)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("stamps native backend with no qdrantCollection by default", async () => {
     vi.useFakeTimers()
     try {
