@@ -19,6 +19,7 @@ import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { internalAction } from "../_generated/server"
+import { env } from "../env"
 import { resolveMaxConcurrency } from "../lib/experimentConcurrency"
 import { buildStatelessRetriever } from "./retrieval_runtime"
 
@@ -337,9 +338,7 @@ export const runEvaluation = internalAction({
 
     // Run evaluation via LangSmith evaluate()
     const total = questions.length
-    const maxConcurrency = resolveMaxConcurrency(
-      process.env.EXPERIMENT_MAX_CONCURRENCY
-    )
+    const maxConcurrency = resolveMaxConcurrency(env.EXPERIMENT_MAX_CONCURRENCY)
     // Coalesce progress writes so concurrent onResult callbacks don't contend
     // on the experiment row: ~100 updates max, plus the final one.
     const progressStep = Math.max(1, Math.ceil(total / 100))

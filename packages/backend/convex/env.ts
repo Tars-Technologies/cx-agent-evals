@@ -13,6 +13,7 @@ const envSchema = z.object({
   TARSER_API_TOKEN: z.string().optional(),
   TARSER_CALLBACK_HMAC_SECRET: z.string().optional(),
   TARSER_CALLBACK_BASE_URL: z.string().optional(), // local-dev override for the callback host (e.g. host.docker.internal)
+  EXPERIMENT_MAX_CONCURRENCY: z.string().optional(), // override for LangSmith evaluate() concurrency
   QDRANT_URL: z.string().optional(),
   QDRANT_API_KEY: z.string().optional()
 })
@@ -41,6 +42,7 @@ function parseEnv(): Env {
       TARSER_API_TOKEN: partial.TARSER_API_TOKEN,
       TARSER_CALLBACK_HMAC_SECRET: partial.TARSER_CALLBACK_HMAC_SECRET,
       TARSER_CALLBACK_BASE_URL: partial.TARSER_CALLBACK_BASE_URL,
+      EXPERIMENT_MAX_CONCURRENCY: partial.EXPERIMENT_MAX_CONCURRENCY,
       QDRANT_URL: partial.QDRANT_URL,
       QDRANT_API_KEY: partial.QDRANT_API_KEY
     }
