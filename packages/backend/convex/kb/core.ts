@@ -119,9 +119,15 @@ export const backfillOneKb = internalMutation({
       .query("documents")
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
       .paginate({ numItems: args.batchSize ?? 200, cursor: args.cursor })
+    // Count only docs that were actually counted by the live increment path:
+    // "done" docs and legacy rows without parseStatus (created before the field
+    // existed). "parsing" and "failed" placeholders are never counted live.
+    const counted = page.page.filter(
+      (d) => d.parseStatus !== "parsing" && d.parseStatus !== "failed"
+    )
     return {
       done: page.isDone,
-      processedDelta: page.page.length,
+      processedDelta: counted.length,
       cursor: page.continueCursor
     }
   }
