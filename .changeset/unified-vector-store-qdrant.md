@@ -9,11 +9,16 @@ Unified vector-store providers and a stateless, trace-capable retriever.
   an in-process store (memory), or a Qdrant collection over its REST API
   (qdrant: self-contained payloads, deterministic point ids, any embedding
   dimension).
-- The Qdrant store creates its collection on first `add`, including keyword
-  payload indexes for the filterable fields, so filtered search and delete
-  work on strict-mode instances such as Qdrant Cloud. Collection creation
-  tolerates concurrent writers racing to create the same collection and
-  fails loudly on a dimension mismatch with an existing collection.
+- The Qdrant store ensures its collection and the keyword payload indexes
+  for the filterable fields whenever it connects: it creates them on first
+  `add` and backfills them on a collection that already existed without
+  them, so filtered search and delete work on strict-mode instances such as
+  Qdrant Cloud. Collection creation tolerates concurrent writers racing to
+  create the same collection, fails loudly on a dimension mismatch with an
+  existing collection, and treats deleting an already-absent collection as
+  success so cleanup is safe to retry. Each REST request is bounded by a
+  configurable timeout (`timeoutMs`, default 30s) so a hung request cannot
+  stall indefinitely.
 - The `VectorStore` interface gains scoped search filters, per-document and
   per-knowledge-base deletion, and health checks. `search` now takes an
   options object: `store.search(embedding, { k, filter })`.
