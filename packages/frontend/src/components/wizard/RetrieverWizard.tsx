@@ -1,7 +1,9 @@
 "use client"
 
 import { PRESET_REGISTRY } from "@tars-inc/eval-lib/registry"
+import { useQuery } from "convex/react"
 import { useCallback, useEffect, useState } from "react"
+import { api } from "@/lib/convex"
 import { ChoosePresetStep } from "./steps/ChoosePresetStep"
 import { IndexStep } from "./steps/IndexStep"
 import { QueryStep } from "./steps/QueryStep"
@@ -159,6 +161,13 @@ export function RetrieverWizard({
   // ---- Name ----
   const [name, setName] = useState(initialConfig?.name ?? "")
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
+
+  // Which embedder/reranker providers have an API key set on the backend.
+  // Undefined while loading — the gating helpers treat that as "all available".
+  const providerAvailability = useQuery(
+    api.kb.providers.getProviderAvailability,
+    {}
+  )
 
   // ---- Index ----
   const [indexStrategy, setIndexStrategy] = useState(
@@ -471,6 +480,7 @@ export function RetrieverWizard({
             embedderProvider={embedderProvider}
             embedderOptions={embedderOptions}
             vectorBackend={vectorBackend}
+            providerAvailability={providerAvailability}
             onIndexStrategyChange={setIndexStrategy}
             onChunkerChange={handleChunkerChange}
             onEmbedderChange={handleEmbedderChange}
@@ -502,6 +512,7 @@ export function RetrieverWizard({
             steps={refinementSteps}
             rerankerProvider={rerankerProvider}
             rerankerOptions={rerankerOptions}
+            providerAvailability={providerAvailability}
             onStepsChange={setRefinementSteps}
             onRerankerChange={handleRerankerChange}
           />

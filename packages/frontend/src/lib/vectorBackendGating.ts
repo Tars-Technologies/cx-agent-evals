@@ -21,6 +21,19 @@ export const VECTOR_BACKEND_CHOICES: ReadonlyArray<{
   }
 ]
 
+/**
+ * Whether a provider's API key is configured on the backend. `availability` is
+ * the map from `getProviderAvailability`; while it is still loading (undefined)
+ * we treat every provider as configured so options aren't briefly disabled.
+ */
+export function isProviderKeyConfigured(
+  providerId: string,
+  availability: Record<string, boolean> | undefined
+): boolean {
+  if (!availability) return true
+  return availability[providerId] !== false
+}
+
 /** Native is hard-locked to OpenAI 1536-dim embeddings (Convex vector index). */
 export function isEmbedderAllowed(
   entry: RegistryEntry,

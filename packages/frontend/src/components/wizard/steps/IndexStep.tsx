@@ -8,6 +8,7 @@ import {
 import {
   gateEmbedderEntry,
   isEmbedderAllowed,
+  isProviderKeyConfigured,
   VECTOR_BACKEND_CHOICES,
   type VectorBackendChoice
 } from "@/lib/vectorBackendGating"
@@ -25,6 +26,8 @@ interface IndexStepProps {
   embedderProvider: string
   embedderOptions: Record<string, unknown>
   vectorBackend: string
+  /** Backend API-key availability per provider id (from getProviderAvailability). */
+  providerAvailability?: Record<string, boolean>
   onIndexStrategyChange: (strategy: string) => void
   onChunkerChange: (type: string, options: Record<string, unknown>) => void
   onEmbedderChange: (provider: string, options: Record<string, unknown>) => void
@@ -42,6 +45,7 @@ export function IndexStep({
   embedderProvider,
   embedderOptions,
   vectorBackend,
+  providerAvailability,
   onIndexStrategyChange,
   onChunkerChange,
   onEmbedderChange,
@@ -72,7 +76,11 @@ export function IndexStep({
 
   const handleEmbedderSelect = (id: string) => {
     const entry = EMBEDDER_REGISTRY.find((e) => e.id === id)
-    if (entry) {
+    if (
+      entry &&
+      isEmbedderAllowed(entry, backend) &&
+      isProviderKeyConfigured(id, providerAvailability)
+    ) {
       onEmbedderChange(id, { ...entry.defaults })
     }
   }
@@ -175,21 +183,30 @@ export function IndexStep({
           onChange={(e) => handleEmbedderSelect(e.target.value)}
           className={selectClass}
         >
-          {EMBEDDER_REGISTRY.map((entry) => (
-            <option
-              key={entry.id}
-              value={entry.id}
-              disabled={!isEmbedderAllowed(entry, backend)}
-            >
-              {entry.name}
-              {entry.status === "coming-soon" ? " (coming soon)" : ""}
-              {entry.status === "unavailable" ? " (unavailable)" : ""}
-              {entry.status === "available" &&
-              !isEmbedderAllowed(entry, backend)
-                ? " (qdrant only)"
-                : ""}
-            </option>
-          ))}
+          {EMBEDDER_REGISTRY.map((entry) => {
+            const backendAllowed = isEmbedderAllowed(entry, backend)
+            const keyConfigured = isProviderKeyConfigured(
+              entry.id,
+              providerAvailability
+            )
+            return (
+              <option
+                key={entry.id}
+                value={entry.id}
+                disabled={!backendAllowed || !keyConfigured}
+              >
+                {entry.name}
+                {entry.status === "coming-soon" ? " (coming soon)" : ""}
+                {entry.status === "unavailable" ? " (unavailable)" : ""}
+                {entry.status === "available" && !backendAllowed
+                  ? " (qdrant only)"
+                  : ""}
+                {entry.status === "available" && backendAllowed && !keyConfigured
+                  ? " (key not set)"
+                  : ""}
+              </option>
+            )
+          })}
         </select>
 
         {gatedEmbedder && gatedEmbedder.description && (
