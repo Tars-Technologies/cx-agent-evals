@@ -1,6 +1,6 @@
 import { defineTable } from "convex/server"
 import { type Infer, v } from "convex/values"
-import { spanValidator } from "../lib/validators"
+import { spanValidator, vectorBackendValidator } from "../lib/validators"
 
 // ─── Knowledge Bases ───
 export const knowledgeBaseValidator = v.object({
@@ -90,7 +90,7 @@ export const retrieverValidator = v.object({
   indexConfigHash: v.string(),
   retrieverConfigHash: v.string(),
   defaultK: v.number(),
-  vectorBackend: v.optional(v.string()),
+  vectorBackend: v.optional(vectorBackendValidator),
   qdrantCollection: v.optional(v.string()),
   indexingJobId: v.optional(v.id("indexingJobs")),
   qdrantCollection: v.optional(v.string()),
@@ -283,7 +283,7 @@ export const indexingJobValidator = v.object({
   kbId: v.id("knowledgeBases"),
   indexConfigHash: v.string(),
   indexConfig: v.any(),
-  vectorBackend: v.optional(v.string()),
+  vectorBackend: v.optional(vectorBackendValidator),
   qdrantCollection: v.optional(v.string()),
   status: v.union(
     v.literal("pending"),
