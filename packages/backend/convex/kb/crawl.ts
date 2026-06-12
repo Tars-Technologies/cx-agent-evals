@@ -71,7 +71,8 @@ export const startCrawl = tenantMutation({
   handler: async (ctx, args) => {
     const { orgId, userId } = ctx
 
-    // Normalize + validate the start URL. Bare domains get https://; only http(s) allowed.
+    // Normalize + validate the start URL. Bare domains (no scheme) get https://; http:// is
+    // only accepted when the user explicitly types it. Non-http(s) schemes are rejected.
     // (Private/metadata host blocking is enforced downstream: at fetch time for the in-process
     // scraper, and via the eval-lib guard on the Tarser submit path.)
     let startUrl = args.startUrl.trim()
