@@ -4,7 +4,7 @@ import {
   type PositionAwareChunk,
   PositionAwareChunkId
 } from "../types/index.js"
-import { withRetry } from "../utils/retry.js"
+import { isRetryableHttpStatus, withRetry } from "../utils/retry.js"
 import type {
   VectorFilter,
   VectorSearchOptions,
@@ -99,7 +99,16 @@ export class QdrantVectorStore implements VectorStore {
       } finally {
         clearTimeout(timeout)
       }
-    }, retryOverride ?? this._cfg.retry)
+    }, {
+      ...(retryOverride ?? this._cfg.retry),
+      // A 4xx (bad api-key, malformed query) will never succeed on retry; only
+      // retry transient failures so a bad request fails fast instead of hanging
+      // through the full backoff schedule.
+      shouldRetry: (err) =>
+        isRetryableHttpStatus(
+          err instanceof QdrantHttpError ? err.status : undefined
+        )
+    })
   }
 
   /** Create the collection if absent; throw on dimension mismatch. */

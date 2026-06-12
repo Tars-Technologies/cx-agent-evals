@@ -1,4 +1,14 @@
-import { withRetry } from "./retry.js"
+import { isRetryableHttpStatus, withRetry } from "./retry.js"
+
+/** Error carrying the HTTP status so retry policy can discriminate 4xx vs 5xx. */
+export class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string
+  ) {
+    super(message)
+  }
+}
 
 /**
  * Options for {@link postJSON}.
@@ -57,11 +67,18 @@ export async function postJSON<T>(options: PostJSONOptions): Promise<T> {
 
     if (!response.ok) {
       const text = await response.text()
-      throw new Error(
+      throw new HttpError(
+        response.status,
         `${provider} API error: ${response.status} ${response.statusText} — ${text}`
       )
     }
 
     return (await response.json()) as T
-  }, retry)
+  }, {
+    ...retry,
+    // Fail fast on non-retryable 4xx (e.g. a bad API key) instead of hanging
+    // through the backoff schedule; retry transient failures only.
+    shouldRetry: (err) =>
+      isRetryableHttpStatus(err instanceof HttpError ? err.status : undefined)
+  })
 }

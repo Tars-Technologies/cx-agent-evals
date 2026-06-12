@@ -286,4 +286,39 @@ describe("QdrantVectorStore", () => {
       /Qdrant API error: 500/
     )
   })
+
+  it("does not retry non-retryable 4xx responses (e.g. bad key)", async () => {
+    const retrying = new QdrantVectorStore({
+      url: "http://qdrant.local:6333",
+      apiKey: "bad-key",
+      collection: "kb_x_abcdef",
+      dimension: 3,
+      retry: { maxRetries: 3, backoffMs: 0 }
+    })
+    fetchMock.mockResolvedValue(new Response("forbidden", { status: 403 }))
+    await expect(retrying.search([1, 0, 0], { k: 1 })).rejects.toThrow(
+      /Qdrant API error: 403/
+    )
+    // 403 is a client error: fail fast, no retry storm.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("retries retryable 5xx responses up to maxRetries", async () => {
+    const retrying = new QdrantVectorStore({
+      url: "http://qdrant.local:6333",
+      apiKey: "test-key",
+      collection: "kb_x_abcdef",
+      dimension: 3,
+      retry: { maxRetries: 2, backoffMs: 0 }
+    })
+    // Fresh Response per call: a Response body can only be read once.
+    fetchMock.mockImplementation(
+      async () => new Response("server error", { status: 503 })
+    )
+    await expect(retrying.search([1, 0, 0], { k: 1 })).rejects.toThrow(
+      /Qdrant API error: 503/
+    )
+    // Initial attempt + 2 retries.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
 })
