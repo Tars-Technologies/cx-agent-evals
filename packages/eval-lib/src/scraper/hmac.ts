@@ -55,10 +55,11 @@ export async function verifyCallbackSignature(
   args: CallbackSignatureArgs & { signature: string }
 ): Promise<boolean> {
   const expected = await computeCallbackSignature(args)
-  if (expected.length !== args.signature.length) return false
+  const incoming = args.signature.toLowerCase()
+  if (expected.length !== incoming.length) return false
   let mismatch = 0
   for (let i = 0; i < expected.length; i++) {
-    mismatch |= expected.charCodeAt(i) ^ args.signature.charCodeAt(i)
+    mismatch |= expected.charCodeAt(i) ^ incoming.charCodeAt(i)
   }
   return mismatch === 0
 }
