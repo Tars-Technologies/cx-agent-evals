@@ -1,0 +1,29 @@
+name: KB Port Check
+
+# Verifies the KB module (convex/kb/ + eval-lib) stays copy-paste portable per
+# port_readiness.md §4. All 7 checks pass as of kb-port-4: the real couplings
+# (experimentRuns, the users model, crawl table placement) are resolved.
+#
+# Still NON-BLOCKING (continue-on-error) only because the script exits 1 when
+# convex/kb/ is absent, which would fail PRs branched off a main that does not
+# have the folder move yet. Flip `continue-on-error` to false once kb-port-4 is
+# on main to make it a real merge gate.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  kb-port-check:
+    name: kb:port-check (informational)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+
+      - name: Run kb:port-check
+        continue-on-error: true
+        run: bash scripts/kb-port-check.sh
