@@ -33,4 +33,3 @@ export {
 export type { ScrapedPage, ScrapeOptions, SeedEntity } from "./types.js"
 export { assertPublicHttpUrl, isBlockedHost } from "./url-guard.js"
 export { ErrorCategory, FinishReason } from "./wire.js"
-export { assertPublicHttpUrl, isBlockedHost } from "./url-guard.js"
