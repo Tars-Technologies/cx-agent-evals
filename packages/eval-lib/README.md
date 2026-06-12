@@ -6,9 +6,10 @@ Composable TypeScript building blocks for evaluating RAG retrieval pipelines and
 
 - **Span-based RAG evaluation** — character-level recall, precision, IoU, F1 against ground-truth spans (not just chunk IDs)
 - **Configurable retrieval pipelines** — mix and match index strategies (Plain / Contextual / Summary / ParentChild), query rewriting (HyDE, MultiQuery, StepBack), search backends (Dense / BM25 / Hybrid), and refinement steps (Rerank / Threshold / Dedup / MMR / ExpandContext)
+- **Provider-based retrieval infrastructure** — select embedder, reranker, and vector-store providers behind shared interfaces, including Qdrant-backed indexes
 - **Synthetic dataset generation** — three strategies: `SimpleStrategy`, `DimensionDrivenStrategy`, `RealWorldGroundedStrategy`, plus token-level ground-truth assignment
 - **Conversation analysis** — transcript parsing, microtopic extraction, message-type classification, agent-level statistics
-- **Source ingestion** — HTML scraping (`ContentScraper`) and file processing (PDF, Markdown, HTML → Markdown)
+- **Source ingestion** — configurable in-process or remote scraping/parsing, plus PDF, Markdown, and HTML file processing
 - **LangSmith integration** — dataset upload, experiment runner, evaluator factory
 
 ## Install
@@ -231,7 +232,7 @@ const remoteParser = makeParser({
 Notes:
 
 - The factories default to the in-process backend when no config (or no `backend`) is passed.
-- The remote backend posts results to a callback URL you supply. Verify those callbacks with `verifyCallbackSignature` (HMAC over `${jobId}|${token}`) and map them with `PythonContentService.normalizeCallback`.
+- The remote backend posts results to a callback URL you supply. Hash the raw callback body with `computeBodyHash`, then verify `serviceJobId`, token, timestamp, nonce, and body hash with `verifyCallbackSignature`. Enforce timestamp freshness and nonce replay protection in the receiving application.
 - Remote health, submit, parse, and cancellation requests use a 30-second default timeout. Empty or non-JSON successful responses are rejected with an error that includes the HTTP status and a response-body snippet.
 - The in-process scraper enforces an SSRF guard (`assertPublicHttpUrl`): only `http` / `https` to public hosts, redirects re-validated per hop, and responses capped by content type and size.
 
@@ -269,8 +270,8 @@ const native = makeVectorStore(
 
 Notes on the Qdrant backend:
 
-- The collection and its keyword payload indexes for the filterable fields (`kbId`, `indexConfigHash`, `documentId`) are ensured whenever the store connects: created on first `add`, and backfilled if the collection already existed without them, so filtered search and delete work on strict-mode instances such as Qdrant Cloud.
-- Collection creation is safe under concurrent writers (a lost create race is re-verified instead of failing) and throws loudly when an existing collection's dimension does not match the configured one.
+- The collection and its keyword payload indexes for the filterable fields (`kbId`, `indexConfigHash`, `documentId`) are ensured before the first `add` or explicit health check. Existing collections are backfilled so filtered search and delete work on strict-mode instances such as Qdrant Cloud.
+- Collection creation tolerates a concurrent create conflict by re-verifying the winner and throws loudly when an existing collection's dimension does not match the configured one.
 - Point payloads carry the chunk text and character offsets, so search results need no separate hydration step; upserts are idempotent via point ids derived from the chunk id.
 - Each REST request is retried with backoff and bounded by `timeoutMs` (default `30000`) so a hung request cannot stall indefinitely; deleting a collection that is already gone is treated as success, so cleanup is safe to retry.
 
