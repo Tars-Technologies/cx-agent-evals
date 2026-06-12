@@ -15,8 +15,24 @@ export function isBlockedHost(host: string): boolean {
     if (h === "::1" || h === "::") return true
     // IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1) can tunnel loopback/private IPv4.
     if (h.startsWith("::ffff:")) return true
+    // Expanded form of IPv4-mapped (::ffff: written out in full).
+    if (/^(0+:){5}ffff:/i.test(h)) return true
+    // NAT64 (64:ff9b::/96) - wraps any IPv4, incl. loopback/private.
+    if (h.startsWith("64:ff9b:")) return true
+    // 6to4 (2002::/16) - first 16 bits encode an IPv4; block entire range.
+    if (h.startsWith("2002:")) return true
     if (h.startsWith("fc") || h.startsWith("fd")) return true // unique-local fc00::/7
     if (h.startsWith("fe80:")) return true // link-local
+    // Site-local deprecated (fec0::/10) - fec0-feff.
+    if (
+      h.startsWith("fec") ||
+      h.startsWith("fed") ||
+      h.startsWith("fee") ||
+      h.startsWith("fef")
+    )
+      return true
+    // Multicast (ff00::/8).
+    if (h.startsWith("ff")) return true
   }
 
   const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
