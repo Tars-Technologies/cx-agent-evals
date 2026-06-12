@@ -1,16 +1,16 @@
 import { internal } from "../_generated/api"
-import { internalAction } from "../_generated/server"
+import { internalAction, internalQuery } from "../_generated/server"
 
 /**
- * Cron job action: retry failed LangSmith syncs.
- * Finds datasets and experiments with failed sync status and retries.
+ * Cron job action: retry failed LangSmith dataset syncs.
+ * Finds datasets with a "failed:" sync status and re-enqueues the sync.
  */
 export const retryFailed = internalAction({
   args: {},
   handler: async (ctx) => {
     // Find datasets with failed sync status (uses by_sync_status index)
     const datasets = await ctx.runQuery(
-      internal.langsmith.syncRetry.getFailedDatasets
+      internal.kb.langsmith_sync_retry.getFailedDatasets
     )
 
     for (const dataset of datasets) {
@@ -24,8 +24,6 @@ export const retryFailed = internalAction({
     }
   }
 })
-
-import { internalQuery } from "../_generated/server"
 
 /**
  * Internal query: find datasets with failed LangSmith sync status.

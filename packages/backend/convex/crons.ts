@@ -4,13 +4,13 @@ import { internal } from "./_generated/api"
 const crons = cronJobs()
 
 /**
- * Retry failed LangSmith syncs every hour.
- * Finds datasets/experiments with "failed:*" sync status and retries.
+ * Retry failed LangSmith dataset syncs every hour.
+ * Finds datasets with "failed:*" sync status and re-enqueues the sync.
  */
 crons.interval(
   "retry failed langsmith syncs",
   { hours: 1 },
-  internal.langsmith.syncRetry.retryFailed
+  internal.kb.langsmith_sync_retry.retryFailed
 )
 
 /**
