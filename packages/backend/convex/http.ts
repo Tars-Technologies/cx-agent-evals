@@ -32,7 +32,7 @@ http.route({
 
     // Raw bytes only: the action hashes/verifies and JSON-parses the body.
     const rawBody = await req.text()
-    if (rawBody.length > MAX_BODY_BYTES) {
+    if (new TextEncoder().encode(rawBody).byteLength > MAX_BODY_BYTES) {
       return new Response("payload too large", { status: 413 })
     }
 
