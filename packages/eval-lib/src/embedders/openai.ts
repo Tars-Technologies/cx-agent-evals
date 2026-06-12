@@ -1,9 +1,10 @@
 import type { Embedder } from "./embedder.interface.js"
+import { assertEmbeddingBatch, reorderByIndex } from "./embedding-batch.js"
 
 interface OpenAIEmbeddingsClient {
   embeddings: {
     create(opts: { model: string; input: string[] }): Promise<{
-      data: Array<{ embedding: number[] }>
+      data: Array<{ embedding: number[]; index: number }>
     }>
   }
 }
@@ -47,7 +48,12 @@ export class OpenAIEmbedder implements Embedder {
       model: this._model,
       input: [...texts]
     })
-    return response.data.map((item) => item.embedding)
+    // Never trust array position: OpenAI returns an `index` per item, and
+    // OpenRouter (an aggregator with weaker ordering guarantees) routes the
+    // same API. Sort by index, then assert the batch aligns 1:1 with inputs.
+    const vectors = reorderByIndex(response.data).map((d) => d.embedding)
+    assertEmbeddingBatch(vectors, texts.length, this.name)
+    return vectors
   }
 
   async embedQuery(query: string): Promise<number[]> {
