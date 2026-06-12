@@ -15,7 +15,6 @@ import {
   GroundTruthAssigner,
   generateForDocument,
   matchRealWorldQuestions,
-  OpenAIEmbedder,
   parseDimensions,
   RealWorldGroundedStrategy,
   SimpleStrategy
@@ -24,12 +23,10 @@ import { createLLMClient, getModel } from "@tars-inc/eval-lib/llm"
 import { discoverDimensions as discoverDimensionsFn } from "@tars-inc/eval-lib/pipeline/internals"
 import { QUESTION_INSERT_BATCH_SIZE } from "@tars-inc/eval-lib/shared"
 import { v } from "convex/values"
-import OpenAI from "openai"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { internalAction } from "../_generated/server"
 import { tenantAction } from "../lib/auth/tenant"
-import { backendConfig } from "../config"
 
 async function loadCorpusFromKb(
   ctx: { runQuery: (ref: any, args: any) => Promise<any> },
@@ -145,12 +142,12 @@ export const generateRealWorldGrounded = internalAction({
 
     const { corpus } = await loadCorpusFromKb(ctx, args.kbId)
 
-    const openai = new OpenAI({
-      apiKey: backendConfig.ai.openaiApiKey
-    })
-    const embedder = new OpenAIEmbedder({
-      model: (config.embeddingModel as string) ?? "text-embedding-3-small",
-      client: openai
+    const { makeEmbedder } = await import(
+      "@tars-inc/eval-lib/embedders/make-embedder"
+    )
+    const embedder = await makeEmbedder({
+      provider: ((config.embeddingProvider as string) ?? "openai") as never,
+      model: (config.embeddingModel as string) ?? "text-embedding-3-small"
     })
 
     const strategy = new RealWorldGroundedStrategy({
@@ -220,10 +217,12 @@ export const prepareGeneration = internalAction({
     let unmatchedQuestions: string[] = []
     const realWorldQuestions = config.realWorldQuestions as string[] | undefined
     if (realWorldQuestions?.length) {
-      const openai = new OpenAI({ apiKey: backendConfig.ai.openaiApiKey })
-      const embedder = new OpenAIEmbedder({
-        model: (config.embeddingModel as string) ?? "text-embedding-3-small",
-        client: openai
+      const { makeEmbedder } = await import(
+        "@tars-inc/eval-lib/embedders/make-embedder"
+      )
+      const embedder = await makeEmbedder({
+        provider: ((config.embeddingProvider as string) ?? "openai") as never,
+        model: (config.embeddingModel as string) ?? "text-embedding-3-small"
       })
       const result = await matchRealWorldQuestions(
         corpus,
