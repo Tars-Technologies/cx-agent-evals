@@ -213,9 +213,19 @@ export function RetrieverWizard({
     // is always written; provider/backend only when non-default so existing
     // index-config hashes are preserved (server-side default-omission mirrors
     // this).
+    // chunkerOptions may carry index-level keys from preset hydration
+    // (embeddingModel/embeddingProvider/vectorBackend). Strip them so stale
+    // preset values can't leak into config.index; these are set explicitly
+    // from the current UI state below.
+    const {
+      embeddingModel: _ignoredModel,
+      embeddingProvider: _ignoredProvider,
+      vectorBackend: _ignoredBackend,
+      ...chunkerOnly
+    } = chunkerOptions
     config.index = {
       strategy: indexStrategy,
-      ...chunkerOptions,
+      ...chunkerOnly,
       embeddingModel:
         (embedderOptions.model as string) ?? "text-embedding-3-small"
     }
