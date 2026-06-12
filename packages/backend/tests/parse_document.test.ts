@@ -28,7 +28,7 @@ describe("parse document mutations", () => {
     expect(doc?.content).toBe("# Parsed")
   })
 
-  it("createParsing increments KB documentCount", async () => {
+  it("createParsing does NOT increment documentCount; finishParse success does", async () => {
     const t = setupTest()
     const userId = await seedUser(t)
     const kbId = await seedKB(t, userId)
@@ -42,8 +42,19 @@ describe("parse document mutations", () => {
       parseToken: "ptok2"
     })
 
-    const kb = await t.run(async (ctx) => ctx.db.get(kbId))
-    expect(kb?.documentCount).toBe(1)
+    // Still parsing — count must not have changed (field stays undefined/0).
+    const kbDuring = await t.run(async (ctx) => ctx.db.get(kbId))
+    expect(kbDuring?.documentCount ?? 0).toBe(0)
+
+    await t.mutation(internal.kb.documents.finishParse, {
+      parseServiceJobId: "psvc-2",
+      status: "ok",
+      markdown: "# Done"
+    })
+
+    // Now done — count should be 1.
+    const kbAfter = await t.run(async (ctx) => ctx.db.get(kbId))
+    expect(kbAfter?.documentCount).toBe(1)
   })
 
   it("finishParse is idempotent when doc is already done", async () => {
