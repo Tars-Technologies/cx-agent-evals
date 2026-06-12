@@ -2,6 +2,7 @@
  * Retriever CRUD, shared-index protection, status sync.
  */
 import { v } from "convex/values"
+import { vectorBackendValidator } from "../lib/validators"
 import { internal } from "../_generated/api"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
@@ -90,7 +91,7 @@ export const insertRetriever = internalMutation({
     indexConfigHash: v.string(),
     retrieverConfigHash: v.string(),
     defaultK: v.number(),
-    vectorBackend: v.optional(v.string()),
+    vectorBackend: v.optional(vectorBackendValidator),
     qdrantCollection: v.optional(v.string()),
     indexingJobId: v.optional(v.id("indexingJobs")),
     status: v.union(
