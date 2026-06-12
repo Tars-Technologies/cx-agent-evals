@@ -84,6 +84,7 @@ export const create = tenantMutation({
       fileId: args.storageId,
       contentLength: content.length,
       metadata: {},
+      parseStatus: "done",
       createdAt: Date.now()
     })
 
@@ -269,20 +270,24 @@ export const remove = tenantMutation({
     }
     await ctx.db.delete(args.id)
 
-    // Decrement denormalized document count
-    const kb = await ctx.db.get(doc.kbId)
-    if (kb) {
-      const currentCount = kb.documentCount ?? 0
-      if (currentCount === 0) {
-        // Floor clamp will fire — counter is already out of sync with reality.
-        // Surface this so we notice instead of silently masking the drift.
-        console.warn(
-          `documentCount drift: remove called on kb=${doc.kbId} where documentCount is already 0`
-        )
+    // Decrement only for docs that were actually counted. "parsing" and "failed"
+    // rows are never counted (finishParse increments on success only), so
+    // deleting them must not touch the counter.
+    const wasCounted =
+      doc.parseStatus !== "parsing" && doc.parseStatus !== "failed"
+    if (wasCounted) {
+      const kb = await ctx.db.get(doc.kbId)
+      if (kb) {
+        const currentCount = kb.documentCount ?? 0
+        if (currentCount === 0) {
+          console.warn(
+            `documentCount drift: remove called on kb=${doc.kbId} where documentCount is already 0`
+          )
+        }
+        await ctx.db.patch(doc.kbId, {
+          documentCount: Math.max(0, currentCount - 1)
+        })
       }
-      await ctx.db.patch(doc.kbId, {
-        documentCount: Math.max(0, currentCount - 1)
-      })
     }
   }
 })
@@ -297,10 +302,18 @@ export const remove = tenantMutation({
 export const listByKbInternal = internalQuery({
   args: { kbId: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
+    // Exclude in-progress and failed placeholders (empty content). Rows without
+    // parseStatus are legacy docs from the create/createFromScrape paths before
+    // the field was added — they have real content and must be included.
     return await ctx.db
       .query("documents")
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
-      .filter((q) => q.eq(q.field("parseStatus"), "done"))
+      .filter((q) =>
+        q.and(
+          q.neq(q.field("parseStatus"), "parsing"),
+          q.neq(q.field("parseStatus"), "failed")
+        )
+      )
       .collect()
   }
 })
@@ -359,6 +372,7 @@ export const createFromScrape = internalMutation({
         : {},
       sourceUrl: args.sourceUrl,
       sourceType: args.sourceType,
+      parseStatus: "done",
       createdAt: Date.now()
     })
 
