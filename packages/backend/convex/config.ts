@@ -3,6 +3,7 @@ import { env } from "./env"
 export type BackendConfig = {
   ai: {
     openaiApiKey: string
+    openrouterApiKey: string | undefined
     cohereApiKey: string | undefined
     jinaApiKey: string | undefined
     voyageApiKey: string | undefined
@@ -41,6 +42,7 @@ function createBackendConfig(): BackendConfig {
   return {
     ai: {
       openaiApiKey: env.OPENAI_API_KEY,
+      openrouterApiKey: env.OPENROUTER_API_KEY,
       cohereApiKey: env.COHERE_API_KEY,
       jinaApiKey: env.JINA_API_KEY,
       voyageApiKey: env.VOYAGE_API_KEY
@@ -66,4 +68,21 @@ export const backendConfig: BackendConfig = new Proxy({} as BackendConfig, {
 /** True when all Tarser connection vars are configured. */
 export function isTarserAvailable(): boolean {
   return backendConfig.tarser !== null
+}
+
+/**
+ * Which AI providers have an API key configured, keyed by the provider id used
+ * in the eval-lib embedder/reranker registries. The frontend reads this to
+ * disable embedder/reranker choices whose key is missing, instead of letting
+ * the user pick a provider that would fail (or silently no-op) at runtime.
+ */
+export function providerKeyAvailability(): Record<string, boolean> {
+  const { ai } = backendConfig
+  return {
+    openai: isNonEmpty(ai.openaiApiKey),
+    openrouter: isNonEmpty(ai.openrouterApiKey),
+    cohere: isNonEmpty(ai.cohereApiKey),
+    jina: isNonEmpty(ai.jinaApiKey),
+    voyage: isNonEmpty(ai.voyageApiKey)
+  }
 }

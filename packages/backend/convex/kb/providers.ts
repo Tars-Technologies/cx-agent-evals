@@ -3,7 +3,7 @@
  * The frontend reads getScraperAvailability to enable/disable the Tarser toggle.
  */
 
-import { isTarserAvailable } from "../config"
+import { isTarserAvailable, providerKeyAvailability } from "../config"
 import { env } from "../env"
 import { tenantQuery } from "../lib/auth/tenant"
 
@@ -12,6 +12,16 @@ export const getScraperAvailability = tenantQuery({
   handler: async () => {
     return { tarser: isTarserAvailable() }
   }
+})
+
+/**
+ * Which embedder/reranker providers have an API key configured on the backend.
+ * Keyed by registry provider id (openai, openrouter, cohere, jina, voyage).
+ * The retriever wizard reads this to disable choices that would fail at runtime.
+ */
+export const getProviderAvailability = tenantQuery({
+  args: {},
+  handler: async () => providerKeyAvailability()
 })
 
 /**

@@ -6,6 +6,7 @@ const requiredStr = z
 
 const envSchema = z.object({
   OPENAI_API_KEY: requiredStr,
+  OPENROUTER_API_KEY: z.string().optional(), // optional — OpenRouter embedder gateway
   COHERE_API_KEY: z.string().optional(), // optional — reranker falls back gracefully if not set
   JINA_API_KEY: z.string().optional(),
   VOYAGE_API_KEY: z.string().optional(),
@@ -35,6 +36,7 @@ function parseEnv(): Env {
     const partial = envSchema.partial().parse(snapshot)
     return {
       OPENAI_API_KEY: partial.OPENAI_API_KEY ?? "",
+      OPENROUTER_API_KEY: partial.OPENROUTER_API_KEY,
       COHERE_API_KEY: partial.COHERE_API_KEY,
       JINA_API_KEY: partial.JINA_API_KEY,
       VOYAGE_API_KEY: partial.VOYAGE_API_KEY,
