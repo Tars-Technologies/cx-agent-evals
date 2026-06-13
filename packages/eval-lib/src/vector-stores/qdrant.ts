@@ -176,7 +176,15 @@ export class QdrantVectorStore implements VectorStore {
       maxRetries: 0
     })
     const size = info.result?.config?.params?.vectors?.size
-    if (size !== undefined && size !== this._cfg.dimension) {
+    if (size === undefined) {
+      // No top-level vector size means an incompatible shape (e.g. named
+      // vectors). This store only creates/uses single-vector collections, so
+      // fail closed rather than upserting into a collection we can't address.
+      throw new Error(
+        `Qdrant collection "${this._cfg.collection}" reported no vector size (unexpected shape, e.g. named vectors); refusing to use it`
+      )
+    }
+    if (size !== this._cfg.dimension) {
       throw new Error(
         `Qdrant collection "${this._cfg.collection}" has dimension ${size}, expected ${this._cfg.dimension}`
       )

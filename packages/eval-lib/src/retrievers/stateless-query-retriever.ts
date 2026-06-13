@@ -86,7 +86,10 @@ export interface StatelessQueryRetrieverDeps {
  */
 export class StatelessQueryRetriever {
   private readonly _deps: StatelessQueryRetrieverDeps
-  private _bm25: BM25SearchIndex | null = null
+  // Memoize the build *promise* (not just the result): concurrent multi-query
+  // searches race into the lazy build via Promise.all, and caching only the
+  // resolved index would let each racer fetch the corpus and rebuild.
+  private _bm25Promise: Promise<BM25SearchIndex> | null = null
   private _corpus: Corpus | null = null
 
   constructor(deps: StatelessQueryRetrieverDeps) {
@@ -227,18 +230,20 @@ export class StatelessQueryRetriever {
     return results.map(({ chunk, score }) => ({ chunk, score }))
   }
 
-  private async _getBm25(
-    cfg: Record<string, unknown>
-  ): Promise<BM25SearchIndex> {
-    if (!this._bm25) {
-      const chunks = await this._deps.chunkSource.listChunks(this._deps.filter)
-      this._bm25 = new BM25SearchIndex({
-        k1: cfg.k1 as number | undefined,
-        b: cfg.b as number | undefined
-      })
-      this._bm25.build(chunks)
+  private _getBm25(cfg: Record<string, unknown>): Promise<BM25SearchIndex> {
+    if (!this._bm25Promise) {
+      const k1 = cfg.k1 as number | undefined
+      const b = cfg.b as number | undefined
+      this._bm25Promise = (async () => {
+        const chunks = await this._deps.chunkSource.listChunks(
+          this._deps.filter
+        )
+        const bm25 = new BM25SearchIndex({ k1, b })
+        bm25.build(chunks)
+        return bm25
+      })()
     }
-    return this._bm25
+    return this._bm25Promise
   }
 
   // ── Stage 3: refinement ─────────────────────────────────────────────────
@@ -379,8 +384,11 @@ export class StatelessQueryRetriever {
 
   /** Release the lazily built BM25 index and cached corpus. */
   cleanup(): void {
-    this._bm25?.clear()
-    this._bm25 = null
+    // Drop the memoized build so the next use rebuilds; clear the underlying
+    // index once any in-flight build settles to free its memory.
+    const pending = this._bm25Promise
+    this._bm25Promise = null
+    pending?.then((bm25) => bm25.clear()).catch(() => {})
     this._corpus = null
   }
 }

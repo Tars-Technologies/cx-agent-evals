@@ -117,6 +117,21 @@ describe("StatelessQueryRetriever", () => {
     expect(source.listChunks).toHaveBeenCalledTimes(1)
   })
 
+  it("bm25 index builds once under concurrent multi-query search", async () => {
+    const source = makeSource(CHUNKS)
+    const r = new StatelessQueryRetriever({
+      config: { name: "t", search: { strategy: "bm25" } },
+      vectorStore: await seededStore(),
+      chunkSource: source,
+      embedder: fakeEmbedder,
+      filter: {}
+    })
+    // Both queries race into the lazy build via Promise.all; the build must be
+    // memoized so the corpus is fetched and indexed exactly once.
+    await r.searchQueries(["alpha", "delta"], 2)
+    expect(source.listChunks).toHaveBeenCalledTimes(1)
+  })
+
   it("hybrid: rank order matches manual weighted fusion of dense+bm25", async () => {
     const r = await makeRetriever({
       config: { name: "t", search: { strategy: "hybrid" } }

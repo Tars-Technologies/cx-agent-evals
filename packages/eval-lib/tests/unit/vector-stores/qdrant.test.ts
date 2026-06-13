@@ -134,6 +134,18 @@ describe("QdrantVectorStore", () => {
     )
   })
 
+  it("add(): fails closed when the collection reports no vector size", async () => {
+    // A named-vector (or otherwise reshaped) collection returns no top-level
+    // `size`; the store creates only single-vector collections, so this is an
+    // incompatible shape and must be rejected rather than silently used.
+    fetchMock.mockResolvedValueOnce(
+      okJson({ status: "ok", result: { config: { params: { vectors: {} } } } })
+    )
+    await expect(store.add([chunk("c1")], [[1, 0, 0]])).rejects.toThrow(
+      /no vector size|unexpected shape/i
+    )
+  })
+
   it("add(): tolerates a concurrent collection create (409) and re-verifies", async () => {
     fetchMock
       .mockResolvedValueOnce(new Response("not found", { status: 404 })) // GET

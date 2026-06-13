@@ -85,6 +85,8 @@ export class JinaEmbedder implements Embedder {
       task: "retrieval.query",
       dimensions: this._dimensions
     })
-    return response.data[0].embedding
+    const vectors = reorderByIndex(response.data).map((d) => d.embedding)
+    assertEmbeddingBatch(vectors, 1, this.name)
+    return vectors[0]
   }
 }

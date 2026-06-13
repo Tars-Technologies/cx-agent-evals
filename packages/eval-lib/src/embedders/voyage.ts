@@ -77,6 +77,8 @@ export class VoyageEmbedder implements Embedder {
       input: [query],
       input_type: "query"
     })
-    return response.data[0].embedding
+    const vectors = reorderByIndex(response.data).map((d) => d.embedding)
+    assertEmbeddingBatch(vectors, 1, this.name)
+    return vectors[0]
   }
 }
