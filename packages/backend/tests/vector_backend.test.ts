@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  assertEmbeddingBackendCompatible,
   qdrantCollectionName,
   resolveVectorBackend
 } from "../convex/kb/vector_backend"
@@ -35,5 +36,31 @@ describe("qdrantCollectionName", () => {
 
   it("keeps short hashes intact", () => {
     expect(qdrantCollectionName("kb", "short")).toBe("kb_kb_short")
+  })
+})
+
+describe("assertEmbeddingBackendCompatible", () => {
+  it("rejects the native backend with a non-OpenAI provider", () => {
+    expect(() => assertEmbeddingBackendCompatible("native", "cohere")).toThrow(
+      /native vector backend supports only.*openai/i
+    )
+  })
+
+  it("allows the native backend with openai or no provider", () => {
+    expect(() =>
+      assertEmbeddingBackendCompatible("native", "openai")
+    ).not.toThrow()
+    expect(() =>
+      assertEmbeddingBackendCompatible("native", undefined)
+    ).not.toThrow()
+  })
+
+  it("allows any provider on the qdrant backend", () => {
+    expect(() =>
+      assertEmbeddingBackendCompatible("qdrant", "cohere")
+    ).not.toThrow()
+    expect(() =>
+      assertEmbeddingBackendCompatible("qdrant", "openrouter")
+    ).not.toThrow()
   })
 })

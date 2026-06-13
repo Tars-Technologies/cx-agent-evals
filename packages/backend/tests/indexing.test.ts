@@ -197,6 +197,35 @@ describe("indexing: startIndexing vector backend", () => {
     }
   })
 
+  it("rejects the native backend paired with a non-OpenAI embedding provider", async () => {
+    vi.useFakeTimers()
+    try {
+      const t = setupTest()
+      const userId = await seedUser(t)
+      const kbId = await seedKB(t, userId)
+      await seedDocument(t, kbId, 1)
+      await t.run(async (ctx) => {
+        await ctx.db.patch(kbId, { documentCount: 1 })
+      })
+
+      await expect(
+        t.mutation(internal.kb.indexing.startIndexing, {
+          orgId: TEST_ORG_ID,
+          kbId,
+          indexConfigHash: "native-cohere-hash",
+          indexConfig: {
+            strategy: "plain",
+            vectorBackend: "native",
+            embeddingProvider: "cohere"
+          },
+          createdBy: userId
+        })
+      ).rejects.toThrow(/native vector backend supports only.*openai/i)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("stamps native backend with no qdrantCollection by default", async () => {
     vi.useFakeTimers()
     try {

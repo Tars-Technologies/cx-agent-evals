@@ -17,7 +17,11 @@ import { components, internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
-import { qdrantCollectionName, resolveVectorBackend } from "./vector_backend"
+import {
+  assertEmbeddingBackendCompatible,
+  qdrantCollectionName,
+  resolveVectorBackend
+} from "./vector_backend"
 
 // ─── WorkPool Instance ───
 
@@ -145,6 +149,8 @@ export const startIndexing = internalMutation({
     // Resolve the vector backend; the qdrant collection name is computed
     // once here and stamped on the job (and retriever) at creation time.
     const vectorBackend = resolveVectorBackend(indexConfig.vectorBackend)
+    // Native is OpenAI-only; reject before building a mislabeled index.
+    assertEmbeddingBackendCompatible(vectorBackend, indexConfig.embeddingProvider)
     const qdrantCollection =
       vectorBackend === "qdrant"
         ? qdrantCollectionName(String(args.kbId), args.indexConfigHash)

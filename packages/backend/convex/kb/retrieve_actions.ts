@@ -19,7 +19,11 @@ import {
   buildStatelessRetriever,
   scoredToChunkResults
 } from "./retrieval_runtime"
-import { qdrantCollectionName, resolveVectorBackend } from "./vector_backend"
+import {
+  assertEmbeddingBackendCompatible,
+  qdrantCollectionName,
+  resolveVectorBackend
+} from "./vector_backend"
 
 // ─── Create Retriever ───
 
@@ -63,6 +67,11 @@ export const create = tenantAction({
     // creation time so retrieval never has to recompute it.
     const indexSettings = (config.index ?? {}) as Record<string, unknown>
     const vectorBackend = resolveVectorBackend(indexSettings.vectorBackend)
+    // Reject native + non-OpenAI up front rather than at index time.
+    assertEmbeddingBackendCompatible(
+      vectorBackend,
+      indexSettings.embeddingProvider
+    )
     const qdrantCollection =
       vectorBackend === "qdrant"
         ? qdrantCollectionName(String(args.kbId), indexConfigHash)
