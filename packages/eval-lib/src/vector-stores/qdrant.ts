@@ -4,7 +4,7 @@ import {
   type PositionAwareChunk,
   PositionAwareChunkId
 } from "../types/index.js"
-import { isRetryableHttpStatus, withRetry } from "../utils/retry.js"
+import { HttpError, requestJSON } from "../utils/fetch-json.js"
 import type {
   VectorFilter,
   VectorSearchOptions,
@@ -74,40 +74,21 @@ export class QdrantVectorStore implements VectorStore {
     body?: unknown,
     retryOverride?: QdrantVectorStoreConfig["retry"]
   ): Promise<T> {
-    return withRetry(async () => {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json"
-      }
-      if (this._cfg.apiKey) headers["api-key"] = this._cfg.apiKey
-      const controller = new AbortController()
-      const timeout = setTimeout(
-        () => controller.abort(),
-        this._cfg.timeoutMs ?? 30_000
-      )
-      try {
-        const response = await fetch(`${this._cfg.url}${path}`, {
-          method,
-          headers,
-          body: body === undefined ? undefined : JSON.stringify(body),
-          signal: controller.signal
-        })
-        if (!response.ok) {
-          const text = await response.text()
-          throw new QdrantHttpError(response.status, text)
-        }
-        return (await response.json()) as T
-      } finally {
-        clearTimeout(timeout)
-      }
-    }, {
-      ...(retryOverride ?? this._cfg.retry),
-      // A 4xx (bad api-key, malformed query) will never succeed on retry; only
-      // retry transient failures so a bad request fails fast instead of hanging
-      // through the full backoff schedule.
-      shouldRetry: (err) =>
-        isRetryableHttpStatus(
-          err instanceof QdrantHttpError ? err.status : undefined
-        )
+    const headers: Record<string, string> = {}
+    if (this._cfg.apiKey) headers["api-key"] = this._cfg.apiKey
+    // Shared HTTP core: the default retry policy already fails fast on
+    // non-retryable 4xx (a bad api-key or malformed query) and retries only
+    // transient failures. QdrantHttpError carries the status it keys on.
+    return requestJSON<T>({
+      url: `${this._cfg.url}${path}`,
+      method,
+      body,
+      headers,
+      provider: "Qdrant",
+      retry: retryOverride ?? this._cfg.retry,
+      timeoutMs: this._cfg.timeoutMs ?? 30_000,
+      errorFactory: (status, _statusText, text) =>
+        new QdrantHttpError(status, text)
     })
   }
 
@@ -303,11 +284,8 @@ export class QdrantVectorStore implements VectorStore {
   }
 }
 
-class QdrantHttpError extends Error {
-  constructor(
-    readonly status: number,
-    body: string
-  ) {
-    super(`Qdrant API error: ${status} - ${body}`)
+class QdrantHttpError extends HttpError {
+  constructor(status: number, body: string) {
+    super(status, `Qdrant API error: ${status} - ${body}`)
   }
 }
