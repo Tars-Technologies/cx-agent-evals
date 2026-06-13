@@ -1,12 +1,15 @@
+import { readCappedText } from "./http.js"
 import type {
   NormalizedCallback,
   ParsedFile,
   ParseOptions,
   Parser,
+  ParserJobResult,
   ScrapedPage,
   ScrapeOptions,
   Scraper,
-  ScraperCrawlConfig
+  ScraperCrawlConfig,
+  ScraperJobResult
 } from "./ports.js"
 import { NotSupportedError } from "./ports.js"
 import { FinishReason } from "./wire.js"
@@ -20,50 +23,6 @@ export interface PythonContentServiceConfig {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000
-
-// Control-plane responses (job-accepted envelopes, error bodies) are tiny.
-// Cap the read so a large or hostile Tarser/proxy response cannot be buffered
-// unbounded into the action before JSON.parse / error formatting.
-const MAX_CONTROL_RESPONSE_BYTES = 64 * 1024
-
-/**
- * Read a response body as text, decoding at most ~maxBytes. Streams
- * chunk-by-chunk and slices each chunk to the remaining budget before decoding,
- * so a server that omits or lies about Content-Length never has more than
- * maxBytes decoded into memory here. Truncates rather than throwing, so the
- * bounded text is usable for both JSON parsing and error diagnostics. Falls back
- * to response.text() when no readable body stream is available (test mocks).
- */
-async function readCappedText(
-  res: Response,
-  maxBytes = MAX_CONTROL_RESPONSE_BYTES
-): Promise<string> {
-  if (!res.body) {
-    const text = await res.text()
-    return Buffer.byteLength(text, "utf8") > maxBytes
-      ? Buffer.from(text, "utf8").subarray(0, maxBytes).toString("utf8")
-      : text
-  }
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let received = 0
-  let result = ""
-  try {
-    while (received < maxBytes) {
-      const { done, value } = await reader.read()
-      if (done) break
-      const remaining = maxBytes - received
-      const slice =
-        value.byteLength > remaining ? value.subarray(0, remaining) : value
-      received += slice.byteLength
-      result += decoder.decode(slice, { stream: true })
-    }
-  } finally {
-    await reader.cancel().catch(() => {})
-  }
-  result += decoder.decode()
-  return result
-}
 
 /**
  * Remote crawler + parser backed by the Tarser HTTP service. Implements BOTH ports.
@@ -163,6 +122,14 @@ export class PythonContentService implements Scraper, Parser {
         `Tarser cancel failed: HTTP ${res.status} ${await readCappedText(res)}`
       )
     }
+  }
+
+  async getResult(
+    _serviceJobId: string,
+    _expectedKind?: "crawl" | "parse"
+  ): Promise<ScraperJobResult | ParserJobResult> {
+    // Tarser is push-based: results arrive as HMAC-signed callbacks, not by polling.
+    throw new NotSupportedError("getResult", this.name)
   }
 
   private async parseJobAccepted(

@@ -14,6 +14,8 @@ const envSchema = z.object({
   TARSER_API_TOKEN: z.string().optional(),
   TARSER_CALLBACK_HMAC_SECRET: z.string().optional(),
   TARSER_CALLBACK_BASE_URL: z.string().optional(), // local-dev override for the callback host (e.g. host.docker.internal)
+  ASIMOV_BASE_URL: z.string().optional(), // Asimov content service base URL (poll-based scraper/parser)
+  ASIMOV_API_TOKEN: z.string().optional(), // Bearer token for Asimov (no callback secret — poll, not callback)
   EXPERIMENT_MAX_CONCURRENCY: z.string().optional(), // override for LangSmith evaluate() concurrency
   QDRANT_URL: z.string().optional(),
   QDRANT_API_KEY: z.string().optional()
@@ -44,6 +46,8 @@ function parseEnv(): Env {
       TARSER_API_TOKEN: partial.TARSER_API_TOKEN,
       TARSER_CALLBACK_HMAC_SECRET: partial.TARSER_CALLBACK_HMAC_SECRET,
       TARSER_CALLBACK_BASE_URL: partial.TARSER_CALLBACK_BASE_URL,
+      ASIMOV_BASE_URL: partial.ASIMOV_BASE_URL,
+      ASIMOV_API_TOKEN: partial.ASIMOV_API_TOKEN,
       EXPERIMENT_MAX_CONCURRENCY: partial.EXPERIMENT_MAX_CONCURRENCY,
       QDRANT_URL: partial.QDRANT_URL,
       QDRANT_API_KEY: partial.QDRANT_API_KEY

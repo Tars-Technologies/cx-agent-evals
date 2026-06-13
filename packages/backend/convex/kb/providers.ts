@@ -3,14 +3,18 @@
  * The frontend reads getScraperAvailability to enable/disable the Tarser toggle.
  */
 
-import { isTarserAvailable, providerKeyAvailability } from "../config"
+import {
+  isAsimovAvailable,
+  isTarserAvailable,
+  providerKeyAvailability
+} from "../config"
 import { env } from "../env"
 import { tenantQuery } from "../lib/auth/tenant"
 
 export const getScraperAvailability = tenantQuery({
   args: {},
   handler: async () => {
-    return { tarser: isTarserAvailable() }
+    return { tarser: isTarserAvailable(), asimov: isAsimovAvailable() }
   }
 })
 

@@ -7,9 +7,11 @@
  * that rely on Node.js built-ins unavailable in the Convex edge runtime.
  */
 import {
+  AsimovContentService,
   assertHostResolvesPublic,
   assertPublicHttpUrl,
   filterLinks,
+  JobNotReadyError,
   makeScraper,
   normalizeUrl
 } from "@tars-inc/eval-lib/scraper"
@@ -21,6 +23,12 @@ import { tarserCallbackUrl } from "./providers"
 
 const TIME_BUDGET_MS = 9 * 60 * 1000 // 9 minutes (1 min buffer before Convex 10-min timeout)
 const BATCH_SIZE = 10
+
+// Per-attempt internal poll deadline for the Asimov crawl drain, kept under the
+// Convex ~10-min kill so getResult returns control (result or JobNotReadyError)
+// before the runtime force-terminates the action.
+const ASIMOV_POLL_DEADLINE_MS = 8 * 60 * 1000
+const ASIMOV_REPOLL_DELAY_MS = 5_000
 
 export const batchScrape = internalAction({
   args: { crawlJobId: v.id("crawlJobs") },
@@ -177,6 +185,153 @@ export const cancelTarserCrawl = internalAction({
     const tarser = backendConfig.tarser
     if (!job?.serviceJobId || !tarser) return
     const scraper = makeScraper({ backend: "tarser", ...tarser })
+    await scraper.cancel(job.serviceJobId)
+  }
+})
+
+// ─── Asimov (poll-based) crawl ───
+
+export const submitAsimovCrawl = internalAction({
+  args: { crawlJobId: v.id("crawlJobs") },
+  handler: async (ctx, args) => {
+    const job = await ctx.runQuery(internal.kb.crawl.getJobInternal, {
+      jobId: args.crawlJobId
+    })
+    if (!job || job.status === "cancelled") return
+    const asimov = backendConfig.asimov
+    if (!asimov) {
+      await ctx.runMutation(internal.kb.crawl.markTarserFailed, {
+        crawlJobId: args.crawlJobId,
+        error: "Asimov is not configured"
+      })
+      return
+    }
+    const scraper = makeScraper({ backend: "asimov", ...asimov })
+    try {
+      // SSRF: reject private/loopback/metadata before handing the URL to Asimov
+      // (Asimov's own guard ships log-only first), mirroring the Tarser submit.
+      const startHost = assertPublicHttpUrl(job.startUrl).hostname
+      await assertHostResolvesPublic(startHost)
+      const { serviceJobId } = await scraper.startCrawl({
+        startUrl: job.startUrl,
+        config: {
+          maxPages: job.config.maxPages,
+          maxDepth: job.config.maxDepth,
+          includePaths: job.config.includePaths,
+          excludePaths: job.config.excludePaths,
+          allowSubdomains: job.config.allowSubdomains,
+          crawlMode: "http"
+        },
+        // Asimov polls — no callback. callbackUrl is required by the port but ignored.
+        callbackUrl: ""
+      })
+      await ctx.runMutation(internal.kb.crawl.attachServiceJob, {
+        crawlJobId: args.crawlJobId,
+        serviceJobId
+      })
+      // Kick off the poll loop (no callback route exists for asimov).
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.crawl_actions.pollAsimovCrawl,
+        { crawlJobId: args.crawlJobId }
+      )
+    } catch (error) {
+      await ctx.runMutation(internal.kb.crawl.markTarserFailed, {
+        crawlJobId: args.crawlJobId,
+        error: error instanceof Error ? error.message : "Asimov submit failed"
+      })
+    }
+  }
+})
+
+/**
+ * Poll an Asimov crawl to completion, then feed the existing Tarser crawl
+ * mutations (handleTarserPage / handleTarserPageFailed / handleTarserJobComplete)
+ * with the drained pages — reusing the same idempotent ingestion path. Self-
+ * reschedules while the crawl is still running (JobNotReadyError). No callback
+ * route exists for asimov.
+ */
+export const pollAsimovCrawl = internalAction({
+  args: { crawlJobId: v.id("crawlJobs") },
+  handler: async (ctx, args) => {
+    const job = await ctx.runQuery(internal.kb.crawl.getJobInternal, {
+      jobId: args.crawlJobId
+    })
+    if (!job || job.status === "cancelled") return
+    const asimov = backendConfig.asimov
+    if (!asimov || !job.serviceJobId) {
+      await ctx.runMutation(internal.kb.crawl.markTarserFailed, {
+        crawlJobId: args.crawlJobId,
+        error: "Asimov is not configured or job was not submitted"
+      })
+      return
+    }
+    const scraper = new AsimovContentService({
+      ...asimov,
+      pollDeadlineMs: ASIMOV_POLL_DEADLINE_MS
+    })
+    let result: Awaited<ReturnType<AsimovContentService["getResult"]>>
+    try {
+      result = await scraper.getResult(job.serviceJobId, "crawl")
+    } catch (error) {
+      if (error instanceof JobNotReadyError) {
+        await ctx.scheduler.runAfter(
+          ASIMOV_REPOLL_DELAY_MS,
+          internal.kb.crawl_actions.pollAsimovCrawl,
+          { crawlJobId: args.crawlJobId }
+        )
+        return
+      }
+      await ctx.runMutation(internal.kb.crawl.markTarserFailed, {
+        crawlJobId: args.crawlJobId,
+        error:
+          error instanceof Error ? error.message : "Asimov crawl poll failed"
+      })
+      return
+    }
+    if (result.kind !== "crawl") {
+      await ctx.runMutation(internal.kb.crawl.markTarserFailed, {
+        crawlJobId: args.crawlJobId,
+        error: "Asimov returned a non-crawl result for a crawl job"
+      })
+      return
+    }
+    // Ingest each page through the existing idempotent crawl-page mutation.
+    for (const page of result.pages) {
+      await ctx.runMutation(internal.kb.crawl.handleTarserPage, {
+        crawlJobId: args.crawlJobId,
+        url: page.url,
+        title: page.metadata.title || page.url,
+        markdown: page.markdown
+      })
+    }
+    for (const fail of result.failed) {
+      await ctx.runMutation(internal.kb.crawl.handleTarserPageFailed, {
+        crawlJobId: args.crawlJobId,
+        url: fail.url,
+        error: fail.error
+      })
+    }
+    await ctx.runMutation(internal.kb.crawl.handleTarserJobComplete, {
+      crawlJobId: args.crawlJobId,
+      finishReason: result.finishReason,
+      stats: {
+        visited: result.pages.length,
+        failed: result.failed.length
+      }
+    })
+  }
+})
+
+export const cancelAsimovCrawl = internalAction({
+  args: { crawlJobId: v.id("crawlJobs") },
+  handler: async (ctx, args) => {
+    const job = await ctx.runQuery(internal.kb.crawl.getJobInternal, {
+      jobId: args.crawlJobId
+    })
+    const asimov = backendConfig.asimov
+    if (!job?.serviceJobId || !asimov) return
+    const scraper = makeScraper({ backend: "asimov", ...asimov })
     await scraper.cancel(job.serviceJobId)
   }
 })

@@ -1,17 +1,31 @@
 "use node"
 
+import type { ParsedFile } from "@tars-inc/eval-lib/scraper"
 /**
  * Parse an uploaded file into markdown, then create the document.
  * - inprocess: parse synchronously here (InProcessParser.parseFile) and create the doc.
  * - tarser: create a "parsing" placeholder and submit to Tarser; parse_done fills it via http.ts.
+ * - asimov: create a "parsing" placeholder and submit to Asimov; pollAsimovParse drains the
+ *   result (poll, no callback) and fills it via finishParse.
  */
-import { makeParser } from "@tars-inc/eval-lib/scraper"
-import type { ParsedFile } from "@tars-inc/eval-lib/scraper"
+import {
+  AsimovContentService,
+  JobNotReadyError,
+  makeParser
+} from "@tars-inc/eval-lib/scraper"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
 import { backendConfig } from "../config"
 import { tarserCallbackUrl } from "./providers"
+
+// Per-attempt internal poll deadline handed to the Asimov wrapper's getResult.
+// Kept under the Convex ~10-min action kill so getResult returns control (either
+// the result, or a "did not finish" signal that triggers a self-reschedule)
+// before the runtime force-terminates the action. Re-poll cadence lives here;
+// the polling/normalization policy stays in eval-lib (see proposal §10).
+const ASIMOV_POLL_DEADLINE_MS = 8 * 60 * 1000
+const ASIMOV_REPOLL_DELAY_MS = 5_000
 
 export const parseDocument = internalAction({
   args: {
@@ -20,10 +34,67 @@ export const parseDocument = internalAction({
     storageId: v.id("_storage"),
     title: v.string(),
     mimeType: v.string(),
-    backend: v.union(v.literal("inprocess"), v.literal("tarser")),
+    backend: v.union(
+      v.literal("inprocess"),
+      v.literal("tarser"),
+      v.literal("asimov")
+    ),
     ocr: v.optional(v.boolean())
   },
   handler: async (ctx, args) => {
+    if (args.backend === "asimov") {
+      const asimov = backendConfig.asimov
+      if (!asimov) throw new Error("Asimov is not configured")
+      const fileUrl = await ctx.storage.getUrl(args.storageId)
+      if (!fileUrl) throw new Error("Uploaded file not found")
+      const parser = makeParser({ backend: "asimov", ...asimov })
+      let serviceJobId: string
+      try {
+        const result = await parser.startParse({
+          fileUrl,
+          mimeType: args.mimeType,
+          // Only send OCR when requested; otherwise let Asimov apply its defaults.
+          ...(args.ocr ? { options: { ocr: true } } : {}),
+          // Asimov polls — no callback. callbackUrl is required by the port but ignored.
+          callbackUrl: ""
+        })
+        serviceJobId = result.serviceJobId
+      } catch (error) {
+        await ctx.runMutation(internal.kb.documents.recordParseFailure, {
+          orgId: args.orgId,
+          kbId: args.kbId,
+          title: args.title,
+          mimeType: args.mimeType,
+          backend: "asimov",
+          fileId: args.storageId,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to submit document to Asimov"
+        })
+        return
+      }
+      await ctx.runMutation(internal.kb.documents.createParsing, {
+        orgId: args.orgId,
+        kbId: args.kbId,
+        title: args.title,
+        mimeType: args.mimeType,
+        fileId: args.storageId,
+        backend: "asimov",
+        parseServiceJobId: serviceJobId,
+        // No per-job callback token on the poll path; finishParse is keyed by job id.
+        parseToken: ""
+      })
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.documents_actions.pollAsimovParse,
+        {
+          parseServiceJobId: serviceJobId
+        }
+      )
+      return
+    }
+
     if (args.backend === "tarser") {
       const tarser = backendConfig.tarser
       if (!tarser) throw new Error("Tarser is not configured")
@@ -100,6 +171,67 @@ export const parseDocument = internalAction({
       content: parsed.markdown,
       mimeType: args.mimeType,
       fileId: args.storageId
+    })
+  }
+})
+
+/**
+ * Poll an Asimov parse job to completion, then fill the parsing placeholder via
+ * finishParse. Self-reschedules while the job is still running (JobNotReadyError),
+ * so a long parse spans multiple action budgets without blocking one indefinitely.
+ * Asimov is poll-based — there is NO callback route for it (unlike Tarser's /tarser/cb).
+ */
+export const pollAsimovParse = internalAction({
+  args: { parseServiceJobId: v.string() },
+  handler: async (ctx, args) => {
+    const asimov = backendConfig.asimov
+    if (!asimov) {
+      await ctx.runMutation(internal.kb.documents.finishParse, {
+        parseServiceJobId: args.parseServiceJobId,
+        status: "failed",
+        error: "Asimov is not configured"
+      })
+      return
+    }
+    const parser = new AsimovContentService({
+      ...asimov,
+      pollDeadlineMs: ASIMOV_POLL_DEADLINE_MS
+    })
+    let result: Awaited<ReturnType<AsimovContentService["getResult"]>>
+    try {
+      result = await parser.getResult(args.parseServiceJobId, "parse")
+    } catch (error) {
+      if (error instanceof JobNotReadyError) {
+        // Still in progress: re-poll after a short delay (cadence owned here).
+        await ctx.scheduler.runAfter(
+          ASIMOV_REPOLL_DELAY_MS,
+          internal.kb.documents_actions.pollAsimovParse,
+          { parseServiceJobId: args.parseServiceJobId }
+        )
+        return
+      }
+      await ctx.runMutation(internal.kb.documents.finishParse, {
+        parseServiceJobId: args.parseServiceJobId,
+        status: "failed",
+        error:
+          error instanceof Error ? error.message : "Asimov parse poll failed"
+      })
+      return
+    }
+    if (result.kind !== "parse") {
+      // A parse submission must drain to a parse result; anything else is a bug.
+      await ctx.runMutation(internal.kb.documents.finishParse, {
+        parseServiceJobId: args.parseServiceJobId,
+        status: "failed",
+        error: "Asimov returned a non-parse result for a parse job"
+      })
+      return
+    }
+    await ctx.runMutation(internal.kb.documents.finishParse, {
+      parseServiceJobId: args.parseServiceJobId,
+      status: result.status,
+      markdown: result.file?.markdown,
+      error: result.error
     })
   }
 })

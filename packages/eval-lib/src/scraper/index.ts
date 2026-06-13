@@ -1,3 +1,7 @@
+export {
+  AsimovContentService,
+  type AsimovContentServiceConfig
+} from "./asimov-content-service.js"
 export { makeParser, makeScraper } from "./factory.js"
 export type { CallbackSignatureArgs } from "./hmac.js"
 export {
@@ -9,15 +13,18 @@ export { InProcessParser } from "./in-process-parser.js"
 export { InProcessScraper } from "./in-process-scraper.js"
 export { filterLinks, normalizeUrl } from "./link-extractor.js"
 export {
+  JobNotReadyError,
   type NormalizedCallback,
   NotSupportedError,
   type ParsedFile,
   type ParseOptions,
   type Parser,
   type ParserConfig,
+  type ParserJobResult,
   type Scraper,
   type ScraperConfig,
-  type ScraperCrawlConfig
+  type ScraperCrawlConfig,
+  type ScraperJobResult
 } from "./ports.js"
 export {
   PythonContentService,

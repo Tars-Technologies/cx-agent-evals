@@ -35,7 +35,7 @@ export const documentValidator = v.object({
   priority: v.optional(v.number()), // 1-5, default 3
   mimeType: v.optional(v.string()),
   parseBackend: v.optional(
-    v.union(v.literal("inprocess"), v.literal("tarser"))
+    v.union(v.literal("inprocess"), v.literal("tarser"), v.literal("asimov"))
   ),
   parseServiceJobId: v.optional(v.string()),
   parseToken: v.optional(v.string()),
@@ -431,7 +431,9 @@ export const kbTables = {
     error: v.optional(v.string()),
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
-    backend: v.optional(v.union(v.literal("inprocess"), v.literal("tarser"))),
+    backend: v.optional(
+      v.union(v.literal("inprocess"), v.literal("tarser"), v.literal("asimov"))
+    ),
     serviceJobId: v.optional(v.string()),
     callbackToken: v.optional(v.string()),
     submittedAt: v.optional(v.number()),

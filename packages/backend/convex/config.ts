@@ -13,6 +13,11 @@ export type BackendConfig = {
     apiToken: string
     hmacSecret: string
   } | null
+  // Asimov is poll-based: bearer token only, no callback HMAC secret.
+  asimov: {
+    baseUrl: string
+    apiToken: string
+  } | null
   qdrant: {
     url: string
     apiKey: string | undefined
@@ -33,6 +38,13 @@ function createBackendConfig(): BackendConfig {
           hmacSecret: env.TARSER_CALLBACK_HMAC_SECRET.trim()
         }
       : null
+  const asimov =
+    isNonEmpty(env.ASIMOV_BASE_URL) && isNonEmpty(env.ASIMOV_API_TOKEN)
+      ? {
+          baseUrl: env.ASIMOV_BASE_URL.trim(),
+          apiToken: env.ASIMOV_API_TOKEN.trim()
+        }
+      : null
   const qdrant = isNonEmpty(env.QDRANT_URL)
     ? {
         url: env.QDRANT_URL.trim(),
@@ -48,6 +60,7 @@ function createBackendConfig(): BackendConfig {
       voyageApiKey: env.VOYAGE_API_KEY
     },
     tarser,
+    asimov,
     qdrant
   }
 }
@@ -68,6 +81,11 @@ export const backendConfig: BackendConfig = new Proxy({} as BackendConfig, {
 /** True when all Tarser connection vars are configured. */
 export function isTarserAvailable(): boolean {
   return backendConfig.tarser !== null
+}
+
+/** True when the Asimov base URL + API token are configured. */
+export function isAsimovAvailable(): boolean {
+  return backendConfig.asimov !== null
 }
 
 /**

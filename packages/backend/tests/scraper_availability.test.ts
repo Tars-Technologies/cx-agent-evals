@@ -9,14 +9,16 @@ beforeAll(() => {
   delete process.env.TARSER_BASE_URL
   delete process.env.TARSER_API_TOKEN
   delete process.env.TARSER_CALLBACK_HMAC_SECRET
+  delete process.env.ASIMOV_BASE_URL
+  delete process.env.ASIMOV_API_TOKEN
 })
 
 describe("getScraperAvailability", () => {
-  it("reports tarser:false when unconfigured", async () => {
+  it("reports tarser:false and asimov:false when unconfigured", async () => {
     const t = setupTest()
     const out = await t
       .withIdentity(testIdentity)
       .query(api.kb.providers.getScraperAvailability, {})
-    expect(out).toEqual({ tarser: false })
+    expect(out).toEqual({ tarser: false, asimov: false })
   })
 })

@@ -120,7 +120,11 @@ export class ContentScraper {
         throw new Error(`Response too large: ${declaredLength} bytes`)
       }
 
-      const html = await readBodyWithCap(response, MAX_BYTES, charsetFromContentType(contentType))
+      const html = await readBodyWithCap(
+        response,
+        MAX_BYTES,
+        charsetFromContentType(contentType)
+      )
 
       const result = await htmlToMarkdown(html, {
         onlyMainContent: options?.onlyMainContent ?? true,

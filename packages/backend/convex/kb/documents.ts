@@ -445,6 +445,9 @@ export const createParsing = internalMutation({
     title: v.string(),
     mimeType: v.string(),
     fileId: v.optional(v.id("_storage")),
+    // Which remote parser owns this placeholder. Defaults to tarser for back-compat
+    // with the existing Tarser callback path; asimov is filled by pollAsimovParse.
+    backend: v.optional(v.union(v.literal("tarser"), v.literal("asimov"))),
     parseServiceJobId: v.string(),
     parseToken: v.string()
   },
@@ -466,7 +469,7 @@ export const createParsing = internalMutation({
       metadata: {},
       sourceType: "upload",
       mimeType: args.mimeType,
-      parseBackend: "tarser",
+      parseBackend: args.backend ?? "tarser",
       parseServiceJobId: args.parseServiceJobId,
       parseToken: args.parseToken,
       parseStatus: "parsing",
@@ -516,10 +519,10 @@ export const finishParse = internalMutation({
       // inflate the KB count. createParsing deliberately skips the increment.
       const kb = await ctx.db.get(doc.kbId)
       if (kb) {
-      await ctx.db.patch(doc.kbId, {
-        documentCount: (kb.documentCount ?? 0) + 1
-      })
-    }
+        await ctx.db.patch(doc.kbId, {
+          documentCount: (kb.documentCount ?? 0) + 1
+        })
+      }
     } else {
       // Persist why it failed (the remote error, or a content-less "ok") so the
       // reason is visible on the document, matching recordParseFailure.
@@ -582,7 +585,11 @@ export const recordParseFailure = internalMutation({
     kbId: v.id("knowledgeBases"),
     title: v.string(),
     mimeType: v.string(),
-    backend: v.union(v.literal("inprocess"), v.literal("tarser")),
+    backend: v.union(
+      v.literal("inprocess"),
+      v.literal("tarser"),
+      v.literal("asimov")
+    ),
     fileId: v.optional(v.id("_storage")),
     error: v.string()
   },
@@ -614,7 +621,9 @@ export const parseUpload = tenantMutation({
     storageId: v.id("_storage"),
     title: v.string(),
     mimeType: v.string(),
-    backend: v.optional(v.union(v.literal("inprocess"), v.literal("tarser"))),
+    backend: v.optional(
+      v.union(v.literal("inprocess"), v.literal("tarser"), v.literal("asimov"))
+    ),
     ocr: v.optional(v.boolean())
   },
   handler: async (ctx, args) => {

@@ -66,7 +66,9 @@ export const startCrawl = tenantMutation({
         concurrency: v.optional(v.number())
       })
     ),
-    backend: v.optional(v.union(v.literal("inprocess"), v.literal("tarser")))
+    backend: v.optional(
+      v.union(v.literal("inprocess"), v.literal("tarser"), v.literal("asimov"))
+    )
   },
   handler: async (ctx, args) => {
     const { orgId, userId } = ctx
@@ -117,7 +119,9 @@ export const startCrawl = tenantMutation({
       userId,
       startUrl,
       config,
-      status: backend === "tarser" ? "pending" : "running",
+      // Remote backends (tarser, asimov) start "pending" until the submit attaches
+      // a service job; the in-process backend runs immediately via the WorkPool.
+      status: backend === "inprocess" ? "running" : "pending",
       stats: { discovered: 1, scraped: 0, failed: 0, skipped: 0 },
       backend,
       callbackToken,
@@ -146,6 +150,13 @@ export const startCrawl = tenantMutation({
           context: { jobId },
           onComplete: internal.kb.crawl.onBatchComplete
         }
+      )
+    } else if (backend === "asimov") {
+      // Asimov owns the frontier remotely; submit once, then poll (no callback).
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.crawl_actions.submitAsimovCrawl,
+        { crawlJobId: jobId }
       )
     } else {
       // Tarser owns the frontier remotely; submit once (no crawlUrls seed).
@@ -181,6 +192,12 @@ export const cancelCrawl = tenantMutation({
       await ctx.scheduler.runAfter(
         0,
         internal.kb.crawl_actions.cancelTarserCrawl,
+        { crawlJobId: args.jobId }
+      )
+    } else if (job.backend === "asimov" && job.serviceJobId) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.crawl_actions.cancelAsimovCrawl,
         { crawlJobId: args.jobId }
       )
     }
@@ -683,42 +700,46 @@ export const handleTarserPageFailed = internalMutation({
 })
 
 /**
- * Reaper: fail Tarser crawl jobs stuck in running/pending with no callback
+ * Reaper: fail remote crawl jobs (tarser, asimov) stuck in running/pending with no
  * activity past CRAWL_STALE_MS. The in-process backend self-terminates via the
- * WorkPool loop, but a Tarser job only ends on the remote job_complete callback,
- * so an abandoned remote crawl would otherwise hang forever.
+ * WorkPool loop, but a remote job only ends on its callback (tarser) or poll-drain
+ * (asimov); an abandoned remote crawl whose scheduler chain died would otherwise
+ * hang forever. lastCallbackAt is bumped by both the tarser callbacks and the
+ * asimov poll-drain mutations, so the same staleness check covers both.
  */
 export const reapStaleCrawls = internalMutation({
   args: {},
   handler: async (ctx) => {
     const cutoff = Date.now() - CRAWL_STALE_MS
     let reaped = 0
-    for (const status of ["running", "pending"] as const) {
-      // Scope the bounded batch to Tarser jobs at the index level. Filtering
-      // backend after a status-only take() would let never-reaped in-process
-      // "running" rows fill the batch and starve stale Tarser crawls forever.
-      const jobs = await ctx.db
-        .query("crawlJobs")
-        .withIndex("by_backend_status", (q) =>
-          q.eq("backend", "tarser").eq("status", status)
-        )
-        .take(REAP_BATCH)
-      for (const job of jobs) {
-        const lastActivity =
-          job.lastCallbackAt ?? job.submittedAt ?? job.createdAt
-        if (lastActivity >= cutoff) continue
-        const finalStatus =
-          job.stats.scraped > 0 ? "completed_with_errors" : "failed"
-        await ctx.db.patch(job._id, {
-          status: finalStatus,
-          finishReason: "reaped: no callback activity",
-          error:
-            finalStatus === "failed"
-              ? "Crawl timed out: no callback activity"
-              : undefined,
-          completedAt: Date.now()
-        })
-        reaped++
+    for (const backend of ["tarser", "asimov"] as const) {
+      for (const status of ["running", "pending"] as const) {
+        // Scope the bounded batch to remote jobs at the index level. Filtering
+        // backend after a status-only take() would let never-reaped in-process
+        // "running" rows fill the batch and starve stale remote crawls forever.
+        const jobs = await ctx.db
+          .query("crawlJobs")
+          .withIndex("by_backend_status", (q) =>
+            q.eq("backend", backend).eq("status", status)
+          )
+          .take(REAP_BATCH)
+        for (const job of jobs) {
+          const lastActivity =
+            job.lastCallbackAt ?? job.submittedAt ?? job.createdAt
+          if (lastActivity >= cutoff) continue
+          const finalStatus =
+            job.stats.scraped > 0 ? "completed_with_errors" : "failed"
+          await ctx.db.patch(job._id, {
+            status: finalStatus,
+            finishReason: "reaped: no callback activity",
+            error:
+              finalStatus === "failed"
+                ? "Crawl timed out: no callback activity"
+                : undefined,
+            completedAt: Date.now()
+          })
+          reaped++
+        }
       }
     }
     return { reaped }

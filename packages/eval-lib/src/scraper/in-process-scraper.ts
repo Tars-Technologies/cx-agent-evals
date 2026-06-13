@@ -1,4 +1,9 @@
-import type { Scraper, ScraperCrawlConfig } from "./ports.js"
+import type {
+  ParserJobResult,
+  Scraper,
+  ScraperCrawlConfig,
+  ScraperJobResult
+} from "./ports.js"
 import { NotSupportedError } from "./ports.js"
 import { ContentScraper, type ContentScraperConfig } from "./scraper.js"
 import type { ScrapedPage, ScrapeOptions } from "./types.js"
@@ -34,5 +39,13 @@ export class InProcessScraper implements Scraper {
 
   async cancel(_serviceJobId: string): Promise<void> {
     // No remote job to cancel; cancellation is handled by the host WorkPool/job state.
+  }
+
+  async getResult(
+    _serviceJobId: string,
+    _expectedKind?: "crawl" | "parse"
+  ): Promise<ScraperJobResult | ParserJobResult> {
+    // The in-process WorkPool loop owns results page-by-page; there is no polled job.
+    throw new NotSupportedError("getResult", this.name)
   }
 }

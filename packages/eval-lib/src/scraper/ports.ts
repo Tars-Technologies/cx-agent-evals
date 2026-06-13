@@ -8,6 +8,22 @@ export class NotSupportedError extends Error {
   }
 }
 
+/**
+ * Thrown by a poll-based getResult() when the job has not reached a terminal
+ * status before the configured poll deadline. The host (Convex) catches this to
+ * self-reschedule another poll, rather than treating it as a hard failure. Keeps
+ * the "is it done yet?" decision inside eval-lib; the host owns only the cadence.
+ */
+export class JobNotReadyError extends Error {
+  constructor(
+    public readonly serviceJobId: string,
+    public readonly lastStatus: string
+  ) {
+    super(`Job ${serviceJobId} not ready (last status: ${lastStatus})`)
+    this.name = "JobNotReadyError"
+  }
+}
+
 /** Crawl config sent to a remote crawler. Field names match Tarser's CrawlConfig aliases. */
 export interface ScraperCrawlConfig {
   maxPages?: number
@@ -22,10 +38,29 @@ export interface ScraperCrawlConfig {
 
 /** Parse options sent to a remote parser. Field names match Tarser's ParseOptionsModel aliases. */
 export interface ParseOptions {
-  parserPreference?: "docling" | "pymupdf"
+  parserPreference?: "pymupdf"
   ocr?: boolean
   captionImages?: boolean
   ocrProvider?: string
+}
+
+/**
+ * Terminal result of a polled crawl/parse job, drained from a poll-based backend
+ * (e.g. Asimov) by getResult(). Push/callback backends never produce this — they
+ * deliver results out-of-band — so getResult() throws NotSupported for them.
+ */
+export type ScraperJobResult = {
+  kind: "crawl"
+  finishReason: string
+  pages: ScrapedPage[]
+  failed: { url: string; error?: string }[]
+}
+
+export type ParserJobResult = {
+  kind: "parse"
+  status: "ok" | "failed"
+  file?: ParsedFile
+  error?: string
 }
 
 export interface Scraper {
@@ -38,6 +73,22 @@ export interface Scraper {
     callbackUrl: string
   }): Promise<{ serviceJobId: string }>
   cancel(serviceJobId: string): Promise<void>
+  /**
+   * Poll a submitted job to completion and drain its content. Optional, present
+   * only on poll-based backends (Asimov). Default/push backends throw NotSupported,
+   * mirroring the InProcessScraper.startCrawl capability-optional precedent. Returns
+   * a discriminated union (`kind`) because a poll backend implements BOTH ports with
+   * one method; callers narrow on `kind` to the crawl or parse shape they expect.
+   *
+   * `expectedKind` is an optional hint from the caller (which knows whether it
+   * submitted a crawl or a parse). Poll backends use it to disambiguate the
+   * drained content, since a parse and a crawl can return the same `pages` shape.
+   * When absent, the backend falls back to a best-effort shape heuristic.
+   */
+  getResult?(
+    serviceJobId: string,
+    expectedKind?: "crawl" | "parse"
+  ): Promise<ScraperJobResult | ParserJobResult>
 }
 
 export interface Parser {
@@ -51,6 +102,11 @@ export interface Parser {
     callbackUrl: string
   }): Promise<{ serviceJobId: string }>
   cancel(serviceJobId: string): Promise<void>
+  /** Poll-based result drain. Optional; see Scraper.getResult. */
+  getResult?(
+    serviceJobId: string,
+    expectedKind?: "crawl" | "parse"
+  ): Promise<ScraperJobResult | ParserJobResult>
 }
 
 /** A single page scraped in-process (re-exported shape for the host crawl loop). */
@@ -66,10 +122,12 @@ export interface ParsedFile {
 export type ScraperConfig =
   | { backend?: "inprocess"; userAgent?: string }
   | { backend: "tarser"; baseUrl: string; apiToken: string; hmacSecret: string }
+  | { backend: "asimov"; baseUrl: string; apiToken: string }
 
 export type ParserConfig =
   | { backend?: "inprocess" }
   | { backend: "tarser"; baseUrl: string; apiToken: string; hmacSecret: string }
+  | { backend: "asimov"; baseUrl: string; apiToken: string }
 
 /** Normalized form of a Tarser callback after PythonContentService.normalizeCallback(). */
 export type NormalizedCallback =

@@ -1,3 +1,4 @@
+import { AsimovContentService } from "./asimov-content-service.js"
 import { InProcessParser } from "./in-process-parser.js"
 import { InProcessScraper } from "./in-process-scraper.js"
 import type { Parser, ParserConfig, Scraper, ScraperConfig } from "./ports.js"
@@ -10,6 +11,12 @@ export function makeScraper(config?: ScraperConfig): Scraper {
       baseUrl: config.baseUrl,
       apiToken: config.apiToken,
       hmacSecret: config.hmacSecret
+    })
+  }
+  if (config && config.backend === "asimov") {
+    return new AsimovContentService({
+      baseUrl: config.baseUrl,
+      apiToken: config.apiToken
     })
   }
   return new InProcessScraper(
@@ -26,6 +33,12 @@ export function makeParser(config?: ParserConfig): Parser {
       baseUrl: config.baseUrl,
       apiToken: config.apiToken,
       hmacSecret: config.hmacSecret
+    })
+  }
+  if (config && config.backend === "asimov") {
+    return new AsimovContentService({
+      baseUrl: config.baseUrl,
+      apiToken: config.apiToken
     })
   }
   return new InProcessParser()
