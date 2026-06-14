@@ -267,14 +267,50 @@ describe("QdrantVectorStore", () => {
     await expect(store.deleteByKnowledgeBase("kb1")).resolves.toBeUndefined()
   })
 
-  it("checkHealth(): true when reachable+compatible, false otherwise", async () => {
-    fetchMock
-      .mockResolvedValueOnce(collectionInfo(3)) // GET
-      .mockImplementation(async () => okJson({ status: "ok", result: {} })) // index PUTs
+  it("checkHealth(): probes liveness without provisioning the collection", async () => {
+    // True when the collection exists: a single non-provisioning GET, no PUTs.
+    fetchMock.mockResolvedValueOnce(collectionInfo(3)) // GET collection
     expect(await store.checkHealth()).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe("http://qdrant.local:6333/collections/kb_x_abcdef")
+    expect(init.method ?? "GET").toBe("GET")
+    expect(
+      fetchMock.mock.calls.every(
+        ([, i]: [string, RequestInit]) => i.method !== "PUT"
+      )
+    ).toBe(true)
+
+    // False (not true) when the collection is missing: a passive probe must
+    // NOT resurrect a dropped collection.
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValueOnce(new Response("not found", { status: 404 }))
+    expect(await store.checkHealth()).toBe(false)
+    expect(
+      fetchMock.mock.calls.every(
+        ([, i]: [string, RequestInit]) => i.method !== "PUT"
+      )
+    ).toBe(true)
+
+    // False when the instance is unreachable.
     fetchMock.mockReset()
     fetchMock.mockRejectedValueOnce(new Error("ECONNREFUSED"))
     expect(await store.checkHealth()).toBe(false)
+  })
+
+  it("search(): returns [] when the collection is not ready (404)", async () => {
+    // Store parity with native/in-memory: a missing collection yields no
+    // results rather than an opaque 404 throw.
+    fetchMock.mockResolvedValueOnce(new Response("not found", { status: 404 }))
+    await expect(store.search([1, 0, 0], { k: 5 })).resolves.toEqual([])
+  })
+
+  it("clear(): rejects a non-empty filter instead of silently dropping all", async () => {
+    await expect(
+      store.clear({ documentId: "cvx1" })
+    ).rejects.toThrow(/filter/i)
+    // A filtered clear must not issue any destructive request.
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it("omits the api-key header when no key configured", async () => {

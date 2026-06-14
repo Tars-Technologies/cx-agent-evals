@@ -224,9 +224,21 @@ export class QdrantVectorStore implements VectorStore {
     }
     const filter = buildQdrantFilter(opts.filter)
     if (filter) body.filter = filter
-    const response = await this._request<{
+    let response: {
       result?: { points?: Array<{ score: number; payload: QdrantPayload }> }
-    }>("POST", `/collections/${this._cfg.collection}/points/query`, body)
+    }
+    try {
+      response = await this._request(
+        "POST",
+        `/collections/${this._cfg.collection}/points/query`,
+        body
+      )
+    } catch (err) {
+      // Store parity with the native/in-memory backends: an unprovisioned
+      // collection (404) means "no results yet", not a hard failure.
+      if (err instanceof QdrantHttpError && err.status === 404) return []
+      throw err
+    }
     const points = response.result?.points ?? []
     return points.map((p) => ({
       chunk: {
@@ -259,14 +271,28 @@ export class QdrantVectorStore implements VectorStore {
     await this._dropCollection()
   }
 
-  async clear(_filter?: VectorFilter): Promise<void> {
+  async clear(filter?: VectorFilter): Promise<void> {
+    // clear() drops the whole collection; it cannot honour a partial filter.
+    // Reject a non-empty filter rather than silently wiping everything.
+    if (filter && Object.values(filter).some((v) => v !== undefined)) {
+      throw new Error(
+        "QdrantVectorStore.clear: filtered clear is not supported (this drops the entire collection); use deleteByDocument/deleteByKnowledgeBase for scoped deletion"
+      )
+    }
     await this._dropCollection()
   }
 
   async checkHealth(): Promise<boolean> {
+    // Passive liveness probe: a non-provisioning GET of the collection. A
+    // health check must never resurrect a dropped collection, so this does
+    // NOT fall through to ensureCollection() (which creates on a 404).
     try {
-      this._collectionEnsured = false
-      await this.ensureCollection()
+      await this._request(
+        "GET",
+        `/collections/${this._cfg.collection}`,
+        undefined,
+        { maxRetries: 0 }
+      )
       return true
     } catch {
       return false

@@ -149,7 +149,16 @@ export interface PostJSONOptions {
    * Set `maxRetries: 0` to disable retries.
    */
   readonly retry?: { maxRetries?: number; backoffMs?: number }
+
+  /**
+   * Per-request timeout in ms; aborts a hung fetch so a wedged provider call
+   * cannot stack retries and starve the concurrency pool. Defaults to 30000.
+   */
+  readonly timeoutMs?: number
 }
+
+/** Default per-request timeout for {@link postJSON} (ms). */
+const DEFAULT_POST_TIMEOUT_MS = 30_000
 
 /**
  * POST a JSON payload to an API endpoint and return the parsed response. Thin
@@ -158,7 +167,14 @@ export interface PostJSONOptions {
  * On non-2xx responses, throws an {@link HttpError} that includes the provider
  * name, HTTP status, and the raw response body for debuggability. Non-retryable
  * 4xx (e.g. a bad API key) fail fast instead of burning the backoff schedule.
+ *
+ * Every request carries a timeout (default 30000ms) so a hung provider
+ * (embed/rerank over HTTP) aborts instead of holding a concurrency slot open.
  */
 export async function postJSON<T>(options: PostJSONOptions): Promise<T> {
-  return requestJSON<T>({ ...options, method: "POST" })
+  return requestJSON<T>({
+    timeoutMs: DEFAULT_POST_TIMEOUT_MS,
+    ...options,
+    method: "POST"
+  })
 }

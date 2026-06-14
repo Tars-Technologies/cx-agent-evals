@@ -211,4 +211,46 @@ describe("postJSON", () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1)
     })
   })
+
+  describe("request timeout", () => {
+    it("aborts a hung request within timeoutMs and rejects", async () => {
+      // A provider that never resolves: honour the AbortSignal so the call
+      // does not hang forever and starve the concurrency pool.
+      fetchSpy.mockImplementation(
+        (_url, init) =>
+          new Promise((_resolve, reject) => {
+            const signal = (init as RequestInit | undefined)?.signal
+            signal?.addEventListener("abort", () =>
+              reject(new DOMException("Aborted", "AbortError"))
+            )
+          })
+      )
+
+      await expect(
+        postJSON({
+          url: "https://api.example.com/v1/embed",
+          provider: "Test",
+          body: {},
+          timeoutMs: 20,
+          retry: { maxRetries: 0 }
+        })
+      ).rejects.toThrow()
+
+      const [, init] = fetchSpy.mock.calls[0]
+      expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal)
+    })
+
+    it("passes an AbortSignal by default (no explicit timeoutMs)", async () => {
+      fetchSpy.mockResolvedValueOnce(mockFetchResponse({ ok: true }))
+
+      await postJSON({
+        url: "https://api.example.com/v1/embed",
+        provider: "Test",
+        body: {}
+      })
+
+      const [, init] = fetchSpy.mock.calls[0]
+      expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal)
+    })
+  })
 })
