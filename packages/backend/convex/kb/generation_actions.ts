@@ -588,7 +588,10 @@ async function guardedFetchPage(initialUrl: string): Promise<string> {
     // Cap the body before it reaches the prompt: reject on the declared length
     // first, then verify the actual bytes (a server can lie about / omit it).
     const declaredLen = Number(response.headers.get("content-length") ?? "")
-    if (Number.isFinite(declaredLen) && declaredLen > MAX_DISCOVERY_BODY_BYTES) {
+    if (
+      Number.isFinite(declaredLen) &&
+      declaredLen > MAX_DISCOVERY_BODY_BYTES
+    ) {
       throw new Error(`Response too large: ${declaredLen} bytes`)
     }
     const body = await response.text()

@@ -308,9 +308,9 @@ describe("QdrantVectorStore", () => {
     // drop it. Both no filter and an all-undefined filter are rejected, and no
     // destructive request is issued.
     await expect(store.clear()).rejects.toThrow(/shared collection/i)
-    await expect(
-      store.clear({ kbId: undefined })
-    ).rejects.toThrow(/shared collection/i)
+    await expect(store.clear({ kbId: undefined })).rejects.toThrow(
+      /shared collection/i
+    )
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -340,9 +340,7 @@ describe("QdrantVectorStore", () => {
     expect(await store.checkHealth()).toBe(true)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe(
-      "https://qdrant.example.com:6333/collections/kb_x_abcdef"
-    )
+    expect(url).toBe("https://qdrant.example.com:6333/collections/kb_x_abcdef")
     expect(init.method ?? "GET").toBe("GET")
     expect(
       fetchMock.mock.calls.every(

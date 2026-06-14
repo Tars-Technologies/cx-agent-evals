@@ -153,7 +153,10 @@ export const startIndexing = internalMutation({
     // once here and stamped on the job (and retriever) at creation time.
     const vectorBackend = resolveVectorBackend(indexConfig.vectorBackend)
     // Native is OpenAI-only; reject before building a mislabeled index.
-    assertEmbeddingBackendCompatible(vectorBackend, indexConfig.embeddingProvider)
+    assertEmbeddingBackendCompatible(
+      vectorBackend,
+      indexConfig.embeddingProvider
+    )
     const qdrantCollection =
       vectorBackend === "qdrant"
         ? qdrantCollectionNameFor(indexConfig)

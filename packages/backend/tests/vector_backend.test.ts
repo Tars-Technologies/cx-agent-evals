@@ -35,9 +35,9 @@ describe("qdrantCollectionName", () => {
   })
 
   it("is deterministic for the same inputs", () => {
-    expect(
+    expect(qdrantCollectionName("openai", "text-embedding-3-small")).toBe(
       qdrantCollectionName("openai", "text-embedding-3-small")
-    ).toBe(qdrantCollectionName("openai", "text-embedding-3-small"))
+    )
   })
 })
 

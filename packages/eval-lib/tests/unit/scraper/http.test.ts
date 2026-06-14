@@ -37,7 +37,9 @@ describe("readCappedText", () => {
       })
     ).rejects.toThrow(/exceeded 10 bytes/)
     await expect(
-      readCappedText(textResponse("x".repeat(100)), 10, { throwOnTruncate: true })
+      readCappedText(textResponse("x".repeat(100)), 10, {
+        throwOnTruncate: true
+      })
     ).rejects.toThrow(/exceeded 10 bytes/)
   })
 

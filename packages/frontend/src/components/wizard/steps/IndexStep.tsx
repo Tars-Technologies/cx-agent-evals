@@ -201,7 +201,9 @@ export function IndexStep({
                 {entry.status === "available" && !backendAllowed
                   ? " (qdrant only)"
                   : ""}
-                {entry.status === "available" && backendAllowed && !keyConfigured
+                {entry.status === "available" &&
+                backendAllowed &&
+                !keyConfigured
                   ? " (key not set)"
                   : ""}
               </option>

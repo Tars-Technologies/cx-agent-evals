@@ -135,7 +135,6 @@ describe("weightedScoreFusion", () => {
 
     expect(results).toEqual([])
   })
-
 })
 
 describe("sortDescending (A3)", () => {

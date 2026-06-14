@@ -111,7 +111,11 @@ export const create = tenantMutation({
     }
 
     // Bind the uploaded blob to this org before ingesting its bytes.
-    await claimStorageOwnership(ctx, { orgId, userId, storageId: args.storageId })
+    await claimStorageOwnership(ctx, {
+      orgId,
+      userId,
+      storageId: args.storageId
+    })
 
     const content = args.content
     const docId = await computeDocId({ fileId: args.storageId })
@@ -697,7 +701,11 @@ export const parseUpload = tenantMutation({
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) throw new Error("Knowledge base not found")
     // Bind the uploaded blob to this org before parsing its bytes.
-    await claimStorageOwnership(ctx, { orgId, userId, storageId: args.storageId })
+    await claimStorageOwnership(ctx, {
+      orgId,
+      userId,
+      storageId: args.storageId
+    })
     await ctx.scheduler.runAfter(
       0,
       internal.kb.documents_actions.parseDocument,

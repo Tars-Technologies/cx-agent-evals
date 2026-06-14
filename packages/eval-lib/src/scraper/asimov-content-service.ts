@@ -449,7 +449,9 @@ function crawlConfigToLoaderOptions(
 
 /** Map an Asimov crawl finish_reason onto the host's normal-finish vocabulary. */
 function normalizeCrawlFinishReason(raw: string): string {
-  return NORMAL_ASIMOV_FINISH.has(raw.toLowerCase()) ? FinishReason.Finished : raw
+  return NORMAL_ASIMOV_FINISH.has(raw.toLowerCase())
+    ? FinishReason.Finished
+    : raw
 }
 
 /** Normalize one Asimov content page into a ScrapedPage, or null if unusable. */

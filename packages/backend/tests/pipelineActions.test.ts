@@ -234,12 +234,14 @@ describe("chunks: getChunksByRetrieverPage", () => {
     })
 
     await expect(
-      t.withIdentity(testIdentity).query(api.kb.chunks.getChunksByRetrieverPage, {
-        kbId,
-        indexConfigHash: "hash-abc",
-        documentId: foreignDocumentId,
-        cursor: null
-      })
+      t
+        .withIdentity(testIdentity)
+        .query(api.kb.chunks.getChunksByRetrieverPage, {
+          kbId,
+          indexConfigHash: "hash-abc",
+          documentId: foreignDocumentId,
+          cursor: null
+        })
     ).rejects.toThrow("Document not found")
   })
 

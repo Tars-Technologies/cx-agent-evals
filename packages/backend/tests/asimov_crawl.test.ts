@@ -32,7 +32,9 @@ async function seedAsimovJob(
   )
 }
 
-async function scheduledNames(t: ReturnType<typeof setupTest>): Promise<string[]> {
+async function scheduledNames(
+  t: ReturnType<typeof setupTest>
+): Promise<string[]> {
   return await t.run(async (ctx) => {
     const rows = await ctx.db.system.query("_scheduled_functions").collect()
     return rows.map((r) => r.name)
@@ -68,7 +70,9 @@ describe("reaper heartbeat for long Asimov crawls (#2)", () => {
     const t = setupTest()
     const old = Date.now() - STALE_MS
     const jobId = await seedAsimovJob(t, { submittedAt: old, createdAt: old })
-    await t.mutation(internal.kb.crawl.touchCrawlActivity, { crawlJobId: jobId })
+    await t.mutation(internal.kb.crawl.touchCrawlActivity, {
+      crawlJobId: jobId
+    })
     await t.mutation(internal.kb.crawl.reapStaleCrawls, {})
     const job = await t.run((ctx) => ctx.db.get(jobId))
     expect(job?.status).toBe("running")

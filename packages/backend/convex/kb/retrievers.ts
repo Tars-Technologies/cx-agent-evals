@@ -2,10 +2,10 @@
  * Retriever CRUD, shared-index protection, status sync.
  */
 import { v } from "convex/values"
-import { vectorBackendValidator } from "../lib/validators"
 import { internal } from "../_generated/api"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
+import { vectorBackendValidator } from "../lib/validators"
 
 // ─── Queries ───
 

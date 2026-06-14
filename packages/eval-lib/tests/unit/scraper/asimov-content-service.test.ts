@@ -324,7 +324,10 @@ describe("AsimovContentService getResult (poll + paginated drain)", () => {
           }
         }
       )
-      const result = (await svc().getResult("dr-1", "crawl")) as ScraperJobResult
+      const result = (await svc().getResult(
+        "dr-1",
+        "crawl"
+      )) as ScraperJobResult
       expect(result.finishReason).toBe("finished")
     }
   })
