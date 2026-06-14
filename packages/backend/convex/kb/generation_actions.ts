@@ -21,6 +21,10 @@ import {
 } from "@tars-inc/eval-lib"
 import { createLLMClient, getModel } from "@tars-inc/eval-lib/llm"
 import { discoverDimensions as discoverDimensionsFn } from "@tars-inc/eval-lib/pipeline/internals"
+import {
+  assertHostResolvesPublic,
+  assertPublicHttpUrl
+} from "@tars-inc/eval-lib/scraper"
 import { QUESTION_INSERT_BATCH_SIZE } from "@tars-inc/eval-lib/shared"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
@@ -545,6 +549,59 @@ export const assignGroundTruthForQuestion = internalAction({
 
 // ─── Dimension Discovery ───
 
+const MAX_DISCOVERY_BODY_BYTES = 5_000_000
+const MAX_DISCOVERY_REDIRECTS = 5
+
+/**
+ * SSRF-guarded page fetch for dimension discovery. `discoverDimensions` runs
+ * server-side and feeds the fetched body into an LLM prompt that is returned to
+ * the caller, so an unguarded fetch would let an authenticated user point our
+ * server at internal hosts (e.g. the cloud metadata endpoint at 169.254.169.254)
+ * and read the response back. We re-validate on EVERY hop because the string
+ * check is not enough on its own: a hostname can DNS-rebind to a private IP, and
+ * a public URL can redirect to an internal one. Mirrors the crawl path
+ * (`crawl_actions.ts`) and the body-size cap pattern in `http.ts`.
+ */
+async function guardedFetchPage(initialUrl: string): Promise<string> {
+  let currentUrl = initialUrl
+  for (let hop = 0; hop <= MAX_DISCOVERY_REDIRECTS; hop++) {
+    const host = assertPublicHttpUrl(currentUrl).hostname
+    await assertHostResolvesPublic(host)
+
+    const response = await fetch(currentUrl, { redirect: "manual" })
+
+    // Follow redirects by hand so the destination is re-guarded above, not
+    // auto-followed by fetch (which would skip the guard on the final hop).
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location")
+      if (!location) {
+        throw new Error(`Redirect with no Location from ${currentUrl}`)
+      }
+      currentUrl = new URL(location, currentUrl).toString()
+      continue
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch ${currentUrl}: ${response.status}`)
+    }
+
+    // Cap the body before it reaches the prompt: reject on the declared length
+    // first, then verify the actual bytes (a server can lie about / omit it).
+    const declaredLen = Number(response.headers.get("content-length") ?? "")
+    if (Number.isFinite(declaredLen) && declaredLen > MAX_DISCOVERY_BODY_BYTES) {
+      throw new Error(`Response too large: ${declaredLen} bytes`)
+    }
+    const body = await response.text()
+    if (new TextEncoder().encode(body).byteLength > MAX_DISCOVERY_BODY_BYTES) {
+      throw new Error(
+        `Response too large: exceeded ${MAX_DISCOVERY_BODY_BYTES} bytes`
+      )
+    }
+    return body
+  }
+  throw new Error(`Too many redirects fetching ${initialUrl}`)
+}
+
 export const discoverDimensions = tenantAction({
   args: {
     url: v.string()
@@ -561,7 +618,12 @@ export const discoverDimensions = tenantAction({
     const llmClient = createLLMClient()
     const model = getModel({})
     try {
-      return await discoverDimensionsFn({ url, llmClient, model })
+      return await discoverDimensionsFn({
+        url,
+        llmClient,
+        model,
+        fetchPage: guardedFetchPage
+      })
     } catch (error) {
       throw new Error(
         error instanceof Error ? error.message : "Dimension discovery failed"
