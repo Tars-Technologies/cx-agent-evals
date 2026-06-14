@@ -301,6 +301,142 @@ describe("PipelineRetriever — identity query (regression)", () => {
 })
 
 // ---------------------------------------------------------------------------
+// Empty / failed LLM output falls back to the original query (A1)
+// ---------------------------------------------------------------------------
+
+describe("PipelineRetriever — empty transform output falls back to original", () => {
+  it("rewrite returning null at runtime falls back to the original query", async () => {
+    const mockLlm = createMockLlm("")
+    mockLlm.complete.mockResolvedValueOnce(null as unknown as string)
+    const embedder = mockEmbedder(128)
+    const embedQuerySpy = vi.spyOn(embedder, "embedQuery")
+
+    const config: PipelineConfig = {
+      name: "rewrite-null-test",
+      query: { strategy: "rewrite" },
+      search: { strategy: "dense" }
+    }
+
+    const retriever = new PipelineRetriever(
+      config,
+      defaultDeps({ llm: mockLlm, embedder })
+    )
+    await retriever.init(testCorpus())
+
+    await retriever.retrieve("What are popular pets?", 3)
+
+    expect(embedQuerySpy).toHaveBeenCalledTimes(1)
+    expect(embedQuerySpy).toHaveBeenCalledWith("What are popular pets?")
+
+    await retriever.cleanup()
+  })
+
+  it("rewrite returning empty string falls back to the original query", async () => {
+    const mockLlm = createMockLlm("")
+    const embedder = mockEmbedder(128)
+    const embedQuerySpy = vi.spyOn(embedder, "embedQuery")
+
+    const config: PipelineConfig = {
+      name: "rewrite-empty-test",
+      query: { strategy: "rewrite" },
+      search: { strategy: "dense" }
+    }
+
+    const retriever = new PipelineRetriever(
+      config,
+      defaultDeps({ llm: mockLlm, embedder })
+    )
+    await retriever.init(testCorpus())
+
+    await retriever.retrieve("What are popular pets?", 3)
+
+    // The rewritten query is empty, so search must fall back to the original
+    expect(embedQuerySpy).toHaveBeenCalledTimes(1)
+    expect(embedQuerySpy).toHaveBeenCalledWith("What are popular pets?")
+
+    await retriever.cleanup()
+  })
+
+  it("multi-query parsing to nothing falls back to the original query", async () => {
+    const mockLlm = createMockLlm("   \n   \n")
+    const embedder = mockEmbedder(128)
+    const embedQuerySpy = vi.spyOn(embedder, "embedQuery")
+
+    const config: PipelineConfig = {
+      name: "multi-query-empty-test",
+      query: { strategy: "multi-query", numQueries: 3 },
+      search: { strategy: "dense" }
+    }
+
+    const retriever = new PipelineRetriever(
+      config,
+      defaultDeps({ llm: mockLlm, embedder })
+    )
+    await retriever.init(testCorpus())
+
+    const results = await retriever.retrieve("What are popular pets?", 3)
+
+    expect(results.length).toBeGreaterThan(0)
+    expect(embedQuerySpy).toHaveBeenCalledTimes(1)
+    expect(embedQuerySpy).toHaveBeenCalledWith("What are popular pets?")
+
+    await retriever.cleanup()
+  })
+
+  it("step-back with includeOriginal=false and empty abstract falls back", async () => {
+    const mockLlm = createMockLlm("")
+    const embedder = mockEmbedder(128)
+    const embedQuerySpy = vi.spyOn(embedder, "embedQuery")
+
+    const config: PipelineConfig = {
+      name: "step-back-empty-test",
+      query: { strategy: "step-back", includeOriginal: false },
+      search: { strategy: "dense" }
+    }
+
+    const retriever = new PipelineRetriever(
+      config,
+      defaultDeps({ llm: mockLlm, embedder })
+    )
+    await retriever.init(testCorpus())
+
+    await retriever.retrieve("What are popular pets?", 3)
+
+    expect(embedQuerySpy).toHaveBeenCalledTimes(1)
+    expect(embedQuerySpy).toHaveBeenCalledWith("What are popular pets?")
+
+    await retriever.cleanup()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Unknown query strategy falls back to the original query (A2)
+// ---------------------------------------------------------------------------
+
+describe("PipelineRetriever — unknown query strategy falls back", () => {
+  it("does not throw and searches the original query", async () => {
+    const embedder = mockEmbedder(128)
+    const embedQuerySpy = vi.spyOn(embedder, "embedQuery")
+
+    const config = {
+      name: "unknown-strategy-test",
+      query: { strategy: "not-a-real-strategy" },
+      search: { strategy: "dense" }
+    } as unknown as PipelineConfig
+
+    const retriever = new PipelineRetriever(config, defaultDeps({ embedder }))
+    await retriever.init(testCorpus())
+
+    await expect(
+      retriever.retrieve("What are popular pets?", 3)
+    ).resolves.not.toThrow()
+    expect(embedQuerySpy).toHaveBeenCalledWith("What are popular pets?")
+
+    await retriever.cleanup()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Refinement uses original query, not processed query
 // ---------------------------------------------------------------------------
 

@@ -3,6 +3,7 @@ import type { ScoredChunk } from "../../../../../src/retrievers/pipeline/search/
 import {
   reciprocalRankFusion,
   rrfFuseMultiple,
+  sortDescending,
   weightedScoreFusion
 } from "../../../../../src/retrievers/pipeline/search/fusion.js"
 import type { PositionAwareChunk } from "../../../../../src/types/index.js"
@@ -133,6 +134,34 @@ describe("weightedScoreFusion", () => {
     })
 
     expect(results).toEqual([])
+  })
+
+})
+
+describe("sortDescending (A3)", () => {
+  it("returns chunks ordered by descending score", () => {
+    const input: ScoredChunk[] = [
+      scored("a", 0.1),
+      scored("b", 0.9),
+      scored("c", 0.5)
+    ]
+
+    const sorted = sortDescending(input)
+
+    expect(sorted.map((r) => String(r.chunk.id))).toEqual(["b", "c", "a"])
+  })
+
+  it("does not mutate the caller's array in place", () => {
+    const input: ScoredChunk[] = [
+      scored("a", 0.1),
+      scored("b", 0.9),
+      scored("c", 0.5)
+    ]
+    const originalOrder = input.map((r) => String(r.chunk.id))
+
+    sortDescending(input)
+
+    expect(input.map((r) => String(r.chunk.id))).toEqual(originalOrder)
   })
 })
 

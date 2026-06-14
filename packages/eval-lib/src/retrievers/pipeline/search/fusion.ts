@@ -40,8 +40,14 @@ function buildEntryMap(
   return entries
 }
 
-function sortDescending(results: ScoredChunk[]): ScoredChunk[] {
-  return results.sort((a, b) => b.score - a.score)
+/**
+ * Sort scored chunks by descending score. Sorts a copy so the caller's array
+ * is never mutated in place.
+ */
+export function sortDescending(
+  results: readonly ScoredChunk[]
+): ScoredChunk[] {
+  return [...results].sort((a, b) => b.score - a.score)
 }
 
 // ---------------------------------------------------------------------------
