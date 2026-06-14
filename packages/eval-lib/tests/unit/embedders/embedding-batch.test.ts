@@ -77,4 +77,12 @@ describe("assertEmbeddingBatch", () => {
   it("passes for an empty batch with expected count 0", () => {
     expect(() => assertEmbeddingBatch([], 0, "TestProvider")).not.toThrow()
   })
+
+  it("throws when vectors are zero-length (dim === 0) (B1)", () => {
+    // A non-empty batch of empty vectors would fill the store with NaN/empty
+    // vectors. The empty-batch early-return must not let this through.
+    expect(() => assertEmbeddingBatch([[], []], 2, "TestProvider")).toThrow(
+      /TestProvider returned zero-dimension embeddings/
+    )
+  })
 })

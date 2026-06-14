@@ -41,6 +41,11 @@ export function assertEmbeddingBatch(
   }
   if (vectors.length === 0) return
   const dim = vectors[0].length
+  if (dim === 0) {
+    throw new Error(
+      `${provider} returned zero-dimension embeddings (empty vectors)`
+    )
+  }
   for (const v of vectors) {
     if (v.length !== dim) {
       throw new Error(
