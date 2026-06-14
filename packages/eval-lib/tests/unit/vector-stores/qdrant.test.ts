@@ -38,7 +38,7 @@ describe("QdrantVectorStore", () => {
     fetchMock = vi.fn()
     vi.stubGlobal("fetch", fetchMock)
     store = new QdrantVectorStore({
-      url: "http://qdrant.local:6333",
+      url: "https://qdrant.example.com:6333",
       apiKey: "test-key",
       collection: "kb_x_abcdef",
       dimension: 3,
@@ -46,6 +46,17 @@ describe("QdrantVectorStore", () => {
     })
   })
   afterEach(() => vi.unstubAllGlobals())
+
+  it("rejects non-HTTPS endpoints", () => {
+    expect(
+      () =>
+        new QdrantVectorStore({
+          url: "http://qdrant.example.com:6333",
+          collection: "kb_x_abcdef",
+          dimension: 3
+        })
+    ).toThrow(/https/i)
+  })
 
   it("derives a deterministic UUID-format point id from the chunk id", () => {
     const a = qdrantPointId("chunk-1")
@@ -72,12 +83,14 @@ describe("QdrantVectorStore", () => {
     })
 
     const [getUrl, getInit] = fetchMock.mock.calls[0]
-    expect(getUrl).toBe("http://qdrant.local:6333/collections/kb_x_abcdef")
+    expect(getUrl).toBe(
+      "https://qdrant.example.com:6333/collections/kb_x_abcdef"
+    )
     expect(getInit.headers["api-key"]).toBe("test-key")
 
     const [upsertUrl, upsertInit] = fetchMock.mock.calls[4]
     expect(upsertUrl).toBe(
-      "http://qdrant.local:6333/collections/kb_x_abcdef/points?wait=true"
+      "https://qdrant.example.com:6333/collections/kb_x_abcdef/points?wait=true"
     )
     expect(upsertInit.method).toBe("PUT")
     const body = JSON.parse(upsertInit.body)
@@ -107,7 +120,9 @@ describe("QdrantVectorStore", () => {
       .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // upsert
     await store.add([chunk("c1")], [[1, 0, 0]])
     const [createUrl, createInit] = fetchMock.mock.calls[1]
-    expect(createUrl).toBe("http://qdrant.local:6333/collections/kb_x_abcdef")
+    expect(createUrl).toBe(
+      "https://qdrant.example.com:6333/collections/kb_x_abcdef"
+    )
     expect(createInit.method).toBe("PUT")
     expect(JSON.parse(createInit.body)).toEqual({
       vectors: { size: 3, distance: "Cosine" }
@@ -116,7 +131,7 @@ describe("QdrantVectorStore", () => {
       .slice(2, 5)
       .map(([url, init]: [string, RequestInit]) => {
         expect(url).toBe(
-          "http://qdrant.local:6333/collections/kb_x_abcdef/index?wait=true"
+          "https://qdrant.example.com:6333/collections/kb_x_abcdef/index?wait=true"
         )
         return JSON.parse(init.body as string)
       })
@@ -163,7 +178,7 @@ describe("QdrantVectorStore", () => {
     expect(fetchMock).toHaveBeenCalledTimes(7)
     const [upsertUrl] = fetchMock.mock.calls[6]
     expect(upsertUrl).toBe(
-      "http://qdrant.local:6333/collections/kb_x_abcdef/points?wait=true"
+      "https://qdrant.example.com:6333/collections/kb_x_abcdef/points?wait=true"
     )
   })
 
@@ -212,7 +227,7 @@ describe("QdrantVectorStore", () => {
     const results = await store.search([1, 0, 0], { k: 5 })
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe(
-      "http://qdrant.local:6333/collections/kb_x_abcdef/points/query"
+      "https://qdrant.example.com:6333/collections/kb_x_abcdef/points/query"
     )
     expect(JSON.parse(init.body)).toEqual({
       query: [1, 0, 0],
@@ -241,7 +256,7 @@ describe("QdrantVectorStore", () => {
     await store.deleteByDocument("cvx1")
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe(
-      "http://qdrant.local:6333/collections/kb_x_abcdef/points/delete?wait=true"
+      "https://qdrant.example.com:6333/collections/kb_x_abcdef/points/delete?wait=true"
     )
     expect(JSON.parse(init.body)).toEqual({
       filter: { must: [{ key: "documentId", match: { value: "cvx1" } }] }
@@ -255,7 +270,7 @@ describe("QdrantVectorStore", () => {
     )
     await store.deleteByKnowledgeBase("kb1")
     expect(fetchMock.mock.calls[0][0]).toBe(
-      "http://qdrant.local:6333/collections/kb_x_abcdef"
+      "https://qdrant.example.com:6333/collections/kb_x_abcdef"
     )
     expect(fetchMock.mock.calls[0][1].method).toBe("DELETE")
     await store.clear()
@@ -273,7 +288,9 @@ describe("QdrantVectorStore", () => {
     expect(await store.checkHealth()).toBe(true)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe("http://qdrant.local:6333/collections/kb_x_abcdef")
+    expect(url).toBe(
+      "https://qdrant.example.com:6333/collections/kb_x_abcdef"
+    )
     expect(init.method ?? "GET").toBe("GET")
     expect(
       fetchMock.mock.calls.every(
@@ -315,7 +332,7 @@ describe("QdrantVectorStore", () => {
 
   it("omits the api-key header when no key configured", async () => {
     const open = new QdrantVectorStore({
-      url: "http://localhost:6333",
+      url: "https://qdrant.example.com:6333",
       collection: "c",
       dimension: 3,
       retry: { maxRetries: 0 }
@@ -337,7 +354,7 @@ describe("QdrantVectorStore", () => {
 
   it("does not retry non-retryable 4xx responses (e.g. bad key)", async () => {
     const retrying = new QdrantVectorStore({
-      url: "http://qdrant.local:6333",
+      url: "https://qdrant.example.com:6333",
       apiKey: "bad-key",
       collection: "kb_x_abcdef",
       dimension: 3,
@@ -353,7 +370,7 @@ describe("QdrantVectorStore", () => {
 
   it("retries retryable 5xx responses up to maxRetries", async () => {
     const retrying = new QdrantVectorStore({
-      url: "http://qdrant.local:6333",
+      url: "https://qdrant.example.com:6333",
       apiKey: "test-key",
       collection: "kb_x_abcdef",
       dimension: 3,

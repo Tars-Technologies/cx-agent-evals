@@ -58,5 +58,5 @@ the eval-lib interfaces.
 - Apply a default timeout to provider HTTP requests, reject zero-dimension
   embeddings, and warn when malformed reranker indexes truncate results.
 - Make Qdrant health checks passive, return no search results when a collection
-  is not yet provisioned, and reject filtered clears that would otherwise drop
-  the entire collection.
+  is not yet provisioned, reject filtered clears that would otherwise drop the
+  entire collection, and require HTTPS endpoints.

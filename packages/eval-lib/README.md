@@ -272,6 +272,7 @@ const native = makeVectorStore(
 
 Notes on the Qdrant backend:
 
+- Qdrant endpoints must use HTTPS; plain HTTP URLs are rejected.
 - The collection and its keyword payload indexes for the filterable fields
   (`kbId`, `indexConfigHash`, `documentId`) are ensured before the first `add`.
   Existing collections are backfilled so filtered search and delete work on

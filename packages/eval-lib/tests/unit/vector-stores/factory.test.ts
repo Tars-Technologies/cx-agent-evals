@@ -29,7 +29,7 @@ describe("makeVectorStore", () => {
   it("qdrant builds a QdrantVectorStore from the config", () => {
     const store = makeVectorStore({
       backend: "qdrant",
-      url: "http://localhost:6333",
+      url: "https://qdrant.example.com:6333",
       collection: "kb_x_hash",
       dimension: 1536
     })

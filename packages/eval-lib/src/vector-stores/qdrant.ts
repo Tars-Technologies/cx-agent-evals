@@ -65,6 +65,15 @@ export class QdrantVectorStore implements VectorStore {
   private _collectionEnsured = false
 
   constructor(config: QdrantVectorStoreConfig) {
+    let endpoint: URL
+    try {
+      endpoint = new URL(config.url)
+    } catch {
+      throw new Error("QdrantVectorStore: url must be a valid HTTPS URL")
+    }
+    if (endpoint.protocol !== "https:") {
+      throw new Error("QdrantVectorStore: url must use HTTPS")
+    }
     this._cfg = config
   }
 
