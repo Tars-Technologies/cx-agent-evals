@@ -33,6 +33,13 @@ export const getProviderAvailability = tenantQuery({
  * e.g. http://host.docker.internal:<port>), else CONVEX_SITE_URL (the deployment .convex.site).
  * Server-only helper used by submit actions — NOT a Convex function.
  */
+// Asimov poll cadence, shared by the crawl and parse poll actions. The per-attempt
+// deadline is kept under the Convex ~10-min action kill so getResult returns control
+// (result or JobNotReadyError) before the runtime force-terminates the action; the
+// polling/normalization policy itself stays in eval-lib (see proposal §10).
+export const ASIMOV_POLL_DEADLINE_MS = 8 * 60 * 1000
+export const ASIMOV_REPOLL_DELAY_MS = 5_000
+
 export function tarserCallbackUrl(token: string): string {
   const base = env.TARSER_CALLBACK_BASE_URL ?? process.env.CONVEX_SITE_URL ?? ""
   if (!base)

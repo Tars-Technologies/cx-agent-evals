@@ -107,13 +107,18 @@ export function ImportUrlModal({
       const safeMaxDepth = Number.isFinite(maxDepth)
         ? Math.min(Math.max(Math.trunc(maxDepth), 1), 10)
         : 3
+      // Same NaN guard for maxPages: a non-finite value (e.g. corrupted saved
+      // config) would survive Math.max(NaN, 1) = NaN and disable the page cap.
+      const safeMaxPages = Number.isFinite(maxPages)
+        ? Math.min(Math.max(Math.trunc(maxPages), 1), 1000)
+        : 200
 
       const jobId = await startCrawl({
         kbId,
         startUrl: url.trim(),
         backend: resolvedBackend,
         config: {
-          maxPages: Math.min(Math.max(maxPages, 1), 1000),
+          maxPages: safeMaxPages,
           maxDepth: safeMaxDepth,
           includePaths: includeArr.length ? includeArr : undefined,
           excludePaths: excludeArr.length ? excludeArr : undefined,

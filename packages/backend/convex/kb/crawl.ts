@@ -479,11 +479,13 @@ export const attachServiceJob = internalMutation({
 
     if (job.status !== "pending") {
       await ctx.db.patch(args.crawlJobId, { serviceJobId: args.serviceJobId })
-      await ctx.scheduler.runAfter(
-        0,
-        internal.kb.crawl_actions.cancelTarserCrawl,
-        { crawlJobId: args.crawlJobId }
-      )
+      // The job was cancelled during submit: cancel the remote resource via the
+      // backend that actually owns it, not always Tarser.
+      const cancelFn =
+        job.backend === "asimov"
+          ? internal.kb.crawl_actions.cancelAsimovCrawl
+          : internal.kb.crawl_actions.cancelTarserCrawl
+      await ctx.scheduler.runAfter(0, cancelFn, { crawlJobId: args.crawlJobId })
       return
     }
     await ctx.db.patch(args.crawlJobId, {
@@ -497,6 +499,37 @@ export const attachServiceJob = internalMutation({
 export const markTarserFailed = internalMutation({
   args: { crawlJobId: v.id("crawlJobs"), error: v.string() },
   handler: async (ctx, args) => {
+    await ctx.db.patch(args.crawlJobId, {
+      status: "failed",
+      error: args.error,
+      completedAt: Date.now()
+    })
+  }
+})
+
+/**
+ * Bump lastCallbackAt for a live Asimov crawl. The poll loop has no per-page
+ * callback, so without this heartbeat lastActivity stays pinned at submittedAt
+ * and the staleness reaper would kill a healthy crawl that runs past CRAWL_STALE_MS.
+ */
+export const touchCrawlActivity = internalMutation({
+  args: { crawlJobId: v.id("crawlJobs") },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.crawlJobId)
+    if (!job || TERMINAL_CRAWL_STATUSES.has(job.status)) return
+    await ctx.db.patch(args.crawlJobId, { lastCallbackAt: Date.now() })
+  }
+})
+
+/**
+ * Fail an Asimov crawl from the poll loop without clobbering a job the user
+ * cancelled or the reaper already finalized (the cancelled-status race).
+ */
+export const markAsimovCrawlFailed = internalMutation({
+  args: { crawlJobId: v.id("crawlJobs"), error: v.string() },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.crawlJobId)
+    if (!job || TERMINAL_CRAWL_STATUSES.has(job.status)) return
     await ctx.db.patch(args.crawlJobId, {
       status: "failed",
       error: args.error,

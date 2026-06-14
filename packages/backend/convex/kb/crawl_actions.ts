@@ -19,16 +19,23 @@ import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
 import { backendConfig } from "../config"
-import { tarserCallbackUrl } from "./providers"
+import {
+  ASIMOV_POLL_DEADLINE_MS,
+  ASIMOV_REPOLL_DELAY_MS,
+  tarserCallbackUrl
+} from "./providers"
 
 const TIME_BUDGET_MS = 9 * 60 * 1000 // 9 minutes (1 min buffer before Convex 10-min timeout)
 const BATCH_SIZE = 10
 
-// Per-attempt internal poll deadline for the Asimov crawl drain, kept under the
-// Convex ~10-min kill so getResult returns control (result or JobNotReadyError)
-// before the runtime force-terminates the action.
-const ASIMOV_POLL_DEADLINE_MS = 8 * 60 * 1000
-const ASIMOV_REPOLL_DELAY_MS = 5_000
+// Mirrors crawl.ts: a poll loop must stop once the job reaches any terminal state
+// (cancelled by the user, or finalized by the staleness reaper), not just "cancelled".
+const TERMINAL_CRAWL_STATUSES = new Set([
+  "completed",
+  "completed_with_errors",
+  "failed",
+  "cancelled"
+])
 
 export const batchScrape = internalAction({
   args: { crawlJobId: v.id("crawlJobs") },
@@ -219,8 +226,8 @@ export const submitAsimovCrawl = internalAction({
           maxDepth: job.config.maxDepth,
           includePaths: job.config.includePaths,
           excludePaths: job.config.excludePaths,
-          allowSubdomains: job.config.allowSubdomains,
-          crawlMode: "http"
+          allowSubdomains: job.config.allowSubdomains
+          // crawlMode is omitted: the Asimov adapter ignores it (web-loader only).
         },
         // Asimov polls — no callback. callbackUrl is required by the port but ignored.
         callbackUrl: ""
@@ -257,10 +264,12 @@ export const pollAsimovCrawl = internalAction({
     const job = await ctx.runQuery(internal.kb.crawl.getJobInternal, {
       jobId: args.crawlJobId
     })
-    if (!job || job.status === "cancelled") return
+    // Stop once the job reached any terminal state (cancelled by the user or
+    // finalized by the reaper) — otherwise the poll loop hammers Asimov forever.
+    if (!job || TERMINAL_CRAWL_STATUSES.has(job.status)) return
     const asimov = backendConfig.asimov
     if (!asimov || !job.serviceJobId) {
-      await ctx.runMutation(internal.kb.crawl.markTarserFailed, {
+      await ctx.runMutation(internal.kb.crawl.markAsimovCrawlFailed, {
         crawlJobId: args.crawlJobId,
         error: "Asimov is not configured or job was not submitted"
       })
@@ -275,6 +284,11 @@ export const pollAsimovCrawl = internalAction({
       result = await scraper.getResult(job.serviceJobId, "crawl")
     } catch (error) {
       if (error instanceof JobNotReadyError) {
+        // Heartbeat so the staleness reaper doesn't kill a healthy long crawl,
+        // then re-poll on the next tick.
+        await ctx.runMutation(internal.kb.crawl.touchCrawlActivity, {
+          crawlJobId: args.crawlJobId
+        })
         await ctx.scheduler.runAfter(
           ASIMOV_REPOLL_DELAY_MS,
           internal.kb.crawl_actions.pollAsimovCrawl,
@@ -282,7 +296,7 @@ export const pollAsimovCrawl = internalAction({
         )
         return
       }
-      await ctx.runMutation(internal.kb.crawl.markTarserFailed, {
+      await ctx.runMutation(internal.kb.crawl.markAsimovCrawlFailed, {
         crawlJobId: args.crawlJobId,
         error:
           error instanceof Error ? error.message : "Asimov crawl poll failed"
@@ -290,36 +304,46 @@ export const pollAsimovCrawl = internalAction({
       return
     }
     if (result.kind !== "crawl") {
-      await ctx.runMutation(internal.kb.crawl.markTarserFailed, {
+      await ctx.runMutation(internal.kb.crawl.markAsimovCrawlFailed, {
         crawlJobId: args.crawlJobId,
         error: "Asimov returned a non-crawl result for a crawl job"
       })
       return
     }
-    // Ingest each page through the existing idempotent crawl-page mutation.
-    for (const page of result.pages) {
-      await ctx.runMutation(internal.kb.crawl.handleTarserPage, {
-        crawlJobId: args.crawlJobId,
-        url: page.url,
-        title: page.metadata.title || page.url,
-        markdown: page.markdown
-      })
-    }
-    for (const fail of result.failed) {
-      await ctx.runMutation(internal.kb.crawl.handleTarserPageFailed, {
-        crawlJobId: args.crawlJobId,
-        url: fail.url,
-        error: fail.error
-      })
-    }
-    await ctx.runMutation(internal.kb.crawl.handleTarserJobComplete, {
-      crawlJobId: args.crawlJobId,
-      finishReason: result.finishReason,
-      stats: {
-        visited: result.pages.length,
-        failed: result.failed.length
+    // Ingest through the existing idempotent crawl-page mutations. Wrap the whole
+    // phase so a transient error doesn't leave the job stuck "running" with no
+    // completion (the action has no WorkPool auto-retry).
+    try {
+      for (const page of result.pages) {
+        await ctx.runMutation(internal.kb.crawl.handleTarserPage, {
+          crawlJobId: args.crawlJobId,
+          url: page.url,
+          title: page.metadata.title || page.url,
+          markdown: page.markdown
+        })
       }
-    })
+      for (const fail of result.failed) {
+        await ctx.runMutation(internal.kb.crawl.handleTarserPageFailed, {
+          crawlJobId: args.crawlJobId,
+          url: fail.url,
+          error: fail.error
+        })
+      }
+      await ctx.runMutation(internal.kb.crawl.handleTarserJobComplete, {
+        crawlJobId: args.crawlJobId,
+        finishReason: result.finishReason,
+        stats: {
+          visited: result.pages.length,
+          failed: result.failed.length
+        }
+      })
+    } catch (error) {
+      await ctx.runMutation(internal.kb.crawl.markAsimovCrawlFailed, {
+        crawlJobId: args.crawlJobId,
+        error:
+          error instanceof Error ? error.message : "Asimov crawl ingest failed"
+      })
+    }
   }
 })
 

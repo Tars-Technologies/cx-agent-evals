@@ -106,12 +106,17 @@ describe("AsimovContentService submit", () => {
     ).rejects.toThrow(/missing data_resource_id/)
   })
 
-  it("cancel issues DELETE /api/data-resources/{id}", async () => {
-    mockFetchSequence({ body: { ok: true } })
+  it("cancel issues collection DELETE /api/data-resources with { data_resource_ids }", async () => {
+    // Asimov's only DELETE route is the collection endpoint taking a JSON body
+    // { data_resource_ids: [...] } — there is no per-id DELETE path.
+    mockFetchSequence({ body: { successful: 1 } })
     await new AsimovContentService(cfg).cancel("dr-1")
     const [url, init] = lastCalls()[0]
-    expect(url).toBe("http://asimov:8000/api/data-resources/dr-1")
+    expect(url).toBe("http://asimov:8000/api/data-resources")
     expect(init.method).toBe("DELETE")
+    expect(JSON.parse(init.body as string)).toEqual({
+      data_resource_ids: ["dr-1"]
+    })
   })
 
   it("cancel throws on a non-2xx response", async () => {
@@ -270,6 +275,82 @@ describe("AsimovContentService getResult (poll + paginated drain)", () => {
     expect(c1).not.toContain("cursor=")
     expect(c2).toContain("cursor=2")
     expect(c3).toContain("cursor=4")
+  })
+
+  it("stops draining when next_cursor does not advance (no infinite loop)", async () => {
+    // A buggy/hostile server that re-emits the same non-advancing cursor (e.g. 0)
+    // instead of null must not loop forever re-fetching the same page.
+    const fetchMock = mockFetchSequence(
+      { body: { status: "SUCCESS" } },
+      {
+        body: {
+          status: "SUCCESS",
+          finish_reason: "finished",
+          next_cursor: 0,
+          pages: [{ url: "https://e/a", markdown: "# A" }],
+          failed: []
+        }
+      },
+      {
+        body: {
+          status: "SUCCESS",
+          finish_reason: "finished",
+          next_cursor: 0,
+          pages: [{ url: "https://e/a", markdown: "# A" }],
+          failed: []
+        }
+      }
+    )
+    const result = (await svc().getResult("dr-1", "crawl")) as ScraperJobResult
+    expect(result.kind).toBe("crawl")
+    // Must terminate; never issue more than 1 status + 2 content fetches.
+    expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(3)
+  })
+
+  it("normalizes a page-cap / missing finish_reason to a normal 'finished'", async () => {
+    // A crawl that stops at its page cap (closespider_pagecount) — or whose
+    // envelope omits finish_reason — completed as requested and must not be
+    // flagged abnormal by the host's NORMAL_FINISH_REASONS check.
+    for (const reason of ["closespider_pagecount", undefined]) {
+      mockFetchSequence(
+        { body: { status: "SUCCESS" } },
+        {
+          body: {
+            status: "SUCCESS",
+            finish_reason: reason,
+            next_cursor: null,
+            pages: [{ url: "https://e/a", markdown: "# A" }],
+            failed: []
+          }
+        }
+      )
+      const result = (await svc().getResult("dr-1", "crawl")) as ScraperJobResult
+      expect(result.finishReason).toBe("finished")
+    }
+  })
+
+  it("uses the authoritative polled status for parse failure even when /content omits status", async () => {
+    // /status reports FAILURE (terminal); the /content envelope omits `status`
+    // but carries markdown. The parse must be reported failed, not ok.
+    mockFetchSequence(
+      { body: { status: "FAILURE" } },
+      {
+        body: {
+          finish_reason: "finished",
+          next_cursor: null,
+          pages: [
+            {
+              url: "https://x/f.pdf",
+              markdown: "# Parsed",
+              metadata: { content_type: "application/pdf" }
+            }
+          ],
+          failed: []
+        }
+      }
+    )
+    const result = (await svc().getResult("dr-1", "parse")) as ParserJobResult
+    expect(result.status).toBe("failed")
   })
 
   it("with expectedKind 'parse', builds a ParserJobResult from the parsed doc in `pages` (PDF parse, files empty)", async () => {

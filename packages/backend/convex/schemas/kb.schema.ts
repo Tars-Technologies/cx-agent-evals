@@ -42,6 +42,9 @@ export const documentValidator = v.object({
   parseStatus: v.optional(
     v.union(v.literal("parsing"), v.literal("done"), v.literal("failed"))
   ),
+  // Heartbeat for poll-based (asimov) parses: bumped each poll so the stale-parse
+  // reaper measures inactivity, not total age. Absent for tarser (callback-based).
+  parseLastActivityAt: v.optional(v.number()),
   createdAt: v.number()
 })
 export type Document = Infer<typeof documentValidator>

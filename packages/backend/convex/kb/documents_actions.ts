@@ -17,15 +17,11 @@ import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
 import { backendConfig } from "../config"
-import { tarserCallbackUrl } from "./providers"
-
-// Per-attempt internal poll deadline handed to the Asimov wrapper's getResult.
-// Kept under the Convex ~10-min action kill so getResult returns control (either
-// the result, or a "did not finish" signal that triggers a self-reschedule)
-// before the runtime force-terminates the action. Re-poll cadence lives here;
-// the polling/normalization policy stays in eval-lib (see proposal §10).
-const ASIMOV_POLL_DEADLINE_MS = 8 * 60 * 1000
-const ASIMOV_REPOLL_DELAY_MS = 5_000
+import {
+  ASIMOV_POLL_DEADLINE_MS,
+  ASIMOV_REPOLL_DELAY_MS,
+  tarserCallbackUrl
+} from "./providers"
 
 export const parseDocument = internalAction({
   args: {
@@ -202,7 +198,11 @@ export const pollAsimovParse = internalAction({
       result = await parser.getResult(args.parseServiceJobId, "parse")
     } catch (error) {
       if (error instanceof JobNotReadyError) {
-        // Still in progress: re-poll after a short delay (cadence owned here).
+        // Heartbeat so the stale-parse reaper doesn't kill a healthy long parse,
+        // then re-poll after a short delay (cadence owned here).
+        await ctx.runMutation(internal.kb.documents.touchParseActivity, {
+          parseServiceJobId: args.parseServiceJobId
+        })
         await ctx.scheduler.runAfter(
           ASIMOV_REPOLL_DELAY_MS,
           internal.kb.documents_actions.pollAsimovParse,

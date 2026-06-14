@@ -125,11 +125,17 @@ export const handleTarserCallback = internalAction({
     }
 
     if (cb.kind === "parsed") {
-      const parseToken = await ctx.runQuery(
+      const parse = await ctx.runQuery(
         internal.kb.documents.getParseTokenByServiceJob,
         { parseServiceJobId: cb.serviceJobId }
       )
-      if (parseToken && parseToken !== args.token) {
+      // Only a Tarser-backed parse may be finalized by a Tarser callback. An
+      // asimov (or unknown) doc with a colliding serviceJobId is ignored — its
+      // empty parseToken would otherwise skip the token check and be hijacked.
+      if (!parse || parse.backend !== "tarser") {
+        return { status: 200 }
+      }
+      if (parse.token && parse.token !== args.token) {
         return { status: 401 }
       }
       const { firstSeen } = await claimNonce()

@@ -30,6 +30,21 @@ const DEFAULT_TIMEOUT_MS = 30_000
 const DEFAULT_POLL_DEADLINE_MS = 9 * 60 * 1000
 const DEFAULT_POLL_INTERVAL_MS = 5_000
 const DEFAULT_CONTENT_PAGE_LIMIT = 200
+// Backstop so a server that keeps emitting a fresh next_cursor can't drain forever.
+const MAX_DRAIN_ITERATIONS = 100_000
+
+// Asimov finish_reason values that mean the crawl completed as requested (ran out
+// of links or hit its configured page cap). The host's normal-finish check only
+// knows the tarser vocabulary, so map these onto FinishReason.Finished rather than
+// letting a successful crawl be flagged completed_with_errors.
+const NORMAL_ASIMOV_FINISH = new Set([
+  "",
+  "unknown",
+  "finished",
+  "completed",
+  "closespider_pagecount",
+  "closespider_itemcount"
+])
 
 // Mode flag that rides inside loader_options to put Asimov into content-only
 // behavior (no S3/CSV export, no embedding, no dashboard callback). MUST match
@@ -170,15 +185,15 @@ export class AsimovContentService implements Scraper, Parser {
   }
 
   async cancel(serviceJobId: string): Promise<void> {
-    // Asimov maps cancellation to deleting the data resource.
-    const res = await fetch(
-      `${this.config.baseUrl}/api/data-resources/${encodeURIComponent(serviceJobId)}`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${this.config.apiToken}` },
-        signal: this.timeoutSignal()
-      }
-    )
+    // Asimov maps cancellation to deleting the data resource. Its only DELETE
+    // route is the collection endpoint taking { data_resource_ids: [...] } as a
+    // JSON body — there is no per-id DELETE path.
+    const res = await fetch(`${this.config.baseUrl}/api/data-resources`, {
+      method: "DELETE",
+      headers: this.authHeaders,
+      signal: this.timeoutSignal(),
+      body: JSON.stringify({ data_resource_ids: [serviceJobId] })
+    })
     if (res.status < 200 || res.status >= 300) {
       throw new Error(
         `Asimov cancel failed: HTTP ${res.status} ${await readCappedText(res)}`
@@ -198,8 +213,11 @@ export class AsimovContentService implements Scraper, Parser {
   ): Promise<ScraperJobResult | ParserJobResult> {
     // Block until terminal, then drain. A failed resource still carries a content
     // envelope (finish_reason + failures), and drainContent reports the failure.
-    await this.pollUntilDone(serviceJobId)
-    return this.drainContent(serviceJobId, expectedKind)
+    // pollUntilDone returns the AUTHORITATIVE terminal status from /status; thread
+    // it into the drain so a failure can't be masked by a /content envelope that
+    // omits `status`.
+    const terminalStatus = await this.pollUntilDone(serviceJobId)
+    return this.drainContent(serviceJobId, expectedKind, terminalStatus)
   }
 
   /** Poll GET /api/data-resources/{id}/status until terminal or the deadline. */
@@ -261,7 +279,8 @@ export class AsimovContentService implements Scraper, Parser {
    */
   private async drainContent(
     serviceJobId: string,
-    expectedKind?: "crawl" | "parse"
+    expectedKind?: "crawl" | "parse",
+    knownStatus?: string
   ): Promise<ScraperJobResult | ParserJobResult> {
     const limit = this.config.contentPageLimit ?? DEFAULT_CONTENT_PAGE_LIMIT
     const pages: ScrapedPage[] = []
@@ -269,12 +288,22 @@ export class AsimovContentService implements Scraper, Parser {
     const failed: { url: string; error?: string }[] = []
     const files: AsimovContentPage[] = []
     let finishReason: string = FinishReason.Unknown
-    let terminalStatus = ""
+    // The polled /status is authoritative; only fall back to the /content
+    // envelope's status when the caller didn't supply one.
+    let terminalStatus = knownStatus ?? ""
     let cursor: string | undefined
+    let iterations = 0
 
     for (;;) {
+      if (++iterations > MAX_DRAIN_ITERATIONS) {
+        throw new Error(
+          `Asimov content drain exceeded ${MAX_DRAIN_ITERATIONS} pages for ${serviceJobId}`
+        )
+      }
       const body = await this.fetchContentPage(serviceJobId, cursor, limit)
-      if (typeof body.status === "string") terminalStatus = body.status
+      if (knownStatus === undefined && typeof body.status === "string") {
+        terminalStatus = body.status
+      }
       if (typeof body.finish_reason === "string") {
         finishReason = body.finish_reason
       }
@@ -299,8 +328,19 @@ export class AsimovContentService implements Scraper, Parser {
       const next = body.next_cursor
       if (next == null) break
       if (typeof next === "string" && next.length === 0) break
-      cursor = String(next)
+      const nextCursor = String(next)
+      // Stop if the cursor did not advance — a server that re-emits the same
+      // offset (e.g. 0) must not be re-fetched forever.
+      if (nextCursor === cursor) break
+      cursor = nextCursor
     }
+
+    // A successful crawl that ran out of links or hit its page cap is a normal
+    // finish; map it onto the host's normal vocabulary. Failed crawls keep their
+    // raw reason so the host can still flag them.
+    const crawlFinish = SUCCESS_STATUSES.has(terminalStatus.toLowerCase())
+      ? normalizeCrawlFinishReason(finishReason)
+      : finishReason
 
     // Honor the caller's explicit hint when present (it knows what it submitted).
     if (expectedKind === "parse") {
@@ -309,7 +349,7 @@ export class AsimovContentService implements Scraper, Parser {
       return normalizeParseResult(rawPages, failed, terminalStatus)
     }
     if (expectedKind === "crawl") {
-      return { kind: "crawl", finishReason, pages, failed }
+      return { kind: "crawl", finishReason: crawlFinish, pages, failed }
     }
 
     // No hint: best-effort shape heuristic (legacy fallback). A parse job that
@@ -320,7 +360,7 @@ export class AsimovContentService implements Scraper, Parser {
 
     return {
       kind: "crawl",
-      finishReason,
+      finishReason: crawlFinish,
       pages,
       failed
     }
@@ -343,7 +383,11 @@ export class AsimovContentService implements Scraper, Parser {
         `Asimov content failed: HTTP ${res.status} ${await readCappedText(res)}`
       )
     }
-    const text = await readCappedText(res, MAX_CONTENT_RESPONSE_BYTES)
+    // Content must parse whole; fail loudly on an oversized page rather than
+    // truncating mid-JSON into a misleading "expected JSON" error.
+    const text = await readCappedText(res, MAX_CONTENT_RESPONSE_BYTES, {
+      throwOnTruncate: true
+    })
     try {
       return JSON.parse(text) as AsimovContentResponse
     } catch {
@@ -401,6 +445,11 @@ function crawlConfigToLoaderOptions(
     out.allow_subdomains = config.allowSubdomains
   }
   return out
+}
+
+/** Map an Asimov crawl finish_reason onto the host's normal-finish vocabulary. */
+function normalizeCrawlFinishReason(raw: string): string {
+  return NORMAL_ASIMOV_FINISH.has(raw.toLowerCase()) ? FinishReason.Finished : raw
 }
 
 /** Normalize one Asimov content page into a ScrapedPage, or null if unusable. */

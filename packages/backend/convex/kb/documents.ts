@@ -396,14 +396,18 @@ export const createFromScrape = internalMutation({
  */
 export const getParseTokenByServiceJob = internalQuery({
   args: { parseServiceJobId: v.string() },
-  handler: async (ctx, args): Promise<string | null> => {
+  handler: async (
+    ctx,
+    args
+  ): Promise<{ token: string | null; backend: string | null } | null> => {
     const doc = await ctx.db
       .query("documents")
       .withIndex("by_parse_service_job", (q) =>
         q.eq("parseServiceJobId", args.parseServiceJobId)
       )
       .first()
-    return doc?.parseToken ?? null
+    if (!doc) return null
+    return { token: doc.parseToken ?? null, backend: doc.parseBackend ?? null }
   }
 })
 
@@ -424,7 +428,10 @@ export const reapStaleParsing = internalMutation({
       .take(REAP_BATCH)
     let reaped = 0
     for (const doc of stale) {
-      if (doc.createdAt >= cutoff) continue
+      // Poll-based (asimov) parses heartbeat parseLastActivityAt each poll, so
+      // measure inactivity, not total age; tarser has no heartbeat → createdAt.
+      const lastActivity = doc.parseLastActivityAt ?? doc.createdAt
+      if (lastActivity >= cutoff) continue
       await ctx.db.patch(doc._id, {
         parseStatus: "failed",
         metadata: {
@@ -435,6 +442,24 @@ export const reapStaleParsing = internalMutation({
       reaped++
     }
     return { reaped }
+  }
+})
+
+/**
+ * Heartbeat for a poll-based (asimov) parse: bump parseLastActivityAt while the
+ * doc is still parsing so the stale-parse reaper measures inactivity, not age.
+ */
+export const touchParseActivity = internalMutation({
+  args: { parseServiceJobId: v.string() },
+  handler: async (ctx, args) => {
+    const doc = await ctx.db
+      .query("documents")
+      .withIndex("by_parse_service_job", (q) =>
+        q.eq("parseServiceJobId", args.parseServiceJobId)
+      )
+      .first()
+    if (!doc || doc.parseStatus !== "parsing") return
+    await ctx.db.patch(doc._id, { parseLastActivityAt: Date.now() })
   }
 })
 
