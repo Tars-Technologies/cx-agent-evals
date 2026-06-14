@@ -87,6 +87,11 @@ export const startIndexing = internalMutation({
     force: v.optional(v.boolean())
   },
   handler: async (ctx, args) => {
+    const kb = await ctx.db.get(args.kbId)
+    if (!kb || kb.orgId !== args.orgId) {
+      throw new Error("Knowledge base not found")
+    }
+
     // Dedup: reject if a running/pending job already exists for this config
     const existingJob = await ctx.db
       .query("indexingJobs")
@@ -129,8 +134,6 @@ export const startIndexing = internalMutation({
     }
 
     // Use denormalized count for totalDocs and emptiness check.
-    const kb = await ctx.db.get(args.kbId)
-    if (!kb) throw new Error("Knowledge base not found")
     const totalDocs = kb.documentCount ?? 0
     if (totalDocs === 0) {
       throw new Error("No documents in knowledge base to index")

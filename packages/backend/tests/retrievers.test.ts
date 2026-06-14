@@ -302,6 +302,95 @@ describe("retrievers: insertRetriever", () => {
     expect(retriever!.status).toBe("configuring")
     expect(retriever!.createdAt).toBeDefined()
   })
+
+  it("rejects a KB owned by another organization", async () => {
+    const userId = await seedUser(t)
+    const foreignKbId = await t.run(async (ctx) => {
+      return await ctx.db.insert("knowledgeBases", {
+        orgId: "org_other",
+        name: "Foreign KB",
+        metadata: {},
+        createdBy: userId,
+        createdAt: Date.now()
+      })
+    })
+
+    await expect(
+      t.mutation(internal.kb.retrievers.insertRetriever, {
+        orgId: TEST_ORG_ID,
+        kbId: foreignKbId,
+        name: "Cross-tenant Retriever",
+        retrieverConfig: {},
+        indexConfigHash: "foreign-index",
+        retrieverConfigHash: "foreign-retriever",
+        defaultK: 5,
+        status: "configuring",
+        createdBy: userId
+      })
+    ).rejects.toThrow("Knowledge base not found")
+  })
+})
+
+describe("retrievers: create", () => {
+  it("rejects a KB owned by another organization", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const foreignKbId = await t.run(async (ctx) => {
+      return await ctx.db.insert("knowledgeBases", {
+        orgId: "org_other",
+        name: "Foreign KB",
+        metadata: {},
+        createdBy: userId,
+        createdAt: Date.now()
+      })
+    })
+
+    await expect(
+      t.withIdentity(testIdentity).action(api.kb.retrieve_actions.create, {
+        kbId: foreignKbId,
+        retrieverConfig: {
+          name: "Cross-tenant Retriever",
+          index: {
+            strategy: "plain",
+            vectorBackend: "native",
+            embeddingProvider: "openai"
+          }
+        }
+      })
+    ).rejects.toThrow("Knowledge base not found")
+  })
+})
+
+describe("indexing: startIndexing", () => {
+  it("rejects an organization that does not own the KB", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const foreignKbId = await t.run(async (ctx) => {
+      return await ctx.db.insert("knowledgeBases", {
+        orgId: "org_other",
+        name: "Foreign KB",
+        metadata: {},
+        documentCount: 1,
+        createdBy: userId,
+        createdAt: Date.now()
+      })
+    })
+
+    await expect(
+      t.mutation(internal.kb.indexing.startIndexing, {
+        orgId: TEST_ORG_ID,
+        kbId: foreignKbId,
+        indexConfigHash: "foreign-index",
+        indexConfig: {
+          strategy: "plain",
+          chunkSize: 500,
+          chunkOverlap: 50,
+          embeddingModel: "text-embedding-3-small"
+        },
+        createdBy: userId
+      })
+    ).rejects.toThrow("Knowledge base not found")
+  })
 })
 
 describe("retrievers: syncStatusFromIndexingJob", () => {

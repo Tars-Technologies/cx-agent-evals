@@ -44,6 +44,13 @@ export const create = tenantAction({
   ): Promise<{ retrieverId: Id<"retrievers">; existing: boolean }> => {
     const { orgId, userId } = ctx
 
+    const kb = await ctx.runQuery(internal.kb.core.getInternal, {
+      id: args.kbId
+    })
+    if (!kb || kb.orgId !== orgId) {
+      throw new Error("Knowledge base not found")
+    }
+
     const config = args.retrieverConfig as PipelineConfig & { k?: number }
     const k = config.k ?? 5
 

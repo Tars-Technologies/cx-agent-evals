@@ -104,6 +104,11 @@ export const insertRetriever = internalMutation({
     createdBy: v.string()
   },
   handler: async (ctx, args) => {
+    const kb = await ctx.db.get(args.kbId)
+    if (!kb || kb.orgId !== args.orgId) {
+      throw new Error("Knowledge base not found")
+    }
+
     return await ctx.db.insert("retrievers", {
       orgId: args.orgId,
       kbId: args.kbId,

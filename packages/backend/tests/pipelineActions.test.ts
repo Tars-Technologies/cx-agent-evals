@@ -199,6 +199,50 @@ describe("chunks: getChunksByRetrieverPage", () => {
     ).rejects.toThrow("KB not found")
   })
 
+  it("rejects a document that does not belong to the requested KB", async () => {
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const foreignDocumentId = await t.run(async (ctx) => {
+      const foreignKbId = await ctx.db.insert("knowledgeBases", {
+        orgId: "org_other",
+        name: "Foreign KB",
+        metadata: {},
+        createdBy: userId,
+        createdAt: Date.now()
+      })
+      const documentId = await ctx.db.insert("documents", {
+        orgId: "org_other",
+        kbId: foreignKbId,
+        docId: "foreign-document",
+        title: "Foreign Document",
+        content: "Private tenant content",
+        contentLength: 22,
+        metadata: {},
+        createdAt: Date.now()
+      })
+      await ctx.db.insert("documentChunks", {
+        documentId,
+        kbId: foreignKbId,
+        indexConfigHash: "hash-abc",
+        chunkId: "foreign-chunk",
+        content: "Private tenant content",
+        start: 0,
+        end: 22,
+        metadata: {}
+      })
+      return documentId
+    })
+
+    await expect(
+      t.withIdentity(testIdentity).query(api.kb.chunks.getChunksByRetrieverPage, {
+        kbId,
+        indexConfigHash: "hash-abc",
+        documentId: foreignDocumentId,
+        cursor: null
+      })
+    ).rejects.toThrow("Document not found")
+  })
+
   it("strips embedding from chunk output", async () => {
     const userId = await seedUser(t)
     const kbId = await seedKB(t, userId)

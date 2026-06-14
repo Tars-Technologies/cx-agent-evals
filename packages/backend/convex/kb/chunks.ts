@@ -268,6 +268,13 @@ export const getChunksByRetrieverPage = tenantQuery({
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== ctx.orgId) throw new Error("KB not found")
 
+    if (args.documentId) {
+      const document = await ctx.db.get(args.documentId)
+      if (!document || document.kbId !== args.kbId) {
+        throw new Error("Document not found")
+      }
+    }
+
     const numItems = args.pageSize ?? 50
 
     const baseQuery = args.documentId
