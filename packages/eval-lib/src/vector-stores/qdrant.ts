@@ -17,7 +17,7 @@ export interface QdrantVectorStoreConfig {
   readonly url: string
   /** API key sent as the `api-key` header. Optional for unsecured local instances. */
   readonly apiKey?: string
-  /** Collection name. One collection per (kbId, indexConfigHash) scope. */
+  /** Collection name; the caller chooses the partitioning scheme. */
   readonly collection: string
   /** Vector dimension; the collection is created/validated against it. */
   readonly dimension: number
@@ -142,11 +142,15 @@ export class QdrantVectorStore implements VectorStore {
    */
   private async _createPayloadIndexes(): Promise<void> {
     for (const field of ["kbId", "indexConfigHash", "documentId"] as const) {
+      // The kbId index is the tenant key in the shared collection: marking it
+      // `is_tenant` lets Qdrant co-locate a tenant's points on disk.
+      const fieldSchema =
+        field === "kbId" ? { type: "keyword", is_tenant: true } : "keyword"
       try {
         await this._request(
           "PUT",
           `/collections/${this._cfg.collection}/index?wait=true`,
-          { field_name: field, field_schema: "keyword" }
+          { field_name: field, field_schema: fieldSchema }
         )
       } catch (err) {
         // A concurrent indexer may have created it between our calls.
@@ -274,19 +278,37 @@ export class QdrantVectorStore implements VectorStore {
   }
 
   async deleteByKnowledgeBase(
-    _kbId: string,
-    _filter?: VectorFilter
+    kbId: string,
+    filter?: VectorFilter
   ): Promise<void> {
-    await this._dropCollection()
+    // Shared-collection safe: delete only this kbId's points by payload filter
+    // instead of dropping the whole collection (which would wipe every tenant).
+    try {
+      await this._request(
+        "POST",
+        `/collections/${this._cfg.collection}/points/delete?wait=true`,
+        { filter: buildQdrantFilter({ ...filter, kbId }) }
+      )
+    } catch (err) {
+      // A missing collection is the desired end-state; cleanup may be replayed
+      // against a collection that was never created.
+      if (!(err instanceof QdrantHttpError && err.status === 404)) throw err
+    }
   }
 
+  /**
+   * With a non-empty filter, deletes only the matching points (a scoped reset
+   * within the shared collection). With no filter (or an all-undefined one),
+   * drops the entire collection for a full reset.
+   */
   async clear(filter?: VectorFilter): Promise<void> {
-    // clear() drops the whole collection; it cannot honour a partial filter.
-    // Reject a non-empty filter rather than silently wiping everything.
     if (filter && Object.values(filter).some((v) => v !== undefined)) {
-      throw new Error(
-        "QdrantVectorStore.clear: filtered clear is not supported (this drops the entire collection); use deleteByDocument/deleteByKnowledgeBase for scoped deletion"
+      await this._request(
+        "POST",
+        `/collections/${this._cfg.collection}/points/delete?wait=true`,
+        { filter: buildQdrantFilter(filter) }
       )
+      return
     }
     await this._dropCollection()
   }

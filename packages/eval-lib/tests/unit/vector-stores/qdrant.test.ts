@@ -136,7 +136,10 @@ describe("QdrantVectorStore", () => {
         return JSON.parse(init.body as string)
       })
     expect(indexedFields).toEqual([
-      { field_name: "kbId", field_schema: "keyword" },
+      {
+        field_name: "kbId",
+        field_schema: { type: "keyword", is_tenant: true }
+      },
       { field_name: "indexConfigHash", field_schema: "keyword" },
       { field_name: "documentId", field_schema: "keyword" }
     ])
@@ -251,6 +254,16 @@ describe("QdrantVectorStore", () => {
     })
   })
 
+  it("search(): sends a payload filter for kbId (tenant isolation)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okJson({ status: "ok", result: { points: [] } })
+    )
+    await store.search([1, 0, 0], { k: 2, filter: { kbId: "kb1" } })
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).filter).toEqual({
+      must: [{ key: "kbId", match: { value: "kb1" } }]
+    })
+  })
+
   it("deleteByDocument(): deletes points by payload filter", async () => {
     fetchMock.mockResolvedValueOnce(okJson({ status: "ok", result: {} }))
     await store.deleteByDocument("cvx1")
@@ -263,21 +276,59 @@ describe("QdrantVectorStore", () => {
     })
   })
 
-  it("deleteByKnowledgeBase()/clear(): drop the collection", async () => {
-    // Fresh Response per call: a Response body can only be read once.
-    fetchMock.mockImplementation(async () =>
-      okJson({ status: "ok", result: true })
-    )
+  it("deleteByKnowledgeBase(): issues a filtered point-delete, not a collection drop", async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ status: "ok", result: {} }))
     await store.deleteByKnowledgeBase("kb1")
-    expect(fetchMock.mock.calls[0][0]).toBe(
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe(
+      "https://qdrant.example.com:6333/collections/kb_x_abcdef/points/delete?wait=true"
+    )
+    expect(init.method).toBe("POST")
+    expect(JSON.parse(init.body)).toEqual({
+      filter: { must: [{ key: "kbId", match: { value: "kb1" } }] }
+    })
+  })
+
+  it("deleteByKnowledgeBase(): combines kbId with an extra filter scope", async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ status: "ok", result: {} }))
+    await store.deleteByKnowledgeBase("kb1", { indexConfigHash: "h1" })
+    const [, init] = fetchMock.mock.calls[0]
+    expect(JSON.parse(init.body)).toEqual({
+      filter: {
+        must: [
+          { key: "kbId", match: { value: "kb1" } },
+          { key: "indexConfigHash", match: { value: "h1" } }
+        ]
+      }
+    })
+  })
+
+  it("clear(): drops the collection when given no filter", async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ status: "ok", result: true }))
+    await store.clear()
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe(
       "https://qdrant.example.com:6333/collections/kb_x_abcdef"
     )
-    expect(fetchMock.mock.calls[0][1].method).toBe("DELETE")
-    await store.clear()
-    expect(fetchMock.mock.calls[1][1].method).toBe("DELETE")
+    expect(init.method).toBe("DELETE")
+  })
+
+  it("clear(): issues a filtered point-delete when scoped", async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ status: "ok", result: {} }))
+    await store.clear({ kbId: "kb1" })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe(
+      "https://qdrant.example.com:6333/collections/kb_x_abcdef/points/delete?wait=true"
+    )
+    expect(init.method).toBe("POST")
+    expect(JSON.parse(init.body)).toEqual({
+      filter: { must: [{ key: "kbId", match: { value: "kb1" } }] }
+    })
   })
 
   it("deleteByKnowledgeBase(): treats a missing collection (404) as already dropped", async () => {
+    // The 404 now surfaces from the filtered POST delete against a
+    // never-created collection; cleanup stays idempotent.
     fetchMock.mockResolvedValueOnce(new Response("not found", { status: 404 }))
     await expect(store.deleteByKnowledgeBase("kb1")).resolves.toBeUndefined()
   })
@@ -320,14 +371,6 @@ describe("QdrantVectorStore", () => {
     // results rather than an opaque 404 throw.
     fetchMock.mockResolvedValueOnce(new Response("not found", { status: 404 }))
     await expect(store.search([1, 0, 0], { k: 5 })).resolves.toEqual([])
-  })
-
-  it("clear(): rejects a non-empty filter instead of silently dropping all", async () => {
-    await expect(
-      store.clear({ documentId: "cvx1" })
-    ).rejects.toThrow(/filter/i)
-    // A filtered clear must not issue any destructive request.
-    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it("omits the api-key header when no key configured", async () => {
