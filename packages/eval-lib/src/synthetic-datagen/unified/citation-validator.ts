@@ -10,6 +10,12 @@ export function findCitationSpan(
   docContent: string,
   excerpt: string
 ): CitationSpan | null {
+  // An empty / whitespace-only excerpt is not a real citation. Without this
+  // guard Tier-1 `indexOf("")` returns 0 and yields a phantom zero-length span
+  // {0,0,""}; it then evades the `relevantSpans.length > 0` sync/experiment
+  // filter and inflates recall to 1.0 for every retriever (GEN-1).
+  if (excerpt.trim().length === 0) return null
+
   // Tier 1: Exact match
   const exactIdx = docContent.indexOf(excerpt)
   if (exactIdx !== -1) {
@@ -18,12 +24,17 @@ export function findCitationSpan(
 
   // Tier 2: Whitespace + case normalized match
   const normResult = normalizedFind(docContent, excerpt)
-  if (normResult !== null) {
+  if (normResult !== null && normResult.end > normResult.start) {
     return normResult
   }
 
   // Tier 3: Fuzzy sliding window
-  return fuzzySubstringMatch(docContent, excerpt)
+  const fuzzyResult = fuzzySubstringMatch(docContent, excerpt)
+  if (fuzzyResult !== null && fuzzyResult.end > fuzzyResult.start) {
+    return fuzzyResult
+  }
+
+  return null
 }
 
 function normalizedFind(
@@ -96,6 +107,36 @@ function fuzzySubstringMatch(
         bestScore = similarity
         bestStart = i
         bestEnd = i + size
+      }
+    }
+  }
+
+  // The coarse sweep steps `i` by ~20% of the window size, so the true optimum
+  // can fall in every gap and the best sampled window is bounded to the nearest
+  // step (off by a few characters at each edge). Refine start and end at stride 1
+  // in the neighborhood of the best sample to tighten the returned boundary.
+  if (bestStart !== -1) {
+    const coarseStride = Math.max(1, Math.floor((bestEnd - bestStart) * 0.2))
+    const sizeStep = Math.max(1, Math.floor(excerptLen * 0.1))
+    const startLo = Math.max(0, bestStart - coarseStride)
+    const startHi = Math.min(docContent.length, bestStart + coarseStride)
+    for (let s = startLo; s <= startHi; s++) {
+      const endLo = Math.max(s + 1, bestEnd - sizeStep)
+      const endHi = Math.min(docContent.length, bestEnd + sizeStep)
+      for (let e = endLo; e <= endHi; e++) {
+        const normWindow = docContent
+          .substring(s, e)
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .trim()
+        const maxLen = Math.max(normExcerpt.length, normWindow.length)
+        if (maxLen === 0) continue
+        const similarity = 1 - distance(normExcerpt, normWindow) / maxLen
+        if (similarity > bestScore) {
+          bestScore = similarity
+          bestStart = s
+          bestEnd = e
+        }
       }
     }
   }
