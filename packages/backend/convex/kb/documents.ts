@@ -4,11 +4,49 @@
 import { paginationOptsValidator } from "convex/server"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
-import type { Doc } from "../_generated/dataModel"
-import { internalMutation, internalQuery } from "../_generated/server"
+import type { Doc, Id } from "../_generated/dataModel"
+import {
+  internalMutation,
+  internalQuery,
+  type MutationCtx
+} from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 import { capContent } from "../lib/contentCap"
 import { computeDocId } from "../lib/docId"
+
+/**
+ * Bind an uploaded blob to the caller's org, claiming it on first use.
+ *
+ * Convex `generateUploadUrl` does not tell us the resulting storageId, so the
+ * binding happens here, at the first create/parseUpload that presents the id.
+ * A later call from a different org is rejected, which closes the cross-org
+ * storageId-reuse IDOR (ingesting or cross-deleting another org's bytes). The
+ * row is never removed — a storageId is unique per upload, so retaining it
+ * keeps a deleted blob's id from being re-claimed by another tenant.
+ */
+async function claimStorageOwnership(
+  ctx: MutationCtx,
+  args: { orgId: string; userId: string; storageId: Id<"_storage"> }
+): Promise<void> {
+  const existing = await ctx.db
+    .query("storageObjects")
+    .withIndex("by_storage", (q) => q.eq("storageId", args.storageId))
+    .unique()
+
+  if (existing) {
+    if (existing.orgId !== args.orgId) {
+      throw new Error("Uploaded file not found")
+    }
+    return
+  }
+
+  await ctx.db.insert("storageObjects", {
+    orgId: args.orgId,
+    storageId: args.storageId,
+    userId: args.userId,
+    createdAt: Date.now()
+  })
+}
 
 // Documents left in parseStatus:"parsing" past this age are presumed orphaned
 // (lost/failed remote callback) and swept to "failed" by the reaper cron.
@@ -64,13 +102,16 @@ export const create = tenantMutation({
     content: v.string()
   },
   handler: async (ctx, args) => {
-    const { orgId } = ctx
+    const { orgId, userId } = ctx
 
     // Verify KB belongs to org
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) {
       throw new Error("Knowledge base not found")
     }
+
+    // Bind the uploaded blob to this org before ingesting its bytes.
+    await claimStorageOwnership(ctx, { orgId, userId, storageId: args.storageId })
 
     const content = args.content
     const docId = await computeDocId({ fileId: args.storageId })
@@ -652,9 +693,11 @@ export const parseUpload = tenantMutation({
     ocr: v.optional(v.boolean())
   },
   handler: async (ctx, args) => {
-    const { orgId } = ctx
+    const { orgId, userId } = ctx
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) throw new Error("Knowledge base not found")
+    // Bind the uploaded blob to this org before parsing its bytes.
+    await claimStorageOwnership(ctx, { orgId, userId, storageId: args.storageId })
     await ctx.scheduler.runAfter(
       0,
       internal.kb.documents_actions.parseDocument,

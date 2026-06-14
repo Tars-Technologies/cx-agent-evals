@@ -314,6 +314,18 @@ export const indexingJobValidator = v.object({
 })
 export type IndexingJob = Infer<typeof indexingJobValidator>
 
+// ─── Storage ownership ledger ───
+// Binds an uploaded Convex `_storage` blob to the org that first used it, so a
+// client cannot pass a foreign/leaked storageId into create/parseUpload and
+// ingest (or cross-delete) another org's bytes. Claimed on first use.
+export const storageObjectValidator = v.object({
+  orgId: v.string(),
+  storageId: v.id("_storage"),
+  userId: v.string(),
+  createdAt: v.number()
+})
+export type StorageObject = Infer<typeof storageObjectValidator>
+
 export const kbTables = {
   // ─── Knowledge Bases (org-scoped, replaces "corpora") ───
   knowledgeBases: defineTable(knowledgeBaseValidator)
@@ -338,6 +350,11 @@ export const kbTables = {
       searchField: "title",
       filterFields: ["kbId"]
     }),
+
+  // ─── Storage ownership ledger (org binding for uploaded blobs) ───
+  storageObjects: defineTable(storageObjectValidator).index("by_storage", [
+    "storageId"
+  ]),
 
   // ─── Datasets (sets of generated questions) ───
   datasets: defineTable(datasetValidator)
