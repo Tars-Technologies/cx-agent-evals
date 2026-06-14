@@ -38,6 +38,12 @@ the eval-lib interfaces.
 - Add a Qdrant REST store with deterministic point IDs, self-contained chunk
   payloads, collection dimension checks, payload indexes, request timeouts,
   and idempotent collection cleanup.
+- Let many tenants share one Qdrant collection through payload partitioning:
+  `deleteByKnowledgeBase` removes only the matching knowledge base's points with
+  a scoped, filtered delete (accepting an optional filter to further narrow the
+  delete, and treating a never-created collection as already deleted) instead of
+  dropping the whole collection, and the `kbId` payload index is created as a
+  tenant field so Qdrant co-locates each knowledge base's points on disk.
 - Add `ChunkSource` and `StatelessQueryRetriever` for query expansion,
   dense/BM25/hybrid search, refinement, and stage-level retrieval traces over
   an existing index.
@@ -58,5 +64,8 @@ the eval-lib interfaces.
 - Apply a default timeout to provider HTTP requests, reject zero-dimension
   embeddings, and warn when malformed reranker indexes truncate results.
 - Make Qdrant health checks passive, return no search results when a collection
-  is not yet provisioned, reject filtered clears that would otherwise drop the
-  entire collection, and require HTTPS endpoints.
+  is not yet provisioned, and require HTTPS endpoints.
+- Make `QdrantVectorStore.clear` perform a scoped, filtered delete and refuse an
+  unscoped clear, so it can no longer drop a collection that other tenants share;
+  pass a filter (or use `deleteByKnowledgeBase` / `deleteByDocument`) to delete a
+  specific tenant's points.
