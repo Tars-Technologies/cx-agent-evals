@@ -28,8 +28,11 @@ export function ImportUrlModal({
   // `undefined` = still loading (don't assert "unavailable"); only a resolved
   // `false` means Tarser is genuinely unavailable.
   const tarserAvailable = availability?.tarser === true
+  const asimovAvailable = availability?.asimov === true
   const availabilityLoading = availability === undefined
-  const [backend, setBackend] = useState<"inprocess" | "tarser">("inprocess")
+  const [backend, setBackend] = useState<"inprocess" | "tarser" | "asimov">(
+    "inprocess"
+  )
 
   // Primary fields
   const [url, setUrl] = useState("")
@@ -93,9 +96,11 @@ export function ImportUrlModal({
       const includeArr = parsePatterns(includePaths)
       const excludeArr = parsePatterns(excludePaths)
 
-      // Fall back to native if Tarser became unavailable after selection.
-      const resolvedBackend =
-        backend === "tarser" && !tarserAvailable ? "inprocess" : backend
+      // Fall back to native if the selected remote backend became unavailable.
+      const remoteUnavailable =
+        (backend === "tarser" && !tarserAvailable) ||
+        (backend === "asimov" && !asimovAvailable)
+      const resolvedBackend = remoteUnavailable ? "inprocess" : backend
 
       // Clamp every numeric field so a cleared/out-of-range input (e.g. maxDepth
       // becoming 0 or NaN) can't reach the v.number() validator and reject.
@@ -174,6 +179,7 @@ export function ImportUrlModal({
           value={backend}
           onChange={setBackend}
           tarserAvailable={tarserAvailable}
+          asimovAvailable={asimovAvailable}
           loading={availabilityLoading}
           disabled={starting}
         />

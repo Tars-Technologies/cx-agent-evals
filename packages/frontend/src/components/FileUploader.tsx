@@ -26,8 +26,11 @@ export function FileUploader({ kbId }: FileUploaderProps) {
   // `undefined` = still loading (don't assert "unavailable"); only a resolved
   // `false` means Tarser is genuinely unavailable.
   const tarserAvailable = availability?.tarser === true
+  const asimovAvailable = availability?.asimov === true
   const availabilityLoading = availability === undefined
-  const [backend, setBackend] = useState<"inprocess" | "tarser">("inprocess")
+  const [backend, setBackend] = useState<"inprocess" | "tarser" | "asimov">(
+    "inprocess"
+  )
   const [ocr, setOcr] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState<string | null>(null)
@@ -61,9 +64,11 @@ export function FileUploader({ kbId }: FileUploaderProps) {
         }
         const { storageId } = await result.json()
 
-        // Fall back to native if Tarser became unavailable after selection.
-        const resolvedBackend =
-          backend === "tarser" && !tarserAvailable ? "inprocess" : backend
+        // Fall back to native if the selected remote backend became unavailable.
+        const remoteUnavailable =
+          (backend === "tarser" && !tarserAvailable) ||
+          (backend === "asimov" && !asimovAvailable)
+        const resolvedBackend = remoteUnavailable ? "inprocess" : backend
 
         await parseUpload({
           kbId,
@@ -71,8 +76,11 @@ export function FileUploader({ kbId }: FileUploaderProps) {
           title: file.name,
           mimeType: mimeTypeFor(file),
           backend: resolvedBackend,
-          // OCR only applies to remote (Tarser) parsing.
-          ocr: resolvedBackend === "tarser" ? ocr : undefined
+          // OCR applies to remote parsers (Tarser and Asimov).
+          ocr:
+            resolvedBackend === "tarser" || resolvedBackend === "asimov"
+              ? ocr
+              : undefined
         })
 
         success++
@@ -105,11 +113,13 @@ export function FileUploader({ kbId }: FileUploaderProps) {
         value={backend}
         onChange={setBackend}
         tarserAvailable={tarserAvailable}
+        asimovAvailable={asimovAvailable}
         loading={availabilityLoading}
         disabled={uploading}
       />
 
-      {backend === "tarser" && tarserAvailable && (
+      {((backend === "tarser" && tarserAvailable) ||
+        (backend === "asimov" && asimovAvailable)) && (
         <label className="flex items-center gap-2 text-xs text-text-dim cursor-pointer">
           <input
             type="checkbox"

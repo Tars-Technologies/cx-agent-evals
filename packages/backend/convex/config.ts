@@ -38,13 +38,13 @@ function createBackendConfig(): BackendConfig {
           hmacSecret: env.TARSER_CALLBACK_HMAC_SECRET.trim()
         }
       : null
-  const asimov =
-    isNonEmpty(env.ASIMOV_BASE_URL) && isNonEmpty(env.ASIMOV_API_TOKEN)
-      ? {
-          baseUrl: env.ASIMOV_BASE_URL.trim(),
-          apiToken: env.ASIMOV_API_TOKEN.trim()
-        }
-      : null
+  // Token optional: availability depends only on the base URL.
+  const asimov = isNonEmpty(env.ASIMOV_BASE_URL)
+    ? {
+        baseUrl: env.ASIMOV_BASE_URL.trim(),
+        apiToken: env.ASIMOV_API_TOKEN?.trim() ?? ""
+      }
+    : null
   const qdrant = isNonEmpty(env.QDRANT_URL)
     ? {
         url: env.QDRANT_URL.trim(),
