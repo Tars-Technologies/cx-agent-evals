@@ -112,10 +112,18 @@ export class GroundTruthAssigner
     for (const excerpt of excerpts) {
       // Tier 1: Exact match
       let start = docContent.indexOf(excerpt)
+      let end = start === -1 ? -1 : start + excerpt.length
 
-      // Tier 2: Normalized (whitespace + case)
+      // Tier 2: Normalized (whitespace + case). The matched region in the
+      // original can be longer/shorter than the excerpt (collapsed whitespace),
+      // so the end must be mapped back from the normalized match, not derived
+      // from excerpt.length — otherwise the span covers the wrong characters.
       if (start === -1) {
-        start = normalizedFind(docContent, excerpt)
+        const norm = normalizedFind(docContent, excerpt)
+        if (norm !== null) {
+          start = norm.start
+          end = norm.end
+        }
       }
 
       // Tier 3: Sentence-level fuzzy match via Levenshtein
@@ -132,7 +140,6 @@ export class GroundTruthAssigner
         continue
       }
 
-      const end = start + excerpt.length
       const actualText = docContent.substring(start, end)
 
       try {
@@ -158,7 +165,11 @@ export class GroundTruthAssigner
     excerpt: string
   ): CharacterSpan[] {
     const spans: CharacterSpan[] = []
-    const sentences = excerpt.match(/[^.!?]+[.!?]+/g) ?? [excerpt]
+    // Match "clause + terminal punctuation" OR a trailing clause that runs to
+    // the end of the excerpt with no terminal punctuation (a heading, list item,
+    // or truncated LLM fragment). Without the second alternative the final
+    // unpunctuated clause is dropped and its span is never attempted.
+    const sentences = excerpt.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [excerpt]
 
     for (const sentence of sentences) {
       const trimmed = sentence.trim()
@@ -207,16 +218,28 @@ export class GroundTruthAssigner
   }
 }
 
-function normalizedFind(text: string, excerpt: string): number {
+function normalizedFind(
+  text: string,
+  excerpt: string
+): { start: number; end: number } | null {
   const normalize = (s: string) => s.replace(/\s+/g, " ").toLowerCase()
   const normText = normalize(text)
   const normExcerpt = normalize(excerpt)
   const idx = normText.indexOf(normExcerpt)
-  if (idx === -1) return -1
+  if (idx === -1) return null
 
+  // Map both the start and the end of the normalized match back to original
+  // offsets so the span length reflects the actual region (incl. collapsed
+  // whitespace), not the excerpt's normalized length.
+  const start = mapNormToOrig(text, idx)
+  const end = mapNormToOrig(text, idx + normExcerpt.length)
+  return { start, end }
+}
+
+function mapNormToOrig(text: string, normIdx: number): number {
   let origPos = 0
   let normPos = 0
-  while (normPos < idx && origPos < text.length) {
+  while (normPos < normIdx && origPos < text.length) {
     if (/\s/.test(text[origPos])) {
       while (origPos < text.length - 1 && /\s/.test(text[origPos + 1])) {
         origPos++
