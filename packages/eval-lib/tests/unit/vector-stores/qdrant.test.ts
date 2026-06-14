@@ -303,14 +303,15 @@ describe("QdrantVectorStore", () => {
     })
   })
 
-  it("clear(): drops the collection when given no filter", async () => {
-    fetchMock.mockResolvedValueOnce(okJson({ status: "ok", result: true }))
-    await store.clear()
-    const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe(
-      "https://qdrant.example.com:6333/collections/kb_x_abcdef"
-    )
-    expect(init.method).toBe("DELETE")
+  it("clear(): refuses an unscoped clear instead of dropping the shared collection", async () => {
+    // A shared collection holds many tenants; an unscoped clear must never
+    // drop it. Both no filter and an all-undefined filter are rejected, and no
+    // destructive request is issued.
+    await expect(store.clear()).rejects.toThrow(/shared collection/i)
+    await expect(
+      store.clear({ kbId: undefined })
+    ).rejects.toThrow(/shared collection/i)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it("clear(): issues a filtered point-delete when scoped", async () => {

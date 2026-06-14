@@ -278,7 +278,7 @@ Notes on the Qdrant backend:
 - `checkHealth()` is a passive collection probe: it returns `false` when the collection is missing and never creates or repairs it. Searching a missing collection returns no results.
 - Collection creation tolerates a concurrent create conflict by re-verifying the winner and throws loudly when an existing collection's dimension does not match the configured one.
 - Point payloads carry the chunk text and character offsets, so search results need no separate hydration step; upserts are idempotent via point ids derived from the chunk id.
-- Each REST request is retried with backoff and bounded by `timeoutMs` (default `30000`) so a hung request cannot stall indefinitely. A scoped delete against a never-created collection, and dropping a collection that is already gone, are both treated as success, so cleanup is safe to retry. `clear()` with no filter drops the whole collection; passing a filter makes it a scoped delete instead.
+- Each REST request is retried with backoff and bounded by `timeoutMs` (default `30000`) so a hung request cannot stall indefinitely. A scoped delete against a never-created collection is treated as success, so cleanup is safe to retry. Because the collection is shared across tenants, every delete is scoped: `clear()` removes only the points matching its filter and refuses an unscoped call rather than wipe the whole collection.
 
 `StatelessQueryRetriever` runs the query-time pipeline (query expansion, dense/BM25/hybrid search, refinement chain) over an existing index reached through a `VectorStore` plus a `ChunkSource`, with `retrieveWithTrace()` reporting every stage's inputs, outputs, and latency.
 

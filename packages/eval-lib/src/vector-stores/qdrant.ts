@@ -297,20 +297,25 @@ export class QdrantVectorStore implements VectorStore {
   }
 
   /**
-   * With a non-empty filter, deletes only the matching points (a scoped reset
-   * within the shared collection). With no filter (or an all-undefined one),
-   * drops the entire collection for a full reset.
+   * Deletes only the points matching `filter` (a scoped reset within the shared
+   * collection). The collection is partitioned across tenants by payload
+   * (`kbId`, `indexConfigHash`, `documentId`), so it has no safe wholesale
+   * clear: an unscoped call would wipe every co-tenant's vectors. Calling this
+   * without a scoping filter therefore throws; use `deleteByKnowledgeBase` /
+   * `deleteByDocument`, or pass an explicit filter, to scope the delete.
    */
   async clear(filter?: VectorFilter): Promise<void> {
-    if (filter && Object.values(filter).some((v) => v !== undefined)) {
-      await this._request(
-        "POST",
-        `/collections/${this._cfg.collection}/points/delete?wait=true`,
-        { filter: buildQdrantFilter(filter) }
+    if (!filter || !Object.values(filter).some((v) => v !== undefined)) {
+      throw new Error(
+        "QdrantVectorStore.clear: refusing to clear the entire shared collection; " +
+          "pass a scope filter (e.g. { kbId }) or use deleteByKnowledgeBase/deleteByDocument"
       )
-      return
     }
-    await this._dropCollection()
+    await this._request(
+      "POST",
+      `/collections/${this._cfg.collection}/points/delete?wait=true`,
+      { filter: buildQdrantFilter(filter) }
+    )
   }
 
   async checkHealth(): Promise<boolean> {
@@ -328,16 +333,6 @@ export class QdrantVectorStore implements VectorStore {
     } catch {
       return false
     }
-  }
-
-  private async _dropCollection(): Promise<void> {
-    try {
-      await this._request("DELETE", `/collections/${this._cfg.collection}`)
-    } catch (err) {
-      // A missing collection is the desired end-state; cleanup may be replayed.
-      if (!(err instanceof QdrantHttpError && err.status === 404)) throw err
-    }
-    this._collectionEnsured = false
   }
 }
 

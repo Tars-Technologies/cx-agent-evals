@@ -61,7 +61,11 @@ export interface VectorStore {
   /** Remove all entries for one knowledge base. Optional capability. */
   deleteByKnowledgeBase?(kbId: string, filter?: VectorFilter): Promise<void>
 
-  /** Remove all stored entries matching the filter (all entries if omitted). */
+  /**
+   * Remove stored entries matching `filter` (all entries if omitted). A store
+   * shared across tenants (e.g. Qdrant keyed on a payload partition) may reject
+   * an unscoped clear rather than wipe every tenant; pass a scope filter there.
+   */
   clear(filter?: VectorFilter): Promise<void>
 
   /** True when the store is reachable and compatible. Optional capability. */
