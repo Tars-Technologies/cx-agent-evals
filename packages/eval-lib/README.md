@@ -246,7 +246,7 @@ Notes:
 |---|---|---|
 | Host-backed | `"native"` | The host app supplies the search implementation through callbacks (e.g. a database's built-in vector index). |
 | In-process | `"memory"` | `InMemoryVectorStore` for tests and local experiments. |
-| Qdrant | `"qdrant"` | An external Qdrant collection over its REST API. Self-contained point payloads, deterministic point ids, any embedding dimension. |
+| Qdrant | `"qdrant"` | An external Qdrant collection over its REST API. Self-contained point payloads, deterministic point ids, any embedding dimension. A single collection can hold many tenants, separated by payload filters. |
 
 ```ts
 import { makeVectorStore } from "@tars-inc/eval-lib"
@@ -254,7 +254,7 @@ import { makeVectorStore } from "@tars-inc/eval-lib"
 // In-process (tests, local experiments)
 const memory = makeVectorStore({ backend: "memory" })
 
-// Qdrant (any embedding dimension; one collection per index)
+// Qdrant (any embedding dimension; one collection can hold many tenants)
 const qdrant = makeVectorStore({
   backend: "qdrant",
   url: "https://xyz.cloud.qdrant.io:6333",
@@ -273,18 +273,12 @@ const native = makeVectorStore(
 Notes on the Qdrant backend:
 
 - Qdrant endpoints must use HTTPS; plain HTTP URLs are rejected.
-- The collection and its keyword payload indexes for the filterable fields
-  (`kbId`, `indexConfigHash`, `documentId`) are ensured before the first `add`.
-  Existing collections are backfilled so filtered search and delete work on
-  strict-mode instances such as Qdrant Cloud.
-- `checkHealth()` is a passive collection probe: it returns `false` when the
-  collection is missing and never creates or repairs it. Searching a missing
-  collection returns no results.
+- The collection and its keyword payload indexes for the filterable fields (`kbId`, `indexConfigHash`, `documentId`) are ensured before the first `add`. The `kbId` index is created as a tenant field so Qdrant co-locates each tenant's points on disk. Existing collections are backfilled so filtered search and delete work on strict-mode instances such as Qdrant Cloud.
+- Many tenants and index configs can share one collection: every point carries `kbId`, `indexConfigHash`, and `documentId` in its payload, and `search` filters on whichever of those a caller passes. `deleteByKnowledgeBase` and `deleteByDocument` are scoped, filtered deletes that remove only the matching points, so deleting one tenant or document leaves the rest of the collection untouched.
+- `checkHealth()` is a passive collection probe: it returns `false` when the collection is missing and never creates or repairs it. Searching a missing collection returns no results.
 - Collection creation tolerates a concurrent create conflict by re-verifying the winner and throws loudly when an existing collection's dimension does not match the configured one.
 - Point payloads carry the chunk text and character offsets, so search results need no separate hydration step; upserts are idempotent via point ids derived from the chunk id.
-- Each REST request is retried with backoff and bounded by `timeoutMs` (default `30000`) so a hung request cannot stall indefinitely; deleting a collection that is already gone is treated as success, so cleanup is safe to retry.
-- `clear()` drops the full collection. Filtered clears are rejected; use scoped
-  deletion methods instead.
+- Each REST request is retried with backoff and bounded by `timeoutMs` (default `30000`) so a hung request cannot stall indefinitely. A scoped delete against a never-created collection, and dropping a collection that is already gone, are both treated as success, so cleanup is safe to retry. `clear()` with no filter drops the whole collection; passing a filter makes it a scoped delete instead.
 
 `StatelessQueryRetriever` runs the query-time pipeline (query expansion, dense/BM25/hybrid search, refinement chain) over an existing index reached through a `VectorStore` plus a `ChunkSource`, with `retrieveWithTrace()` reporting every stage's inputs, outputs, and latency.
 
