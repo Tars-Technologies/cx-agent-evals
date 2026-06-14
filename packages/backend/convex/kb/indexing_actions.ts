@@ -352,19 +352,25 @@ export const cleanupAction = internalAction({
   handler: async (ctx, args) => {
     let totalDeleted = 0
 
-    // Drop the external Qdrant collection FIRST, before removing local chunks.
-    // If this throws, the local chunks remain as a reconcilable record and the
-    // retried cleanup re-drops the collection idempotently. Dropping local
-    // chunks first would risk leaving orphaned vectors that still match
+    // Delete this index's Qdrant points FIRST, before removing local chunks.
+    // The store no longer drops the shared collection; it runs a filtered
+    // point-delete scoped to (kbId, indexConfigHash), leaving other tenants
+    // and other configs in the shared collection untouched. If this throws,
+    // the local chunks remain as a reconcilable record and the retried
+    // cleanup re-deletes the points idempotently. Dropping local chunks first
+    // would risk leaving orphaned vectors that still match
     // (kbId, indexConfigHash) filters and get served as stale results.
     if (args.vectorBackend === "qdrant" && args.qdrantCollection) {
       const store = buildQdrantStore({
         collection: args.qdrantCollection,
-        dimension: 1 // dimension is irrelevant for collection deletion
+        dimension: 1 // dimension is irrelevant for a filtered point-delete
       })
       // deleteByKnowledgeBase is an optional VectorStore capability, but
-      // QdrantVectorStore always implements it (drops the collection).
-      await store.deleteByKnowledgeBase!(String(args.kbId))
+      // QdrantVectorStore always implements it (filtered point-delete scoped
+      // to the given (kbId, indexConfigHash)).
+      await store.deleteByKnowledgeBase!(String(args.kbId), {
+        indexConfigHash: args.indexConfigHash
+      })
     }
 
     // Paginated chunk deletion

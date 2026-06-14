@@ -81,7 +81,11 @@ export const create = tenantAction({
     )
     const qdrantCollection =
       vectorBackend === "qdrant"
-        ? qdrantCollectionName(String(args.kbId), indexConfigHash)
+        ? qdrantCollectionName(
+            (indexSettings.embeddingProvider as string) ?? "openai",
+            (indexSettings.embeddingModel as string) ??
+              "text-embedding-3-small"
+          )
         : undefined
 
     const retrieverId = await ctx.runMutation(

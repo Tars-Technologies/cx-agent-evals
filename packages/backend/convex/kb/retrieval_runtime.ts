@@ -393,7 +393,10 @@ export async function buildStatelessRetriever(
       ? buildQdrantStore({
           collection:
             opts.qdrantCollection ??
-            qdrantCollectionName(String(opts.kbId), opts.indexConfigHash),
+            qdrantCollectionName(
+              (indexSettings.embeddingProvider as string) ?? "openai",
+              embeddingModel ?? "text-embedding-3-small"
+            ),
           dimension: embedder.dimension
         })
       : buildNativeVectorStore(ctx, {
@@ -425,16 +428,14 @@ export async function buildStatelessRetriever(
     embedder,
     llm,
     reranker,
-    // The qdrant collection is already scoped to exactly this
-    // (kbId, indexConfigHash); sending the filter anyway requires payload
-    // indexes on strict-mode instances and buys nothing. The native store
-    // scopes via its own captured options.
-    filter:
-      vectorBackend === "qdrant"
-        ? {}
-        : {
-            kbId: String(opts.kbId),
-            indexConfigHash: opts.indexConfigHash
-          }
+    // The shared Qdrant collection holds many tenants and configs, so search
+    // MUST filter by kbId (tenant isolation) and indexConfigHash (config
+    // isolation) to avoid serving another tenant's or config's points. The
+    // native store ignores this filter and scopes via its own captured
+    // options, so one filter object is correct for both backends.
+    filter: {
+      kbId: String(opts.kbId),
+      indexConfigHash: opts.indexConfigHash
+    }
   })
 }

@@ -89,7 +89,12 @@ describe("indexing: startIndexing vector backend", () => {
 
       const job = await t.run(async (ctx) => ctx.db.get(result.jobId))
       expect(job!.vectorBackend).toBe("qdrant")
-      expect(job!.qdrantCollection).toBe(qdrantCollectionName(kbId, hash))
+      // The config carries no embeddingProvider/embeddingModel, so the
+      // collection name is keyed on the (openai, text-embedding-3-small)
+      // defaults, not on this KB's id or index-config hash.
+      expect(job!.qdrantCollection).toBe(
+        qdrantCollectionName("openai", "text-embedding-3-small")
+      )
     } finally {
       vi.useRealTimers()
     }

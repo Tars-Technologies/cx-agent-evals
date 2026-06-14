@@ -30,14 +30,15 @@ export function assertEmbeddingBackendCompatible(
   }
 }
 
+function sanitizeCollectionPart(part: string): string {
+  return part.replace(/[^A-Za-z0-9_-]/g, "_")
+}
+
 /**
- * One Qdrant collection per (kbId, indexConfigHash). Stored on the indexing
+ * One Qdrant collection per (provider, model). Stored on the indexing
  * job and retriever at creation time. Do not recompute elsewhere except for
  * the legacy experiment path, which has no retriever record.
  */
-export function qdrantCollectionName(
-  kbId: string,
-  indexConfigHash: string
-): string {
-  return `kb_${kbId}_${indexConfigHash.slice(0, 16)}`
+export function qdrantCollectionName(provider: string, model: string): string {
+  return `kb_vec_${sanitizeCollectionPart(provider)}_${sanitizeCollectionPart(model)}`
 }

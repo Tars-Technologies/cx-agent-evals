@@ -21,21 +21,22 @@ describe("resolveVectorBackend", () => {
 })
 
 describe("qdrantCollectionName", () => {
-  it("builds kb_<kbId>_<first 16 hash chars>", () => {
-    const hash = "abcdef0123456789deadbeef"
-    expect(qdrantCollectionName("kb123", hash)).toBe(
-      `kb_kb123_${hash.slice(0, 16)}`
+  it("builds kb_vec_<provider>_<model>", () => {
+    expect(qdrantCollectionName("openai", "text-embedding-3-small")).toBe(
+      "kb_vec_openai_text-embedding-3-small"
+    )
+  })
+
+  it("sanitizes characters outside [A-Za-z0-9_-]", () => {
+    expect(qdrantCollectionName("cohere", "embed-english-v3.0")).toBe(
+      "kb_vec_cohere_embed-english-v3_0"
     )
   })
 
   it("is deterministic for the same inputs", () => {
-    expect(qdrantCollectionName("k", "h".repeat(64))).toBe(
-      qdrantCollectionName("k", "h".repeat(64))
-    )
-  })
-
-  it("keeps short hashes intact", () => {
-    expect(qdrantCollectionName("kb", "short")).toBe("kb_kb_short")
+    expect(
+      qdrantCollectionName("openai", "text-embedding-3-small")
+    ).toBe(qdrantCollectionName("openai", "text-embedding-3-small"))
   })
 })
 
