@@ -32,7 +32,7 @@ import { backendConfig } from "../config"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
 import { assertIndexableDimension } from "./dimension_guard"
 import { resolveRerankerSelection } from "./reranker_selection"
-import { qdrantCollectionName, resolveVectorBackend } from "./vector_backend"
+import { qdrantCollectionNameFor, resolveVectorBackend } from "./vector_backend"
 
 /** Convert raw Convex chunk rows + the vector-search score map to results. */
 export function rawChunksToResults(
@@ -391,12 +391,11 @@ export async function buildStatelessRetriever(
   const baseStore =
     vectorBackend === "qdrant"
       ? buildQdrantStore({
+          // Fallback only for the legacy experiment path (no stored name). The
+          // name-time model default lives in qdrantCollectionNameFor and must
+          // agree with the embedder factory's default used just above.
           collection:
-            opts.qdrantCollection ??
-            qdrantCollectionName(
-              (indexSettings.embeddingProvider as string) ?? "openai",
-              embeddingModel ?? "text-embedding-3-small"
-            ),
+            opts.qdrantCollection ?? qdrantCollectionNameFor(indexSettings),
           dimension: embedder.dimension
         })
       : buildNativeVectorStore(ctx, {

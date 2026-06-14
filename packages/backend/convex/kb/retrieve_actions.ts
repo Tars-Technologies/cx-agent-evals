@@ -21,7 +21,7 @@ import {
 } from "./retrieval_runtime"
 import {
   assertEmbeddingBackendCompatible,
-  qdrantCollectionName,
+  qdrantCollectionNameFor,
   resolveVectorBackend
 } from "./vector_backend"
 
@@ -81,11 +81,7 @@ export const create = tenantAction({
     )
     const qdrantCollection =
       vectorBackend === "qdrant"
-        ? qdrantCollectionName(
-            (indexSettings.embeddingProvider as string) ?? "openai",
-            (indexSettings.embeddingModel as string) ??
-              "text-embedding-3-small"
-          )
+        ? qdrantCollectionNameFor(indexSettings)
         : undefined
 
     const retrieverId = await ctx.runMutation(

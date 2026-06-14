@@ -19,7 +19,7 @@ import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 import {
   assertEmbeddingBackendCompatible,
-  qdrantCollectionName,
+  qdrantCollectionNameFor,
   resolveVectorBackend
 } from "./vector_backend"
 
@@ -156,10 +156,7 @@ export const startIndexing = internalMutation({
     assertEmbeddingBackendCompatible(vectorBackend, indexConfig.embeddingProvider)
     const qdrantCollection =
       vectorBackend === "qdrant"
-        ? qdrantCollectionName(
-            (indexConfig.embeddingProvider as string) ?? "openai",
-            (indexConfig.embeddingModel as string) ?? "text-embedding-3-small"
-          )
+        ? qdrantCollectionNameFor(indexConfig)
         : undefined
 
     // Create job record

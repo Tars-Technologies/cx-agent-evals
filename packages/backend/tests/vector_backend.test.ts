@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   assertEmbeddingBackendCompatible,
   qdrantCollectionName,
+  qdrantCollectionNameFor,
   resolveVectorBackend
 } from "../convex/kb/vector_backend"
 
@@ -37,6 +38,36 @@ describe("qdrantCollectionName", () => {
     expect(
       qdrantCollectionName("openai", "text-embedding-3-small")
     ).toBe(qdrantCollectionName("openai", "text-embedding-3-small"))
+  })
+})
+
+describe("qdrantCollectionNameFor", () => {
+  it("reads provider/model from the index config", () => {
+    expect(
+      qdrantCollectionNameFor({
+        embeddingProvider: "cohere",
+        embeddingModel: "embed-english-v3.0"
+      })
+    ).toBe("kb_vec_cohere_embed-english-v3_0")
+  })
+
+  it("falls back to the (openai, text-embedding-3-small) defaults", () => {
+    // An index config with no embedding fields, and one with them omitted,
+    // must both resolve to the same default-keyed collection.
+    expect(qdrantCollectionNameFor({})).toBe(
+      "kb_vec_openai_text-embedding-3-small"
+    )
+    expect(qdrantCollectionNameFor({ strategy: "plain" })).toBe(
+      qdrantCollectionNameFor({})
+    )
+  })
+
+  it("matches qdrantCollectionName with the same resolved identity", () => {
+    // Index time and retrieve time call this helper with the same config, so
+    // the single source of truth must equal the raw namer for that identity.
+    expect(qdrantCollectionNameFor({})).toBe(
+      qdrantCollectionName("openai", "text-embedding-3-small")
+    )
   })
 })
 

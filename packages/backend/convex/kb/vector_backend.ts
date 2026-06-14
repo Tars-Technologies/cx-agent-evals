@@ -42,3 +42,28 @@ function sanitizeCollectionPart(part: string): string {
 export function qdrantCollectionName(provider: string, model: string): string {
   return `kb_vec_${sanitizeCollectionPart(provider)}_${sanitizeCollectionPart(model)}`
 }
+
+/**
+ * Default embedding identity used when an index config omits provider/model.
+ * These must stay in sync with the embedder factories' own per-provider
+ * defaults (makeEmbedder / createEmbedder): the collection name is derived from
+ * them, so any drift would point indexing and retrieval at different
+ * collections and silently return zero results.
+ */
+const DEFAULT_EMBEDDING_PROVIDER = "openai"
+const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+
+/**
+ * Resolve the (provider, model) identity from an index-config record and name
+ * its Qdrant collection. Single source of truth for the provider/model defaults
+ * so the name is byte-identical at index time and retrieve time. All call sites
+ * (indexing, retriever create, retrieval fallback) must go through this.
+ */
+export function qdrantCollectionNameFor(
+  index: Record<string, unknown>
+): string {
+  return qdrantCollectionName(
+    (index.embeddingProvider as string) ?? DEFAULT_EMBEDDING_PROVIDER,
+    (index.embeddingModel as string) ?? DEFAULT_EMBEDDING_MODEL
+  )
+}
