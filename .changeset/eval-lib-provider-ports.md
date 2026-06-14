@@ -44,3 +44,19 @@ the eval-lib interfaces.
 - Add optional `vectorBackend` and `embeddingProvider` index fields while
   preserving existing hashes when defaults are omitted.
 - Make `InMemoryVectorStore.add` accumulate entries across calls.
+
+### Correctness and resilience
+
+- Correct recursive chunk offsets when sections begin with whitespace so chunk
+  content remains aligned with its source span.
+- Reject empty citations and invalid retrieved spans, map normalized
+  ground-truth matches to their original boundaries, and refine fuzzy citation
+  matching.
+- Keep retrieval usable when query transforms return no valid strings, preserve
+  score ordering through deduplication and context expansion, and merge expanded
+  spans that overlap or touch.
+- Apply a default timeout to provider HTTP requests, reject zero-dimension
+  embeddings, and warn when malformed reranker indexes truncate results.
+- Make Qdrant health checks passive, return no search results when a collection
+  is not yet provisioned, and reject filtered clears that would otherwise drop
+  the entire collection.

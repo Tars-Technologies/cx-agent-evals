@@ -193,7 +193,9 @@ const openrouter = await makeEmbedder({
 const voyage = await makeReranker({ provider: "voyage", apiKey: "<key>" })
 ```
 
-Note: Cohere, Jina, and Voyage are called over their plain HTTP APIs with retry/backoff; only `"openai"` and `"openrouter"` import the `openai` package.
+Note: Cohere, Jina, and Voyage are called over their plain HTTP APIs with
+retry/backoff and a 30-second default request timeout; only `"openai"` and
+`"openrouter"` import the `openai` package.
 
 ## Scraper / parser providers
 
@@ -270,10 +272,18 @@ const native = makeVectorStore(
 
 Notes on the Qdrant backend:
 
-- The collection and its keyword payload indexes for the filterable fields (`kbId`, `indexConfigHash`, `documentId`) are ensured before the first `add` or explicit health check. Existing collections are backfilled so filtered search and delete work on strict-mode instances such as Qdrant Cloud.
+- The collection and its keyword payload indexes for the filterable fields
+  (`kbId`, `indexConfigHash`, `documentId`) are ensured before the first `add`.
+  Existing collections are backfilled so filtered search and delete work on
+  strict-mode instances such as Qdrant Cloud.
+- `checkHealth()` is a passive collection probe: it returns `false` when the
+  collection is missing and never creates or repairs it. Searching a missing
+  collection returns no results.
 - Collection creation tolerates a concurrent create conflict by re-verifying the winner and throws loudly when an existing collection's dimension does not match the configured one.
 - Point payloads carry the chunk text and character offsets, so search results need no separate hydration step; upserts are idempotent via point ids derived from the chunk id.
 - Each REST request is retried with backoff and bounded by `timeoutMs` (default `30000`) so a hung request cannot stall indefinitely; deleting a collection that is already gone is treated as success, so cleanup is safe to retry.
+- `clear()` drops the full collection. Filtered clears are rejected; use scoped
+  deletion methods instead.
 
 `StatelessQueryRetriever` runs the query-time pipeline (query expansion, dense/BM25/hybrid search, refinement chain) over an existing index reached through a `VectorStore` plus a `ChunkSource`, with `retrieveWithTrace()` reporting every stage's inputs, outputs, and latency.
 
