@@ -26,6 +26,29 @@ function decodeBytes(bytes: Uint8Array, charset = "utf-8"): string {
     return new TextDecoder().decode(bytes)
   }
 }
+
+function startsWith(bytes: Uint8Array, sig: readonly number[]): boolean {
+  if (bytes.length < sig.length) return false
+  for (let i = 0; i < sig.length; i++) if (bytes[i] !== sig[i]) return false
+  return true
+}
+
+/**
+ * Best-effort content sniff. The caller's `mimeType` is browser-supplied and
+ * untrusted, so before we decode bytes as text we reject payloads that are
+ * clearly a binary container (a PDF/zip/gzip mislabeled as `text/plain` would
+ * otherwise be UTF-8-decoded into U+FFFD garbage and stored as a successful
+ * parse). Returns a short label for the detected binary format, or null.
+ */
+function detectBinaryFormat(bytes: Uint8Array): string | null {
+  if (startsWith(bytes, [0x25, 0x50, 0x44, 0x46, 0x2d])) return "pdf" // %PDF-
+  if (startsWith(bytes, [0x50, 0x4b, 0x03, 0x04])) return "zip" // PK.. (docx/xlsx/zip)
+  if (startsWith(bytes, [0x1f, 0x8b])) return "gzip"
+  // A NUL byte in the first 8KB is a strong signal the payload is not text.
+  const n = Math.min(bytes.length, 8192)
+  for (let i = 0; i < n; i++) if (bytes[i] === 0) return "binary"
+  return null
+}
 /**
  * In-process parser. Converts uploaded file bytes to markdown synchronously by
  * mime type. The async startParse() is unsupported here: in-process parsing returns
@@ -44,13 +67,27 @@ export class InProcessParser implements Parser {
       const r = await pdfToMarkdown(Buffer.from(bytes))
       return { markdown: r.content, title: r.title }
     }
-    if (type.includes("html")) {
-      const r = await htmlToMarkdown(
-        decodeBytes(bytes, sniffHtmlCharset(bytes))
-      )
-      return { markdown: r.content, title: r.title }
-    }
-    if (type.includes("text") || type.includes("markdown")) {
+    // Text and HTML are decoded as text, so reject a binary payload here rather
+    // than store decoded garbage as a successful parse. `mimeType` is untrusted
+    // client input; the magic-byte sniff is the real check.
+    if (
+      type.includes("html") ||
+      type.includes("text") ||
+      type.includes("markdown")
+    ) {
+      const binary = detectBinaryFormat(bytes)
+      if (binary) {
+        throw new NotSupportedError(
+          `parseFile: declared "${mimeType}" but content is ${binary}`,
+          this.name
+        )
+      }
+      if (type.includes("html")) {
+        const r = await htmlToMarkdown(
+          decodeBytes(bytes, sniffHtmlCharset(bytes))
+        )
+        return { markdown: r.content, title: r.title }
+      }
       return { markdown: decodeBytes(bytes) }
     }
     throw new NotSupportedError(`parseFile(${mimeType})`, this.name)
