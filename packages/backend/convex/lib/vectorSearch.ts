@@ -32,7 +32,7 @@ export async function vectorSearchWithFilter(
   // Phase 1: hydrate chunks only (no document records — those are heavy).
   const chunks: any[] = await ctx.runQuery(
     internal.kb.chunks.fetchChunksByIds,
-    { ids: results.map((r: any) => r._id) }
+    { ids: results.map((r: any) => r._id), kbId: opts.kbId }
   )
 
   const scoreMap = new Map<string, number>()
@@ -56,7 +56,8 @@ export async function vectorSearchWithFilter(
     const parents: any[] =
       parentIds.length > 0
         ? await ctx.runQuery(internal.kb.chunks.fetchChunksByIds, {
-            ids: parentIds
+            ids: parentIds,
+            kbId: opts.kbId
           })
         : []
     const parentMap = new Map<string, any>(

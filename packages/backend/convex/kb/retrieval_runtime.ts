@@ -279,7 +279,11 @@ export async function rerankerAvailable(
  * lib/vectorSearch.ts (first-seen child's score, dedupe parents, fall back to
  * the child when the parent row is missing).
  */
-function wrapWithParentSwap(ctx: ActionCtx, inner: VectorStore): VectorStore {
+function wrapWithParentSwap(
+  ctx: ActionCtx,
+  inner: VectorStore,
+  kbId: Id<"knowledgeBases">
+): VectorStore {
   return new CallbackVectorStore({
     name: `${inner.name}+parent-swap`,
     search: async (queryEmbedding, opts) => {
@@ -292,6 +296,9 @@ function wrapWithParentSwap(ctx: ActionCtx, inner: VectorStore): VectorStore {
         )
       ]
       if (parentIds.length === 0) return children
+      // Parent ids come from the Qdrant payload (external store), so scope the
+      // lookup to this KB: a poisoned/foreign parent id must not surface another
+      // tenant's chunk content here.
       const parents: Array<{
         _id: unknown
         chunkId: string
@@ -301,7 +308,8 @@ function wrapWithParentSwap(ctx: ActionCtx, inner: VectorStore): VectorStore {
         end: number
         metadata?: Record<string, unknown>
       }> = await ctx.runQuery(internal.kb.chunks.fetchChunksByIds, {
-        ids: parentIds as unknown as Id<"documentChunks">[]
+        ids: parentIds as unknown as Id<"documentChunks">[],
+        kbId
       })
       const docIdMap: Record<string, string> = await ctx.runQuery(
         internal.kb.chunks.fetchDocIdMap,
@@ -406,7 +414,7 @@ export async function buildStatelessRetriever(
 
   const vectorStore =
     vectorBackend === "qdrant" && indexStrategy === "parent-child"
-      ? wrapWithParentSwap(ctx, baseStore)
+      ? wrapWithParentSwap(ctx, baseStore, opts.kbId)
       : baseStore
 
   const llm = await buildQueryLLM(

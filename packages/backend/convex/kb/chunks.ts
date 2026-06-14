@@ -392,14 +392,22 @@ export const isIndexed = internalQuery({
  * Use this before post-filtering, then call fetchDocIdMap for survivors only —
  * documents.content can be megabytes and would blow Convex's 16 MB read budget
  * if hydrated for every over-fetched chunk.
+ *
+ * `kbId` is REQUIRED and enforced: ids can originate from an external vector
+ * store's payload (the Qdrant parent-child swap derives parent ids from Qdrant
+ * metadata), so a poisoned/foreign id must not leak another tenant's chunk
+ * content. Any chunk whose `kbId` does not match is dropped.
  */
 export const fetchChunksByIds = internalQuery({
-  args: { ids: v.array(v.id("documentChunks")) },
+  args: {
+    ids: v.array(v.id("documentChunks")),
+    kbId: v.id("knowledgeBases")
+  },
   handler: async (ctx, args) => {
     const chunks = []
     for (const id of args.ids) {
       const chunk = await ctx.db.get(id)
-      if (chunk) chunks.push(chunk)
+      if (chunk && chunk.kbId === args.kbId) chunks.push(chunk)
     }
     return chunks
   }
