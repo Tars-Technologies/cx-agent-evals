@@ -26,9 +26,28 @@ export interface QdrantVectorStoreConfig {
   readonly timeoutMs?: number
 }
 
-/** Deterministic UUID-format point id derived from the chunk id (sha256). */
-export function qdrantPointId(chunkId: string): string {
-  const h = createHash("sha256").update(chunkId).digest("hex")
+export interface QdrantPointScope {
+  readonly kbId: string
+  readonly indexConfigHash: string
+  readonly documentId: string
+}
+
+/**
+ * Deterministic UUID-format point id scoped to the shared collection partition.
+ * Payload filters enforce read isolation, while the scoped primary key prevents
+ * one tenant or index configuration from overwriting another tenant's point.
+ */
+export function qdrantPointId(
+  chunkId: string,
+  scope: QdrantPointScope
+): string {
+  const identity = JSON.stringify([
+    scope.kbId,
+    scope.indexConfigHash,
+    scope.documentId,
+    chunkId
+  ])
+  const h = createHash("sha256").update(identity).digest("hex")
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`
 }
 
@@ -203,9 +222,21 @@ export class QdrantVectorStore implements VectorStore {
       }
     }
     if (chunks.length === 0) return
+    const kbId = scope?.kbId
+    const indexConfigHash = scope?.indexConfigHash
+    const documentId = scope?.documentId
+    if (!kbId || !indexConfigHash || !documentId) {
+      throw new Error(
+        "QdrantVectorStore.add requires kbId, indexConfigHash, and documentId"
+      )
+    }
     await this.ensureCollection()
     const points = chunks.map((chunk, i) => ({
-      id: qdrantPointId(String(chunk.id)),
+      id: qdrantPointId(String(chunk.id), {
+        kbId,
+        indexConfigHash,
+        documentId
+      }),
       vector: embeddings[i],
       payload: {
         chunkId: String(chunk.id),
@@ -214,9 +245,9 @@ export class QdrantVectorStore implements VectorStore {
         start: chunk.start,
         end: chunk.end,
         metadata: chunk.metadata ?? {},
-        kbId: scope?.kbId,
-        indexConfigHash: scope?.indexConfigHash,
-        documentId: scope?.documentId
+        kbId,
+        indexConfigHash,
+        documentId
       } satisfies QdrantPayload
     }))
     await this._request(

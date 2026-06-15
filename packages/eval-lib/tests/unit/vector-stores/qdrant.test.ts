@@ -23,6 +23,12 @@ function chunk(id: string, content = "text"): PositionAwareChunk {
 const okJson = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200 })
 
+const VALID_SCOPE = {
+  kbId: "kb1",
+  indexConfigHash: "h1",
+  documentId: "cvx1"
+}
+
 function collectionInfo(size: number) {
   return okJson({
     status: "ok",
@@ -58,13 +64,40 @@ describe("QdrantVectorStore", () => {
     ).toThrow(/https/i)
   })
 
-  it("derives a deterministic UUID-format point id from the chunk id", () => {
-    const a = qdrantPointId("chunk-1")
+  it("derives a deterministic UUID-format point id from the scoped chunk identity", () => {
+    const scope = {
+      kbId: "kb1",
+      indexConfigHash: "h1",
+      documentId: "cvx1"
+    }
+    const a = qdrantPointId("chunk-1", scope)
     expect(a).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
     )
-    expect(qdrantPointId("chunk-1")).toBe(a)
-    expect(qdrantPointId("chunk-2")).not.toBe(a)
+    expect(qdrantPointId("chunk-1", scope)).toBe(a)
+    expect(qdrantPointId("chunk-2", scope)).not.toBe(a)
+  })
+
+  it("uses different point ids for the same chunk in different scopes", () => {
+    const baseScope = {
+      kbId: "kb1",
+      indexConfigHash: "h1",
+      documentId: "cvx1"
+    }
+    const original = qdrantPointId("same-chunk", baseScope)
+
+    expect(
+      qdrantPointId("same-chunk", { ...baseScope, kbId: "kb2" })
+    ).not.toBe(original)
+    expect(
+      qdrantPointId("same-chunk", {
+        ...baseScope,
+        indexConfigHash: "h2"
+      })
+    ).not.toBe(original)
+    expect(
+      qdrantPointId("same-chunk", { ...baseScope, documentId: "cvx2" })
+    ).not.toBe(original)
   })
 
   it("add(): ensures the collection then upserts self-contained points", async () => {
@@ -95,7 +128,13 @@ describe("QdrantVectorStore", () => {
     expect(upsertInit.method).toBe("PUT")
     const body = JSON.parse(upsertInit.body)
     expect(body.points).toHaveLength(1)
-    expect(body.points[0].id).toBe(qdrantPointId("c1"))
+    expect(body.points[0].id).toBe(
+      qdrantPointId("c1", {
+        kbId: "kb1",
+        indexConfigHash: "h1",
+        documentId: "cvx1"
+      })
+    )
     expect(body.points[0].vector).toEqual([1, 0, 0])
     expect(body.points[0].payload).toEqual({
       chunkId: "c1",
@@ -118,7 +157,7 @@ describe("QdrantVectorStore", () => {
       .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index indexConfigHash
       .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index documentId
       .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // upsert
-    await store.add([chunk("c1")], [[1, 0, 0]])
+    await store.add([chunk("c1")], [[1, 0, 0]], VALID_SCOPE)
     const [createUrl, createInit] = fetchMock.mock.calls[1]
     expect(createUrl).toBe(
       "https://qdrant.example.com:6333/collections/kb_x_abcdef"
@@ -147,9 +186,9 @@ describe("QdrantVectorStore", () => {
 
   it("add(): throws loudly on collection dimension mismatch", async () => {
     fetchMock.mockResolvedValueOnce(collectionInfo(1536))
-    await expect(store.add([chunk("c1")], [[1, 0, 0]])).rejects.toThrow(
-      /dimension 1536.*expected 3/i
-    )
+    await expect(
+      store.add([chunk("c1")], [[1, 0, 0]], VALID_SCOPE)
+    ).rejects.toThrow(/dimension 1536.*expected 3/i)
   })
 
   it("add(): fails closed when the collection reports no vector size", async () => {
@@ -159,9 +198,9 @@ describe("QdrantVectorStore", () => {
     fetchMock.mockResolvedValueOnce(
       okJson({ status: "ok", result: { config: { params: { vectors: {} } } } })
     )
-    await expect(store.add([chunk("c1")], [[1, 0, 0]])).rejects.toThrow(
-      /no vector size|unexpected shape/i
-    )
+    await expect(
+      store.add([chunk("c1")], [[1, 0, 0]], VALID_SCOPE)
+    ).rejects.toThrow(/no vector size|unexpected shape/i)
   })
 
   it("add(): tolerates a concurrent collection create (409) and re-verifies", async () => {
@@ -177,7 +216,7 @@ describe("QdrantVectorStore", () => {
       .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index indexConfigHash
       .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index documentId
       .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // upsert
-    await store.add([chunk("c1")], [[1, 0, 0]])
+    await store.add([chunk("c1")], [[1, 0, 0]], VALID_SCOPE)
     expect(fetchMock).toHaveBeenCalledTimes(7)
     const [upsertUrl] = fetchMock.mock.calls[6]
     expect(upsertUrl).toBe(
@@ -190,9 +229,9 @@ describe("QdrantVectorStore", () => {
       .mockResolvedValueOnce(new Response("not found", { status: 404 })) // GET
       .mockResolvedValueOnce(new Response("exists", { status: 409 })) // PUT create
       .mockResolvedValueOnce(collectionInfo(1536)) // re-verify GET: wrong dims
-    await expect(store.add([chunk("c1")], [[1, 0, 0]])).rejects.toThrow(
-      /dimension 1536.*expected 3/i
-    )
+    await expect(
+      store.add([chunk("c1")], [[1, 0, 0]], VALID_SCOPE)
+    ).rejects.toThrow(/dimension 1536.*expected 3/i)
   })
 
   it("add(): validates lengths and embedding dimension", async () => {
@@ -200,6 +239,19 @@ describe("QdrantVectorStore", () => {
     await expect(store.add([chunk("c1")], [[1, 0]])).rejects.toThrow(
       /dimension 2.*expected 3/i
     )
+  })
+
+  it("add(): rejects writes without a complete tenant and index scope", async () => {
+    await expect(store.add([chunk("c1")], [[1, 0, 0]])).rejects.toThrow(
+      /requires kbId, indexConfigHash, and documentId/i
+    )
+    await expect(
+      store.add([chunk("c1")], [[1, 0, 0]], {
+        kbId: "kb1",
+        indexConfigHash: "h1"
+      })
+    ).rejects.toThrow(/requires kbId, indexConfigHash, and documentId/i)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it("search(): queries with the vector and maps payloads back to chunks", async () => {
