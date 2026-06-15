@@ -169,6 +169,66 @@ describe("StatelessQueryRetriever", () => {
     expect(trace.query.queries).toEqual(["alpha"])
   })
 
+  it("multi-query: empty llm expansion falls back to the original query", async () => {
+    // parseVariants("") -> [] would otherwise leave zero queries and retrieve nothing.
+    const llm = { complete: vi.fn(async () => "   \n  \n") }
+    const r = await makeRetriever({
+      config: {
+        name: "t",
+        query: { strategy: "multi-query", numQueries: 3 },
+        search: { strategy: "dense" }
+      },
+      llm
+    })
+    const trace = await r.retrieveWithTrace("alpha", 3)
+    expect(trace.query.queries).toEqual(["alpha"])
+  })
+
+  it("hyde: empty llm completion falls back to the original query", async () => {
+    // An empty hypothetical doc would otherwise reach embedQuery("") and 400.
+    const llm = { complete: vi.fn(async () => "") }
+    const r = await makeRetriever({
+      config: {
+        name: "t",
+        query: { strategy: "hyde" },
+        search: { strategy: "dense" }
+      },
+      llm
+    })
+    const trace = await r.retrieveWithTrace("alpha", 2)
+    expect(trace.query.queries).toEqual(["alpha"])
+  })
+
+  it("rewrite: whitespace-only llm completion falls back to the original query", async () => {
+    const llm = { complete: vi.fn(async () => "   ") }
+    const r = await makeRetriever({
+      config: {
+        name: "t",
+        query: { strategy: "rewrite" },
+        search: { strategy: "dense" }
+      },
+      llm
+    })
+    const trace = await r.retrieveWithTrace("alpha", 2)
+    expect(trace.query.queries).toEqual(["alpha"])
+  })
+
+  it("step-back: drops an empty abstract instead of emitting a blank query", async () => {
+    const llm = { complete: vi.fn(async () => "") }
+    const r = await makeRetriever({
+      config: {
+        name: "t",
+        query: { strategy: "step-back" },
+        search: { strategy: "dense" }
+      },
+      llm
+    })
+    const trace = await r.retrieveWithTrace("alpha", 2)
+    // includeOriginal defaults true, so the original survives; the empty
+    // abstract must be dropped rather than passed to search as "".
+    expect(trace.query.queries).toEqual(["alpha"])
+  })
+
   it("rerank: applies reranker then assignRankScores; respects topN", async () => {
     const reranker: Reranker = {
       name: "stub",

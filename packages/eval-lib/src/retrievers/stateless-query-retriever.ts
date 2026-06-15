@@ -108,13 +108,20 @@ export class StatelessQueryRetriever {
     const done = (
       queries: readonly string[],
       hypotheticalAnswer?: string
-    ): QueryStageTrace => ({
-      strategy: cfg.strategy,
-      original: query,
-      queries,
-      hypotheticalAnswer,
-      latencyMs: Math.round(performance.now() - start)
-    })
+    ): QueryStageTrace => {
+      // Trim each expanded query and drop empties; if a transform yields nothing
+      // usable (empty LLM output, variants parsed to nothing, unknown strategy)
+      // fall back to the original so at least one non-empty query always reaches
+      // search. Mirrors PipelineRetriever._processQuery so the two paths agree.
+      const normalized = queries.map((q) => q.trim()).filter((q) => q.length > 0)
+      return {
+        strategy: cfg.strategy,
+        original: query,
+        queries: normalized.length > 0 ? normalized : [query],
+        hypotheticalAnswer,
+        latencyMs: Math.round(performance.now() - start)
+      }
+    }
 
     if (cfg.strategy === "identity" || !llm) return done([query])
 
