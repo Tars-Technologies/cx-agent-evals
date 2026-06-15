@@ -72,6 +72,10 @@
       "types": "./dist/utils/index.d.ts",
       "import": "./dist/utils/index.js"
     },
+    "./utils/parent-swap": {
+      "types": "./dist/utils/parent-swap.d.ts",
+      "import": "./dist/utils/parent-swap.js"
+    },
     "./langsmith": {
       "types": "./dist/langsmith/index.d.ts",
       "import": "./dist/langsmith/index.js"

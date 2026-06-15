@@ -1,4 +1,4 @@
-import { parentSwap } from "@tars-inc/eval-lib/utils"
+import { parentSwap } from "@tars-inc/eval-lib/utils/parent-swap"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"

@@ -15,6 +15,7 @@ export default defineConfig({
     "src/pipeline/internals.ts",
     "src/pipeline/llm-openai.ts",
     "src/utils/index.ts",
+    "src/utils/parent-swap.ts",
     "src/langsmith/index.ts",
     "src/llm/index.ts",
     "src/shared/index.ts",
