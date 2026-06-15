@@ -83,4 +83,18 @@ describe("findCitationSpan", () => {
     expect(doc.slice(result!.start, result!.end)).toBe(result!.text)
     expect(result!.text).toBe(target)
   })
+
+  it("does not hang on a long near-miss citation", () => {
+    // The stride-1 fuzzy-boundary refinement was ~O(L^4) in citation length, so
+    // a long citation that misses Tier-1/Tier-2 and reaches the fuzzy tier hung
+    // the generation action well past its timeout. A long, unmatched excerpt
+    // must return quickly instead of blocking.
+    const doc =
+      "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(1000)
+    const excerpt = "qwerty ".repeat(400).trim() // ~2799 chars, absent from doc
+    const startedAt = Date.now()
+    const result = findCitationSpan(doc, excerpt)
+    expect(Date.now() - startedAt).toBeLessThan(1500)
+    expect(result).toBeNull()
+  }, 15000)
 })

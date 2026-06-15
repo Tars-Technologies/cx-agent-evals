@@ -6,6 +6,11 @@ export interface CitationSpan {
   readonly text: string
 }
 
+// Skip fuzzy tier beyond this; Levenshtein is O(L*window) per step.
+const MAX_FUZZY_EXCERPT_LEN = 2000
+// Fixed refinement radius; excerpt-scaled made it ~O(L^4).
+const REFINE_RADIUS = 12
+
 export function findCitationSpan(
   docContent: string,
   excerpt: string
@@ -77,6 +82,7 @@ function fuzzySubstringMatch(
   threshold = 0.7
 ): CitationSpan | null {
   const excerptLen = excerpt.length
+  if (excerptLen > MAX_FUZZY_EXCERPT_LEN) return null
   const windowSize = Math.ceil(excerptLen * 1.3)
   const minWindowSize = Math.floor(excerptLen * 0.7)
   const normExcerpt = excerpt.toLowerCase().replace(/\s+/g, " ").trim()
@@ -111,18 +117,13 @@ function fuzzySubstringMatch(
     }
   }
 
-  // The coarse sweep steps `i` by ~20% of the window size, so the true optimum
-  // can fall in every gap and the best sampled window is bounded to the nearest
-  // step (off by a few characters at each edge). Refine start and end at stride 1
-  // in the neighborhood of the best sample to tighten the returned boundary.
+  // Tighten the coarse boundary at stride 1 within a fixed neighborhood.
   if (bestStart !== -1) {
-    const coarseStride = Math.max(1, Math.floor((bestEnd - bestStart) * 0.2))
-    const sizeStep = Math.max(1, Math.floor(excerptLen * 0.1))
-    const startLo = Math.max(0, bestStart - coarseStride)
-    const startHi = Math.min(docContent.length, bestStart + coarseStride)
+    const startLo = Math.max(0, bestStart - REFINE_RADIUS)
+    const startHi = Math.min(docContent.length, bestStart + REFINE_RADIUS)
     for (let s = startLo; s <= startHi; s++) {
-      const endLo = Math.max(s + 1, bestEnd - sizeStep)
-      const endHi = Math.min(docContent.length, bestEnd + sizeStep)
+      const endLo = Math.max(s + 1, bestEnd - REFINE_RADIUS)
+      const endHi = Math.min(docContent.length, bestEnd + REFINE_RADIUS)
       for (let e = endLo; e <= endHi; e++) {
         const normWindow = docContent
           .substring(s, e)
