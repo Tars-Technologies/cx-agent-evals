@@ -231,4 +231,32 @@ describe("GroundTruthAssigner", () => {
       "RAG combines retrieval with generation"
     )
   })
+
+  it("skips whitespace-only and non-string excerpts", async () => {
+    // A whitespace-only excerpt used to yield a phantom 1-char span (indexOf(" ")
+    // returns a real offset) and a null excerpt threw on excerpt.length; both must
+    // be skipped, leaving only the real span.
+    const llm = makeLLM(
+      JSON.stringify({
+        excerpts: [" ", null, "RAG combines retrieval with generation"]
+      })
+    )
+
+    const assigner = new GroundTruthAssigner()
+    const queries: GeneratedQuery[] = [
+      { query: "What is RAG?", targetDocId: "test.md", metadata: {} }
+    ]
+
+    const results = await assigner.assign(queries, {
+      corpus,
+      llmClient: llm,
+      model: "gpt-4o"
+    })
+
+    expect(results).toHaveLength(1)
+    expect(results[0].relevantSpans).toHaveLength(1)
+    expect(results[0].relevantSpans[0].text).toBe(
+      "RAG combines retrieval with generation"
+    )
+  })
 })

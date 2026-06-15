@@ -1,4 +1,5 @@
 import { distance } from "fastest-levenshtein"
+import { normalizedFind } from "../../utils/span.js"
 
 export interface CitationSpan {
   readonly start: number
@@ -28,9 +29,13 @@ export function findCitationSpan(
   }
 
   // Tier 2: Whitespace + case normalized match
-  const normResult = normalizedFind(docContent, excerpt)
-  if (normResult !== null && normResult.end > normResult.start) {
-    return normResult
+  const norm = normalizedFind(docContent, excerpt)
+  if (norm !== null && norm.end > norm.start) {
+    return {
+      start: norm.start,
+      end: norm.end,
+      text: docContent.substring(norm.start, norm.end)
+    }
   }
 
   // Tier 3: Fuzzy sliding window
@@ -40,40 +45,6 @@ export function findCitationSpan(
   }
 
   return null
-}
-
-function normalizedFind(
-  docContent: string,
-  excerpt: string
-): CitationSpan | null {
-  const normalize = (s: string) => s.replace(/\s+/g, " ").toLowerCase().trim()
-  const normDoc = normalize(docContent)
-  const normExcerpt = normalize(excerpt)
-  const idx = normDoc.indexOf(normExcerpt)
-  if (idx === -1) return null
-
-  // Map normalized index back to original
-  const origStart = mapNormToOrig(docContent, idx)
-  const origEnd = mapNormToOrig(docContent, idx + normExcerpt.length)
-  const text = docContent.substring(origStart, origEnd)
-  return { start: origStart, end: origEnd, text }
-}
-
-function mapNormToOrig(original: string, normIdx: number): number {
-  let origPos = 0
-  let normPos = 0
-  // Skip leading whitespace
-  while (origPos < original.length && /\s/.test(original[origPos])) origPos++
-
-  while (normPos < normIdx && origPos < original.length) {
-    if (/\s/.test(original[origPos])) {
-      while (origPos < original.length - 1 && /\s/.test(original[origPos + 1]))
-        origPos++
-    }
-    origPos++
-    normPos++
-  }
-  return origPos
 }
 
 function fuzzySubstringMatch(

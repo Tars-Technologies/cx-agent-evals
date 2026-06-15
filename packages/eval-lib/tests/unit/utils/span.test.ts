@@ -1,10 +1,39 @@
 import { describe, expect, it } from "vitest"
 import { DocumentId } from "../../../src/types/primitives.js"
 import {
+  normalizedFind,
   spanLength,
   spanOverlapChars,
   spanOverlaps
 } from "../../../src/utils/span.js"
+
+describe("normalizedFind", () => {
+  const doc = "  Each  pod  runs one or more containers. Pods share storage."
+
+  it("matches ignoring case and collapsed whitespace", () => {
+    const r = normalizedFind(doc, "each pod runs one or more containers.")
+    expect(r).not.toBeNull()
+    expect(doc.substring(r!.start, r!.end)).toBe(
+      "Each  pod  runs one or more containers."
+    )
+  })
+
+  it("maps both ends back to original offsets", () => {
+    const r = normalizedFind(doc, "Pods share storage.")
+    expect(r).not.toBeNull()
+    expect(doc.substring(r!.start, r!.end)).toBe("Pods share storage.")
+  })
+
+  it("ignores surrounding whitespace on the excerpt", () => {
+    const trimmed = normalizedFind(doc, "Pods share storage.")
+    const padded = normalizedFind(doc, "   Pods share storage.   ")
+    expect(padded).toEqual(trimmed)
+  })
+
+  it("returns null when absent", () => {
+    expect(normalizedFind(doc, "not in the document")).toBeNull()
+  })
+})
 
 describe("spanOverlaps", () => {
   it("should detect overlap in same document", () => {

@@ -8,7 +8,9 @@ export { cosineSimilarity } from "./similarity.js"
 export {
   calculateOverlap,
   calculateOverlapPreMerged,
+  mapNormToOrig,
   mergeOverlappingSpans,
+  normalizedFind,
   spanLength,
   spanOverlapChars,
   spanOverlaps,

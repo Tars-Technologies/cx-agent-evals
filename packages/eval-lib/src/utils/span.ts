@@ -91,3 +91,37 @@ export function totalSpanLengthPreMerged(
 ): number {
   return mergedSpans.reduce((sum, s) => sum + spanLength(s), 0)
 }
+
+// Map an index in the whitespace-collapsed, trimmed, lowercased form of
+// `original` back to an offset in `original`.
+export function mapNormToOrig(original: string, normIdx: number): number {
+  let origPos = 0
+  let normPos = 0
+  while (origPos < original.length && /\s/.test(original[origPos])) origPos++
+  while (normPos < normIdx && origPos < original.length) {
+    if (/\s/.test(original[origPos])) {
+      while (origPos < original.length - 1 && /\s/.test(original[origPos + 1]))
+        origPos++
+    }
+    origPos++
+    normPos++
+  }
+  return origPos
+}
+
+// Find `excerpt` in `text` ignoring case and whitespace differences, mapping
+// both ends back to original offsets so the span covers the real region.
+export function normalizedFind(
+  text: string,
+  excerpt: string
+): { start: number; end: number } | null {
+  const normalize = (s: string) => s.replace(/\s+/g, " ").toLowerCase().trim()
+  const normText = normalize(text)
+  const normExcerpt = normalize(excerpt)
+  const idx = normText.indexOf(normExcerpt)
+  if (idx === -1) return null
+  return {
+    start: mapNormToOrig(text, idx),
+    end: mapNormToOrig(text, idx + normExcerpt.length)
+  }
+}
