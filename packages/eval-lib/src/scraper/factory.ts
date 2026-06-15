@@ -16,7 +16,8 @@ export function makeScraper(config?: ScraperConfig): Scraper {
   if (config && config.backend === "asimov") {
     return new AsimovContentService({
       baseUrl: config.baseUrl,
-      apiToken: config.apiToken
+      apiToken: config.apiToken,
+      pollDeadlineMs: config.pollDeadlineMs
     })
   }
   return new InProcessScraper(
@@ -38,7 +39,8 @@ export function makeParser(config?: ParserConfig): Parser {
   if (config && config.backend === "asimov") {
     return new AsimovContentService({
       baseUrl: config.baseUrl,
-      apiToken: config.apiToken
+      apiToken: config.apiToken,
+      pollDeadlineMs: config.pollDeadlineMs
     })
   }
   return new InProcessParser()

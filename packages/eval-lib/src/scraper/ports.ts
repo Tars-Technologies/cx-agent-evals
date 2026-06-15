@@ -122,12 +122,24 @@ export interface ParsedFile {
 export type ScraperConfig =
   | { backend?: "inprocess"; userAgent?: string }
   | { backend: "tarser"; baseUrl: string; apiToken: string; hmacSecret: string }
-  | { backend: "asimov"; baseUrl: string; apiToken: string }
+  | {
+      backend: "asimov"
+      baseUrl: string
+      apiToken: string
+      /** How long getResult() polls before throwing JobNotReadyError. */
+      pollDeadlineMs?: number
+    }
 
 export type ParserConfig =
   | { backend?: "inprocess" }
   | { backend: "tarser"; baseUrl: string; apiToken: string; hmacSecret: string }
-  | { backend: "asimov"; baseUrl: string; apiToken: string }
+  | {
+      backend: "asimov"
+      baseUrl: string
+      apiToken: string
+      /** How long getResult() polls before throwing JobNotReadyError. */
+      pollDeadlineMs?: number
+    }
 
 /** Normalized form of a Tarser callback after PythonContentService.normalizeCallback(). */
 export type NormalizedCallback =

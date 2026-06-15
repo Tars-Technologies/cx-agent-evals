@@ -7,7 +7,6 @@
  * that rely on Node.js built-ins unavailable in the Convex edge runtime.
  */
 import {
-  AsimovContentService,
   assertHostResolvesPublic,
   assertPublicHttpUrl,
   filterLinks,
@@ -275,11 +274,21 @@ export const pollAsimovCrawl = internalAction({
       })
       return
     }
-    const scraper = new AsimovContentService({
+    const scraper = makeScraper({
+      backend: "asimov",
       ...asimov,
       pollDeadlineMs: ASIMOV_POLL_DEADLINE_MS
     })
-    let result: Awaited<ReturnType<AsimovContentService["getResult"]>>
+    // getResult is optional on the Scraper port (only poll-based backends
+    // implement it). The asimov backend always does; guard for type-safety.
+    if (!scraper.getResult) {
+      await ctx.runMutation(internal.kb.crawl.markAsimovCrawlFailed, {
+        crawlJobId: args.crawlJobId,
+        error: "Configured scraper backend does not support polling"
+      })
+      return
+    }
+    let result: Awaited<ReturnType<NonNullable<typeof scraper.getResult>>>
     try {
       result = await scraper.getResult(job.serviceJobId, "crawl")
     } catch (error) {
