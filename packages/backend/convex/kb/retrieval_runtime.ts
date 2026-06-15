@@ -25,6 +25,7 @@ import {
   type VectorStore
 } from "@tars-inc/eval-lib"
 import { createEmbedder } from "@tars-inc/eval-lib/llm"
+import { parentSwap } from "@tars-inc/eval-lib/utils"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
@@ -322,39 +323,25 @@ function wrapWithParentSwap(
         { documentIds: [...new Set(parents.map((p) => p.documentId))] }
       )
       const parentMap = new Map(parents.map((p) => [String(p._id), p]))
-      const seen = new Set<string>()
-      const swapped: typeof children = []
-      for (const child of children) {
-        const parentId = child.chunk.metadata?.parentChunkId as
-          | string
-          | undefined
-        if (parentId && !seen.has(parentId)) {
-          seen.add(parentId)
-          const parent = parentMap.get(parentId)
-          swapped.push(
-            parent
-              ? {
-                  chunk: {
-                    id: PositionAwareChunkId(parent.chunkId),
-                    content: parent.content,
-                    docId: DocumentId(
-                      docIdMap[String(parent.documentId)] ??
-                        String(child.chunk.docId)
-                    ),
-                    start: parent.start,
-                    end: parent.end,
-                    metadata: parent.metadata ?? {}
-                  },
-                  score: child.score
-                }
-              : child
-          )
-        } else if (!parentId) {
-          swapped.push(child)
-        }
-        // children of an already-swapped parent are dropped (dedup)
-      }
-      return swapped
+      return parentSwap(children, {
+        getParentId: (child) =>
+          child.chunk.metadata?.parentChunkId as string | undefined,
+        getParent: (parentId) => parentMap.get(parentId),
+        fromParent: (parent, child) => ({
+          chunk: {
+            id: PositionAwareChunkId(parent.chunkId),
+            content: parent.content,
+            docId: DocumentId(
+              docIdMap[String(parent.documentId)] ?? String(child.chunk.docId)
+            ),
+            start: parent.start,
+            end: parent.end,
+            metadata: parent.metadata ?? {}
+          },
+          score: child.score
+        }),
+        keepChild: (child) => child
+      })
     }
   })
 }
