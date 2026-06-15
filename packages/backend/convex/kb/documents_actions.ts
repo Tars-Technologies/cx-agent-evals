@@ -8,11 +8,7 @@ import type { ParsedFile } from "@tars-inc/eval-lib/scraper"
  * - asimov: create a "parsing" placeholder and submit to Asimov; pollAsimovParse drains the
  *   result (poll, no callback) and fills it via finishParse.
  */
-import {
-  AsimovContentService,
-  JobNotReadyError,
-  makeParser
-} from "@tars-inc/eval-lib/scraper"
+import { JobNotReadyError, makeParser } from "@tars-inc/eval-lib/scraper"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
@@ -189,11 +185,22 @@ export const pollAsimovParse = internalAction({
       })
       return
     }
-    const parser = new AsimovContentService({
+    const parser = makeParser({
+      backend: "asimov",
       ...asimov,
       pollDeadlineMs: ASIMOV_POLL_DEADLINE_MS
     })
-    let result: Awaited<ReturnType<AsimovContentService["getResult"]>>
+    // getResult is optional on the Parser port (only poll-based backends
+    // implement it). The asimov backend always does; guard for type-safety.
+    if (!parser.getResult) {
+      await ctx.runMutation(internal.kb.documents.finishParse, {
+        parseServiceJobId: args.parseServiceJobId,
+        status: "failed",
+        error: "Configured parser backend does not support polling"
+      })
+      return
+    }
+    let result: Awaited<ReturnType<NonNullable<typeof parser.getResult>>>
     try {
       result = await parser.getResult(args.parseServiceJobId, "parse")
     } catch (error) {

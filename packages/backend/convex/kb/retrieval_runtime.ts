@@ -15,9 +15,9 @@ import {
   createCorpusFromDocuments,
   DocumentId,
   type Embedder,
+  makeVectorStore,
   type PipelineLLM,
   PositionAwareChunkId,
-  QdrantVectorStore,
   type Reranker,
   type ScoredChunk,
   StatelessQueryRetriever,
@@ -77,19 +77,24 @@ export function buildNativeVectorStore(
   ctx: ActionCtx,
   opts: NativeVectorStoreOpts
 ): VectorStore {
-  return new CallbackVectorStore({
-    name: "convex-native",
-    search: async (queryEmbedding, searchOpts) => {
-      const { chunks, scoreMap } = await vectorSearchWithFilter(ctx, {
-        queryEmbedding: [...queryEmbedding],
-        kbId: opts.kbId,
-        indexConfigHash: opts.indexConfigHash,
-        topK: searchOpts.k,
-        indexStrategy: opts.indexStrategy
-      })
-      return rawChunksToResults(chunks, scoreMap)
+  return makeVectorStore(
+    { backend: "native" },
+    {
+      native: {
+        name: "convex-native",
+        search: async (queryEmbedding, searchOpts) => {
+          const { chunks, scoreMap } = await vectorSearchWithFilter(ctx, {
+            queryEmbedding: [...queryEmbedding],
+            kbId: opts.kbId,
+            indexConfigHash: opts.indexConfigHash,
+            topK: searchOpts.k,
+            indexStrategy: opts.indexStrategy
+          })
+          return rawChunksToResults(chunks, scoreMap)
+        }
+      }
     }
-  })
+  )
 }
 
 /**
@@ -108,7 +113,8 @@ export function buildQdrantStore(opts: {
         "QDRANT_API_KEY if required), restart the Convex worker, and retry."
     )
   }
-  return new QdrantVectorStore({
+  return makeVectorStore({
+    backend: "qdrant",
     url: qdrant.url,
     apiKey: qdrant.apiKey,
     collection: opts.collection,
