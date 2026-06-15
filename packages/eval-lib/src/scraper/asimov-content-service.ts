@@ -46,11 +46,6 @@ const NORMAL_ASIMOV_FINISH = new Set([
   "closespider_itemcount"
 ])
 
-// Mode flag that rides inside loader_options to put Asimov into content-only
-// behavior (no S3/CSV export, no embedding, no dashboard callback). MUST match
-// the asimov-internal `tars-3.0` mode string exactly.
-const TARS_MODE = "tars-3.0"
-
 // Loader ids understood by Asimov's POST /api/data-resources. Crawl uses the
 // web loader; parse uses the PDF loader.
 const WEB_LOADER = "web_base_loader"
@@ -142,13 +137,13 @@ export class AsimovContentService implements Scraper, Parser {
     config: ScraperCrawlConfig
     callbackUrl: string
   }): Promise<{ serviceJobId: string }> {
-    // mode rides inside loader_options → no schema break on Asimov's side.
+    // content_only rides inside loader_options → no schema break on Asimov's side.
     return this.submit(
       {
         loader: WEB_LOADER,
         loader_options: {
           url: args.startUrl,
-          mode: TARS_MODE,
+          content_only: true,
           ...crawlConfigToLoaderOptions(args.config)
         }
       },
@@ -168,7 +163,7 @@ export class AsimovContentService implements Scraper, Parser {
         loader: PDF_LOADER,
         loader_options: {
           url: args.fileUrl,
-          mode: TARS_MODE,
+          content_only: true,
           // Only forward OCR-related flags when set, so Asimov applies its own
           // defaults otherwise (mirrors the Tarser parse path).
           ...(opts.ocr === undefined ? {} : { ocr: opts.ocr }),

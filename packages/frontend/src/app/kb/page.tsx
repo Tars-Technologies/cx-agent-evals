@@ -262,7 +262,11 @@ function KBPageContent() {
                         {crawlJob.status === "pending" && (
                           <div className="flex items-center justify-between">
                             <span className="text-text-dim">
-                              Queuing Tarser crawl...
+                              {crawlJob.backend === "asimov"
+                                ? "Queuing Asimov crawl..."
+                                : crawlJob.backend === "tarser"
+                                  ? "Queuing Tarser crawl..."
+                                  : "Queuing crawl..."}
                             </span>
                             <button
                               onClick={() =>

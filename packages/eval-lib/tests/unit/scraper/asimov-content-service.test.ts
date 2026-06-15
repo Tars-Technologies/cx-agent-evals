@@ -40,7 +40,7 @@ function lastCalls(): [string, RequestInit][] {
 describe("AsimovContentService submit", () => {
   beforeEach(() => vi.unstubAllGlobals())
 
-  it("startCrawl POSTs /api/data-resources with web loader, tars-3.0 mode, Bearer auth", async () => {
+  it("startCrawl POSTs /api/data-resources with web loader, content_only flag, Bearer auth", async () => {
     mockFetchSequence({ body: { data_resource_id: "dr-1" } })
     const out = await new AsimovContentService(cfg).startCrawl({
       startUrl: "https://example.com",
@@ -58,13 +58,13 @@ describe("AsimovContentService submit", () => {
     expect(sent.loader).toBe("web_base_loader")
     expect(sent.loader_options).toMatchObject({
       url: "https://example.com",
-      mode: "tars-3.0",
+      content_only: true,
       max_pages: 5,
       max_depth: 2
     })
   })
 
-  it("startParse POSTs pdf loader with tars-3.0 mode and OCR flags only when set", async () => {
+  it("startParse POSTs pdf loader with content_only flag and OCR flags only when set", async () => {
     mockFetchSequence({ body: { data_resource_id: "dr-2" } })
     const out = await new AsimovContentService(cfg).startParse({
       fileUrl: "https://x/f.pdf",
@@ -78,7 +78,7 @@ describe("AsimovContentService submit", () => {
     expect(sent.loader).toBe("pdf_loader")
     expect(sent.loader_options).toMatchObject({
       url: "https://x/f.pdf",
-      mode: "tars-3.0",
+      content_only: true,
       ocr: true,
       ocrProvider: "google/gemini-2.5-flash"
     })
@@ -357,7 +357,7 @@ describe("AsimovContentService getResult (poll + paginated drain)", () => {
   })
 
   it("with expectedKind 'parse', builds a ParserJobResult from the parsed doc in `pages` (PDF parse, files empty)", async () => {
-    // Ground truth: a PDF parse (pdf_loader, tars-3.0) stashes the parsed
+    // Ground truth: a PDF parse (pdf_loader, content_only) stashes the parsed
     // markdown into `pages` with content_type application/pdf, and `files: []`
     // (the content `files` is the discovered-file-URL set from crawls). Without
     // the hint, the old shape heuristic would mislabel this as kind:"crawl".
