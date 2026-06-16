@@ -73,37 +73,30 @@ describe("scraping: startCrawl", () => {
       name: "Test KB"
     })
 
-    // startCrawl enqueues a WorkPool action which may not resolve in test env.
-    // We wrap in try/catch and verify the records were created regardless.
-    let jobId: Id<"crawlJobs"> | undefined
-    try {
-      jobId = await authedT.mutation(api.kb.crawl.startCrawl, {
-        kbId,
-        startUrl: "https://example.com"
-      })
-    } catch {
-      // WorkPool enqueue may fail in test — that's OK.
-    }
+    // startCrawl (inprocess) must resolve and return a job id. A throw here is a
+    // real failure, not something to swallow — assert the records unconditionally.
+    const jobId = await authedT.mutation(api.kb.crawl.startCrawl, {
+      kbId,
+      startUrl: "https://example.com"
+    })
 
-    if (jobId) {
-      const job = await t.run(async (ctx) => ctx.db.get(jobId!))
-      expect(job!.status).toBe("running")
-      expect(job!.stats.discovered).toBe(1)
-      expect(job!.stats.scraped).toBe(0)
+    const job = await t.run(async (ctx) => ctx.db.get(jobId))
+    expect(job!.status).toBe("running")
+    expect(job!.stats.discovered).toBe(1)
+    expect(job!.stats.scraped).toBe(0)
 
-      // Verify seed URL was inserted
-      const urls = await t.run(async (ctx) =>
-        ctx.db
-          .query("crawlUrls")
-          .withIndex("by_job_status", (q) =>
-            q.eq("crawlJobId", jobId!).eq("status", "pending")
-          )
-          .collect()
-      )
-      expect(urls).toHaveLength(1)
-      expect(urls[0].url).toBe("https://example.com/")
-      expect(urls[0].depth).toBe(0)
-    }
+    // Verify seed URL was inserted
+    const urls = await t.run(async (ctx) =>
+      ctx.db
+        .query("crawlUrls")
+        .withIndex("by_job_status", (q) =>
+          q.eq("crawlJobId", jobId).eq("status", "pending")
+        )
+        .collect()
+    )
+    expect(urls).toHaveLength(1)
+    expect(urls[0].url).toBe("https://example.com/")
+    expect(urls[0].depth).toBe(0)
   })
 })
 

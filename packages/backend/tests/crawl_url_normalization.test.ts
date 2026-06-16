@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest"
 import { api } from "../convex/_generated/api"
 import { seedUser, setupTest, testIdentity } from "./helpers"
 
-describe("startCrawl URL hardening", () => {
+// NOTE: startCrawl only normalizes the scheme and rejects non-http(s) URLs. It does
+// NOT block private/metadata hosts — that SSRF guard (assertHostResolvesPublic +
+// isBlockedHost, incl. DNS-rebinding) runs downstream at fetch/submit time and is
+// covered in eval-lib's scraper/url-guard tests. These tests cover ONLY the
+// entrypoint's scheme + bare-domain normalization, so they assert unconditionally.
+describe("startCrawl URL normalization", () => {
   it("rejects a non-http(s) scheme up front", async () => {
     const t = setupTest()
     await seedUser(t)
@@ -21,19 +26,11 @@ describe("startCrawl URL hardening", () => {
     await seedUser(t)
     const authedT = t.withIdentity(testIdentity)
     const kbId = await authedT.mutation(api.kb.core.create, { name: "Test KB" })
-    // inprocess default enqueues a WorkPool action; wrap like the existing scraping tests.
-    let jobId: Awaited<ReturnType<typeof authedT.mutation>> | undefined
-    try {
-      jobId = await authedT.mutation(api.kb.crawl.startCrawl, {
-        kbId,
-        startUrl: "docs.example.com"
-      })
-    } catch {
-      // WorkPool enqueue may warn in test env - that's OK.
-    }
-    if (jobId) {
-      const job = await t.run(async (ctx) => ctx.db.get(jobId))
-      expect(job?.startUrl).toBe("https://docs.example.com/")
-    }
+    const jobId = await authedT.mutation(api.kb.crawl.startCrawl, {
+      kbId,
+      startUrl: "docs.example.com"
+    })
+    const job = await t.run(async (ctx) => ctx.db.get(jobId))
+    expect(job?.startUrl).toBe("https://docs.example.com/")
   })
 })

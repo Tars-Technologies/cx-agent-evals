@@ -286,7 +286,7 @@ export async function rerankerAvailable(
  * lib/vectorSearch.ts (first-seen child's score, dedupe parents, fall back to
  * the child when the parent row is missing).
  */
-function wrapWithParentSwap(
+export function wrapWithParentSwap(
   ctx: ActionCtx,
   inner: VectorStore,
   kbId: Id<"knowledgeBases">

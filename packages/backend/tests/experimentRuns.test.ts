@@ -329,4 +329,64 @@ describe("experimentRuns", () => {
     // Winner should still be set from the one that succeeded
     expect(run!.winnerId).toBe(retriever1Id)
   })
+
+  // ─── Test 6: cross-org isolation on create ───
+
+  it("rejects when the caller's org does not own the KB", async () => {
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const datasetId = await seedDataset(t, userId, kbId)
+    const retrieverId = await seedRetriever(t, userId, kbId, {
+      status: "ready"
+    })
+
+    // Same resources, different org identity → the KB org-scope check must reject.
+    const otherOrg = { ...testIdentity, org_id: "org_other999" }
+    await expect(
+      t.withIdentity(otherOrg).mutation(api.kb.experimentRuns.create, {
+        name: "Cross-org Run",
+        kbId,
+        datasetId,
+        retrieverIds: [retrieverId],
+        metricNames: ["recall"],
+        scoringWeights: { recall: 1.0, precision: 0.0 }
+      })
+    ).rejects.toThrow("Knowledge base not found")
+  })
+
+  it("rejects a retriever owned by another org even when KB+dataset pass", async () => {
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const datasetId = await seedDataset(t, userId, kbId)
+
+    // A retriever pointing at this KB but owned by a different org. The KB and
+    // dataset checks pass, so this isolates the retriever.orgId guard: dropping
+    // that single check in experimentRuns.create would let this through.
+    const foreignRetrieverId = await t.run(async (ctx) =>
+      ctx.db.insert("retrievers", {
+        orgId: "org_other999",
+        kbId,
+        name: "Foreign Retriever",
+        retrieverConfig: {},
+        indexConfigHash: "hash-index-123",
+        retrieverConfigHash: "hash-retriever-123",
+        defaultK: 5,
+        status: "ready",
+        createdBy: userId,
+        createdAt: Date.now()
+      })
+    )
+
+    const authedT = t.withIdentity(testIdentity)
+    await expect(
+      authedT.mutation(api.kb.experimentRuns.create, {
+        name: "Foreign Retriever Run",
+        kbId,
+        datasetId,
+        retrieverIds: [foreignRetrieverId],
+        metricNames: ["recall"],
+        scoringWeights: { recall: 1.0, precision: 0.0 }
+      })
+    ).rejects.toThrow("Retriever not found")
+  })
 })
