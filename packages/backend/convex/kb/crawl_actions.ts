@@ -222,11 +222,8 @@ export const submitAsimovCrawl = internalAction({
         startUrl: job.startUrl,
         config: {
           maxPages: job.config.maxPages,
-          maxDepth: job.config.maxDepth,
-          includePaths: job.config.includePaths,
-          excludePaths: job.config.excludePaths,
-          allowSubdomains: job.config.allowSubdomains
-          // crawlMode is omitted: the Asimov adapter ignores it (web-loader only).
+          maxDepth: job.config.maxDepth
+          // crawlMode is omitted: the Asimov adapter defaults to the HTTP queue.
         },
         // Asimov polls — no callback. callbackUrl is required by the port but ignored.
         callbackUrl: ""

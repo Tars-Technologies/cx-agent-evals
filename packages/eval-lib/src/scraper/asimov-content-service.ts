@@ -24,12 +24,21 @@ export interface AsimovContentServiceConfig {
   pollIntervalMs?: number
   /** Page size for the paginated content drain. Defaults to 200. */
   contentPageLimit?: number
+  /**
+   * Startup grace window during which a `not_found` status is treated as
+   * in-progress rather than terminal. Asimov returns NOT_FOUND in the brief
+   * window after POST returns the id but before the worker registers the job,
+   * so a healthy job can otherwise be declared failed on the first poll.
+   * Defaults to 30s.
+   */
+  notFoundGraceMs?: number
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const DEFAULT_POLL_DEADLINE_MS = 9 * 60 * 1000
 const DEFAULT_POLL_INTERVAL_MS = 5_000
 const DEFAULT_CONTENT_PAGE_LIMIT = 200
+const DEFAULT_NOT_FOUND_GRACE_MS = 30_000
 // Backstop so a server that keeps emitting a fresh next_cursor can't drain forever.
 const MAX_DRAIN_ITERATIONS = 100_000
 
@@ -217,14 +226,27 @@ export class AsimovContentService implements Scraper, Parser {
 
   /** Poll GET /api/data-resources/{id}/status until terminal or the deadline. */
   private async pollUntilDone(serviceJobId: string): Promise<string> {
+    const start = Date.now()
     const deadline =
-      Date.now() + (this.config.pollDeadlineMs ?? DEFAULT_POLL_DEADLINE_MS)
+      start + (this.config.pollDeadlineMs ?? DEFAULT_POLL_DEADLINE_MS)
     const interval = this.config.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS
+    // `not_found` is terminal in general, but Asimov also reports it in the
+    // brief window between POST returning the id and the worker registering the
+    // job. Treat it as in-progress until this grace deadline elapses.
+    const notFoundGraceDeadline =
+      start + (this.config.notFoundGraceMs ?? DEFAULT_NOT_FOUND_GRACE_MS)
     // First read happens immediately; subsequent reads wait `interval`.
     for (;;) {
       const status = await this.fetchStatus(serviceJobId)
       const lower = status.toLowerCase()
-      if (SUCCESS_STATUSES.has(lower) || FAILURE_STATUSES.has(lower)) {
+      // Within the startup grace window, a not-yet-registered job (not_found) is
+      // still pending — keep polling rather than declaring an early failure.
+      const notFoundPending =
+        lower === "not_found" && Date.now() < notFoundGraceDeadline
+      if (
+        !notFoundPending &&
+        (SUCCESS_STATUSES.has(lower) || FAILURE_STATUSES.has(lower))
+      ) {
         return status
       }
       if (Date.now() + interval >= deadline) {
@@ -281,7 +303,6 @@ export class AsimovContentService implements Scraper, Parser {
     const pages: ScrapedPage[] = []
     const rawPages: AsimovContentPage[] = []
     const failed: { url: string; error?: string }[] = []
-    const files: AsimovContentPage[] = []
     let finishReason: string = FinishReason.Unknown
     // The polled /status is authoritative; only fall back to the /content
     // envelope's status when the caller didn't supply one.
@@ -309,9 +330,9 @@ export class AsimovContentService implements Scraper, Parser {
           if (page) pages.push(page)
         }
       }
-      if (Array.isArray(body.files)) {
-        for (const raw of body.files as AsimovContentPage[]) files.push(raw)
-      }
+      // Asimov returns `files` as a list[str] of discovered-file URLs. The
+      // normalized crawl/parse result never surfaces them, so we don't collect
+      // them — the field stays declared on AsimovContentResponse for honesty.
       if (Array.isArray(body.failed)) {
         for (const raw of body.failed as AsimovFailedItem[]) {
           failed.push(normalizeFailed(raw))
@@ -347,12 +368,8 @@ export class AsimovContentService implements Scraper, Parser {
       return { kind: "crawl", finishReason: crawlFinish, pages, failed }
     }
 
-    // No hint: best-effort shape heuristic (legacy fallback). A parse job that
-    // returns its document in `files` (rather than `pages`) lands here.
-    if (pages.length === 0 && files.length > 0) {
-      return normalizeParseResult(files, failed, terminalStatus)
-    }
-
+    // No hint: default to a crawl result. `files` carries only discovered-file
+    // URL strings (never document markdown), so it can't stand in for a parse.
     return {
       kind: "crawl",
       finishReason: crawlFinish,
@@ -434,10 +451,11 @@ function crawlConfigToLoaderOptions(
   const out: Record<string, unknown> = {}
   if (config.maxPages !== undefined) out.max_pages = config.maxPages
   if (config.maxDepth !== undefined) out.max_depth = config.maxDepth
-  if (config.includePaths !== undefined) out.include_paths = config.includePaths
-  if (config.excludePaths !== undefined) out.exclude_paths = config.excludePaths
-  if (config.allowSubdomains !== undefined) {
-    out.allow_subdomains = config.allowSubdomains
+  // Browser mode routes the crawl onto Asimov's Playwright/Chromium queue. Only
+  // opt in for an explicit "browser" mode; "http"/undefined leave the default.
+  if (config.crawlMode === "browser") out.use_browser = true
+  if (config.preferSitemap !== undefined) {
+    out.prefer_sitemap = config.preferSitemap
   }
   return out
 }

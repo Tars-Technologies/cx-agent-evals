@@ -64,6 +64,35 @@ describe("AsimovContentService submit", () => {
     })
   })
 
+  it("startCrawl maps crawlMode 'browser' → use_browser and preferSitemap → prefer_sitemap", async () => {
+    mockFetchSequence({ body: { data_resource_id: "dr-9" } })
+    await new AsimovContentService(cfg).startCrawl({
+      startUrl: "https://example.com",
+      config: { crawlMode: "browser", preferSitemap: true },
+      callbackUrl: "ignored"
+    })
+    const [, init] = lastCalls()[0]
+    const sent = JSON.parse(init.body as string)
+    expect(sent.loader_options).toMatchObject({
+      use_browser: true,
+      prefer_sitemap: true
+    })
+  })
+
+  it("startCrawl omits use_browser for crawlMode 'http' or undefined", async () => {
+    mockFetchSequence({ body: { data_resource_id: "dr-10" } })
+    await new AsimovContentService(cfg).startCrawl({
+      startUrl: "https://example.com",
+      config: { crawlMode: "http", preferSitemap: false },
+      callbackUrl: "ignored"
+    })
+    const [, init] = lastCalls()[0]
+    const sent = JSON.parse(init.body as string)
+    expect("use_browser" in sent.loader_options).toBe(false)
+    // preferSitemap is still forwarded even when false (explicitly set).
+    expect(sent.loader_options.prefer_sitemap).toBe(false)
+  })
+
   it("startParse POSTs pdf loader with content_only flag and OCR flags only when set", async () => {
     mockFetchSequence({ body: { data_resource_id: "dr-2" } })
     const out = await new AsimovContentService(cfg).startParse({
@@ -397,7 +426,10 @@ describe("AsimovContentService getResult (poll + paginated drain)", () => {
     expect(result.file?.title).toBe("Doc")
   })
 
-  it("normalizes a parse job (files-only content, no hint) into a ParserJobResult", async () => {
+  it("ignores `files` (discovered-file URL strings) and returns a crawl when no hint", async () => {
+    // Asimov returns `files` as a list[str] of discovered-file URLs — never
+    // document markdown. With no expectedKind hint and empty `pages`, the drain
+    // must NOT mistake `files` for a parsed doc; it falls back to an empty crawl.
     mockFetchSequence(
       { body: { status: "SUCCESS" } },
       {
@@ -406,26 +438,17 @@ describe("AsimovContentService getResult (poll + paginated drain)", () => {
           finish_reason: "finished",
           next_cursor: null,
           pages: [],
-          files: [
-            {
-              url: "https://x/f.pdf",
-              markdown: "# Parsed doc",
-              metadata: { title: "Doc", pages: 3 }
-            }
-          ],
+          files: ["https://x/a.pdf", "https://x/b.pdf"],
           failed: []
         }
       }
     )
-    const result = (await svc().getResult("dr-2")) as ParserJobResult
+    const result = (await svc().getResult("dr-2")) as ScraperJobResult
     expect(result).toEqual({
-      kind: "parse",
-      status: "ok",
-      file: {
-        markdown: "# Parsed doc",
-        title: "Doc",
-        metadata: { title: "Doc", pages: 3 }
-      }
+      kind: "crawl",
+      finishReason: "finished",
+      pages: [],
+      failed: []
     })
   })
 
@@ -455,7 +478,33 @@ describe("AsimovContentService getResult (poll + paginated drain)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it("treats terminal status NOT_FOUND as terminally failed (does not poll to deadline)", async () => {
+  it("treats early NOT_FOUND as pending within the startup grace window, then drains on SUCCESS", async () => {
+    // Asimov returns NOT_FOUND in the brief window after POST returns the id but
+    // before the worker registers the job. With the grace window open, the poll
+    // must keep going rather than declare an early failure.
+    const fetchMock = mockFetchSequence(
+      { body: { status: "NOT_FOUND" } },
+      { body: { status: "NOT_FOUND" } },
+      { body: { status: "SUCCESS" } },
+      {
+        body: {
+          status: "SUCCESS",
+          finish_reason: "finished",
+          next_cursor: null,
+          pages: [{ url: "https://x/p", markdown: "# ok" }],
+          files: [],
+          failed: []
+        }
+      }
+    )
+    const result = (await svc().getResult("dr-4", "crawl")) as ScraperJobResult
+    expect(result.kind).toBe("crawl")
+    expect(result.pages).toHaveLength(1)
+    // Two NOT_FOUND polls were tolerated before SUCCESS, then one content drain.
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+  })
+
+  it("treats NOT_FOUND as terminally failed once the grace window has elapsed", async () => {
     const fetchMock = mockFetchSequence(
       { body: { status: "NOT_FOUND" } },
       {
@@ -469,7 +518,15 @@ describe("AsimovContentService getResult (poll + paginated drain)", () => {
         }
       }
     )
-    const result = (await svc().getResult("dr-4", "parse")) as ParserJobResult
+    // notFoundGraceMs: 0 closes the grace window immediately, restoring the
+    // original behavior: NOT_FOUND is terminal on the first read.
+    const s = new AsimovContentService({
+      ...cfg,
+      pollIntervalMs: 1,
+      pollDeadlineMs: 10_000,
+      notFoundGraceMs: 0
+    })
+    const result = (await s.getResult("dr-4", "parse")) as ParserJobResult
     expect(result.kind).toBe("parse")
     expect(result).toMatchObject({ kind: "parse", status: "failed" })
     // Terminal on the first status read: no polling to deadline.
