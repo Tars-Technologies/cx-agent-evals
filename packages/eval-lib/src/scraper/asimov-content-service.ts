@@ -1,4 +1,8 @@
-import { MAX_CONTENT_RESPONSE_BYTES, readCappedText } from "./http.js"
+import {
+  MAX_CONTENT_RESPONSE_BYTES,
+  MAX_STATUS_RESPONSE_BYTES,
+  readCappedText
+} from "./http.js"
 import type {
   ParsedFile,
   ParseOptions,
@@ -146,7 +150,6 @@ export class AsimovContentService implements Scraper, Parser {
     config: ScraperCrawlConfig
     callbackUrl: string
   }): Promise<{ serviceJobId: string }> {
-    // content_only rides inside loader_options → no schema break on Asimov's side.
     return this.submit(
       {
         loader: WEB_LOADER,
@@ -267,7 +270,11 @@ export class AsimovContentService implements Scraper, Parser {
         `Asimov status failed: HTTP ${res.status} ${await readCappedText(res)}`
       )
     }
-    const text = await readCappedText(res)
+    // Status embeds growing URL lists, so it can exceed the 64 KB control cap;
+    // read under the status cap and fail loudly rather than truncate mid-JSON.
+    const text = await readCappedText(res, MAX_STATUS_RESPONSE_BYTES, {
+      throwOnTruncate: true
+    })
     let body: { status?: unknown }
     try {
       body = JSON.parse(text) as { status?: unknown }

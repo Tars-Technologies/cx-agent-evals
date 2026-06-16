@@ -13,6 +13,10 @@ export const MAX_CONTROL_RESPONSE_BYTES = 64 * 1024
 // be buffered without limit, while leaving generous room for legitimate content.
 export const MAX_CONTENT_RESPONSE_BYTES = 64 * 1024 * 1024
 
+// Asimov's /status embeds URL lists that grow with crawl size, so it overflows
+// the 64 KB control cap. Intermediate cap: fits the lists, still bounds the body.
+export const MAX_STATUS_RESPONSE_BYTES = 16 * 1024 * 1024
+
 /**
  * Read a response body as text, decoding at most ~maxBytes. Streams
  * chunk-by-chunk and slices each chunk to the remaining budget before decoding,
