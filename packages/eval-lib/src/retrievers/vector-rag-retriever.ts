@@ -3,7 +3,10 @@ import type { Embedder } from "../embedders/embedder.interface.js"
 import type { Reranker } from "../rerankers/reranker.interface.js"
 import type { Corpus, PositionAwareChunk } from "../types/index.js"
 import { InMemoryVectorStore } from "../vector-stores/in-memory.js"
-import type { VectorStore } from "../vector-stores/vector-store.interface.js"
+import {
+  assertVectorSearchResults,
+  type VectorStore
+} from "../vector-stores/vector-store.interface.js"
 import type { Retriever } from "./retriever.interface.js"
 
 export interface VectorRAGRetrieverConfig {
@@ -59,6 +62,7 @@ export class VectorRAGRetriever implements Retriever {
 
     const queryEmbedding = await this._embedder.embedQuery(query)
     const results = await this._vectorStore.search(queryEmbedding, { k })
+    assertVectorSearchResults(results)
     let retrievedChunks = results.map((r) => r.chunk)
 
     if (this._reranker) {

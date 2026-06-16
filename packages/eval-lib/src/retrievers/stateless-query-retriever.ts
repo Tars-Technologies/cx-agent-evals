@@ -6,6 +6,7 @@ import type {
   VectorFilter,
   VectorStore
 } from "../vector-stores/vector-store.interface.js"
+import { assertVectorSearchResults } from "../vector-stores/vector-store.interface.js"
 import type { ChunkSource } from "./chunk-source.interface.js"
 import type { PipelineConfig, RefinementStepConfig } from "./pipeline/config.js"
 import {
@@ -234,6 +235,7 @@ export class StatelessQueryRetriever {
       k,
       filter: this._deps.filter
     })
+    assertVectorSearchResults(results)
     return results.map(({ chunk, score }) => ({ chunk, score }))
   }
 

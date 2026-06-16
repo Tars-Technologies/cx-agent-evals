@@ -7,6 +7,29 @@ export interface VectorSearchResult {
   readonly score: number
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+export function assertVectorSearchResults(
+  results: unknown,
+  source = "VectorStore.search"
+): asserts results is VectorSearchResult[] {
+  if (!Array.isArray(results)) {
+    throw new Error(`${source} returned invalid results: expected an array`)
+  }
+
+  results.forEach((result, index) => {
+    if (!isRecord(result)) {
+      throw new Error(`${source} returned an invalid result at index ${index}`)
+    }
+    const chunk = result.chunk
+    if (!isRecord(chunk) || typeof result.score !== "number") {
+      throw new Error(`${source} returned an invalid result at index ${index}`)
+    }
+  })
+}
+
 /**
  * Scope/filter for vector-store operations. All defined fields must match.
  * Stores that hold a single scope (e.g. one Qdrant collection per

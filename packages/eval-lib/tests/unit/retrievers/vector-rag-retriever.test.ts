@@ -55,14 +55,17 @@ describe("VectorRAGRetriever", () => {
       add: vi.fn().mockResolvedValue(undefined),
       search: vi.fn().mockResolvedValue([
         {
-          id: PositionAwareChunkId("pa_1"),
-          content: "chunk1",
-          docId: DocumentId("doc1"),
-          start: 0,
-          end: 6,
-          metadata: {}
+          chunk: {
+            id: PositionAwareChunkId("pa_1"),
+            content: "chunk1",
+            docId: DocumentId("doc1"),
+            start: 0,
+            end: 6,
+            metadata: {}
+          },
+          score: 0.9
         }
-      ] as PositionAwareChunk[]),
+      ]),
       clear: vi.fn().mockResolvedValue(undefined)
     }
 
@@ -183,6 +186,31 @@ describe("VectorRAGRetriever", () => {
       expect(mockEmbedder.embedQuery).toHaveBeenCalledWith("test query")
       expect(mockVectorStore.search).toHaveBeenCalledWith([1, 0, 0], { k: 5 })
       expect(results).toHaveLength(1)
+      expect(results[0]?.id).toBe(PositionAwareChunkId("pa_1"))
+    })
+
+    it("throws a clear error when vector store returns raw chunks instead of scored results", async () => {
+      mockVectorStore.search = vi.fn().mockResolvedValue([
+        {
+          id: PositionAwareChunkId("pa_1"),
+          content: "chunk1",
+          docId: DocumentId("doc1"),
+          start: 0,
+          end: 6,
+          metadata: {}
+        }
+      ])
+      const retriever = new VectorRAGRetriever({
+        chunker: mockChunker,
+        embedder: mockEmbedder,
+        vectorStore: mockVectorStore
+      })
+
+      await retriever.init(corpus)
+
+      await expect(retriever.retrieve("test query", 5)).rejects.toThrow(
+        "VectorStore.search returned an invalid result at index 0"
+      )
     })
 
     it("should apply reranker when provided", async () => {
