@@ -97,7 +97,7 @@ export const handleTarserCallback = internalAction({
       if (!firstSeen) return { status: 200 } // replay: idempotent ack
       try {
         if (cb.kind === "page") {
-          await ctx.runMutation(internal.kb.crawl.handleTarserPage, {
+          await ctx.runMutation(internal.kb.crawl.ingestCrawlPage, {
             crawlJobId: job._id,
             url: cb.url,
             title: cb.title ?? cb.url,

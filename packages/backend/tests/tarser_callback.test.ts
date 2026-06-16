@@ -433,7 +433,7 @@ describe("crawl callback terminal/empty-url guards", () => {
       userId as unknown as string,
       "completed"
     )
-    await t.mutation(internal.kb.crawl.handleTarserPage, {
+    await t.mutation(internal.kb.crawl.ingestCrawlPage, {
       crawlJobId: jobId,
       url: "https://example.com/late",
       title: "Late",
@@ -473,7 +473,7 @@ describe("crawl callback terminal/empty-url guards", () => {
       userId as unknown as string,
       "running"
     )
-    await t.mutation(internal.kb.crawl.handleTarserPage, {
+    await t.mutation(internal.kb.crawl.ingestCrawlPage, {
       crawlJobId: jobId,
       url: "",
       title: "",

@@ -249,7 +249,7 @@ export const submitAsimovCrawl = internalAction({
 
 /**
  * Poll an Asimov crawl to completion, then feed the existing Tarser crawl
- * mutations (handleTarserPage / handleTarserPageFailed / handleTarserJobComplete)
+ * mutations (ingestCrawlPage / handleTarserPageFailed / handleTarserJobComplete)
  * with the drained pages — reusing the same idempotent ingestion path. Self-
  * reschedules while the crawl is still running (JobNotReadyError). No callback
  * route exists for asimov.
@@ -321,7 +321,7 @@ export const pollAsimovCrawl = internalAction({
     // completion (the action has no WorkPool auto-retry).
     try {
       for (const page of result.pages) {
-        await ctx.runMutation(internal.kb.crawl.handleTarserPage, {
+        await ctx.runMutation(internal.kb.crawl.ingestCrawlPage, {
           crawlJobId: args.crawlJobId,
           url: page.url,
           title: page.metadata.title || page.url,

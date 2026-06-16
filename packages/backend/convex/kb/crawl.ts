@@ -538,8 +538,6 @@ export const markAsimovCrawlFailed = internalMutation({
   }
 })
 
-// ─── Tarser callback dispatch (called by http.ts after HMAC verify) ───
-
 export const getJobByServiceJob = internalQuery({
   args: { serviceJobId: v.string() },
   handler: async (ctx, args) => {
@@ -552,7 +550,7 @@ export const getJobByServiceJob = internalQuery({
   }
 })
 
-export const handleTarserPage = internalMutation({
+export const ingestCrawlPage = internalMutation({
   args: {
     crawlJobId: v.id("crawlJobs"),
     url: v.string(),
