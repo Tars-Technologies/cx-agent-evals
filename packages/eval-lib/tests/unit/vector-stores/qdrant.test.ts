@@ -163,8 +163,12 @@ describe("QdrantVectorStore", () => {
       "https://qdrant.example.com:6333/collections/kb_x_abcdef"
     )
     expect(createInit.method).toBe("PUT")
+    // Born hardened by default: on-disk vectors/payload, int8 quant, m=0 HNSW.
     expect(JSON.parse(createInit.body)).toEqual({
-      vectors: { size: 3, distance: "Cosine" }
+      vectors: { size: 3, distance: "Cosine", on_disk: true },
+      on_disk_payload: true,
+      hnsw_config: { m: 0, payload_m: 16 },
+      quantization_config: { scalar: { type: "int8", always_ram: true } }
     })
     const indexedFields = fetchMock.mock.calls
       .slice(2, 5)
@@ -182,6 +186,62 @@ describe("QdrantVectorStore", () => {
       { field_name: "indexConfigHash", field_schema: "keyword" },
       { field_name: "documentId", field_schema: "keyword" }
     ])
+  })
+
+  it("add(): lets a consumer override the create-time tuning for experiments", async () => {
+    // Provider library: a consumer can dial the knobs (e.g. a single-tenant
+    // collection that needs a global HNSW graph, or disabling quantization).
+    const tuned = new QdrantVectorStore({
+      url: "https://qdrant.example.com:6333",
+      collection: "kb_x_abcdef",
+      dimension: 3,
+      retry: { maxRetries: 0 },
+      tuning: {
+        onDisk: false,
+        onDiskPayload: false,
+        hnsw: { m: 16, payloadM: 8 },
+        quantization: false
+      }
+    })
+    fetchMock
+      .mockResolvedValueOnce(new Response("not found", { status: 404 })) // GET
+      .mockResolvedValueOnce(okJson({ status: "ok", result: true })) // PUT create
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index kbId
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index indexConfigHash
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index documentId
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // upsert
+    await tuned.add([chunk("c1")], [[1, 0, 0]], VALID_SCOPE)
+    // Quantization disabled => the key is omitted entirely, not sent as null.
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      vectors: { size: 3, distance: "Cosine", on_disk: false },
+      on_disk_payload: false,
+      hnsw_config: { m: 16, payload_m: 8 }
+    })
+  })
+
+  it("add(): merges partial tuning over the production defaults", async () => {
+    // Setting only one knob keeps the rest at their hardened defaults.
+    const tuned = new QdrantVectorStore({
+      url: "https://qdrant.example.com:6333",
+      collection: "kb_x_abcdef",
+      dimension: 3,
+      retry: { maxRetries: 0 },
+      tuning: { hnsw: { m: 16 } }
+    })
+    fetchMock
+      .mockResolvedValueOnce(new Response("not found", { status: 404 })) // GET
+      .mockResolvedValueOnce(okJson({ status: "ok", result: true })) // PUT create
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index kbId
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index indexConfigHash
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // index documentId
+      .mockResolvedValueOnce(okJson({ status: "ok", result: {} })) // upsert
+    await tuned.add([chunk("c1")], [[1, 0, 0]], VALID_SCOPE)
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      vectors: { size: 3, distance: "Cosine", on_disk: true },
+      on_disk_payload: true,
+      hnsw_config: { m: 16, payload_m: 16 },
+      quantization_config: { scalar: { type: "int8", always_ram: true } }
+    })
   })
 
   it("add(): throws loudly on collection dimension mismatch", async () => {

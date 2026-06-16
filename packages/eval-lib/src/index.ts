@@ -59,6 +59,7 @@ export {
 } from "./types/index.js"
 export type {
   CallbackVectorStoreConfig,
+  QdrantCollectionTuning,
   QdrantVectorStoreConfig,
   VectorFilter,
   VectorSearchOptions,

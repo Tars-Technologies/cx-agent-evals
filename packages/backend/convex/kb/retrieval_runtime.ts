@@ -428,11 +428,11 @@ export async function buildStatelessRetriever(
     embedder,
     llm,
     reranker,
-    // The shared Qdrant collection holds many tenants and configs, so search
-    // MUST filter by kbId (tenant isolation) and indexConfigHash (config
-    // isolation) to avoid serving another tenant's or config's points. The
-    // native store ignores this filter and scopes via its own captured
-    // options, so one filter object is correct for both backends.
+    // Shared Qdrant collection: search MUST filter by kbId + indexConfigHash
+    // for tenant/config isolation. kbId is also load-bearing for correctness -
+    // the collection uses HNSW m=0 (per-tenant subgraphs), so an unfiltered
+    // query has no graph to traverse. Never drop it. The native store ignores
+    // this filter and scopes via its own captured options.
     filter: {
       kbId: String(opts.kbId),
       indexConfigHash: opts.indexConfigHash

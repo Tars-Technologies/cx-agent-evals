@@ -12,6 +12,31 @@ import type {
   VectorStore
 } from "./vector-store.interface.js"
 
+/**
+ * Create-time collection tuning, applied only when the collection is first
+ * created. Omitted fields keep their production defaults, so a bare store is
+ * born hardened; a consumer overrides only what it wants to experiment with.
+ */
+export interface QdrantCollectionTuning {
+  /** Store vectors on disk instead of RAM. Default true. */
+  readonly onDisk?: boolean
+  /** Store payloads on disk instead of RAM. Default true. */
+  readonly onDiskPayload?: boolean
+  /**
+   * HNSW params. Default `{ m: 0, payloadM: 16 }` builds per-tenant subgraphs
+   * (no global graph), so every search must filter on the tenant key (`kbId`).
+   * A single-tenant consumer that searches unfiltered must set `m` > 0.
+   */
+  readonly hnsw?: { readonly m?: number; readonly payloadM?: number }
+  /**
+   * Scalar quantization. Default `{ type: "int8", alwaysRam: true }`. Pass
+   * `false` for full-precision vectors with no quantization.
+   */
+  readonly quantization?:
+    | false
+    | { readonly type?: "int8"; readonly alwaysRam?: boolean }
+}
+
 export interface QdrantVectorStoreConfig {
   /** Base URL including port, e.g. https://xyz.cloud.qdrant.io:6333 */
   readonly url: string
@@ -24,6 +49,8 @@ export interface QdrantVectorStoreConfig {
   readonly retry?: { readonly maxRetries?: number; readonly backoffMs?: number }
   /** Per-request timeout in ms; aborts a hung fetch so withRetry can retry. Default 30000. */
   readonly timeoutMs?: number
+  /** Create-time collection tuning; defaults to a hardened multi-tenant config. */
+  readonly tuning?: QdrantCollectionTuning
 }
 
 export interface QdrantPointScope {
@@ -120,6 +147,42 @@ export class QdrantVectorStore implements VectorStore {
     })
   }
 
+  /**
+   * Build the create-collection body, merging `tuning` over the hardened
+   * defaults. Distance/size stay fixed (Cosine, configured dimension): both are
+   * immutable in Qdrant, so they are not tunable knobs.
+   */
+  private _createCollectionBody(): Record<string, unknown> {
+    const tuning = this._cfg.tuning ?? {}
+    const onDisk = tuning.onDisk ?? true
+    const onDiskPayload = tuning.onDiskPayload ?? true
+    const m = tuning.hnsw?.m ?? 0
+    const payloadM = tuning.hnsw?.payloadM ?? 16
+
+    const body: Record<string, unknown> = {
+      vectors: {
+        size: this._cfg.dimension,
+        distance: "Cosine",
+        on_disk: onDisk
+      },
+      on_disk_payload: onDiskPayload,
+      hnsw_config: { m, payload_m: payloadM }
+    }
+
+    // `false` disables quantization entirely (full-precision vectors); omit the
+    // key rather than sending null.
+    if (tuning.quantization !== false) {
+      const quant = tuning.quantization ?? {}
+      body.quantization_config = {
+        scalar: {
+          type: quant.type ?? "int8",
+          always_ram: quant.alwaysRam ?? true
+        }
+      }
+    }
+    return body
+  }
+
   /** Create the collection if absent; throw on dimension mismatch. */
   async ensureCollection(): Promise<void> {
     if (this._collectionEnsured) return
@@ -128,9 +191,11 @@ export class QdrantVectorStore implements VectorStore {
     } catch (err) {
       if (err instanceof QdrantHttpError && err.status === 404) {
         try {
-          await this._request("PUT", `/collections/${this._cfg.collection}`, {
-            vectors: { size: this._cfg.dimension, distance: "Cosine" }
-          })
+          await this._request(
+            "PUT",
+            `/collections/${this._cfg.collection}`,
+            this._createCollectionBody()
+          )
         } catch (createErr) {
           // Concurrent indexers race to create the same collection; the
           // losers get a 409. Treat it as created, but re-verify dimension.
