@@ -104,13 +104,13 @@ export const handleTarserCallback = internalAction({
             markdown: cb.markdown
           })
         } else if (cb.kind === "page_failed") {
-          await ctx.runMutation(internal.kb.crawl.handleTarserPageFailed, {
+          await ctx.runMutation(internal.kb.crawl.recordCrawlPageFailed, {
             crawlJobId: job._id,
             url: cb.url,
             error: cb.error
           })
         } else if (cb.kind === "job_complete") {
-          await ctx.runMutation(internal.kb.crawl.handleTarserJobComplete, {
+          await ctx.runMutation(internal.kb.crawl.completeCrawlJob, {
             crawlJobId: job._id,
             finishReason: cb.finishReason,
             stats: cb.stats

@@ -641,7 +641,7 @@ export const ingestCrawlPage = internalMutation({
   }
 })
 
-export const handleTarserJobComplete = internalMutation({
+export const completeCrawlJob = internalMutation({
   args: {
     crawlJobId: v.id("crawlJobs"),
     finishReason: v.string(),
@@ -659,7 +659,7 @@ export const handleTarserJobComplete = internalMutation({
     if (!job || TERMINAL_CRAWL_STATUSES.has(job.status)) return
     // Reconcile the remote aggregate with our locally-counted page failures:
     // a remote `failed: 0` must not erase failures recorded via per-page
-    // callbacks (handleTarserPageFailed), which would mislabel the job
+    // callbacks (recordCrawlPageFailed), which would mislabel the job
     // "completed" instead of "completed_with_errors".
     const failed = Math.max(args.stats.failed ?? 0, job.stats.failed)
     const scraped = job.stats.scraped
@@ -682,8 +682,8 @@ export const handleTarserJobComplete = internalMutation({
   }
 })
 
-/** Record a Tarser page failure so it counts toward the job's failed stat. */
-export const handleTarserPageFailed = internalMutation({
+/** Record a crawl page failure so it counts toward the job's failed stat. */
+export const recordCrawlPageFailed = internalMutation({
   args: {
     crawlJobId: v.id("crawlJobs"),
     url: v.string(),

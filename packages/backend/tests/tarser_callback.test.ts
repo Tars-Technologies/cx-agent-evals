@@ -453,7 +453,7 @@ describe("crawl callback terminal/empty-url guards", () => {
       "failed",
       "reaped: no callback activity"
     )
-    await t.mutation(internal.kb.crawl.handleTarserJobComplete, {
+    await t.mutation(internal.kb.crawl.completeCrawlJob, {
       crawlJobId: jobId,
       finishReason: "finished",
       stats: { visited: 1, failed: 0 }
