@@ -10,8 +10,32 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * Thrown when a request exceeds its own `timeoutMs` and is aborted. Kept
+ * distinct from a transient network error so the retry policy can fail fast:
+ * re-running the same call only re-aborts at the same deadline, burning the
+ * backoff schedule without any chance of success.
+ */
+export class TimeoutError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "TimeoutError"
+  }
+}
+
+/** AbortError is a DOMException, not necessarily an Error subclass; match by name. */
+function isAbortError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { name?: unknown }).name === "AbortError"
+  )
+}
+
 /** Default retry predicate: transient HTTP failures only (see isRetryableHttpStatus). */
 function defaultShouldRetry(error: unknown): boolean {
+  // A self-induced timeout will only time out again on retry; fail fast.
+  if (error instanceof TimeoutError) return false
   return isRetryableHttpStatus(
     error instanceof HttpError ? error.status : undefined
   )
@@ -89,8 +113,12 @@ export async function requestJSON<T>(options: RequestJSONOptions): Promise<T> {
     async () => {
       const controller =
         timeoutMs !== undefined ? new AbortController() : undefined
+      let timedOut = false
       const timer = controller
-        ? setTimeout(() => controller.abort(), timeoutMs)
+        ? setTimeout(() => {
+            timedOut = true
+            controller.abort()
+          }, timeoutMs)
         : undefined
       try {
         const response = await fetch(url, {
@@ -106,6 +134,15 @@ export async function requestJSON<T>(options: RequestJSONOptions): Promise<T> {
         }
 
         return (await response.json()) as T
+      } catch (err) {
+        // Surface our own timeout abort as a TimeoutError so defaultShouldRetry
+        // fails fast instead of re-aborting at the same deadline three times.
+        if (timedOut && isAbortError(err)) {
+          throw new TimeoutError(
+            `${provider} request timed out after ${timeoutMs}ms`
+          )
+        }
+        throw err
       } finally {
         if (timer !== undefined) clearTimeout(timer)
       }
@@ -152,13 +189,19 @@ export interface PostJSONOptions {
 
   /**
    * Per-request timeout in ms; aborts a hung fetch so a wedged provider call
-   * cannot stack retries and starve the concurrency pool. Defaults to 30000.
+   * cannot stack retries and starve the concurrency pool. Defaults to 120000 —
+   * high enough that a large embedding/rerank batch is not aborted mid-flight,
+   * while still bounding a genuinely wedged connection.
    */
   readonly timeoutMs?: number
 }
 
-/** Default per-request timeout for {@link postJSON} (ms). */
-const DEFAULT_POST_TIMEOUT_MS = 30_000
+/**
+ * Default per-request timeout for {@link postJSON} (ms). Sized for the slow
+ * path (large embedding/rerank batches over HTTP), not the typical call; a
+ * self-induced timeout is not retried (see {@link TimeoutError}).
+ */
+const DEFAULT_POST_TIMEOUT_MS = 120_000
 
 /**
  * POST a JSON payload to an API endpoint and return the parsed response. Thin
@@ -168,8 +211,9 @@ const DEFAULT_POST_TIMEOUT_MS = 30_000
  * name, HTTP status, and the raw response body for debuggability. Non-retryable
  * 4xx (e.g. a bad API key) fail fast instead of burning the backoff schedule.
  *
- * Every request carries a timeout (default 30000ms) so a hung provider
- * (embed/rerank over HTTP) aborts instead of holding a concurrency slot open.
+ * Every request carries a timeout (default 120000ms) so a hung provider
+ * (embed/rerank over HTTP) aborts instead of holding a concurrency slot open;
+ * a timeout fails fast rather than retrying into the same deadline.
  */
 export async function postJSON<T>(options: PostJSONOptions): Promise<T> {
   return requestJSON<T>({

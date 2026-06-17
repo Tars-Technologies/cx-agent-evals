@@ -240,6 +240,32 @@ describe("postJSON", () => {
       expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal)
     })
 
+    it("does not retry a self-induced timeout (re-running only re-aborts)", async () => {
+      // A hung provider that honours the AbortSignal. With retries enabled, a
+      // timeout must still fail fast: retrying re-aborts at the same deadline.
+      fetchSpy.mockImplementation(
+        (_url, init) =>
+          new Promise((_resolve, reject) => {
+            const signal = (init as RequestInit | undefined)?.signal
+            signal?.addEventListener("abort", () =>
+              reject(new DOMException("Aborted", "AbortError"))
+            )
+          })
+      )
+
+      await expect(
+        postJSON({
+          url: "https://api.example.com/v1/embed",
+          provider: "Test",
+          body: {},
+          timeoutMs: 20,
+          retry: { maxRetries: 3, backoffMs: 1 }
+        })
+      ).rejects.toThrow(/timed out/i)
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+    })
+
     it("passes an AbortSignal by default (no explicit timeoutMs)", async () => {
       fetchSpy.mockResolvedValueOnce(mockFetchResponse({ ok: true }))
 

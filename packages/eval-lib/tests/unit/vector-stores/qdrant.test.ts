@@ -339,7 +339,10 @@ describe("QdrantVectorStore", () => {
         }
       })
     )
-    const results = await store.search([1, 0, 0], { k: 5 })
+    const results = await store.search([1, 0, 0], {
+      k: 5,
+      filter: { kbId: "kb1" }
+    })
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe(
       "https://qdrant.example.com:6333/collections/kb_x_abcdef/points/query"
@@ -347,7 +350,8 @@ describe("QdrantVectorStore", () => {
     expect(JSON.parse(init.body)).toEqual({
       query: [1, 0, 0],
       limit: 5,
-      with_payload: true
+      with_payload: true,
+      filter: { must: [{ key: "kbId", match: { value: "kb1" } }] }
     })
     expect(results).toHaveLength(1)
     expect(String(results[0].chunk.id)).toBe("c1")
@@ -356,13 +360,19 @@ describe("QdrantVectorStore", () => {
     expect(results[0].score).toBe(0.9)
   })
 
-  it("search(): sends a payload filter for documentId", async () => {
+  it("search(): scopes a documentId query within its tenant (kbId + documentId)", async () => {
     fetchMock.mockResolvedValueOnce(
       okJson({ status: "ok", result: { points: [] } })
     )
-    await store.search([1, 0, 0], { k: 2, filter: { documentId: "cvx1" } })
+    await store.search([1, 0, 0], {
+      k: 2,
+      filter: { kbId: "kb1", documentId: "cvx1" }
+    })
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).filter).toEqual({
-      must: [{ key: "documentId", match: { value: "cvx1" } }]
+      must: [
+        { key: "kbId", match: { value: "kb1" } },
+        { key: "documentId", match: { value: "cvx1" } }
+      ]
     })
   })
 
@@ -374,6 +384,19 @@ describe("QdrantVectorStore", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).filter).toEqual({
       must: [{ key: "kbId", match: { value: "kb1" } }]
     })
+  })
+
+  it("search(): refuses an unscoped query without a tenant kbId", async () => {
+    // Symmetric with add()/clear(): a read against the shared collection must be
+    // tenant-scoped. No filter, or a filter that omits kbId, fails closed and
+    // issues no request.
+    await expect(store.search([1, 0, 0], { k: 2 })).rejects.toThrow(
+      /tenant scope|filter\.kbId/i
+    )
+    await expect(
+      store.search([1, 0, 0], { k: 2, filter: { documentId: "cvx1" } })
+    ).rejects.toThrow(/tenant scope|filter\.kbId/i)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it("deleteByDocument(): deletes points by payload filter", async () => {
@@ -481,7 +504,9 @@ describe("QdrantVectorStore", () => {
     // Store parity with native/in-memory: a missing collection yields no
     // results rather than an opaque 404 throw.
     fetchMock.mockResolvedValueOnce(new Response("not found", { status: 404 }))
-    await expect(store.search([1, 0, 0], { k: 5 })).resolves.toEqual([])
+    await expect(
+      store.search([1, 0, 0], { k: 5, filter: { kbId: "kb1" } })
+    ).resolves.toEqual([])
   })
 
   it("omits the api-key header when no key configured", async () => {
@@ -501,9 +526,9 @@ describe("QdrantVectorStore", () => {
 
   it("non-2xx responses throw with provider/status/body", async () => {
     fetchMock.mockResolvedValue(new Response("boom", { status: 500 }))
-    await expect(store.search([1, 0, 0], { k: 1 })).rejects.toThrow(
-      /Qdrant API error: 500/
-    )
+    await expect(
+      store.search([1, 0, 0], { k: 1, filter: { kbId: "kb1" } })
+    ).rejects.toThrow(/Qdrant API error: 500/)
   })
 
   it("does not retry non-retryable 4xx responses (e.g. bad key)", async () => {
@@ -515,9 +540,9 @@ describe("QdrantVectorStore", () => {
       retry: { maxRetries: 3, backoffMs: 0 }
     })
     fetchMock.mockResolvedValue(new Response("forbidden", { status: 403 }))
-    await expect(retrying.search([1, 0, 0], { k: 1 })).rejects.toThrow(
-      /Qdrant API error: 403/
-    )
+    await expect(
+      retrying.search([1, 0, 0], { k: 1, filter: { kbId: "kb1" } })
+    ).rejects.toThrow(/Qdrant API error: 403/)
     // 403 is a client error: fail fast, no retry storm.
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -534,9 +559,9 @@ describe("QdrantVectorStore", () => {
     fetchMock.mockImplementation(
       async () => new Response("server error", { status: 503 })
     )
-    await expect(retrying.search([1, 0, 0], { k: 1 })).rejects.toThrow(
-      /Qdrant API error: 503/
-    )
+    await expect(
+      retrying.search([1, 0, 0], { k: 1, filter: { kbId: "kb1" } })
+    ).rejects.toThrow(/Qdrant API error: 503/)
     // Initial attempt + 2 retries.
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })

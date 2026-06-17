@@ -326,6 +326,16 @@ export class QdrantVectorStore implements VectorStore {
     queryEmbedding: readonly number[],
     opts: VectorSearchOptions
   ): Promise<VectorSearchResult[]> {
+    // Fail closed on the shared collection, symmetric with add()/clear(): every
+    // read MUST be scoped to a tenant. Without kbId the query would run against
+    // every co-tenant's vectors (the hardened m=0 default also leaves no graph
+    // to traverse), so refuse rather than silently issue an unscoped query.
+    if (!opts.filter?.kbId) {
+      throw new Error(
+        "QdrantVectorStore.search: refusing to query the shared collection " +
+          "without a tenant scope; pass filter.kbId"
+      )
+    }
     const body: Record<string, unknown> = {
       query: [...queryEmbedding],
       limit: opts.k,
