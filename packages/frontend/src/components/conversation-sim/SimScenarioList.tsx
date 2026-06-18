@@ -4,6 +4,20 @@ import { useQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import type { Id } from "@convex/_generated/dataModel";
 
+// Derive a run's evaluation verdict/score from its evaluatorResults, which are the
+// real source of truth. The scalar run.passed/run.score may be unset on older runs,
+// so deriving here keeps the badge correct regardless. null = not evaluated.
+function runVerdict(run: { evaluatorResults?: { passed: boolean }[] }): boolean | null {
+  const er = run.evaluatorResults;
+  if (!er || er.length === 0) return null;
+  return er.every((x) => x.passed);
+}
+function runScore(run: { evaluatorResults?: { passed: boolean }[] }): number | null {
+  const er = run.evaluatorResults;
+  if (!er || er.length === 0) return null;
+  return er.filter((x) => x.passed).length / er.length;
+}
+
 export function SimScenarioList({
   simulationId,
   simulation,
@@ -74,7 +88,11 @@ export function SimScenarioList({
         {[...grouped.entries()].map(([scenarioId, scenarioRuns], scenarioIndex) => {
           const allConversationsComplete = scenarioRuns.every(r => r.status === "completed" || r.status === "failed");
           const isRunning = scenarioRuns.some(r => r.status === "running");
-          const allPassed = scenarioRuns.every(r => r.passed);
+          const verdicts = scenarioRuns.map((r) => runVerdict(r));
+          // "Not evaluated" (no judges ran / no verdicts) is distinct from FAIL —
+          // only show PASS/FAIL once at least one run has a real verdict.
+          const evaluated = verdicts.some((v) => v !== null);
+          const allPassed = scenarioRuns.length > 0 && verdicts.every((v) => v === true);
           const evaluationDone = simulation?.status === "completed";
           const isSelected = scenarioRuns.some(r => r._id === selectedRunId);
           const scenarioLabel = `SCE-${String(scenarioIndex + 1).padStart(3, "0")}`;
@@ -112,18 +130,27 @@ export function SimScenarioList({
                       {allConversationsComplete ? "DONE" : isRunning ? "RUNNING" : "PENDING"}
                     </span>
                   ) : evaluationDone ? (
-                    <span className={`flex-shrink-0 ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                      allPassed
-                        ? "bg-green-500/15 text-green-400"
-                        : "bg-red-500/15 text-red-400"
-                    }`}>
-                      {allPassed ? "PASS" : "FAIL"}
-                    </span>
+                    !evaluated ? (
+                      <span className="flex-shrink-0 ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded bg-text-dim/10 text-text-dim">
+                        NOT EVALUATED
+                      </span>
+                    ) : (
+                      <span className={`flex-shrink-0 ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                        allPassed
+                          ? "bg-green-500/15 text-green-400"
+                          : "bg-red-500/15 text-red-400"
+                      }`}>
+                        {allPassed ? "PASS" : "FAIL"}
+                      </span>
+                    )
                   ) : null}
                 </div>
                 {/* Run dots */}
                 <div className="flex gap-1.5 mt-1.5">
-                  {scenarioRuns.map((run, i) => (
+                  {scenarioRuns.map((run, i) => {
+                    const verdict = runVerdict(run);
+                    const score = runScore(run);
+                    return (
                     <button
                       key={run._id}
                       onClick={(e) => {
@@ -143,18 +170,19 @@ export function SimScenarioList({
                             ? run.status === "completed"
                               ? "bg-green-400"
                               : "bg-red-400"
-                            : run.passed == null
+                            : verdict == null
                               ? "bg-text-dim/40"
-                              : run.passed
+                              : verdict
                                 ? "bg-green-400"
                                 : "bg-red-400"
                       }`} />
                       Run {i + 1}
-                      {run.score != null && (
-                        <span className="text-text-dim">{(run.score * 100).toFixed(0)}%</span>
+                      {score != null && (
+                        <span className="text-text-dim">{(score * 100).toFixed(0)}%</span>
                       )}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
