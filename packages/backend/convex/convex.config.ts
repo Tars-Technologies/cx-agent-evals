@@ -8,5 +8,6 @@ app.use(workpool, { name: "experimentPool" });
 app.use(workpool, { name: "scrapingPool" });
 app.use(workpool, { name: "livechatAnalysisPool" });
 app.use(workpool, { name: "conversationSimPool" });
+app.use(workpool, { name: "conversationGenPool" });
 
 export default app;

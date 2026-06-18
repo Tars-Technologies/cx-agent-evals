@@ -9,7 +9,7 @@ import {
 import { getAuthContext } from "../lib/auth";
 import type { Id } from "../_generated/dataModel";
 
-const pool = new Workpool(components.conversationSimPool, {
+const pool = new Workpool(components.conversationGenPool, {
   maxParallelism: 1,
 });
 
