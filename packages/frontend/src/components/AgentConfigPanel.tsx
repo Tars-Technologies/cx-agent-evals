@@ -41,7 +41,7 @@ export default function AgentConfigPanel({ agentId }: AgentConfigPanelProps) {
   const [outOfScope, setOutOfScope] = useState("")
   const [escalationRules, setEscalationRules] = useState("")
   const [compliance, setCompliance] = useState("")
-  const [model, setModel] = useState("claude-sonnet-4-20250514")
+  const [model, setModel] = useState("claude-sonnet-4-6")
   const [enableReflection, setEnableReflection] = useState(false)
   const [retrieverIds, setRetrieverIds] = useState<Id<"retrievers">[]>([])
   const [additionalInstructions, setAdditionalInstructions] = useState("")
@@ -374,9 +374,6 @@ export default function AgentConfigPanel({ agentId }: AgentConfigPanelProps) {
                 <optgroup label="Claude (Anthropic)">
                   <option value="claude-opus-4-6">Claude Opus 4.6</option>
                   <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
-                  <option value="claude-sonnet-4-20250514">
-                    Claude Sonnet 4
-                  </option>
                   <option value="claude-haiku-4-5-20251001">
                     Claude Haiku 4.5
                   </option>

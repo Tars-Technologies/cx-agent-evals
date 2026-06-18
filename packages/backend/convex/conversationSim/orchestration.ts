@@ -55,7 +55,7 @@ export const start = mutation({
     // Clamped to a safe range so a bad client value can't overload the LLM
     // providers (each run drives many concurrent LLM/tool calls).
     const concurrency = Math.min(Math.max(args.concurrency ?? 5, 1), 8);
-    const userSimModel = args.userSimModel ?? "claude-sonnet-4-20250514";
+    const userSimModel = args.userSimModel ?? "claude-sonnet-4-6";
 
     // Load scenarios for the specified set (not all agent scenarios)
     const scenarios = await ctx.db

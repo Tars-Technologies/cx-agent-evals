@@ -51,7 +51,7 @@ function BlankForm({
   // llm_judge config
   const [dimensionName, setDimensionName] = useState("");
   const [rubric, setRubric] = useState("");
-  const [model, setModel] = useState("claude-sonnet-4-20250514");
+  const [model, setModel] = useState("claude-sonnet-4-6");
   const [inputContext, setInputContext] = useState<InputContextOption[]>([
     "transcript",
   ]);

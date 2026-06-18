@@ -8,7 +8,7 @@ import { Id } from "@convex/_generated/dataModel";
 const STEPS = ["Inputs", "Configure", "Preferences", "Review"] as const;
 
 const MODEL_OPTIONS = [
-  "claude-sonnet-4-20250514",
+  "claude-sonnet-4-6",
   "claude-haiku-4-5-20251001",
   "gpt-4o",
 ] as const;
@@ -68,7 +68,7 @@ export function ScenarioGenerationWizard({
   const [highPct, setHighPct] = useState(20);
 
   // Step 2: Preferences
-  const [model, setModel] = useState<string>("claude-sonnet-4-20250514");
+  const [model, setModel] = useState<string>("claude-sonnet-4-6");
 
   const [generating, setGenerating] = useState(false);
 

@@ -303,7 +303,7 @@ export const generateScenarios = internalAction({
     { agentId, kbId, transcriptUploadId, orgId, jobId, scenarioSetId, config },
   ) => {
     const startTime = Date.now();
-    const model = config.model ?? "claude-sonnet-4-20250514";
+    const model = config.model ?? "claude-sonnet-4-6";
     const targetCount = config.count;
     const complexityDist = config.complexityDistribution ?? {
       low: 0.3,

@@ -54,7 +54,7 @@ function CreateAgentModal({ onClose, onCreated }: CreateAgentModalProps) {
         },
         guardrails: {},
         responseStyle: { formality: "professional", length: "concise" },
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         enableReflection: false,
         retrieverIds: [],
       });
