@@ -136,39 +136,35 @@ describe("chunks: getChunksByRetrieverPage", () => {
     const authedT = t.withIdentity(testIdentity)
 
     // First page
-    const page1 = await authedT.query(
-      api.kb.chunks.getChunksByRetrieverPage,
-      { kbId, indexConfigHash: "hash-abc", cursor: null, pageSize: 25 }
-    )
+    const page1 = await authedT.query(api.kb.chunks.getChunksByRetrieverPage, {
+      kbId,
+      indexConfigHash: "hash-abc",
+      cursor: null,
+      pageSize: 25
+    })
 
     expect(page1.chunks).toHaveLength(25)
     expect(page1.isDone).toBe(false)
     expect(page1.continueCursor).toBeDefined()
 
     // Second page
-    const page2 = await authedT.query(
-      api.kb.chunks.getChunksByRetrieverPage,
-      {
-        kbId,
-        indexConfigHash: "hash-abc",
-        cursor: page1.continueCursor,
-        pageSize: 25
-      }
-    )
+    const page2 = await authedT.query(api.kb.chunks.getChunksByRetrieverPage, {
+      kbId,
+      indexConfigHash: "hash-abc",
+      cursor: page1.continueCursor,
+      pageSize: 25
+    })
 
     expect(page2.chunks).toHaveLength(25)
     expect(page2.isDone).toBe(false)
 
     // Third page
-    const page3 = await authedT.query(
-      api.kb.chunks.getChunksByRetrieverPage,
-      {
-        kbId,
-        indexConfigHash: "hash-abc",
-        cursor: page2.continueCursor,
-        pageSize: 25
-      }
-    )
+    const page3 = await authedT.query(api.kb.chunks.getChunksByRetrieverPage, {
+      kbId,
+      indexConfigHash: "hash-abc",
+      cursor: page2.continueCursor,
+      pageSize: 25
+    })
 
     expect(page3.chunks).toHaveLength(10)
     expect(page3.isDone).toBe(true)
@@ -201,6 +197,52 @@ describe("chunks: getChunksByRetrieverPage", () => {
           cursor: null
         })
     ).rejects.toThrow("KB not found")
+  })
+
+  it("rejects a document that does not belong to the requested KB", async () => {
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const foreignDocumentId = await t.run(async (ctx) => {
+      const foreignKbId = await ctx.db.insert("knowledgeBases", {
+        orgId: "org_other",
+        name: "Foreign KB",
+        metadata: {},
+        createdBy: userId,
+        createdAt: Date.now()
+      })
+      const documentId = await ctx.db.insert("documents", {
+        orgId: "org_other",
+        kbId: foreignKbId,
+        docId: "foreign-document",
+        title: "Foreign Document",
+        content: "Private tenant content",
+        contentLength: 22,
+        metadata: {},
+        createdAt: Date.now()
+      })
+      await ctx.db.insert("documentChunks", {
+        documentId,
+        kbId: foreignKbId,
+        indexConfigHash: "hash-abc",
+        chunkId: "foreign-chunk",
+        content: "Private tenant content",
+        start: 0,
+        end: 22,
+        metadata: {}
+      })
+      return documentId
+    })
+
+    await expect(
+      t
+        .withIdentity(testIdentity)
+        .query(api.kb.chunks.getChunksByRetrieverPage, {
+          kbId,
+          indexConfigHash: "hash-abc",
+          documentId: foreignDocumentId,
+          cursor: null
+        })
+    ).rejects.toThrow("Document not found")
   })
 
   it("strips embedding from chunk output", async () => {

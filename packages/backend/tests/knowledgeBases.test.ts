@@ -73,10 +73,7 @@ describe("knowledgeBases: listByIndustry", () => {
       })
     })
     const authedT = t.withIdentity(testIdentity)
-    const results = await authedT.query(
-      api.kb.core.listByIndustry,
-      {}
-    )
+    const results = await authedT.query(api.kb.core.listByIndustry, {})
     expect(results).toHaveLength(2)
   })
 
@@ -101,12 +98,9 @@ describe("knowledgeBases: listByIndustry", () => {
       })
     })
     const authedT = t.withIdentity(testIdentity)
-    const results = await authedT.query(
-      api.kb.core.listByIndustry,
-      {
-        industry: "finance"
-      }
-    )
+    const results = await authedT.query(api.kb.core.listByIndustry, {
+      industry: "finance"
+    })
     expect(results).toHaveLength(1)
     expect(results[0].name).toBe("Finance KB")
   })
@@ -139,10 +133,7 @@ describe("knowledgeBases: listWithDocCounts", () => {
     await t.run(async (ctx) => ctx.db.patch(kb1, { documentCount: 3 }))
 
     const authedT = t.withIdentity(testIdentity)
-    const results = await authedT.query(
-      api.kb.core.listWithDocCounts,
-      {}
-    )
+    const results = await authedT.query(api.kb.core.listWithDocCounts, {})
 
     expect(results).toHaveLength(2)
     const kbWithDocs = results.find((kb) => kb.name === "Test KB")
@@ -173,12 +164,65 @@ describe("knowledgeBases: listWithDocCounts", () => {
     })
 
     const authedT = t.withIdentity(testIdentity)
-    const results = await authedT.query(
-      api.kb.core.listWithDocCounts,
-      { industry: "finance" }
-    )
+    const results = await authedT.query(api.kb.core.listWithDocCounts, {
+      industry: "finance"
+    })
     expect(results).toHaveLength(1)
     expect(results[0].name).toBe("Finance KB")
     expect(results[0].documentCount).toBe(0)
+  })
+})
+
+describe("knowledgeBases: org isolation", () => {
+  let t: ReturnType<typeof import("convex-test").convexTest>
+  beforeEach(() => {
+    t = setupTest()
+  })
+
+  const otherOrgIdentity = { ...testIdentity, org_id: "org_other999" }
+
+  it("listByIndustry does not return another org's KBs", async () => {
+    const userId = await seedUser(t)
+    await t.run(async (ctx) => {
+      await ctx.db.insert("knowledgeBases", {
+        orgId: TEST_ORG_ID,
+        name: "Finance KB",
+        metadata: {},
+        industry: "finance",
+        createdBy: userId,
+        createdAt: Date.now()
+      })
+    })
+
+    // A different org must see none of TEST_ORG_ID's KBs — drop the by_org scope
+    // in core.ts and this returns the foreign KB, failing the test.
+    const own = await t.withIdentity(testIdentity).query(
+      api.kb.core.listByIndustry,
+      {}
+    )
+    expect(own).toHaveLength(1)
+    const foreign = await t
+      .withIdentity(otherOrgIdentity)
+      .query(api.kb.core.listByIndustry, {})
+    expect(foreign).toHaveLength(0)
+  })
+
+  it("listWithDocCounts does not return another org's KBs", async () => {
+    const userId = await seedUser(t)
+    await seedKB(t, userId)
+
+    const foreign = await t
+      .withIdentity(otherOrgIdentity)
+      .query(api.kb.core.listWithDocCounts, {})
+    expect(foreign).toHaveLength(0)
+  })
+
+  it("get throws for a KB owned by another org", async () => {
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+
+    await expect(
+      t.withIdentity(otherOrgIdentity).query(api.kb.core.get, { id: kbId })
+    ).rejects.toThrow("Knowledge base not found")
   })
 })

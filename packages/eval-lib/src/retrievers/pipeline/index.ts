@@ -3,6 +3,7 @@ export type {
   ContextualIndexConfig,
   DedupRefinementStep,
   DenseSearchConfig,
+  EmbeddingProvider,
   ExpandContextRefinementStep,
   HybridSearchConfig,
   HydeQueryConfig,
@@ -20,7 +21,8 @@ export type {
   SearchConfig,
   StepBackQueryConfig,
   SummaryIndexConfig,
-  ThresholdRefinementStep
+  ThresholdRefinementStep,
+  VectorBackend
 } from "./config.js"
 export {
   computeIndexConfigHash,

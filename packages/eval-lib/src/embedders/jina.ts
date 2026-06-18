@@ -1,5 +1,6 @@
 import { postJSON } from "../utils/fetch-json.js"
 import type { Embedder } from "./embedder.interface.js"
+import { assertEmbeddingBatch, reorderByIndex } from "./embedding-batch.js"
 
 interface JinaEmbedClient {
   embed(opts: {
@@ -72,7 +73,9 @@ export class JinaEmbedder implements Embedder {
       task: "retrieval.passage",
       dimensions: this._dimensions
     })
-    return response.data.map((d) => d.embedding)
+    const vectors = reorderByIndex(response.data).map((d) => d.embedding)
+    assertEmbeddingBatch(vectors, texts.length, this.name)
+    return vectors
   }
 
   async embedQuery(query: string): Promise<number[]> {
@@ -82,6 +85,8 @@ export class JinaEmbedder implements Embedder {
       task: "retrieval.query",
       dimensions: this._dimensions
     })
-    return response.data[0].embedding
+    const vectors = reorderByIndex(response.data).map((d) => d.embedding)
+    assertEmbeddingBatch(vectors, 1, this.name)
+    return vectors[0]
   }
 }

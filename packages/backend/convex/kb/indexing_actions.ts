@@ -6,12 +6,20 @@
  * Actions live here ("use node") because they call OpenAI embeddings via
  * eval-lib/llm, which depends on Node.js built-ins unavailable in the edge runtime.
  */
-import { createDocument, RecursiveCharacterChunker } from "@tars-inc/eval-lib"
+import {
+  createDocument,
+  DocumentId,
+  type Embedder,
+  PositionAwareChunkId,
+  RecursiveCharacterChunker
+} from "@tars-inc/eval-lib"
 import { createEmbedder } from "@tars-inc/eval-lib/llm"
 import { CLEANUP_BATCH_SIZE, EMBED_BATCH_SIZE } from "@tars-inc/eval-lib/shared"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
+import { assertIndexableDimension } from "./dimension_guard"
+import { buildQdrantStore } from "./retrieval_runtime"
 
 /** Retry a mutation that may fail with TooManyWrites under concurrent load. */
 async function retryOnWriteLimit<T>(
@@ -51,10 +59,13 @@ export const indexDocument = internalAction({
     chunkSize: v.optional(v.number()),
     chunkOverlap: v.optional(v.number()),
     embeddingModel: v.optional(v.string()),
+    embeddingProvider: v.optional(v.string()),
     childChunkSize: v.optional(v.number()),
     parentChunkSize: v.optional(v.number()),
     childOverlap: v.optional(v.number()),
-    parentOverlap: v.optional(v.number())
+    parentOverlap: v.optional(v.number()),
+    vectorBackend: v.optional(v.string()),
+    qdrantCollection: v.optional(v.string())
   },
   handler: async (
     ctx,
@@ -196,6 +207,7 @@ export const indexDocument = internalAction({
     // Collect unembedded chunks via paginated queries — each ctx.runQuery()
     // gets its own 16MB read budget, avoiding the limit that .collect() hits
     // on large documents where embedded chunks carry 12KB vectors each.
+    const isQdrant = args.vectorBackend === "qdrant"
     const unembedded: any[] = []
     let totalChunks = 0
     let pageCursor: string | null = null
@@ -213,9 +225,12 @@ export const indexDocument = internalAction({
       )
       totalChunks += page.chunks.length
       for (const chunk of page.chunks) {
-        if (chunk.embedding === undefined) {
-          unembedded.push(chunk)
-        }
+        // On the qdrant path the chunk row never gets an `embedding`; the
+        // Phase B checkpoint is the external-store stamp instead.
+        const pending = isQdrant
+          ? chunk.vectorIndexId === undefined
+          : chunk.embedding === undefined
+        if (pending) unembedded.push(chunk)
       }
       pageDone = page.isDone
       pageCursor = page.continueCursor
@@ -231,7 +246,32 @@ export const indexDocument = internalAction({
       return { skipped: true, chunksInserted: 0, chunksEmbedded: 0 }
     }
 
-    const embedder = createEmbedder(args.embeddingModel)
+    let embedder: Embedder
+    if (isQdrant) {
+      const { makeEmbedder } = await import(
+        "@tars-inc/eval-lib/embedders/make-embedder"
+      )
+      embedder = await makeEmbedder({
+        provider: (args.embeddingProvider ?? "openai") as never,
+        model: args.embeddingModel
+      })
+    } else {
+      // The 1536 guard applies only to the native Convex vector index;
+      // Qdrant collections are created at the embedder's dimension.
+      embedder = createEmbedder(args.embeddingModel)
+      assertIndexableDimension(embedder.dimension, args.embeddingModel)
+    }
+
+    if (isQdrant && !args.qdrantCollection) {
+      throw new Error("indexing job missing qdrantCollection")
+    }
+    const store = isQdrant
+      ? buildQdrantStore({
+          collection: args.qdrantCollection!,
+          dimension: embedder.dimension
+        })
+      : null
+    let docForQdrant: any = null
     let totalEmbedded = 0
 
     for (let i = 0; i < toEmbed.length; i += EMBED_BATCH_SIZE) {
@@ -242,16 +282,46 @@ export const indexDocument = internalAction({
       // but Phase A is skipped and completed batches are skipped
       const embeddings = await embedder.embed(texts)
 
-      // Patch this batch's embeddings — checkpoint saved.
-      // Retry with backoff if concurrent actions saturate write throughput.
-      await retryOnWriteLimit(() =>
-        ctx.runMutation(internal.kb.chunks.patchChunkEmbeddings, {
-          patches: batch.map((c: any, idx: number) => ({
-            chunkId: c._id,
-            embedding: embeddings[idx]
-          }))
+      if (isQdrant) {
+        // Upsert vectors into Qdrant, then stamp the chunk rows so retried
+        // runs skip completed batches. Chunk rows never store the embedding.
+        docForQdrant ??= await ctx.runQuery(internal.kb.documents.getInternal, {
+          id: args.documentId
         })
-      )
+        await store!.add(
+          batch.map((c: any) => ({
+            id: PositionAwareChunkId(c.chunkId),
+            content: c.content,
+            docId: DocumentId(docForQdrant.docId),
+            start: c.start,
+            end: c.end,
+            metadata: c.metadata ?? {}
+          })),
+          embeddings,
+          {
+            kbId: String(args.kbId),
+            indexConfigHash: args.indexConfigHash,
+            documentId: String(args.documentId)
+          }
+        )
+        await retryOnWriteLimit(() =>
+          ctx.runMutation(internal.kb.chunks.markChunksVectorized, {
+            ids: batch.map((c: any) => c._id),
+            vectorIndexId: args.qdrantCollection!
+          })
+        )
+      } else {
+        // Patch this batch's embeddings - checkpoint saved.
+        // Retry with backoff if concurrent actions saturate write throughput.
+        await retryOnWriteLimit(() =>
+          ctx.runMutation(internal.kb.chunks.patchChunkEmbeddings, {
+            patches: batch.map((c: any, idx: number) => ({
+              chunkId: c._id,
+              embedding: embeddings[idx]
+            }))
+          })
+        )
+      }
 
       totalEmbedded += batch.length
     }
@@ -275,10 +345,33 @@ export const cleanupAction = internalAction({
     kbId: v.id("knowledgeBases"),
     indexConfigHash: v.string(),
     jobId: v.optional(v.id("indexingJobs")),
-    deleteDocuments: v.optional(v.boolean())
+    deleteDocuments: v.optional(v.boolean()),
+    vectorBackend: v.optional(v.string()),
+    qdrantCollection: v.optional(v.string())
   },
   handler: async (ctx, args) => {
     let totalDeleted = 0
+
+    // Delete this index's Qdrant points FIRST, before removing local chunks.
+    // The store no longer drops the shared collection; it runs a filtered
+    // point-delete scoped to (kbId, indexConfigHash), leaving other tenants
+    // and other configs in the shared collection untouched. If this throws,
+    // the local chunks remain as a reconcilable record and the retried
+    // cleanup re-deletes the points idempotently. Dropping local chunks first
+    // would risk leaving orphaned vectors that still match
+    // (kbId, indexConfigHash) filters and get served as stale results.
+    if (args.vectorBackend === "qdrant" && args.qdrantCollection) {
+      const store = buildQdrantStore({
+        collection: args.qdrantCollection,
+        dimension: 1 // dimension is irrelevant for a filtered point-delete
+      })
+      // deleteByKnowledgeBase is an optional VectorStore capability, but
+      // QdrantVectorStore always implements it (filtered point-delete scoped
+      // to the given (kbId, indexConfigHash)).
+      await store.deleteByKnowledgeBase!(String(args.kbId), {
+        indexConfigHash: args.indexConfigHash
+      })
+    }
 
     // Paginated chunk deletion
     let hasMore = true

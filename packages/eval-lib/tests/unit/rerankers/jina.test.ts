@@ -1,6 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { JinaReranker } from "../../../src/rerankers/jina.js"
 import type { PositionAwareChunk } from "../../../src/types/index.js"
+
+function mockFetchResponse(body: unknown, status = 200, statusText = "OK") {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText,
+    json: async () => body,
+    text: async () => (typeof body === "string" ? body : JSON.stringify(body))
+  } as unknown as Response
+}
 
 const makeChunk = (id: string, content: string): PositionAwareChunk => ({
   id: id as any,
@@ -125,6 +135,60 @@ describe("JinaReranker", () => {
       expect(mockClient.rerank).toHaveBeenCalledWith(
         expect.objectContaining({ model: "jina-reranker-v1-base-en" })
       )
+    })
+
+    it("drops out-of-range indices instead of emitting undefined", async () => {
+      const chunks = [makeChunk("c1", "first"), makeChunk("c2", "second")]
+      mockClient.rerank.mockResolvedValue({
+        results: [
+          { index: 9, relevance_score: 0.9 },
+          { index: 0, relevance_score: 0.5 }
+        ]
+      })
+      const reranker = new JinaReranker({ client: mockClient })
+      const result = await reranker.rerank("query", chunks, 2)
+      expect(result).toEqual([chunks[0]])
+    })
+  })
+
+  describe("create() HTTP wire contract", () => {
+    let fetchSpy: ReturnType<typeof vi.spyOn>
+    beforeEach(() => {
+      fetchSpy = vi.spyOn(globalThis, "fetch")
+    })
+    afterEach(() => vi.restoreAllMocks())
+
+    it("POSTs to the Jina rerank endpoint with bearer auth + top_n body", async () => {
+      fetchSpy.mockResolvedValueOnce(
+        mockFetchResponse({ results: [{ index: 0, relevance_score: 0.9 }] })
+      )
+      const reranker = await JinaReranker.create({ apiKey: "test-key" })
+      const chunks = [makeChunk("c1", "first"), makeChunk("c2", "second")]
+      const result = await reranker.rerank("q", chunks, 1)
+
+      expect(result).toEqual([chunks[0]])
+      const [url, init] = fetchSpy.mock.calls[0]
+      expect(url).toBe("https://api.jina.ai/v1/rerank")
+      expect(init).toMatchObject({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer test-key"
+        }
+      })
+      expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+        model: "jina-reranker-v2-base-multilingual",
+        query: "q",
+        documents: ["first", "second"],
+        top_n: 1
+      })
+    })
+
+    it("throws a clear error when no API key is available", async () => {
+      const prev = process.env.JINA_API_KEY
+      delete process.env.JINA_API_KEY
+      await expect(JinaReranker.create()).rejects.toThrow(/Jina API key/)
+      if (prev !== undefined) process.env.JINA_API_KEY = prev
     })
   })
 })

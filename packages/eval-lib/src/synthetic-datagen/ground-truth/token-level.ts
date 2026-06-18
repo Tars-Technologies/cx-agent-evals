@@ -3,6 +3,7 @@ import { createCharacterSpan } from "../../types/chunks.js"
 import type { CharacterSpan, GroundTruth } from "../../types/index.js"
 import { QueryId, QueryText } from "../../types/primitives.js"
 import { safeParseLLMResponse } from "../../utils/json.js"
+import { normalizedFind } from "../../utils/span.js"
 import type { GeneratedQuery } from "../strategies/types.js"
 import type {
   GroundTruthAssignerContext,
@@ -110,12 +111,23 @@ export class GroundTruthAssigner
     const failedExcerpts: string[] = []
 
     for (const excerpt of excerpts) {
+      if (typeof excerpt !== "string" || excerpt.trim().length === 0) {
+        failedExcerpts.push(String(excerpt).substring(0, 80))
+        continue
+      }
+
       // Tier 1: Exact match
       let start = docContent.indexOf(excerpt)
+      let end = start === -1 ? -1 : start + excerpt.length
 
-      // Tier 2: Normalized (whitespace + case)
+      // Tier 2: Normalized (whitespace + case). End is mapped back from the
+      // normalized match, not derived from excerpt.length.
       if (start === -1) {
-        start = normalizedFind(docContent, excerpt)
+        const norm = normalizedFind(docContent, excerpt)
+        if (norm !== null && norm.end > norm.start) {
+          start = norm.start
+          end = norm.end
+        }
       }
 
       // Tier 3: Sentence-level fuzzy match via Levenshtein
@@ -132,7 +144,6 @@ export class GroundTruthAssigner
         continue
       }
 
-      const end = start + excerpt.length
       const actualText = docContent.substring(start, end)
 
       try {
@@ -158,7 +169,11 @@ export class GroundTruthAssigner
     excerpt: string
   ): CharacterSpan[] {
     const spans: CharacterSpan[] = []
-    const sentences = excerpt.match(/[^.!?]+[.!?]+/g) ?? [excerpt]
+    // Match "clause + terminal punctuation" OR a trailing clause that runs to
+    // the end of the excerpt with no terminal punctuation (a heading, list item,
+    // or truncated LLM fragment). Without the second alternative the final
+    // unpunctuated clause is dropped and its span is never attempted.
+    const sentences = excerpt.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [excerpt]
 
     for (const sentence of sentences) {
       const trimmed = sentence.trim()
@@ -207,23 +222,3 @@ export class GroundTruthAssigner
   }
 }
 
-function normalizedFind(text: string, excerpt: string): number {
-  const normalize = (s: string) => s.replace(/\s+/g, " ").toLowerCase()
-  const normText = normalize(text)
-  const normExcerpt = normalize(excerpt)
-  const idx = normText.indexOf(normExcerpt)
-  if (idx === -1) return -1
-
-  let origPos = 0
-  let normPos = 0
-  while (normPos < idx && origPos < text.length) {
-    if (/\s/.test(text[origPos])) {
-      while (origPos < text.length - 1 && /\s/.test(text[origPos + 1])) {
-        origPos++
-      }
-    }
-    origPos++
-    normPos++
-  }
-  return origPos
-}

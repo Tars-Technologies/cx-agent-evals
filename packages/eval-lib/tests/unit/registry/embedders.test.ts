@@ -2,37 +2,58 @@ import { describe, expect, it } from "vitest"
 import { EMBEDDER_REGISTRY } from "../../../src/registry/embedders.js"
 
 describe("EMBEDDER_REGISTRY", () => {
-  it("contains all 4 providers", () => {
+  it("contains the expected providers", () => {
     const ids = EMBEDDER_REGISTRY.map((e) => e.id)
-    expect(ids).toEqual(["openai", "cohere", "voyage", "jina"])
+    expect(ids).toEqual(["openai", "openrouter", "cohere", "voyage", "jina"])
   })
 
-  it("all entries have required fields", () => {
+  it("all entries have required fields and a valid status", () => {
     for (const entry of EMBEDDER_REGISTRY) {
       expect(entry.name).toBeTruthy()
       expect(entry.description).toBeTruthy()
-      expect(entry.status).toMatch(/^(available|coming-soon)$/)
+      expect(entry.status).toMatch(/^(available|coming-soon|unavailable)$/)
       expect(entry.options.length).toBeGreaterThan(0)
-      // every option has a matching default
       for (const opt of entry.options) {
         expect(entry.defaults).toHaveProperty(opt.key)
       }
     }
   })
 
-  it("openai has correct models", () => {
+  it("openai has correct models and is available", () => {
     const openai = EMBEDDER_REGISTRY.find((e) => e.id === "openai")!
     expect(openai.status).toBe("available")
-    const modelOpt = openai.options.find((o) => o.key === "model")!
-    expect(modelOpt.type).toBe("select")
-    const values = modelOpt.choices!.map((c) => c.value)
+    const values = openai.options
+      .find((o) => o.key === "model")!
+      .choices!.map((c) => c.value)
     expect(values).toContain("text-embedding-3-small")
     expect(values).toContain("text-embedding-3-large")
   })
 
-  it("all implemented providers are status available", () => {
+  it("openrouter is available", () => {
+    const openrouter = EMBEDDER_REGISTRY.find((e) => e.id === "openrouter")!
+    expect(openrouter.status).toBe("available")
+  })
+
+  it("every embedder model choice declares its dimensions", () => {
     for (const entry of EMBEDDER_REGISTRY) {
-      expect(entry.status).toBe("available")
+      const modelOption = entry.options.find((o) => o.key === "model")
+      expect(modelOption?.choices?.length).toBeGreaterThan(0)
+      for (const choice of modelOption?.choices ?? []) {
+        expect(
+          choice.dimensions,
+          `${entry.id}/${choice.value} missing dimensions`
+        ).toBeGreaterThan(0)
+      }
     }
+  })
+
+  it("providers wired into makeEmbedder are available; others are unavailable", () => {
+    const status = (id: string) =>
+      EMBEDDER_REGISTRY.find((e) => e.id === id)!.status
+    expect(status("openai")).toBe("available")
+    expect(status("openrouter")).toBe("available")
+    expect(status("cohere")).toBe("available")
+    expect(status("voyage")).toBe("unavailable")
+    expect(status("jina")).toBe("unavailable")
   })
 })

@@ -3,10 +3,58 @@
  */
 import { paginationOptsValidator } from "convex/server"
 import { v } from "convex/values"
-import type { Doc } from "../_generated/dataModel"
-import { internalMutation, internalQuery } from "../_generated/server"
+import { internal } from "../_generated/api"
+import type { Doc, Id } from "../_generated/dataModel"
+import {
+  internalMutation,
+  internalQuery,
+  type MutationCtx
+} from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
+import { capContent } from "../lib/contentCap"
 import { computeDocId } from "../lib/docId"
+
+/**
+ * Bind an uploaded blob to the caller's org, claiming it on first use.
+ *
+ * Convex `generateUploadUrl` does not tell us the resulting storageId, so the
+ * binding happens here, at the first create/parseUpload that presents the id.
+ * A later call from a different org is rejected, which closes the cross-org
+ * storageId-reuse IDOR (ingesting or cross-deleting another org's bytes). The
+ * row is never removed — a storageId is unique per upload, so retaining it
+ * keeps a deleted blob's id from being re-claimed by another tenant.
+ */
+async function claimStorageOwnership(
+  ctx: MutationCtx,
+  args: { orgId: string; userId: string; storageId: Id<"_storage"> }
+): Promise<void> {
+  const existing = await ctx.db
+    .query("storageObjects")
+    .withIndex("by_storage", (q) => q.eq("storageId", args.storageId))
+    .unique()
+
+  if (existing) {
+    if (existing.orgId !== args.orgId) {
+      throw new Error("Uploaded file not found")
+    }
+    return
+  }
+
+  await ctx.db.insert("storageObjects", {
+    orgId: args.orgId,
+    storageId: args.storageId,
+    userId: args.userId,
+    createdAt: Date.now()
+  })
+}
+
+// Documents left in parseStatus:"parsing" past this age are presumed orphaned
+// (lost/failed remote callback) and swept to "failed" by the reaper cron.
+const PARSE_STALE_MS = 30 * 60 * 1000
+
+// Max documents a single reaper run sweeps, so a large backlog can't blow the
+// per-transaction limits. Remaining rows are drained on subsequent cron ticks.
+const REAP_BATCH = 200
 
 type DocSummary = Pick<
   Doc<"documents">,
@@ -54,13 +102,20 @@ export const create = tenantMutation({
     content: v.string()
   },
   handler: async (ctx, args) => {
-    const { orgId } = ctx
+    const { orgId, userId } = ctx
 
     // Verify KB belongs to org
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) {
       throw new Error("Knowledge base not found")
     }
+
+    // Bind the uploaded blob to this org before ingesting its bytes.
+    await claimStorageOwnership(ctx, {
+      orgId,
+      userId,
+      storageId: args.storageId
+    })
 
     const content = args.content
     const docId = await computeDocId({ fileId: args.storageId })
@@ -74,6 +129,7 @@ export const create = tenantMutation({
       fileId: args.storageId,
       contentLength: content.length,
       metadata: {},
+      parseStatus: "done",
       createdAt: Date.now()
     })
 
@@ -259,34 +315,50 @@ export const remove = tenantMutation({
     }
     await ctx.db.delete(args.id)
 
-    // Decrement denormalized document count
-    const kb = await ctx.db.get(doc.kbId)
-    if (kb) {
-      const currentCount = kb.documentCount ?? 0
-      if (currentCount === 0) {
-        // Floor clamp will fire — counter is already out of sync with reality.
-        // Surface this so we notice instead of silently masking the drift.
-        console.warn(
-          `documentCount drift: remove called on kb=${doc.kbId} where documentCount is already 0`
-        )
+    // Decrement only for docs that were actually counted. "parsing" and "failed"
+    // rows are never counted (finishParse increments on success only), so
+    // deleting them must not touch the counter.
+    const wasCounted =
+      doc.parseStatus !== "parsing" && doc.parseStatus !== "failed"
+    if (wasCounted) {
+      const kb = await ctx.db.get(doc.kbId)
+      if (kb) {
+        const currentCount = kb.documentCount ?? 0
+        if (currentCount === 0) {
+          console.warn(
+            `documentCount drift: remove called on kb=${doc.kbId} where documentCount is already 0`
+          )
+        }
+        await ctx.db.patch(doc.kbId, {
+          documentCount: Math.max(0, currentCount - 1)
+        })
       }
-      await ctx.db.patch(doc.kbId, {
-        documentCount: Math.max(0, currentCount - 1)
-      })
     }
   }
 })
 
 /**
- * Internal query: list all documents in a KB (no auth check).
+ * Internal query: list all *done* documents in a KB (no auth check).
+ * Filters to parseStatus:"done" so parsing/failed placeholders (empty content)
+ * are never fed to indexing, generation, or experiment callers — they would
+ * produce 0 chunks, inflate stats, and burn read budget for nothing.
  * Used by generation/experiment actions.
  */
 export const listByKbInternal = internalQuery({
   args: { kbId: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
+    // Exclude in-progress and failed placeholders (empty content). Rows without
+    // parseStatus are legacy docs from the create/createFromScrape paths before
+    // the field was added — they have real content and must be included.
     return await ctx.db
       .query("documents")
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
+      .filter((q) =>
+        q.and(
+          q.neq(q.field("parseStatus"), "parsing"),
+          q.neq(q.field("parseStatus"), "failed")
+        )
+      )
       .collect()
   }
 })
@@ -332,16 +404,20 @@ export const createFromScrape = internalMutation({
     sourceType: v.optional(v.string())
   },
   handler: async (ctx, args) => {
+    const capped = capContent(args.content)
     const docRowId = await ctx.db.insert("documents", {
       orgId: args.orgId,
       kbId: args.kbId,
       docId: await computeDocId({ sourceUrl: args.sourceUrl }),
       title: args.title,
-      content: args.content,
-      contentLength: args.content.length,
-      metadata: {},
+      content: capped.content,
+      contentLength: capped.content.length,
+      metadata: capped.truncated
+        ? { truncated: true, originalLength: capped.originalLength }
+        : {},
       sourceUrl: args.sourceUrl,
       sourceType: args.sourceType,
+      parseStatus: "done",
       createdAt: Date.now()
     })
 
@@ -354,5 +430,294 @@ export const createFromScrape = internalMutation({
     }
 
     return docRowId
+  }
+})
+
+/** Create a document placeholder while a remote parse is in flight. */
+/**
+ * Return the per-job parse token for a parsing document, so the callback handler
+ * can verify the request token against what we stored (defense-in-depth beyond the
+ * global HMAC secret). Null if no such parsing document exists.
+ */
+export const getParseTokenByServiceJob = internalQuery({
+  args: { parseServiceJobId: v.string() },
+  handler: async (
+    ctx,
+    args
+  ): Promise<{ token: string | null; backend: string | null } | null> => {
+    const doc = await ctx.db
+      .query("documents")
+      .withIndex("by_parse_service_job", (q) =>
+        q.eq("parseServiceJobId", args.parseServiceJobId)
+      )
+      .first()
+    if (!doc) return null
+    return { token: doc.parseToken ?? null, backend: doc.parseBackend ?? null }
+  }
+})
+
+/**
+ * Reaper: fail documents stuck in parseStatus:"parsing" past PARSE_STALE_MS.
+ * Without this a lost/failed remote parse callback strands a document in "parsing"
+ * forever (it still counts toward documentCount and never becomes indexable).
+ */
+export const reapStaleParsing = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - PARSE_STALE_MS
+    // Oldest-first (index order), bounded: stale docs are the oldest, and any
+    // overflow is swept on the next cron tick once this batch leaves "parsing".
+    const stale = await ctx.db
+      .query("documents")
+      .withIndex("by_parse_status", (q) => q.eq("parseStatus", "parsing"))
+      .take(REAP_BATCH)
+    let reaped = 0
+    for (const doc of stale) {
+      // Poll-based (asimov) parses heartbeat parseLastActivityAt each poll, so
+      // measure inactivity, not total age; tarser has no heartbeat → createdAt.
+      const lastActivity = doc.parseLastActivityAt ?? doc.createdAt
+      if (lastActivity >= cutoff) continue
+      await ctx.db.patch(doc._id, {
+        parseStatus: "failed",
+        metadata: {
+          ...doc.metadata,
+          error: "Parse timed out: no completion callback received"
+        }
+      })
+      reaped++
+    }
+    return { reaped }
+  }
+})
+
+/**
+ * Heartbeat for a poll-based (asimov) parse: bump parseLastActivityAt while the
+ * doc is still parsing so the stale-parse reaper measures inactivity, not age.
+ */
+export const touchParseActivity = internalMutation({
+  args: { parseServiceJobId: v.string() },
+  handler: async (ctx, args) => {
+    const doc = await ctx.db
+      .query("documents")
+      .withIndex("by_parse_service_job", (q) =>
+        q.eq("parseServiceJobId", args.parseServiceJobId)
+      )
+      .first()
+    if (!doc || doc.parseStatus !== "parsing") return
+    await ctx.db.patch(doc._id, { parseLastActivityAt: Date.now() })
+  }
+})
+
+export const createParsing = internalMutation({
+  args: {
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    title: v.string(),
+    mimeType: v.string(),
+    fileId: v.optional(v.id("_storage")),
+    // Which remote parser owns this placeholder. Defaults to tarser for back-compat
+    // with the existing Tarser callback path; asimov is filled by pollAsimovParse.
+    backend: v.optional(v.union(v.literal("tarser"), v.literal("asimov"))),
+    parseServiceJobId: v.string(),
+    parseToken: v.string()
+  },
+  handler: async (ctx, args) => {
+    // documentCount is incremented only when the doc reaches "done" (finishParse
+    // success). Counting placeholders here inflated KB counts permanently when
+    // parses failed or timed out and the reaper swept them.
+    const docRowId = await ctx.db.insert("documents", {
+      orgId: args.orgId,
+      kbId: args.kbId,
+      docId: await computeDocId({
+        fileId: args.fileId ?? undefined,
+        sourceUrl: args.parseServiceJobId
+      }),
+      title: args.title,
+      content: "",
+      fileId: args.fileId,
+      contentLength: 0,
+      metadata: {},
+      sourceType: "upload",
+      mimeType: args.mimeType,
+      parseBackend: args.backend ?? "tarser",
+      parseServiceJobId: args.parseServiceJobId,
+      parseToken: args.parseToken,
+      parseStatus: "parsing",
+      createdAt: Date.now()
+    })
+    return docRowId
+  }
+})
+
+/** Fill a parsing document once the remote parse_done callback arrives. Idempotent. */
+export const finishParse = internalMutation({
+  args: {
+    parseServiceJobId: v.string(),
+    status: v.union(v.literal("ok"), v.literal("failed")),
+    markdown: v.optional(v.string()),
+    error: v.optional(v.string())
+  },
+  handler: async (ctx, args) => {
+    const doc = await ctx.db
+      .query("documents")
+      .withIndex("by_parse_service_job", (q) =>
+        q.eq("parseServiceJobId", args.parseServiceJobId)
+      )
+      .first()
+    if (!doc || doc.parseStatus !== "parsing") return // unknown or already finalized
+    const content = args.markdown ?? ""
+    // An "ok" parse that produced no content is treated as failed so a content-less
+    // parse is surfaced rather than stored as a silently-empty "done" document
+    // (e.g. Tarser returns ok+empty for formats it cannot extract).
+    if (args.status === "ok" && content.trim().length > 0) {
+      const capped = capContent(content)
+      await ctx.db.patch(doc._id, {
+        content: capped.content,
+        contentLength: capped.content.length,
+        parseStatus: "done",
+        ...(capped.truncated
+          ? {
+              metadata: {
+                ...doc.metadata,
+                truncated: true,
+                originalLength: capped.originalLength
+              }
+            }
+          : {})
+      })
+      // Increment only on successful parse so failed/reaped placeholders never
+      // inflate the KB count. createParsing deliberately skips the increment.
+      const kb = await ctx.db.get(doc.kbId)
+      if (kb) {
+        await ctx.db.patch(doc.kbId, {
+          documentCount: (kb.documentCount ?? 0) + 1
+        })
+      }
+    } else {
+      // Persist why it failed (the remote error, or a content-less "ok") so the
+      // reason is visible on the document, matching recordParseFailure.
+      const error = args.error ?? "Remote parser returned no content"
+      await ctx.db.patch(doc._id, {
+        parseStatus: "failed",
+        metadata: { ...doc.metadata, error }
+      })
+    }
+  }
+})
+
+/** Create an upload document directly from in-process-parsed markdown. */
+export const createParsed = internalMutation({
+  args: {
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    title: v.string(),
+    content: v.string(),
+    mimeType: v.string(),
+    fileId: v.optional(v.id("_storage"))
+  },
+  handler: async (ctx, args) => {
+    const capped = capContent(args.content)
+    const docRowId = await ctx.db.insert("documents", {
+      orgId: args.orgId,
+      kbId: args.kbId,
+      docId: await computeDocId({ fileId: args.fileId ?? undefined }),
+      title: args.title,
+      content: capped.content,
+      fileId: args.fileId,
+      contentLength: capped.content.length,
+      metadata: capped.truncated
+        ? { truncated: true, originalLength: capped.originalLength }
+        : {},
+      sourceType: "upload",
+      mimeType: args.mimeType,
+      parseBackend: "inprocess",
+      parseStatus: "done",
+      createdAt: Date.now()
+    })
+    const kb = await ctx.db.get(args.kbId)
+    if (kb) {
+      await ctx.db.patch(args.kbId, {
+        documentCount: (kb.documentCount ?? 0) + 1
+      })
+    }
+    return docRowId
+  }
+})
+
+/**
+ * Record an upload whose parse could not even start or run (e.g. the remote parser
+ * was unreachable, or an in-process parse threw). Surfaces the upload as a failed
+ * document instead of silently vanishing.
+ */
+export const recordParseFailure = internalMutation({
+  args: {
+    orgId: v.string(),
+    kbId: v.id("knowledgeBases"),
+    title: v.string(),
+    mimeType: v.string(),
+    backend: v.union(
+      v.literal("inprocess"),
+      v.literal("tarser"),
+      v.literal("asimov")
+    ),
+    fileId: v.optional(v.id("_storage")),
+    error: v.string()
+  },
+  handler: async (ctx, args) => {
+    // Failed docs are never counted: documentCount only increments on "done".
+    const docRowId = await ctx.db.insert("documents", {
+      orgId: args.orgId,
+      kbId: args.kbId,
+      docId: await computeDocId({ fileId: args.fileId ?? undefined }),
+      title: args.title,
+      content: "",
+      fileId: args.fileId,
+      contentLength: 0,
+      metadata: { error: args.error },
+      sourceType: "upload",
+      mimeType: args.mimeType,
+      parseBackend: args.backend,
+      parseStatus: "failed",
+      createdAt: Date.now()
+    })
+    return docRowId
+  }
+})
+
+/** Public entry the frontend calls after uploading file bytes to storage. */
+export const parseUpload = tenantMutation({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    storageId: v.id("_storage"),
+    title: v.string(),
+    mimeType: v.string(),
+    backend: v.optional(
+      v.union(v.literal("inprocess"), v.literal("tarser"), v.literal("asimov"))
+    ),
+    ocr: v.optional(v.boolean())
+  },
+  handler: async (ctx, args) => {
+    const { orgId, userId } = ctx
+    const kb = await ctx.db.get(args.kbId)
+    if (!kb || kb.orgId !== orgId) throw new Error("Knowledge base not found")
+    // Bind the uploaded blob to this org before parsing its bytes.
+    await claimStorageOwnership(ctx, {
+      orgId,
+      userId,
+      storageId: args.storageId
+    })
+    await ctx.scheduler.runAfter(
+      0,
+      internal.kb.documents_actions.parseDocument,
+      {
+        orgId,
+        kbId: args.kbId,
+        storageId: args.storageId,
+        title: args.title,
+        mimeType: args.mimeType,
+        backend: args.backend ?? "inprocess",
+        ocr: args.ocr
+      }
+    )
   }
 })

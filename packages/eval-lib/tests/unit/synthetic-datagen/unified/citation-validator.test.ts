@@ -39,6 +39,17 @@ describe("findCitationSpan", () => {
     expect(result).toBeNull()
   })
 
+  it("returns null for an empty excerpt", () => {
+    // Without the guard, Tier-1 indexOf("") returns 0 and yields a phantom
+    // zero-length span {0,0,""} that evades the spans>0 filter and inflates
+    // recall to 1.0 for every retriever (GEN-1).
+    expect(findCitationSpan(DOC, "")).toBeNull()
+  })
+
+  it("returns null for a whitespace-only excerpt", () => {
+    expect(findCitationSpan(DOC, "   \n\t  ")).toBeNull()
+  })
+
   it("replaces excerpt with actual document text", () => {
     const result = findCitationSpan(
       DOC,
@@ -55,4 +66,35 @@ describe("findCitationSpan", () => {
     )
     expect(result).not.toBeNull()
   })
+
+  it("refines the fuzzy window to the true citation boundary", () => {
+    // The doc's phrasing differs from the citation by one character ("fix" vs
+    // "fox"), so Tier-1 and Tier-2 miss and Tier-3 runs. The target begins at an
+    // offset that the coarse sliding-window stride never samples exactly, so
+    // without the local stride-1 refine the returned span is bounded to the
+    // nearest coarse step and includes/loses boundary characters.
+    const target = "the quick brown fix jumps over the lazy dog tonight"
+    const doc = `xxxxxxx${target} and then everyone went home to rest.`
+    const result = findCitationSpan(
+      doc,
+      "the quick brown fox jumps over the lazy dog tonight"
+    )
+    expect(result).not.toBeNull()
+    expect(doc.slice(result!.start, result!.end)).toBe(result!.text)
+    expect(result!.text).toBe(target)
+  })
+
+  it("does not hang on a long near-miss citation", () => {
+    // The stride-1 fuzzy-boundary refinement was ~O(L^4) in citation length, so
+    // a long citation that misses Tier-1/Tier-2 and reaches the fuzzy tier hung
+    // the generation action well past its timeout. A long, unmatched excerpt
+    // must return quickly instead of blocking.
+    const doc =
+      "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(1000)
+    const excerpt = "qwerty ".repeat(400).trim() // ~2799 chars, absent from doc
+    const startedAt = Date.now()
+    const result = findCitationSpan(doc, excerpt)
+    expect(Date.now() - startedAt).toBeLessThan(1500)
+    expect(result).toBeNull()
+  }, 15000)
 })

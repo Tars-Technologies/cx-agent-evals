@@ -22,6 +22,8 @@ async function seedRetriever(
     indexingJobId: Id<"indexingJobs">
     chunkCount: number
     error: string
+    vectorBackend: string
+    qdrantCollection: string
   }> = {}
 ) {
   return await t.run(async (ctx) => {
@@ -33,6 +35,8 @@ async function seedRetriever(
       indexConfigHash: overrides.indexConfigHash ?? "idx-hash-123",
       retrieverConfigHash: "ret-hash-123",
       defaultK: 5,
+      vectorBackend: overrides.vectorBackend,
+      qdrantCollection: overrides.qdrantCollection,
       indexingJobId: overrides.indexingJobId,
       status: (overrides.status ?? "configuring") as any,
       chunkCount: overrides.chunkCount,
@@ -72,6 +76,16 @@ async function seedIndexingJob(
       createdAt: Date.now()
     })
   })
+}
+
+/** Args of cleanupAction calls enqueued on the scheduler during the test. */
+async function scheduledCleanupArgs(t: ReturnType<typeof setupTest>) {
+  const scheduled = await t.run(async (ctx) =>
+    ctx.db.system.query("_scheduled_functions").collect()
+  )
+  return scheduled
+    .filter((s) => s.name.includes("cleanupAction"))
+    .map((s) => s.args[0] as Record<string, unknown>)
 }
 
 // ─── Tests ───
@@ -143,6 +157,30 @@ describe("retrievers: deleteIndex", () => {
     expect(retriever!.chunkCount).toBeUndefined()
     expect(retriever!.indexingJobId).toBeUndefined()
   })
+
+  it("forwards vectorBackend and qdrantCollection to cleanupAction", async () => {
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const jobId = await seedIndexingJob(t, userId, kbId)
+
+    const retrieverId = await seedRetriever(t, userId, kbId, {
+      status: "ready",
+      indexingJobId: jobId,
+      chunkCount: 10,
+      vectorBackend: "qdrant",
+      qdrantCollection: "kb_test_col"
+    })
+
+    const authedT = t.withIdentity(testIdentity)
+    await authedT.mutation(api.kb.retrievers.deleteIndex, { id: retrieverId })
+
+    const cleanupCalls = await scheduledCleanupArgs(t)
+    expect(cleanupCalls).toHaveLength(1)
+    expect(cleanupCalls[0]).toMatchObject({
+      vectorBackend: "qdrant",
+      qdrantCollection: "kb_test_col"
+    })
+  })
 })
 
 describe("retrievers: resetAfterCancel", () => {
@@ -165,10 +203,9 @@ describe("retrievers: resetAfterCancel", () => {
     })
 
     const authedT = t.withIdentity(testIdentity)
-    const result = await authedT.mutation(
-      api.kb.retrievers.resetAfterCancel,
-      { id: retrieverId }
-    )
+    const result = await authedT.mutation(api.kb.retrievers.resetAfterCancel, {
+      id: retrieverId
+    })
     expect(result).toEqual({ reset: true })
 
     const retriever = await t.run(async (ctx) => ctx.db.get(retrieverId))
@@ -200,6 +237,30 @@ describe("retrievers: remove", () => {
 
     const retriever = await t.run(async (ctx) => ctx.db.get(retrieverId))
     expect(retriever).toBeNull()
+  })
+
+  it("forwards vectorBackend and qdrantCollection to cleanupAction", async () => {
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const jobId = await seedIndexingJob(t, userId, kbId)
+
+    const retrieverId = await seedRetriever(t, userId, kbId, {
+      status: "ready",
+      indexingJobId: jobId,
+      chunkCount: 10,
+      vectorBackend: "qdrant",
+      qdrantCollection: "kb_test_col"
+    })
+
+    const authedT = t.withIdentity(testIdentity)
+    await authedT.mutation(api.kb.retrievers.remove, { id: retrieverId })
+
+    const cleanupCalls = await scheduledCleanupArgs(t)
+    expect(cleanupCalls).toHaveLength(1)
+    expect(cleanupCalls[0]).toMatchObject({
+      vectorBackend: "qdrant",
+      qdrantCollection: "kb_test_col"
+    })
   })
 })
 
@@ -240,6 +301,95 @@ describe("retrievers: insertRetriever", () => {
     expect(retriever!.defaultK).toBe(10)
     expect(retriever!.status).toBe("configuring")
     expect(retriever!.createdAt).toBeDefined()
+  })
+
+  it("rejects a KB owned by another organization", async () => {
+    const userId = await seedUser(t)
+    const foreignKbId = await t.run(async (ctx) => {
+      return await ctx.db.insert("knowledgeBases", {
+        orgId: "org_other",
+        name: "Foreign KB",
+        metadata: {},
+        createdBy: userId,
+        createdAt: Date.now()
+      })
+    })
+
+    await expect(
+      t.mutation(internal.kb.retrievers.insertRetriever, {
+        orgId: TEST_ORG_ID,
+        kbId: foreignKbId,
+        name: "Cross-tenant Retriever",
+        retrieverConfig: {},
+        indexConfigHash: "foreign-index",
+        retrieverConfigHash: "foreign-retriever",
+        defaultK: 5,
+        status: "configuring",
+        createdBy: userId
+      })
+    ).rejects.toThrow("Knowledge base not found")
+  })
+})
+
+describe("retrievers: create", () => {
+  it("rejects a KB owned by another organization", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const foreignKbId = await t.run(async (ctx) => {
+      return await ctx.db.insert("knowledgeBases", {
+        orgId: "org_other",
+        name: "Foreign KB",
+        metadata: {},
+        createdBy: userId,
+        createdAt: Date.now()
+      })
+    })
+
+    await expect(
+      t.withIdentity(testIdentity).action(api.kb.retrieve_actions.create, {
+        kbId: foreignKbId,
+        retrieverConfig: {
+          name: "Cross-tenant Retriever",
+          index: {
+            strategy: "plain",
+            vectorBackend: "native",
+            embeddingProvider: "openai"
+          }
+        }
+      })
+    ).rejects.toThrow("Knowledge base not found")
+  })
+})
+
+describe("indexing: startIndexing", () => {
+  it("rejects an organization that does not own the KB", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const foreignKbId = await t.run(async (ctx) => {
+      return await ctx.db.insert("knowledgeBases", {
+        orgId: "org_other",
+        name: "Foreign KB",
+        metadata: {},
+        documentCount: 1,
+        createdBy: userId,
+        createdAt: Date.now()
+      })
+    })
+
+    await expect(
+      t.mutation(internal.kb.indexing.startIndexing, {
+        orgId: TEST_ORG_ID,
+        kbId: foreignKbId,
+        indexConfigHash: "foreign-index",
+        indexConfig: {
+          strategy: "plain",
+          chunkSize: 500,
+          chunkOverlap: 50,
+          embeddingModel: "text-embedding-3-small"
+        },
+        createdBy: userId
+      })
+    ).rejects.toThrow("Knowledge base not found")
   })
 })
 

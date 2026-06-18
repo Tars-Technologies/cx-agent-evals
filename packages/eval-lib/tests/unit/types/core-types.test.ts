@@ -111,4 +111,28 @@ describe("positionAwareChunkToSpan", () => {
     expect(span.end).toBe(21)
     expect(span.text).toBe("hello world")
   })
+
+  it("throws on an inverted span (end <= start)", () => {
+    const chunk: PositionAwareChunk = {
+      id: PositionAwareChunkId("pa_chunk_bad"),
+      content: "",
+      docId: DocumentId("doc.md"),
+      start: 20,
+      end: 20,
+      metadata: {}
+    }
+    expect(() => positionAwareChunkToSpan(chunk)).toThrow()
+  })
+
+  it("throws on non-finite offsets so NaN spans cannot poison metrics", () => {
+    const chunk: PositionAwareChunk = {
+      id: PositionAwareChunkId("pa_chunk_nan"),
+      content: "x",
+      docId: DocumentId("doc.md"),
+      start: Number.NaN,
+      end: 5,
+      metadata: {}
+    }
+    expect(() => positionAwareChunkToSpan(chunk)).toThrow()
+  })
 })

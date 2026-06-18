@@ -1,8 +1,8 @@
 import type { Embedder } from "../../../embedders/embedder.interface.js"
 import type { Corpus } from "../../../types/index.js"
+import { mapWithConcurrency } from "../../../utils/concurrency.js"
 import { cosineSimilarity } from "../../../utils/similarity.js"
 import type { MatchedQuestion } from "../types.js"
-import { mapWithConcurrency } from "../../../utils/concurrency.js"
 
 /**
  * Maximum character length for a single passage when splitting documents.
@@ -132,7 +132,9 @@ export async function embedInBatches(
     batches.push(texts.slice(i, i + batchSize))
   }
 
-  return (await mapWithConcurrency(batches, (batch) => embedder.embed(batch), 3)).flat()
+  return (
+    await mapWithConcurrency(batches, (batch) => embedder.embed(batch), 3)
+  ).flat()
 }
 
 export async function matchQuestionsToDocuments(

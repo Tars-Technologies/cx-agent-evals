@@ -18,12 +18,14 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
           {
             value: "text-embedding-3-small",
             label: "text-embedding-3-small",
+            dimensions: 1536,
             description:
               "1536 dims — fast, cost-effective, recommended for most use cases"
           },
           {
             value: "text-embedding-3-large",
             label: "text-embedding-3-large",
+            dimensions: 3072,
             description: "3072 dims — highest quality, 6x more expensive"
           }
         ],
@@ -31,6 +33,38 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
       }
     ],
     defaults: { model: "text-embedding-3-small" }
+  },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    description:
+      "OpenAI-compatible gateway to many embedding models. Uses the OpenAI embedder under the hood with the OpenRouter base URL.",
+    status: "available",
+    tags: ["gateway"],
+    options: [
+      {
+        key: "model",
+        label: "Model",
+        description: "OpenRouter embedding model id (provider-namespaced).",
+        type: "select",
+        choices: [
+          {
+            value: "openai/text-embedding-3-small",
+            label: "openai/text-embedding-3-small",
+            dimensions: 1536,
+            description: "1536 dims - fast, cost-effective"
+          },
+          {
+            value: "openai/text-embedding-3-large",
+            label: "openai/text-embedding-3-large",
+            dimensions: 3072,
+            description: "3072 dims - highest quality"
+          }
+        ],
+        default: "openai/text-embedding-3-small"
+      }
+    ],
+    defaults: { model: "openai/text-embedding-3-small" }
   },
   {
     id: "cohere",
@@ -49,12 +83,14 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
           {
             value: "embed-english-v3.0",
             label: "embed-english-v3.0",
+            dimensions: 1024,
             description:
               "1024 dims — English-optimized, best for English-only corpora"
           },
           {
             value: "embed-multilingual-v3.0",
             label: "embed-multilingual-v3.0",
+            dimensions: 1024,
             description: "1024 dims — supports 100+ languages"
           }
         ],
@@ -68,7 +104,7 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
     name: "Voyage",
     description:
       "High-quality embeddings from Voyage AI. voyage-3.5 offers strong retrieval performance across domains.",
-    status: "available",
+    status: "unavailable",
     tags: ["high-quality"],
     options: [
       {
@@ -80,21 +116,25 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
           {
             value: "voyage-3.5",
             label: "voyage-3.5",
+            dimensions: 1024,
             description: "1024 dims — latest general-purpose model"
           },
           {
             value: "voyage-3.5-lite",
             label: "voyage-3.5-lite",
+            dimensions: 512,
             description: "512 dims — faster, lower cost, slightly less accurate"
           },
           {
             value: "voyage-3",
             label: "voyage-3",
+            dimensions: 1024,
             description: "1024 dims — previous generation"
           },
           {
             value: "voyage-code-3",
             label: "voyage-code-3",
+            dimensions: 1024,
             description: "1024 dims — optimized for code retrieval"
           }
         ],
@@ -108,7 +148,7 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
     name: "Jina",
     description:
       "Flexible embeddings with Matryoshka dimension support. Adjust output dimensions (32-1024) for speed vs quality trade-off.",
-    status: "available",
+    status: "unavailable",
     tags: ["flexible", "matryoshka"],
     options: [
       {
@@ -120,6 +160,7 @@ export const EMBEDDER_REGISTRY: readonly RegistryEntry[] = [
           {
             value: "jina-embeddings-v3",
             label: "jina-embeddings-v3",
+            dimensions: 1024,
             description:
               "Up to 1024 dims — supports Matryoshka dimension reduction"
           }

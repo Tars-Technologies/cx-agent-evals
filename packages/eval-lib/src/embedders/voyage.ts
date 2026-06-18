@@ -1,5 +1,6 @@
 import { postJSON } from "../utils/fetch-json.js"
 import type { Embedder } from "./embedder.interface.js"
+import { assertEmbeddingBatch, reorderByIndex } from "./embedding-batch.js"
 
 interface VoyageEmbedClient {
   embed(opts: { model: string; input: string[]; input_type: string }): Promise<{
@@ -65,7 +66,9 @@ export class VoyageEmbedder implements Embedder {
       input: [...texts],
       input_type: "document"
     })
-    return response.data.map((d) => d.embedding)
+    const vectors = reorderByIndex(response.data).map((d) => d.embedding)
+    assertEmbeddingBatch(vectors, texts.length, this.name)
+    return vectors
   }
 
   async embedQuery(query: string): Promise<number[]> {
@@ -74,6 +77,8 @@ export class VoyageEmbedder implements Embedder {
       input: [query],
       input_type: "query"
     })
-    return response.data[0].embedding
+    const vectors = reorderByIndex(response.data).map((d) => d.embedding)
+    assertEmbeddingBatch(vectors, 1, this.name)
+    return vectors[0]
   }
 }

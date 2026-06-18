@@ -6,6 +6,8 @@ export interface Choice {
   readonly value: string
   /** Human-readable label */
   readonly label: string
+  /** Embedding dimensions this choice produces (embedder model choices only). */
+  readonly dimensions?: number
   /** Optional description shown when this choice is selected */
   readonly description?: string
 }
@@ -45,9 +47,10 @@ export interface RegistryEntry {
   /**
    * Implementation status:
    * - "available": fully implemented, selectable in the wizard
-   * - "coming-soon": shown in UI but disabled with "Coming soon" badge
+   * - "coming-soon": planned, shown in UI but disabled with a "Coming soon" badge
+   * - "unavailable": exists but not wired into this product surface; shown disabled
    */
-  readonly status: "available" | "coming-soon"
+  readonly status: "available" | "coming-soon" | "unavailable"
   /** Filterable tags, e.g., ["multilingual", "fast"] */
   readonly tags?: readonly string[]
   /** Configurable fields for this entry */

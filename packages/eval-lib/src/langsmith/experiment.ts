@@ -77,14 +77,29 @@ export async function runLangSmithExperiment(
     const target = async (inputs: { query: string }) => {
       const chunks = await retriever.retrieve(inputs.query, k)
       return {
-        relevantSpans: chunks.map((chunk) => {
-          const span = positionAwareChunkToSpan(chunk)
-          return {
-            docId: String(span.docId),
-            start: span.start,
-            end: span.end,
-            text: span.text
+        relevantSpans: chunks.flatMap((chunk) => {
+          // One malformed chunk (non-finite/inverted/zero-length offsets) must
+          // not fail the whole query; skip and log it so the rest of the
+          // retrieval is still scored.
+          let span: CharacterSpan
+          try {
+            span = positionAwareChunkToSpan(chunk)
+          } catch (err) {
+            console.warn(
+              `runLangSmithExperiment: skipping chunk ${String(chunk.id)} with invalid span — ${
+                err instanceof Error ? err.message : String(err)
+              }`
+            )
+            return []
           }
+          return [
+            {
+              docId: String(span.docId),
+              start: span.start,
+              end: span.end,
+              text: span.text
+            }
+          ]
         })
       }
     }

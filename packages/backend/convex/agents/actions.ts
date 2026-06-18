@@ -108,12 +108,9 @@ export const runAgent = internalAction({
           }
         )
         if (!retriever || retriever.status !== "ready") continue
-        const kb = await ctx.runQuery(
-          internal.kb.core.getInternal,
-          {
-            id: retriever.kbId
-          }
-        )
+        const kb = await ctx.runQuery(internal.kb.core.getInternal, {
+          id: retriever.kbId
+        })
         retrieverInfos.push({
           id: retriever._id,
           name: retriever.name,

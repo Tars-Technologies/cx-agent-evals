@@ -4,17 +4,37 @@
  * Owns the crawl WorkPool; batch scraping and page fetching are delegated
  * to crawl_actions.ts because they import HTTP scraper dependencies.
  */
-import {
-  type RunResult,
-  vOnCompleteArgs,
-  WorkId,
-  Workpool
-} from "@convex-dev/workpool"
+import { type RunResult, vOnCompleteArgs, Workpool } from "@convex-dev/workpool"
+import { normalizeUrl } from "@tars-inc/eval-lib/scraper/link-extractor"
 import { v } from "convex/values"
 import { components, internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
+
+// Finish reasons that represent a clean crawl completion. Anything else
+// (timeout, site_failure, ...) is treated as an abnormal end.
+const NORMAL_FINISH_REASONS = new Set(["finished", "completed", "ok", "done"])
+
+// Terminal crawl-job statuses. Tarser delivery is at-least-once, so a per-page
+// callback can arrive after job_complete or after the reaper finalized the job.
+// Every callback handler bails when the job is already terminal so a late/duplicate
+// callback can't re-ingest documents or resurrect a finished job (mirrors
+// finishParse's parseStatus guard on the parse path).
+const TERMINAL_CRAWL_STATUSES = new Set([
+  "completed",
+  "completed_with_errors",
+  "failed",
+  "cancelled"
+])
+
+// Tarser crawls with no callback activity past this are presumed abandoned and
+// swept to a terminal status by the reaper cron.
+const CRAWL_STALE_MS = 30 * 60 * 1000
+
+// Max rows a single reaper run sweeps, so a large backlog can't blow the
+// per-transaction limits. Remaining rows are drained on subsequent cron ticks.
+const REAP_BATCH = 200
 
 // ─── WorkPool Instance ───
 
@@ -45,10 +65,32 @@ export const startCrawl = tenantMutation({
         delay: v.optional(v.number()),
         concurrency: v.optional(v.number())
       })
+    ),
+    backend: v.optional(
+      v.union(v.literal("inprocess"), v.literal("tarser"), v.literal("asimov"))
     )
   },
   handler: async (ctx, args) => {
     const { orgId, userId } = ctx
+
+    // Normalize + validate the start URL. Bare domains (no scheme) get https://; http:// is
+    // only accepted when the user explicitly types it. Non-http(s) schemes are rejected.
+    // (Private/metadata host blocking is enforced downstream: at fetch time for the in-process
+    // scraper, and via the eval-lib guard on the Tarser submit path.)
+    let startUrl = args.startUrl.trim()
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(startUrl)) {
+      startUrl = `https://${startUrl}`
+    }
+    let parsedStart: URL
+    try {
+      parsedStart = new URL(startUrl)
+    } catch {
+      throw new Error(`Invalid start URL: ${args.startUrl}`)
+    }
+    if (parsedStart.protocol !== "http:" && parsedStart.protocol !== "https:") {
+      throw new Error(`Unsupported start URL scheme: ${parsedStart.protocol}`)
+    }
+    startUrl = parsedStart.toString()
 
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) {
@@ -67,42 +109,63 @@ export const startCrawl = tenantMutation({
       concurrency: userConfig.concurrency ?? 3
     }
 
+    const backend = args.backend ?? "inprocess"
+    const callbackToken = crypto.randomUUID()
+
     // Create crawl job
     const jobId = await ctx.db.insert("crawlJobs", {
       orgId,
       kbId: args.kbId,
       userId,
-      startUrl: args.startUrl,
+      startUrl,
       config,
-      status: "running",
+      // Remote backends (tarser, asimov) start "pending" until the submit attaches
+      // a service job; the in-process backend runs immediately via the WorkPool.
+      status: backend === "inprocess" ? "running" : "pending",
       stats: { discovered: 1, scraped: 0, failed: 0, skipped: 0 },
+      backend,
+      callbackToken,
       createdAt: Date.now()
     })
 
-    // Normalize the start URL for dedup
-    const normalizedUrl =
-      args.startUrl.toLowerCase().replace(/#.*$/, "").replace(/\/+$/, "") ||
-      args.startUrl
+    if (backend === "inprocess") {
+      // Normalize the start URL for dedup (same form as discovered URLs)
+      const normalizedUrl = normalizeUrl(startUrl)
 
-    // Insert seed URL into frontier
-    await ctx.db.insert("crawlUrls", {
-      crawlJobId: jobId,
-      url: args.startUrl,
-      normalizedUrl,
-      status: "pending",
-      depth: 0
-    })
+      // Insert seed URL into frontier
+      await ctx.db.insert("crawlUrls", {
+        crawlJobId: jobId,
+        url: startUrl,
+        normalizedUrl,
+        status: "pending",
+        depth: 0
+      })
 
-    // Enqueue the first batch scrape action
-    const workId = await pool.enqueueAction(
-      ctx,
-      internal.kb.crawl_actions.batchScrape,
-      { crawlJobId: jobId },
-      {
-        context: { jobId },
-        onComplete: internal.kb.crawl.onBatchComplete
-      }
-    )
+      // Enqueue the first batch scrape action
+      await pool.enqueueAction(
+        ctx,
+        internal.kb.crawl_actions.batchScrape,
+        { crawlJobId: jobId },
+        {
+          context: { jobId },
+          onComplete: internal.kb.crawl.onBatchComplete
+        }
+      )
+    } else if (backend === "asimov") {
+      // Asimov owns the frontier remotely; submit once, then poll (no callback).
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.crawl_actions.submitAsimovCrawl,
+        { crawlJobId: jobId }
+      )
+    } else {
+      // Tarser owns the frontier remotely; submit once (no crawlUrls seed).
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.crawl_actions.submitTarserCrawl,
+        { crawlJobId: jobId }
+      )
+    }
 
     return jobId
   }
@@ -121,7 +184,23 @@ export const cancelCrawl = tenantMutation({
     if (job.status !== "running" && job.status !== "pending") {
       throw new Error(`Cannot cancel job in status: ${job.status}`)
     }
-    await ctx.db.patch(args.jobId, { status: "cancelled" })
+    await ctx.db.patch(args.jobId, {
+      status: "cancelled",
+      cancelRequestedAt: Date.now()
+    })
+    if (job.backend === "tarser" && job.serviceJobId) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.crawl_actions.cancelTarserCrawl,
+        { crawlJobId: args.jobId }
+      )
+    } else if (job.backend === "asimov" && job.serviceJobId) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.crawl_actions.cancelAsimovCrawl,
+        { crawlJobId: args.jobId }
+      )
+    }
   }
 })
 
@@ -387,5 +466,313 @@ export const onBatchComplete = internalMutation({
         completedAt: Date.now()
       })
     }
+  }
+})
+
+// ─── Tarser submit support ───
+
+export const attachServiceJob = internalMutation({
+  args: { crawlJobId: v.id("crawlJobs"), serviceJobId: v.string() },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.crawlJobId)
+    if (!job) return
+
+    if (job.status !== "pending") {
+      await ctx.db.patch(args.crawlJobId, { serviceJobId: args.serviceJobId })
+      // The job was cancelled during submit: cancel the remote resource via the
+      // backend that actually owns it, not always Tarser.
+      const cancelFn =
+        job.backend === "asimov"
+          ? internal.kb.crawl_actions.cancelAsimovCrawl
+          : internal.kb.crawl_actions.cancelTarserCrawl
+      await ctx.scheduler.runAfter(0, cancelFn, { crawlJobId: args.crawlJobId })
+      return
+    }
+    await ctx.db.patch(args.crawlJobId, {
+      serviceJobId: args.serviceJobId,
+      submittedAt: Date.now(),
+      status: "running"
+    })
+  }
+})
+
+export const markTarserFailed = internalMutation({
+  args: { crawlJobId: v.id("crawlJobs"), error: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.crawlJobId, {
+      status: "failed",
+      error: args.error,
+      completedAt: Date.now()
+    })
+  }
+})
+
+/**
+ * Bump lastCallbackAt for a live Asimov crawl. The poll loop has no per-page
+ * callback, so without this heartbeat lastActivity stays pinned at submittedAt
+ * and the staleness reaper would kill a healthy crawl that runs past CRAWL_STALE_MS.
+ */
+export const touchCrawlActivity = internalMutation({
+  args: { crawlJobId: v.id("crawlJobs") },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.crawlJobId)
+    if (!job || TERMINAL_CRAWL_STATUSES.has(job.status)) return
+    await ctx.db.patch(args.crawlJobId, { lastCallbackAt: Date.now() })
+  }
+})
+
+/**
+ * Fail an Asimov crawl from the poll loop without clobbering a job the user
+ * cancelled or the reaper already finalized (the cancelled-status race).
+ */
+export const markAsimovCrawlFailed = internalMutation({
+  args: { crawlJobId: v.id("crawlJobs"), error: v.string() },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.crawlJobId)
+    if (!job || TERMINAL_CRAWL_STATUSES.has(job.status)) return
+    await ctx.db.patch(args.crawlJobId, {
+      status: "failed",
+      error: args.error,
+      completedAt: Date.now()
+    })
+  }
+})
+
+export const getJobByServiceJob = internalQuery({
+  args: { serviceJobId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("crawlJobs")
+      .withIndex("by_service_job", (q) =>
+        q.eq("serviceJobId", args.serviceJobId)
+      )
+      .first()
+  }
+})
+
+export const ingestCrawlPage = internalMutation({
+  args: {
+    crawlJobId: v.id("crawlJobs"),
+    url: v.string(),
+    title: v.string(),
+    markdown: v.string()
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.crawlJobId)
+    if (!job) return
+    // Ignore late/duplicate callbacks once the job is terminal.
+    if (TERMINAL_CRAWL_STATUSES.has(job.status)) return
+    // A page callback with no url can't be attributed or deduped (normalizeUrl("")
+    // == ""); treat it as a no-op rather than inserting an orphan document.
+    if (args.url.trim().length === 0) return
+    // Enforce the per-job page cap (mirrors persistScrapedPage on the in-process path).
+    const maxPages = job.config.maxPages ?? 100
+    if (job.stats.scraped >= maxPages) return
+    const normalizedUrl = normalizeUrl(args.url)
+    // Idempotency: skip if a crawlUrl for this normalized URL is already done.
+    const existing = await ctx.db
+      .query("crawlUrls")
+      .withIndex("by_job_url", (q) =>
+        q.eq("crawlJobId", args.crawlJobId).eq("normalizedUrl", normalizedUrl)
+      )
+      .first()
+    if (existing && (existing.status === "done" || existing.documentId)) return
+
+    // An empty page is a failure, not a document (parity with finishParse, which
+    // treats ok+empty as failed). Record it and bump the failed counter.
+    if (args.markdown.trim().length === 0) {
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          status: "failed",
+          error: "Empty page (no content)",
+          callbackReceivedAt: Date.now()
+        })
+      } else {
+        await ctx.db.insert("crawlUrls", {
+          crawlJobId: args.crawlJobId,
+          url: args.url,
+          normalizedUrl,
+          status: "failed",
+          depth: 0,
+          error: "Empty page (no content)",
+          callbackReceivedAt: Date.now()
+        })
+      }
+      await ctx.db.patch(args.crawlJobId, {
+        stats: { ...job.stats, failed: job.stats.failed + 1 },
+        lastCallbackAt: Date.now()
+      })
+      return
+    }
+
+    const documentId = await ctx.runMutation(
+      internal.kb.documents.createFromScrape,
+      {
+        orgId: job.orgId,
+        kbId: job.kbId,
+        title: args.title || args.url,
+        content: args.markdown,
+        sourceUrl: args.url,
+        sourceType: "scraped"
+      }
+    )
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        status: "done",
+        documentId,
+        callbackReceivedAt: Date.now()
+      })
+    } else {
+      await ctx.db.insert("crawlUrls", {
+        crawlJobId: args.crawlJobId,
+        url: args.url,
+        normalizedUrl,
+        status: "done",
+        depth: 0,
+        documentId,
+        callbackReceivedAt: Date.now()
+      })
+    }
+    await ctx.db.patch(args.crawlJobId, {
+      stats: { ...job.stats, scraped: job.stats.scraped + 1 },
+      lastCallbackAt: Date.now()
+    })
+  }
+})
+
+export const completeCrawlJob = internalMutation({
+  args: {
+    crawlJobId: v.id("crawlJobs"),
+    finishReason: v.string(),
+    stats: v.object({
+      visited: v.optional(v.number()),
+      failed: v.optional(v.number()),
+      skipped: v.optional(v.number()),
+      files: v.optional(v.number())
+    })
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.crawlJobId)
+    // Ignore a duplicate/late job_complete once the job is terminal, so it can't
+    // overwrite a reaped "failed" job back to "completed".
+    if (!job || TERMINAL_CRAWL_STATUSES.has(job.status)) return
+    // Reconcile the remote aggregate with our locally-counted page failures:
+    // a remote `failed: 0` must not erase failures recorded via per-page
+    // callbacks (recordCrawlPageFailed), which would mislabel the job
+    // "completed" instead of "completed_with_errors".
+    const failed = Math.max(args.stats.failed ?? 0, job.stats.failed)
+    const scraped = job.stats.scraped
+    // A finishReason other than a normal completion (e.g. timeout, site_failure)
+    // means the crawl ended abnormally, so it must not be reported as a clean
+    // "completed" even when no individual page failed.
+    const abnormal = !NORMAL_FINISH_REASONS.has(args.finishReason)
+    const status =
+      scraped === 0 && (failed > 0 || abnormal)
+        ? "failed"
+        : failed > 0 || abnormal
+          ? "completed_with_errors"
+          : "completed"
+    await ctx.db.patch(args.crawlJobId, {
+      status,
+      finishReason: args.finishReason,
+      completedAt: Date.now(),
+      lastCallbackAt: Date.now()
+    })
+  }
+})
+
+/** Record a crawl page failure so it counts toward the job's failed stat. */
+export const recordCrawlPageFailed = internalMutation({
+  args: {
+    crawlJobId: v.id("crawlJobs"),
+    url: v.string(),
+    error: v.optional(v.string())
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.crawlJobId)
+    // Ignore late/duplicate failure callbacks once the job is terminal.
+    if (!job || TERMINAL_CRAWL_STATUSES.has(job.status)) return
+    const normalizedUrl = normalizeUrl(args.url)
+    const existing = await ctx.db
+      .query("crawlUrls")
+      .withIndex("by_job_url", (q) =>
+        q.eq("crawlJobId", args.crawlJobId).eq("normalizedUrl", normalizedUrl)
+      )
+      .first()
+    // Don't double-count a URL already recorded as done/failed.
+    if (
+      existing &&
+      (existing.status === "done" || existing.status === "failed")
+    )
+      return
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        status: "failed",
+        error: args.error ?? "Page failed",
+        callbackReceivedAt: Date.now()
+      })
+    } else {
+      await ctx.db.insert("crawlUrls", {
+        crawlJobId: args.crawlJobId,
+        url: args.url,
+        normalizedUrl,
+        status: "failed",
+        depth: 0,
+        error: args.error ?? "Page failed",
+        callbackReceivedAt: Date.now()
+      })
+    }
+    await ctx.db.patch(args.crawlJobId, {
+      stats: { ...job.stats, failed: job.stats.failed + 1 },
+      lastCallbackAt: Date.now()
+    })
+  }
+})
+
+/**
+ * Reaper: fail remote crawl jobs (tarser, asimov) stuck in running/pending with no
+ * activity past CRAWL_STALE_MS. The in-process backend self-terminates via the
+ * WorkPool loop, but a remote job only ends on its callback (tarser) or poll-drain
+ * (asimov); an abandoned remote crawl whose scheduler chain died would otherwise
+ * hang forever. lastCallbackAt is bumped by both the tarser callbacks and the
+ * asimov poll-drain mutations, so the same staleness check covers both.
+ */
+export const reapStaleCrawls = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - CRAWL_STALE_MS
+    let reaped = 0
+    for (const backend of ["tarser", "asimov"] as const) {
+      for (const status of ["running", "pending"] as const) {
+        // Scope the bounded batch to remote jobs at the index level. Filtering
+        // backend after a status-only take() would let never-reaped in-process
+        // "running" rows fill the batch and starve stale remote crawls forever.
+        const jobs = await ctx.db
+          .query("crawlJobs")
+          .withIndex("by_backend_status", (q) =>
+            q.eq("backend", backend).eq("status", status)
+          )
+          .take(REAP_BATCH)
+        for (const job of jobs) {
+          const lastActivity =
+            job.lastCallbackAt ?? job.submittedAt ?? job.createdAt
+          if (lastActivity >= cutoff) continue
+          const finalStatus =
+            job.stats.scraped > 0 ? "completed_with_errors" : "failed"
+          await ctx.db.patch(job._id, {
+            status: finalStatus,
+            finishReason: "reaped: no callback activity",
+            error:
+              finalStatus === "failed"
+                ? "Crawl timed out: no callback activity"
+                : undefined,
+            completedAt: Date.now()
+          })
+          reaped++
+        }
+      }
+    }
+    return { reaped }
   }
 })

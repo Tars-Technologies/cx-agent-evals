@@ -6,7 +6,19 @@ const requiredStr = z
 
 const envSchema = z.object({
   OPENAI_API_KEY: requiredStr,
-  COHERE_API_KEY: z.string().optional() // optional — reranker falls back gracefully if not set
+  OPENROUTER_API_KEY: z.string().optional(), // optional — OpenRouter embedder gateway
+  COHERE_API_KEY: z.string().optional(), // optional — reranker falls back gracefully if not set
+  JINA_API_KEY: z.string().optional(),
+  VOYAGE_API_KEY: z.string().optional(),
+  TARSER_BASE_URL: z.string().optional(),
+  TARSER_API_TOKEN: z.string().optional(),
+  TARSER_CALLBACK_HMAC_SECRET: z.string().optional(),
+  TARSER_CALLBACK_BASE_URL: z.string().optional(), // local-dev override for the callback host (e.g. host.docker.internal)
+  ASIMOV_BASE_URL: z.string().optional(), // Asimov content service base URL (poll-based scraper/parser)
+  ASIMOV_API_TOKEN: z.string().optional(), // Bearer token for Asimov (no callback secret — poll, not callback)
+  EXPERIMENT_MAX_CONCURRENCY: z.string().optional(), // override for LangSmith evaluate() concurrency
+  QDRANT_URL: z.string().optional(),
+  QDRANT_API_KEY: z.string().optional()
 })
 
 type Env = z.infer<typeof envSchema>
@@ -26,7 +38,19 @@ function parseEnv(): Env {
     const partial = envSchema.partial().parse(snapshot)
     return {
       OPENAI_API_KEY: partial.OPENAI_API_KEY ?? "",
-      COHERE_API_KEY: partial.COHERE_API_KEY
+      OPENROUTER_API_KEY: partial.OPENROUTER_API_KEY,
+      COHERE_API_KEY: partial.COHERE_API_KEY,
+      JINA_API_KEY: partial.JINA_API_KEY,
+      VOYAGE_API_KEY: partial.VOYAGE_API_KEY,
+      TARSER_BASE_URL: partial.TARSER_BASE_URL,
+      TARSER_API_TOKEN: partial.TARSER_API_TOKEN,
+      TARSER_CALLBACK_HMAC_SECRET: partial.TARSER_CALLBACK_HMAC_SECRET,
+      TARSER_CALLBACK_BASE_URL: partial.TARSER_CALLBACK_BASE_URL,
+      ASIMOV_BASE_URL: partial.ASIMOV_BASE_URL,
+      ASIMOV_API_TOKEN: partial.ASIMOV_API_TOKEN,
+      EXPERIMENT_MAX_CONCURRENCY: partial.EXPERIMENT_MAX_CONCURRENCY,
+      QDRANT_URL: partial.QDRANT_URL,
+      QDRANT_API_KEY: partial.QDRANT_API_KEY
     }
   }
   const result = envSchema.safeParse(snapshot)

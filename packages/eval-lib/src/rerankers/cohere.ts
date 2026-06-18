@@ -1,4 +1,6 @@
 import type { PositionAwareChunk } from "../types/index.js"
+import { postJSON } from "../utils/fetch-json.js"
+import { mapRerankResults } from "./rerank-bounds.js"
 import type { Reranker } from "./reranker.interface.js"
 
 interface CohereRerankClient {
@@ -6,9 +8,9 @@ interface CohereRerankClient {
     model: string
     query: string
     documents: string[]
-    topN: number
+    top_n: number
   }): Promise<{
-    results: Array<{ index: number; relevanceScore: number }>
+    results: Array<{ index: number; relevance_score: number }>
   }>
 }
 
@@ -17,31 +19,46 @@ export class CohereReranker implements Reranker {
   private _model: string
   private _client: CohereRerankClient
 
-  private constructor(client: CohereRerankClient, model: string) {
+  constructor(client: CohereRerankClient, model: string) {
     this._client = client
     this._model = model
     this.name = `Cohere(${this._model})`
   }
 
   /**
-   * Create a CohereReranker using the official Cohere SDK.
-   * @param options.model - Cohere reranker model. Available models:
-   *   - "rerank-english-v3.0" (default) — English-only, proven stable
-   *   - "rerank-v3.5" — Latest multilingual model
-   *   - "rerank-english-v2.0" — Legacy
+   * Create a CohereReranker backed by the Cohere v2 rerank REST API.
+   * @param options.model - Cohere reranker model (default: "rerank-english-v3.0")
+   * @param options.apiKey - Cohere API key (defaults to COHERE_API_KEY env var)
    */
   static async create(
-    options: { model?: string } = {}
+    options: { model?: string; apiKey?: string } = {}
   ): Promise<CohereReranker> {
-    try {
-      const { CohereClient } = await import("cohere-ai")
-      const client = new CohereClient()
-      return new CohereReranker(client, options.model ?? "rerank-english-v3.0")
-    } catch {
+    const apiKey = options.apiKey ?? process.env.COHERE_API_KEY
+    if (!apiKey) {
       throw new Error(
-        "cohere-ai package required. Install with: pnpm add cohere-ai"
+        "Cohere API key required. Set COHERE_API_KEY environment variable or pass apiKey option."
       )
     }
+
+    const client: CohereRerankClient = {
+      async rerank(opts) {
+        return postJSON<{
+          results: Array<{ index: number; relevance_score: number }>
+        }>({
+          url: "https://api.cohere.com/v2/rerank",
+          provider: "Cohere Rerank",
+          headers: { Authorization: `Bearer ${apiKey}` },
+          body: {
+            model: opts.model,
+            query: opts.query,
+            documents: opts.documents,
+            top_n: opts.top_n
+          }
+        })
+      }
+    }
+
+    return new CohereReranker(client, options.model ?? "rerank-english-v3.0")
   }
 
   async rerank(
@@ -55,9 +72,9 @@ export class CohereReranker implements Reranker {
       model: this._model,
       query,
       documents: chunks.map((c) => c.content),
-      topN: topK ?? chunks.length
+      top_n: topK ?? chunks.length
     })
 
-    return response.results.map((r) => chunks[r.index])
+    return mapRerankResults(response.results, chunks, topK)
   }
 }

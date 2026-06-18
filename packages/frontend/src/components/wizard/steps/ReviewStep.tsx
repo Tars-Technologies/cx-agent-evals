@@ -10,6 +10,7 @@ import {
   RERANKER_REGISTRY,
   SEARCH_STRATEGY_REGISTRY
 } from "@tars-inc/eval-lib/registry"
+import { VECTOR_BACKEND_CHOICES } from "@/lib/vectorBackendGating"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -23,6 +24,7 @@ interface ReviewStepProps {
     chunkerOptions: Record<string, unknown>
     embedderProvider: string
     embedderOptions: Record<string, unknown>
+    vectorBackend: string
     queryStrategy: string
     searchStrategy: string
     searchOptions: Record<string, unknown>
@@ -145,6 +147,10 @@ export function ReviewStep({
           {chunkerOpts.map((line) => (
             <SummaryRow key={line} label="" value={line} />
           ))}
+          <SummaryRow
+            label="Vector Store"
+            value={lookupName(VECTOR_BACKEND_CHOICES, config.vectorBackend)}
+          />
           <SummaryRow
             label="Embedder"
             value={lookupName(EMBEDDER_REGISTRY, config.embedderProvider)}

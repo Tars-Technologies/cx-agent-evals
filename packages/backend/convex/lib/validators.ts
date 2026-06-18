@@ -6,3 +6,9 @@ export const spanValidator = v.object({
   end: v.number(),
   text: v.string()
 })
+
+/** The finite set of vector-store backends an index/retriever may use. */
+export const vectorBackendValidator = v.union(
+  v.literal("native"),
+  v.literal("qdrant")
+)

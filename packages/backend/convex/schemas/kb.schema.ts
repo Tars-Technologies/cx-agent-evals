@@ -1,6 +1,6 @@
 import { defineTable } from "convex/server"
 import { type Infer, v } from "convex/values"
-import { spanValidator } from "../lib/validators"
+import { spanValidator, vectorBackendValidator } from "../lib/validators"
 
 // ─── Knowledge Bases ───
 export const knowledgeBaseValidator = v.object({
@@ -33,6 +33,18 @@ export const documentValidator = v.object({
   sourceUrl: v.optional(v.string()),
   sourceType: v.optional(v.string()),
   priority: v.optional(v.number()), // 1-5, default 3
+  mimeType: v.optional(v.string()),
+  parseBackend: v.optional(
+    v.union(v.literal("inprocess"), v.literal("tarser"), v.literal("asimov"))
+  ),
+  parseServiceJobId: v.optional(v.string()),
+  parseToken: v.optional(v.string()),
+  parseStatus: v.optional(
+    v.union(v.literal("parsing"), v.literal("done"), v.literal("failed"))
+  ),
+  // Heartbeat for poll-based (asimov) parses: bumped each poll so the stale-parse
+  // reaper measures inactivity, not total age. Absent for tarser (callback-based).
+  parseLastActivityAt: v.optional(v.number()),
   createdAt: v.number()
 })
 export type Document = Infer<typeof documentValidator>
@@ -81,6 +93,8 @@ export const retrieverValidator = v.object({
   indexConfigHash: v.string(),
   retrieverConfigHash: v.string(),
   defaultK: v.number(),
+  vectorBackend: v.optional(vectorBackendValidator),
+  qdrantCollection: v.optional(v.string()),
   indexingJobId: v.optional(v.id("indexingJobs")),
   status: v.union(
     v.literal("configuring"),
@@ -252,6 +266,7 @@ export const documentChunkValidator = v.object({
   documentId: v.id("documents"),
   kbId: v.id("knowledgeBases"),
   indexConfigHash: v.optional(v.string()),
+  vectorIndexId: v.optional(v.string()),
   chunkId: v.string(),
   content: v.string(),
   start: v.number(),
@@ -267,6 +282,8 @@ export const indexingJobValidator = v.object({
   kbId: v.id("knowledgeBases"),
   indexConfigHash: v.string(),
   indexConfig: v.any(),
+  vectorBackend: v.optional(vectorBackendValidator),
+  qdrantCollection: v.optional(v.string()),
   status: v.union(
     v.literal("pending"),
     v.literal("running"),
@@ -297,6 +314,18 @@ export const indexingJobValidator = v.object({
 })
 export type IndexingJob = Infer<typeof indexingJobValidator>
 
+// ─── Storage ownership ledger ───
+// Binds an uploaded Convex `_storage` blob to the org that first used it, so a
+// client cannot pass a foreign/leaked storageId into create/parseUpload and
+// ingest (or cross-delete) another org's bytes. Claimed on first use.
+export const storageObjectValidator = v.object({
+  orgId: v.string(),
+  storageId: v.id("_storage"),
+  userId: v.string(),
+  createdAt: v.number()
+})
+export type StorageObject = Infer<typeof storageObjectValidator>
+
 export const kbTables = {
   // ─── Knowledge Bases (org-scoped, replaces "corpora") ───
   knowledgeBases: defineTable(knowledgeBaseValidator)
@@ -310,6 +339,9 @@ export const kbTables = {
     .index("by_kb_doc_id", ["kbId", "docId"])
     .index("by_kb_priority", ["kbId", "priority"])
     .index("by_org", ["orgId"])
+    .index("by_parse_service_job", ["parseServiceJobId"])
+    // Lets the reaper cron sweep documents stuck in parseStatus:"parsing".
+    .index("by_parse_status", ["parseStatus"])
     .searchIndex("search_content", {
       searchField: "content",
       filterFields: ["kbId"]
@@ -318,6 +350,11 @@ export const kbTables = {
       searchField: "title",
       filterFields: ["kbId"]
     }),
+
+  // ─── Storage ownership ledger (org binding for uploaded blobs) ───
+  storageObjects: defineTable(storageObjectValidator).index("by_storage", [
+    "storageId"
+  ]),
 
   // ─── Datasets (sets of generated questions) ───
   datasets: defineTable(datasetValidator)
@@ -413,11 +450,25 @@ export const kbTables = {
     }),
     error: v.optional(v.string()),
     createdAt: v.number(),
-    completedAt: v.optional(v.number())
+    completedAt: v.optional(v.number()),
+    backend: v.optional(
+      v.union(v.literal("inprocess"), v.literal("tarser"), v.literal("asimov"))
+    ),
+    serviceJobId: v.optional(v.string()),
+    callbackToken: v.optional(v.string()),
+    submittedAt: v.optional(v.number()),
+    cancelRequestedAt: v.optional(v.number()),
+    lastCallbackAt: v.optional(v.number()),
+    finishReason: v.optional(v.string())
   })
     .index("by_org", ["orgId"])
     .index("by_kb", ["kbId"])
-    .index("by_status", ["orgId", "status"]),
+    .index("by_status", ["orgId", "status"])
+    .index("by_service_job", ["serviceJobId"])
+    // Cross-org sweep by (backend, status) for the stale-crawl reaper cron, so a
+    // bounded take() returns only reapable Tarser jobs (never-reaped in-process
+    // "running" rows would otherwise starve the batch).
+    .index("by_backend_status", ["backend", "status"]),
 
   // ─── Crawl URLs (URL frontier for crawl jobs) ───
   crawlUrls: defineTable({
@@ -436,8 +487,16 @@ export const kbTables = {
     documentId: v.optional(v.id("documents")),
     error: v.optional(v.string()),
     retryCount: v.optional(v.number()),
-    scrapedAt: v.optional(v.number())
+    scrapedAt: v.optional(v.number()),
+    callbackReceivedAt: v.optional(v.number())
   })
     .index("by_job_status", ["crawlJobId", "status"])
-    .index("by_job_url", ["crawlJobId", "normalizedUrl"])
+    .index("by_job_url", ["crawlJobId", "normalizedUrl"]),
+
+  // ─── Tarser callback nonces (replay protection for /tarser/cb) ───
+  tarserCallbackNonces: defineTable({
+    nonce: v.string(),
+    serviceJobId: v.string(),
+    claimedAt: v.number()
+  }).index("by_nonce", ["nonce"])
 }

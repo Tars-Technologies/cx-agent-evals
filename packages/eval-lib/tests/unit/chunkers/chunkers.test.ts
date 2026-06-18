@@ -164,6 +164,50 @@ describe("overlap duplication bug", () => {
   })
 })
 
+describe("leading-whitespace offset integrity (P0 #1)", () => {
+  it("keeps slice(start,end)===content when a merged group starts with whitespace", () => {
+    // Indented paragraphs: after split on "\n\n", parts 2 and 3 begin with
+    // spaces. With chunkSize 30 each paragraph emits on its own, so the merged
+    // group passed to emitCurrent starts with whitespace and the span drifts left.
+    const content =
+      "Intro line here okay.\n\n    Indented paragraph two.\n\n    Indented paragraph three."
+    const doc = createDocument({ id: "indented.md", content })
+    const chunker = new RecursiveCharacterChunker({
+      chunkSize: 30,
+      chunkOverlap: 0
+    })
+
+    const chunks = chunker.chunkWithPositions(doc)
+
+    expect(chunks.length).toBeGreaterThan(1)
+    for (const chunk of chunks) {
+      expect(content.slice(chunk.start, chunk.end)).toBe(chunk.content)
+    }
+  })
+
+  it("keeps positions valid when leading whitespace appears in a recursive sub-split", () => {
+    // A single oversized paragraph forces the "\n" sub-split path; indented
+    // lines inside it exercise emitCurrent's offset on the recursive base.
+    const lines = Array.from(
+      { length: 12 },
+      (_, i) => `    indented line number ${i} with some filler text`
+    )
+    const content = lines.join("\n")
+    const doc = createDocument({ id: "indented-lines.md", content })
+    const chunker = new RecursiveCharacterChunker({
+      chunkSize: 40,
+      chunkOverlap: 0
+    })
+
+    const chunks = chunker.chunkWithPositions(doc)
+
+    expect(chunks.length).toBeGreaterThan(1)
+    for (const chunk of chunks) {
+      expect(content.slice(chunk.start, chunk.end)).toBe(chunk.content)
+    }
+  })
+})
+
 describe("isAsyncPositionAwareChunker", () => {
   it("returns true for chunker with async discriminator", () => {
     const chunker = {

@@ -1,10 +1,11 @@
 "use client"
 
 import type { Id } from "@convex/_generated/dataModel"
-import { useMutation } from "convex/react"
+import { useMutation, useQuery } from "convex/react"
 import { useEffect, useState } from "react"
 import { loadImportUrlConfig, saveImportUrlConfig } from "@/lib/constants"
 import { api } from "@/lib/convex"
+import { ScraperBackendToggle } from "./ScraperBackendToggle"
 
 interface ImportUrlModalProps {
   open: boolean
@@ -23,6 +24,16 @@ export function ImportUrlModal({
 }: ImportUrlModalProps) {
   const startCrawl = useMutation(api.kb.crawl.startCrawl)
 
+  const availability = useQuery(api.kb.providers.getScraperAvailability, {})
+  // `undefined` = still loading (don't assert "unavailable"); only a resolved
+  // `false` means Tarser is genuinely unavailable.
+  const tarserAvailable = availability?.tarser === true
+  const asimovAvailable = availability?.asimov === true
+  const availabilityLoading = availability === undefined
+  const [backend, setBackend] = useState<"inprocess" | "tarser" | "asimov">(
+    "inprocess"
+  )
+
   // Primary fields
   const [url, setUrl] = useState("")
   const [maxPages, setMaxPages] = useState(200)
@@ -37,13 +48,16 @@ export function ImportUrlModal({
   const [delay, setDelay] = useState(0)
 
   const [starting, setStarting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   // Pre-populate on open
   useEffect(() => {
     if (!open) return
     setUrl(defaultUrl || "")
     setStarting(false)
+    setError(null)
     setShowAdvanced(false)
+    setBackend("inprocess")
 
     const saved = loadImportUrlConfig()
     if (saved) {
@@ -77,16 +91,35 @@ export function ImportUrlModal({
   async function handleStart() {
     if (!url.trim() || starting) return
     setStarting(true)
+    setError(null)
     try {
       const includeArr = parsePatterns(includePaths)
       const excludeArr = parsePatterns(excludePaths)
 
+      // Fall back to native if the selected remote backend became unavailable.
+      const remoteUnavailable =
+        (backend === "tarser" && !tarserAvailable) ||
+        (backend === "asimov" && !asimovAvailable)
+      const resolvedBackend = remoteUnavailable ? "inprocess" : backend
+
+      // Clamp every numeric field so a cleared/out-of-range input (e.g. maxDepth
+      // becoming 0 or NaN) can't reach the v.number() validator and reject.
+      const safeMaxDepth = Number.isFinite(maxDepth)
+        ? Math.min(Math.max(Math.trunc(maxDepth), 1), 10)
+        : 3
+      // Same NaN guard for maxPages: a non-finite value (e.g. corrupted saved
+      // config) would survive Math.max(NaN, 1) = NaN and disable the page cap.
+      const safeMaxPages = Number.isFinite(maxPages)
+        ? Math.min(Math.max(Math.trunc(maxPages), 1), 1000)
+        : 200
+
       const jobId = await startCrawl({
         kbId,
         startUrl: url.trim(),
+        backend: resolvedBackend,
         config: {
-          maxPages: Math.min(Math.max(maxPages, 1), 1000),
-          maxDepth,
+          maxPages: safeMaxPages,
+          maxDepth: safeMaxDepth,
           includePaths: includeArr.length ? includeArr : undefined,
           excludePaths: excludeArr.length ? excludeArr : undefined,
           allowSubdomains,
@@ -99,7 +132,7 @@ export function ImportUrlModal({
         maxPages,
         includePaths: includeArr,
         excludePaths: excludeArr,
-        maxDepth,
+        maxDepth: safeMaxDepth,
         allowSubdomains,
         concurrency,
         delay
@@ -107,6 +140,10 @@ export function ImportUrlModal({
 
       onStarted(jobId)
       onClose()
+    } catch (err) {
+      // Surface the failure (Convex validation, KB not found, SSRF host-block,
+      // network) instead of swallowing it into an unhandled rejection.
+      setError(err instanceof Error ? err.message : "Failed to start crawl")
     } finally {
       setStarting(false)
     }
@@ -142,6 +179,15 @@ export function ImportUrlModal({
             autoFocus
           />
         </div>
+
+        <ScraperBackendToggle
+          value={backend}
+          onChange={setBackend}
+          tarserAvailable={tarserAvailable}
+          asimovAvailable={asimovAvailable}
+          loading={availabilityLoading}
+          disabled={starting}
+        />
 
         {/* Max Pages */}
         <div className="space-y-1">
@@ -261,6 +307,12 @@ export function ImportUrlModal({
         )}
 
         <div className="border-t border-border" />
+
+        {error && (
+          <p className="text-xs text-red-400" role="alert">
+            {error}
+          </p>
+        )}
 
         <div className="flex justify-end gap-2">
           <button

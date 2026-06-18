@@ -308,8 +308,18 @@ export class PipelineRetriever implements Retriever {
       throw new Error("PipelineRetriever not initialized. Call init() first.")
     }
 
-    // QUERY stage — transform/expand the query
-    const queries = await this._processQuery(query)
+    // QUERY stage — transform/expand the query. Trim each transformed query and
+    // drop empties; if a transform yields nothing usable (empty LLM output,
+    // variants parsed to nothing, unknown strategy) fall back to the original
+    // so at least one non-empty query always reaches search.
+    const transformed = await this._processQuery(query)
+    const queries = transformed
+      .filter((q): q is string => typeof q === "string")
+      .map((q) => q.trim())
+      .filter((q) => q.length > 0)
+    if (queries.length === 0) {
+      queries.push(query)
+    }
 
     // SEARCH stage — search per query, fuse if multiple
     let scoredResults: ScoredChunk[]
@@ -408,6 +418,11 @@ export class PipelineRetriever implements Retriever {
         const rewritten = await this._llm!.complete(prompt + query)
         return [rewritten]
       }
+
+      default:
+        // Unknown strategy: fall back to the original query rather than
+        // returning undefined (which would crash the search stage).
+        return [query]
     }
   }
 

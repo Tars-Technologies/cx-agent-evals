@@ -259,11 +259,32 @@ function KBPageContent() {
                     {/* Crawl progress */}
                     {crawlJob && (
                       <div className="text-xs space-y-1">
+                        {crawlJob.status === "pending" && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-text-dim">
+                              {crawlJob.backend === "asimov"
+                                ? "Queuing Asimov crawl..."
+                                : crawlJob.backend === "tarser"
+                                  ? "Queuing Tarser crawl..."
+                                  : "Queuing crawl..."}
+                            </span>
+                            <button
+                              onClick={() =>
+                                cancelCrawl({ jobId: crawlJobId! })
+                              }
+                              className="text-red-400 hover:text-red-300 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
                         {crawlJob.status === "running" && (
                           <div className="flex items-center justify-between">
                             <span className="text-text-dim">
-                              Crawling... {crawlJob.stats.scraped}/
-                              {crawlJob.stats.discovered} pages
+                              {crawlJob.backend === "tarser" ||
+                              crawlJob.backend === "asimov"
+                                ? `Crawling... ${crawlJob.stats.scraped} pages`
+                                : `Crawling... ${crawlJob.stats.scraped}/${crawlJob.stats.discovered} pages`}
                             </span>
                             <button
                               onClick={() =>

@@ -124,7 +124,12 @@ export class RecursiveCharacterChunker
       const trimmed = merged.trim()
       if (trimmed.length === 0) return
 
-      const startOffset = baseOffset + currentParts[0].offset
+      // `trimmed` drops leading whitespace, so the span must start at the first
+      // non-whitespace char, not at the untrimmed first part's offset. Without
+      // this shift `document.slice(start, end) !== trimmed`, corrupting every
+      // span metric whenever a merged group begins with whitespace.
+      const lead = merged.length - merged.trimStart().length
+      const startOffset = baseOffset + currentParts[0].offset + lead
 
       if (trimmed.length > this._chunkSize && nextSeparators.length > 0) {
         results.push(

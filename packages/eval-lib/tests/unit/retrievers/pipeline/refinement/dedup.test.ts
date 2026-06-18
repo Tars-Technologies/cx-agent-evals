@@ -132,5 +132,20 @@ describe("applyDedup", () => {
         PositionAwareChunkId("d")
       ])
     })
+
+    it("keeps the higher-scored chunk when input is not in descending order (A4)", () => {
+      // MMR emits selection order, not score order: the lower-scored chunk can
+      // arrive first. Overlap-dedup must keep the higher-scored of the pair.
+      // Chunk lo: 0-100, chunk hi: 10-110 → overlap 90, min length 100 → ratio 0.9
+      const results = [
+        scored(makeChunk("lo", "doc1", 0, 100), 0.4),
+        scored(makeChunk("hi", "doc1", 10, 110), 0.9)
+      ]
+
+      const deduped = applyDedup(results, "overlap", 0.5)
+
+      expect(deduped).toHaveLength(1)
+      expect(deduped[0]!.chunk.id).toBe(PositionAwareChunkId("hi"))
+    })
   })
 })

@@ -5,6 +5,7 @@ import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
+import { vectorBackendValidator } from "../lib/validators"
 
 // ─── Queries ───
 
@@ -90,6 +91,8 @@ export const insertRetriever = internalMutation({
     indexConfigHash: v.string(),
     retrieverConfigHash: v.string(),
     defaultK: v.number(),
+    vectorBackend: v.optional(vectorBackendValidator),
+    qdrantCollection: v.optional(v.string()),
     indexingJobId: v.optional(v.id("indexingJobs")),
     status: v.union(
       v.literal("configuring"),
@@ -101,6 +104,11 @@ export const insertRetriever = internalMutation({
     createdBy: v.string()
   },
   handler: async (ctx, args) => {
+    const kb = await ctx.db.get(args.kbId)
+    if (!kb || kb.orgId !== args.orgId) {
+      throw new Error("Knowledge base not found")
+    }
+
     return await ctx.db.insert("retrievers", {
       orgId: args.orgId,
       kbId: args.kbId,
@@ -109,6 +117,8 @@ export const insertRetriever = internalMutation({
       indexConfigHash: args.indexConfigHash,
       retrieverConfigHash: args.retrieverConfigHash,
       defaultK: args.defaultK,
+      vectorBackend: args.vectorBackend,
+      qdrantCollection: args.qdrantCollection,
       indexingJobId: args.indexingJobId,
       status: args.status,
       chunkCount: args.chunkCount,
@@ -198,7 +208,9 @@ export const remove = tenantMutation({
           {
             kbId: retriever.kbId,
             indexConfigHash: retriever.indexConfigHash,
-            jobId: retriever.indexingJobId
+            jobId: retriever.indexingJobId,
+            vectorBackend: retriever.vectorBackend,
+            qdrantCollection: retriever.qdrantCollection
           }
         )
       }
@@ -280,7 +292,9 @@ export const deleteIndex = tenantMutation({
         {
           kbId: retriever.kbId,
           indexConfigHash: retriever.indexConfigHash,
-          jobId: retriever.indexingJobId
+          jobId: retriever.indexingJobId,
+          vectorBackend: retriever.vectorBackend,
+          qdrantCollection: retriever.qdrantCollection
         }
       )
     }

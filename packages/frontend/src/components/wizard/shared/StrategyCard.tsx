@@ -7,7 +7,7 @@ interface StrategyCardProps {
   id: string
   name: string
   description: string
-  status: "available" | "coming-soon"
+  status: "available" | "coming-soon" | "unavailable"
   selected: boolean
   onSelect: (id: string) => void
   tags?: readonly string[]
@@ -24,7 +24,7 @@ export function StrategyCard({
   tags,
   badge
 }: StrategyCardProps) {
-  const isDisabled = status === "coming-soon"
+  const isDisabled = status !== "available"
 
   const handleClick = () => {
     if (!isDisabled) {

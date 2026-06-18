@@ -8,7 +8,10 @@ import { contentOverlapRatio } from "./overlap-ratio.js"
  * "overlap": removes chunks from the same document whose character span
  *   overlap ratio >= overlapThreshold, keeps the higher-scored chunk.
  *
- * Input is assumed sorted by descending score (first = highest).
+ * The overlap method sorts by descending score before deduping so the
+ * higher-scored chunk of an overlapping pair always survives, even when the
+ * caller passes results in selection order (e.g. after MMR) rather than score
+ * order.
  */
 export function applyDedup(
   results: readonly ScoredChunk[],
@@ -24,9 +27,11 @@ export function applyDedup(
     })
   }
 
-  // overlap method: compare against already-kept results
+  // overlap method: process highest-scored first so the survivor of an
+  // overlapping pair is the higher-scored chunk regardless of input order.
+  const sorted = [...results].sort((a, b) => b.score - a.score)
   const kept: ScoredChunk[] = []
-  for (const result of results) {
+  for (const result of sorted) {
     const isDuplicate = kept.some(
       (existing) =>
         contentOverlapRatio(existing.chunk, result.chunk) >= overlapThreshold

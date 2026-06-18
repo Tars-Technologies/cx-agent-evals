@@ -1,4 +1,5 @@
 import type { PositionAwareChunk } from "../../../types/chunks.js"
+import { assertVectorSearchResults } from "../../../vector-stores/vector-store.interface.js"
 import type { ScoredChunk } from "../types.js"
 import type {
   SearchStrategy,
@@ -42,7 +43,8 @@ export class DenseSearchStrategy implements SearchStrategy {
     const { embedder, vectorStore } = deps
 
     const queryEmbedding = await embedder.embedQuery(query)
-    const results = await vectorStore.search(queryEmbedding, k)
+    const results = await vectorStore.search(queryEmbedding, { k })
+    assertVectorSearchResults(results)
 
     // VectorStore now returns real similarity scores — use them directly.
     return results.map(({ chunk, score }) => ({ chunk, score }))

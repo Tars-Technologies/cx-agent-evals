@@ -57,6 +57,23 @@ export function createCharacterSpan(params: {
 export function positionAwareChunkToSpan(
   chunk: PositionAwareChunk
 ): CharacterSpan {
+  // This is the seam where retriever output becomes scored spans, and it cannot
+  // see the source document, so it cannot catch offset *drift* (a wrong but
+  // self-consistent start/end). It can still reject the spans that silently
+  // produce NaN/empty metrics downstream: non-finite, negative, or inverted
+  // offsets. A retriever emitting one of those is a bug that should surface here
+  // rather than poison the aggregate. (A mismatched text length is intentionally
+  // allowed: contextual/summary strategies replace `content` for embedding.)
+  if (
+    !Number.isFinite(chunk.start) ||
+    !Number.isFinite(chunk.end) ||
+    chunk.start < 0 ||
+    chunk.end <= chunk.start
+  ) {
+    throw new Error(
+      `positionAwareChunkToSpan: invalid span offsets (start=${chunk.start}, end=${chunk.end}) for chunk ${String(chunk.id)}`
+    )
+  }
   return {
     docId: chunk.docId,
     start: chunk.start,

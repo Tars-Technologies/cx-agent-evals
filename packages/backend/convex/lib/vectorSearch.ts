@@ -1,3 +1,4 @@
+import { parentSwap } from "@tars-inc/eval-lib/utils/parent-swap"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
@@ -32,7 +33,7 @@ export async function vectorSearchWithFilter(
   // Phase 1: hydrate chunks only (no document records — those are heavy).
   const chunks: any[] = await ctx.runQuery(
     internal.kb.chunks.fetchChunksByIds,
-    { ids: results.map((r: any) => r._id) }
+    { ids: results.map((r: any) => r._id), kbId: opts.kbId }
   )
 
   const scoreMap = new Map<string, number>()
@@ -56,33 +57,26 @@ export async function vectorSearchWithFilter(
     const parents: any[] =
       parentIds.length > 0
         ? await ctx.runQuery(internal.kb.chunks.fetchChunksByIds, {
-            ids: parentIds
+            ids: parentIds,
+            kbId: opts.kbId
           })
         : []
     const parentMap = new Map<string, any>(
       parents.map((p) => [p._id.toString(), p])
     )
 
-    const parentIdsSeen = new Set<string>()
-    const swapped: any[] = []
-    for (const child of filtered) {
-      const parentId = child.metadata?.parentChunkId
-      if (parentId && !parentIdsSeen.has(parentId)) {
-        parentIdsSeen.add(parentId)
-        const parent = parentMap.get(parentId)
-        if (parent) {
-          const childScore = scoreMap.get(child._id.toString()) ?? 0
-          scoreMap.set(parent._id.toString(), childScore)
-          swapped.push({ ...parent, _score: childScore })
-        } else {
-          swapped.push(child) // Fallback if parent not found
-        }
-      } else if (!parentId) {
-        swapped.push(child)
-      }
-      // Skip if parent already added (deduplication)
-    }
-    filtered = swapped
+    filtered = parentSwap<any, any, any>(filtered, {
+      getParentId: (child) => child.metadata?.parentChunkId,
+      getParent: (parentId) => parentMap.get(parentId),
+      fromParent: (parent, child) => {
+        // Carry the first-seen child's score onto the parent so downstream
+        // _score lookups (and the returned scoreMap) resolve the parent row.
+        const childScore = scoreMap.get(child._id.toString()) ?? 0
+        scoreMap.set(parent._id.toString(), childScore)
+        return { ...parent, _score: childScore }
+      },
+      keepChild: (child) => child // no parent / parent not found
+    })
   }
 
   // Phase 2: hydrate docId only for the topK survivors, deduplicated.

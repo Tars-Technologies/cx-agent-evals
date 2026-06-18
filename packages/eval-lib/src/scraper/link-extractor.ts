@@ -1,15 +1,18 @@
 export function normalizeUrl(url: string): string {
   try {
     const parsed = new URL(url)
-    parsed.hostname = parsed.hostname.toLowerCase()
-    parsed.hash = ""
+    // Rebuild from getters rather than URL setters: Convex's non-Node runtime
+    // doesn't implement the username/password setters. Dropping userinfo also
+    // dedups `user:pass@host` to `host` and keeps credentials out of crawlUrls.
+    const host = parsed.hostname.toLowerCase()
+    const port = parsed.port ? `:${parsed.port}` : ""
     const params = new URLSearchParams(parsed.search)
-    const sorted = new URLSearchParams([...params.entries()].sort())
-    parsed.search = sorted.toString()
-    let result = parsed.href
-    if (result.endsWith("/") && parsed.pathname !== "/")
-      result = result.slice(0, -1)
-    if (result.endsWith("?")) result = result.slice(0, -1)
+    const search = new URLSearchParams([...params.entries()].sort()).toString()
+    let pathname = parsed.pathname
+    if (pathname.endsWith("/") && pathname !== "/")
+      pathname = pathname.slice(0, -1)
+    let result = `${parsed.protocol}//${host}${port}${pathname}`
+    if (search) result += `?${search}`
     return result
   } catch {
     return url
@@ -26,6 +29,11 @@ export function filterLinks(
   }
 ): string[] {
   const baseDomain = new URL(baseUrl).hostname
+  // Compile path globs once per call (not per link), and drop any that fail to
+  // compile so one malformed user pattern can't throw and fail the whole crawl.
+  const includeRes = compileGlobs(config?.includePaths)
+  const excludeRes = compileGlobs(config?.excludePaths)
+  const hasInclude = (config?.includePaths?.length ?? 0) > 0
   return links.filter((link) => {
     let parsed: URL
     try {
@@ -35,29 +43,51 @@ export function filterLinks(
     }
     if (config?.allowSubdomains) {
       if (
-        !parsed.hostname.endsWith(baseDomain) &&
-        parsed.hostname !== baseDomain
+        parsed.hostname !== baseDomain &&
+        !parsed.hostname.endsWith(`.${baseDomain}`)
       )
         return false
     } else {
       if (parsed.hostname !== baseDomain) return false
     }
     const path = parsed.pathname
-    if (config?.includePaths?.length) {
-      if (!config.includePaths.some((p) => matchGlob(path, p))) return false
-    }
-    if (config?.excludePaths?.length) {
-      if (config.excludePaths.some((p) => matchGlob(path, p))) return false
-    }
+    if (hasInclude && !includeRes.some((re) => re.test(path))) return false
+    if (excludeRes.some((re) => re.test(path))) return false
     return true
   })
 }
 
-function matchGlob(path: string, pattern: string): boolean {
-  if (path === pattern) return true
-  const regexStr = pattern
+/** Compile glob patterns to anchored RegExps, skipping any that don't compile. */
+function compileGlobs(patterns?: string[]): RegExp[] {
+  if (!patterns?.length) return []
+  return patterns.flatMap((p) => {
+    const re = globToRegExp(p)
+    return re ? [re] : []
+  })
+}
+
+/**
+ * Translate a path glob to an anchored RegExp. Regex metacharacters are escaped
+ * (so "." etc. are literal), then `**` -> `.*` (crosses path segments) and
+ * `*` -> `[^/]*` (within a segment). Returns null if the result can't compile.
+ */
+function globToRegExp(pattern: string): RegExp | null {
+  // Reject pathological inputs before compiling: an overlong pattern or one with
+  // many globstars can produce a regex that catastrophically backtracks (ReDoS),
+  // and these flow from tenant-controlled crawl args into per-link filtering.
+  if (pattern.length > 200) return null
+  if ((pattern.match(/\*\*/g)?.length ?? 0) > 10) return null
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+  const regexStr = escaped
     .replace(/\*\*/g, "<<GLOBSTAR>>")
     .replace(/\*/g, "[^/]*")
     .replace(/<<GLOBSTAR>>/g, ".*")
-  return new RegExp(`^${regexStr}$`).test(path)
+    // Collapse runs of `.*.*...` into a single `.*` — they're equivalent but a
+    // run of them is the source of the catastrophic backtracking.
+    .replace(/(\.\*){2,}/g, ".*")
+  try {
+    return new RegExp(`^${regexStr}$`)
+  } catch {
+    return null
+  }
 }

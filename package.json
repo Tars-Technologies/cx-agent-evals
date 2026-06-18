@@ -11,6 +11,7 @@
     "test:watch": "pnpm -C packages/eval-lib test:watch",
     "typecheck": "pnpm -C packages/eval-lib typecheck",
     "typecheck:backend": "pnpm -C packages/backend typecheck",
+    "kb:port-check": "bash scripts/kb-port-check.sh",
     "lint": "biome check .",
     "format": "biome format --write ."
   },

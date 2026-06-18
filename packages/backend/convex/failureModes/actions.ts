@@ -8,10 +8,9 @@ import { internalAction } from "../_generated/server"
 export const generate = internalAction({
   args: { experimentId: v.id("experiments") },
   handler: async (ctx, args) => {
-    const experiment = await ctx.runQuery(
-      internal.kb.experiments.getInternal,
-      { id: args.experimentId }
-    )
+    const experiment = await ctx.runQuery(internal.kb.experiments.getInternal, {
+      id: args.experimentId
+    })
     if (!experiment) throw new Error("Experiment not found")
 
     const annotations = await ctx.runQuery(

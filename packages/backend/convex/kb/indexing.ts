@@ -17,6 +17,11 @@ import { components, internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
+import {
+  assertEmbeddingBackendCompatible,
+  qdrantCollectionNameFor,
+  resolveVectorBackend
+} from "./vector_backend"
 
 // ─── WorkPool Instance ───
 
@@ -46,9 +51,19 @@ export const getDocumentPage = internalQuery({
     cursor: v.union(v.string(), v.null())
   },
   handler: async (ctx, args) => {
+    // Exclude in-progress and failed parse placeholders (empty content): they
+    // produce 0 chunks, so enqueuing them would let the job report "completed"
+    // (and flip the retriever to "ready") before the real docs finish embedding.
+    // Mirrors documents.listByKbInternal so indexing sees the same doc set.
     return ctx.db
       .query("documents")
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
+      .filter((q) =>
+        q.and(
+          q.neq(q.field("parseStatus"), "parsing"),
+          q.neq(q.field("parseStatus"), "failed")
+        )
+      )
       .paginate({ numItems: 100, cursor: args.cursor })
   }
 })
@@ -72,6 +87,11 @@ export const startIndexing = internalMutation({
     force: v.optional(v.boolean())
   },
   handler: async (ctx, args) => {
+    const kb = await ctx.db.get(args.kbId)
+    if (!kb || kb.orgId !== args.orgId) {
+      throw new Error("Knowledge base not found")
+    }
+
     // Dedup: reject if a running/pending job already exists for this config
     const existingJob = await ctx.db
       .query("indexingJobs")
@@ -114,8 +134,6 @@ export const startIndexing = internalMutation({
     }
 
     // Use denormalized count for totalDocs and emptiness check.
-    const kb = await ctx.db.get(args.kbId)
-    if (!kb) throw new Error("Knowledge base not found")
     const totalDocs = kb.documentCount ?? 0
     if (totalDocs === 0) {
       throw new Error("No documents in knowledge base to index")
@@ -128,12 +146,30 @@ export const startIndexing = internalMutation({
       maxParallelism: parallelism
     })
 
+    // Extract chunking/embedding config
+    const indexConfig = args.indexConfig as Record<string, any>
+
+    // Resolve the vector backend; the qdrant collection name is computed
+    // once here and stamped on the job (and retriever) at creation time.
+    const vectorBackend = resolveVectorBackend(indexConfig.vectorBackend)
+    // Native is OpenAI-only; reject before building a mislabeled index.
+    assertEmbeddingBackendCompatible(
+      vectorBackend,
+      indexConfig.embeddingProvider
+    )
+    const qdrantCollection =
+      vectorBackend === "qdrant"
+        ? qdrantCollectionNameFor(indexConfig)
+        : undefined
+
     // Create job record
     const jobId = await ctx.db.insert("indexingJobs", {
       orgId: args.orgId,
       kbId: args.kbId,
       indexConfigHash: args.indexConfigHash,
       indexConfig: args.indexConfig,
+      vectorBackend,
+      qdrantCollection,
       status: "running",
       totalDocs,
       processedDocs: 0,
@@ -143,9 +179,6 @@ export const startIndexing = internalMutation({
       createdBy: args.createdBy,
       createdAt: Date.now()
     })
-
-    // Extract chunking/embedding config
-    const indexConfig = args.indexConfig as Record<string, any>
 
     // Enqueue one action per document. Use ctx.runQuery per page so each
     // paginate() call is its own function invocation (Convex allows only one
@@ -170,10 +203,13 @@ export const startIndexing = internalMutation({
             chunkSize: indexConfig.chunkSize,
             chunkOverlap: indexConfig.chunkOverlap,
             embeddingModel: indexConfig.embeddingModel,
+            embeddingProvider: indexConfig.embeddingProvider,
             childChunkSize: indexConfig.childChunkSize,
             parentChunkSize: indexConfig.parentChunkSize,
             childOverlap: indexConfig.childOverlap,
-            parentOverlap: indexConfig.parentOverlap
+            parentOverlap: indexConfig.parentOverlap,
+            vectorBackend,
+            qdrantCollection
           },
           {
             context: { jobId, documentId: doc._id },
@@ -186,10 +222,27 @@ export const startIndexing = internalMutation({
       cursor = page.continueCursor
     }
 
-    // Store workIds on the job for selective cancellation
-    await ctx.db.patch(jobId, { workIds: workIds as string[] })
+    // Derive the true total from the work actually enqueued. The denormalized
+    // documentCount can drift from the indexable-doc set (it counts only
+    // parseStatus:"done"), and getDocumentPage filters out placeholders — so
+    // workIds.length is the authoritative count of docs this job will handle.
+    // Without this, totalDocs could exceed enqueued work and the job would
+    // never reach its completion threshold.
+    const enqueuedDocs = workIds.length
+    if (enqueuedDocs === 0) {
+      // documentCount was non-zero but every row is an empty placeholder.
+      // Throwing rolls back the job insert and the enqueued work.
+      throw new Error("No indexable documents in knowledge base to index")
+    }
 
-    return { jobId, alreadyRunning: false, totalDocs }
+    // Store workIds for selective cancellation and pin totalDocs to the
+    // enqueued count.
+    await ctx.db.patch(jobId, {
+      workIds: workIds as string[],
+      totalDocs: enqueuedDocs
+    })
+
+    return { jobId, alreadyRunning: false, totalDocs: enqueuedDocs }
   }
 })
 
@@ -436,7 +489,9 @@ export const cleanupIndex = tenantMutation({
         kbId: args.kbId,
         indexConfigHash: args.indexConfigHash,
         jobId: job?._id,
-        deleteDocuments: args.deleteDocuments
+        deleteDocuments: args.deleteDocuments,
+        vectorBackend: job?.vectorBackend,
+        qdrantCollection: job?.qdrantCollection
       }
     )
 

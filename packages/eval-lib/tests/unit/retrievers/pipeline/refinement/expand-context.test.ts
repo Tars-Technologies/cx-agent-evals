@@ -116,4 +116,48 @@ describe("applyExpandContext", () => {
     expect(expanded[0]!.chunk.start).toBe(30)
     expect(expanded[0]!.chunk.end).toBe(50)
   })
+
+  it("merges adjacent chunks that expand into the same region (A5)", () => {
+    // a: 30-50 expands by 10 -> 20-60
+    // b: 55-75 expands by 10 -> 45-85
+    // The expanded spans overlap on 45-60, which would double-count that region
+    // and inflate recall. After expansion the overlapping spans must be merged.
+    const chunkA = makeChunk("a", "doc1", 30, 50, docContent.slice(30, 50))
+    const chunkB = makeChunk("b", "doc1", 55, 75, docContent.slice(55, 75))
+    const results = [scored(chunkA, 0.9), scored(chunkB, 0.8)]
+
+    const expanded = applyExpandContext(results, corpus, 10)
+
+    // No two output spans may overlap within the same document.
+    for (let i = 0; i < expanded.length; i++) {
+      for (let j = i + 1; j < expanded.length; j++) {
+        const x = expanded[i]!.chunk
+        const y = expanded[j]!.chunk
+        if (x.docId !== y.docId) continue
+        const overlaps = x.start < y.end && y.start < x.end
+        expect(overlaps).toBe(false)
+      }
+    }
+
+    // The merged span covers the full union 20-85.
+    const starts = expanded.map((r) => r.chunk.start)
+    const ends = expanded.map((r) => r.chunk.end)
+    expect(Math.min(...starts)).toBe(20)
+    expect(Math.max(...ends)).toBe(85)
+  })
+
+  it("returns spans in descending score order so the final top-k stays score-ranked (A5)", () => {
+    // The pipeline slices the final top-k without re-sorting, so expand-context
+    // must not reorder a high-scoring chunk behind a low-scoring earlier one.
+    // Here the higher-scored chunk has a later start; it must still come first.
+    const low = makeChunk("low", "doc1", 0, 10, docContent.slice(0, 10))
+    const high = makeChunk("high", "doc1", 80, 90, docContent.slice(80, 90))
+    const results = [scored(low, 0.3), scored(high, 0.9)]
+
+    const expanded = applyExpandContext(results, corpus, 2)
+
+    expect(expanded).toHaveLength(2)
+    expect(expanded[0]!.score).toBe(0.9)
+    expect(expanded[1]!.score).toBe(0.3)
+  })
 })

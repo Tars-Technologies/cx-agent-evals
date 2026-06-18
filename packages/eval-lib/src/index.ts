@@ -57,9 +57,24 @@ export {
   QueryId,
   QueryText
 } from "./types/index.js"
-
+export type {
+  CallbackVectorStoreConfig,
+  QdrantCollectionTuning,
+  QdrantVectorStoreConfig,
+  VectorFilter,
+  VectorSearchOptions,
+  VectorSearchResult,
+  VectorStore,
+  VectorStoreConfig,
+  VectorStoreHooks
+} from "./vector-stores/index.js"
 // Vector Store
-export type { VectorSearchResult, VectorStore } from "./vector-stores/index.js"
+export {
+  CallbackVectorStore,
+  makeVectorStore,
+  QdrantVectorStore,
+  qdrantPointId
+} from "./vector-stores/index.js"
 
 // InMemoryVectorStore moved to "@tars-inc/eval-lib/pipeline/internals"
 
@@ -96,6 +111,7 @@ export {
 export type {
   BM25SearchConfig,
   CallbackRetrieverConfig,
+  ChunkSource,
   ContextualIndexConfig,
   DedupRefinementStep,
   DenseSearchConfig,
@@ -112,12 +128,17 @@ export type {
   PipelineRetrieverDeps,
   PlainIndexConfig,
   QueryConfig,
+  QueryStageTrace,
+  RefinementStageTrace,
   RefinementStepConfig,
   RerankRefinementStep,
+  RetrievalTrace,
   Retriever,
   RewriteQueryConfig,
   ScoredChunk,
   SearchConfig,
+  SearchStageTrace,
+  StatelessQueryRetrieverDeps,
   StepBackQueryConfig,
   SummaryIndexConfig,
   ThresholdRefinementStep,
@@ -131,6 +152,7 @@ export {
   computeIndexConfigHash,
   computeRetrieverConfigHash,
   PipelineRetriever,
+  StatelessQueryRetriever,
   VectorRAGRetriever
 } from "./retrievers/index.js"
 

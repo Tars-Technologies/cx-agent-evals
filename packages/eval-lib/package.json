@@ -28,9 +28,17 @@
       "import": "./dist/embedders/openai.js",
       "types": "./dist/embedders/openai.d.ts"
     },
+    "./embedders/make-embedder": {
+      "import": "./dist/embedders/make-embedder.js",
+      "types": "./dist/embedders/make-embedder.d.ts"
+    },
     "./rerankers/cohere": {
       "import": "./dist/rerankers/cohere.js",
       "types": "./dist/rerankers/cohere.d.ts"
+    },
+    "./rerankers/make-reranker": {
+      "import": "./dist/rerankers/make-reranker.js",
+      "types": "./dist/rerankers/make-reranker.d.ts"
     },
     "./embedders/cohere": {
       "types": "./dist/embedders/cohere.d.ts",
@@ -64,6 +72,10 @@
       "types": "./dist/utils/index.d.ts",
       "import": "./dist/utils/index.js"
     },
+    "./utils/parent-swap": {
+      "types": "./dist/utils/parent-swap.d.ts",
+      "import": "./dist/utils/parent-swap.js"
+    },
     "./langsmith": {
       "types": "./dist/langsmith/index.d.ts",
       "import": "./dist/langsmith/index.js"
@@ -83,6 +95,10 @@
     "./scraper": {
       "types": "./dist/scraper/index.d.ts",
       "import": "./dist/scraper/index.js"
+    },
+    "./scraper/link-extractor": {
+      "types": "./dist/scraper/link-extractor.d.ts",
+      "import": "./dist/scraper/link-extractor.js"
     },
     "./registry": {
       "types": "./dist/registry/index.d.ts",
@@ -132,7 +148,6 @@
   },
   "optionalDependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
-    "cohere-ai": ">=7.0",
     "openai": ">=4.0"
   },
   "devDependencies": {

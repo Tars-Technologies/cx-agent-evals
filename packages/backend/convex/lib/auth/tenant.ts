@@ -1,9 +1,9 @@
+import type { UserIdentity } from "convex/server"
 import {
   customAction,
   customMutation,
   customQuery
 } from "convex-helpers/server/customFunctions"
-import type { UserIdentity } from "convex/server"
 
 import { action, mutation, query } from "../../_generated/server"
 

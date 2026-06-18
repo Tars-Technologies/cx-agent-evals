@@ -4,6 +4,7 @@ import {
   REFINEMENT_STEP_REGISTRY,
   RERANKER_REGISTRY
 } from "@tars-inc/eval-lib/registry"
+import { isProviderKeyConfigured } from "@/lib/vectorBackendGating"
 import { OptionGroup } from "../shared/OptionGroup"
 
 // ---------------------------------------------------------------------------
@@ -14,6 +15,8 @@ interface RefinementStepProps {
   steps: Array<{ type: string; [key: string]: unknown }>
   rerankerProvider: string
   rerankerOptions: Record<string, unknown>
+  /** Backend API-key availability per provider id (from getProviderAvailability). */
+  providerAvailability?: Record<string, boolean>
   onStepsChange: (
     steps: Array<{ type: string; [key: string]: unknown }>
   ) => void
@@ -36,6 +39,7 @@ export function RefinementStep({
   steps,
   rerankerProvider,
   rerankerOptions,
+  providerAvailability,
   onStepsChange,
   onRerankerChange
 }: RefinementStepProps) {
@@ -66,7 +70,11 @@ export function RefinementStep({
 
   const handleRerankerSelect = (id: string) => {
     const entry = RERANKER_REGISTRY.find((r) => r.id === id)
-    if (entry) {
+    if (
+      entry &&
+      entry.status !== "coming-soon" &&
+      isProviderKeyConfigured(id, providerAvailability)
+    ) {
       onRerankerChange(id, { ...entry.defaults })
     }
   }
@@ -131,16 +139,29 @@ export function RefinementStep({
                         onChange={(e) => handleRerankerSelect(e.target.value)}
                         className={selectClass}
                       >
-                        {RERANKER_REGISTRY.map((r) => (
-                          <option
-                            key={r.id}
-                            value={r.id}
-                            disabled={r.status === "coming-soon"}
-                          >
-                            {r.name}
-                            {r.status === "coming-soon" ? " (coming soon)" : ""}
-                          </option>
-                        ))}
+                        {RERANKER_REGISTRY.map((r) => {
+                          const keyConfigured = isProviderKeyConfigured(
+                            r.id,
+                            providerAvailability
+                          )
+                          return (
+                            <option
+                              key={r.id}
+                              value={r.id}
+                              disabled={
+                                r.status === "coming-soon" || !keyConfigured
+                              }
+                            >
+                              {r.name}
+                              {r.status === "coming-soon"
+                                ? " (coming soon)"
+                                : ""}
+                              {r.status !== "coming-soon" && !keyConfigured
+                                ? " (key not set)"
+                                : ""}
+                            </option>
+                          )
+                        })}
                       </select>
                       {selectedReranker && (
                         <p className="mt-1 text-xs text-text-muted">
