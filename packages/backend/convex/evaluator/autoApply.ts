@@ -51,9 +51,19 @@ export const applyReadyEvaluatorsToSimRun = internalAction({
       });
     }
 
-    await ctx.runMutation(
-      internal.conversationSim.runs.appendEvaluatorResultsInternal,
-      { runId: simRunId, results },
-    );
+    // Aggregate the per-evaluator verdicts into the run-level score/passed scalars
+    // the UI reads (mirrors main's deleted two-phase evaluator: score = pass ratio,
+    // passed = every evaluator passed). Without this, run.passed stays undefined and
+    // the Evaluation tab stamps every scenario FAIL regardless of verdicts.
+    const passedCount = results.filter((r) => r.passed).length;
+    const score = results.length > 0 ? passedCount / results.length : 1;
+    const passed = results.length > 0 ? results.every((r) => r.passed) : true;
+
+    await ctx.runMutation(internal.conversationSim.runs.updateRun, {
+      runId: simRunId,
+      evaluatorResults: results,
+      score,
+      passed,
+    });
   },
 });

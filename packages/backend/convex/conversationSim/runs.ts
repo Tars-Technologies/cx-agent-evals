@@ -129,28 +129,6 @@ export const updateRun = internalMutation({
   },
 });
 
-// Append evaluator results to a sim run (used by autoApply)
-export const appendEvaluatorResultsInternal = internalMutation({
-  args: {
-    runId: v.id("conversationSimRuns"),
-    results: v.array(
-      v.object({
-        evaluatorId: v.id("evaluators"),
-        evaluatorName: v.string(),
-        passed: v.boolean(),
-        justification: v.string(),
-        required: v.boolean(),
-      }),
-    ),
-  },
-  handler: async (ctx, { runId, results }) => {
-    const run = await ctx.db.get(runId);
-    if (!run) return;
-    const existing = run.evaluatorResults ?? [];
-    await ctx.db.patch(runId, { evaluatorResults: [...existing, ...results] });
-  },
-});
-
 // ─── Internal Queries ───
 
 // Get run (for actions)

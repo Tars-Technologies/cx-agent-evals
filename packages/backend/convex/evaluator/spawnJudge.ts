@@ -1,16 +1,8 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { getAuthContext, lookupUser } from "../lib/auth";
-
-// Deterministic split assignment from (seed, index).
-function assignSplit(index: number, seed: number): "train" | "dev" | "test" {
-  let x = (seed ^ (index * 2654435761)) >>> 0;
-  x = ((x * 1664525) + 1013904223) >>> 0;
-  const r = x / 0xffffffff;
-  if (r < 0.6) return "train";
-  if (r < 0.8) return "dev";
-  return "test";
-}
+import { computeSplit } from "./splits";
+import type { Id } from "../_generated/dataModel";
 
 export const fromFailureMode = mutation({
   args: {
@@ -63,58 +55,81 @@ export const fromFailureMode = mutation({
       createdAt: Date.now(),
     });
 
-    // 2. Inherit FAIL labels from failure mode members.
+    // 2. Gather inherited labels: FAIL from failure-mode members, PASS from the
+    //    other annotations in this analysis (non-members of this mode).
     const members = await ctx.db
       .query("failureModeMemberships")
       .withIndex("by_failure_mode", (q) => q.eq("failureModeId", fm._id))
       .collect();
 
-    const memberKeys = new Set(
-      members.map((m) =>
-        m.source.kind === "conversation"
-          ? `c:${m.source.conversationId}`
-          : `t:${m.source.transcriptId}`,
-      ),
-    );
+    type LabelSource = (typeof members)[number]["source"];
 
-    let idx = 0;
-    for (const m of members) {
-      await ctx.db.insert("evaluatorLabels", {
-        orgId,
-        evaluatorId: evalId,
-        failureModeId: fm._id,
-        source: m.source,
-        humanLabel: "fail" as const,
-        splitAssignment: assignSplit(idx++, seed),
-        origin: { kind: "axial_coding" as const, failureModeId: fm._id },
-        ratedBy: user._id,
-        createdAt: Date.now(),
-      });
-    }
+    const keyOf = (s: LabelSource) =>
+      s.kind === "conversation" ? `c:${s.conversationId}` : `t:${s.transcriptId}`;
 
-    // 3. Inherit PASS labels from annotations in this analysis that
-    // are NOT members of this failure mode.
+    const memberKeys = new Set(members.map((m) => keyOf(m.source)));
+
     const analysisAnnotations = await ctx.db
       .query("annotations")
       .withIndex("by_analysis", (q) => q.eq("errorAnalysisId", fm.errorAnalysisId))
       .collect();
 
+    type Pending = {
+      source: LabelSource;
+      humanLabel: "pass" | "fail";
+      origin:
+        | { kind: "axial_coding"; failureModeId: Id<"failureModes"> }
+        | { kind: "inferred_negative" };
+      ratedBy: Id<"users">;
+    };
+    const pending: Pending[] = [];
+    for (const m of members) {
+      pending.push({
+        source: m.source,
+        humanLabel: "fail",
+        origin: { kind: "axial_coding", failureModeId: fm._id },
+        ratedBy: user._id,
+      });
+    }
     for (const a of analysisAnnotations) {
-      const key =
-        a.source.kind === "conversation"
-          ? `c:${a.source.conversationId}`
-          : `t:${a.source.transcriptId}`;
-      if (memberKeys.has(key)) continue;
+      if (memberKeys.has(keyOf(a.source))) continue;
+      pending.push({
+        source: a.source,
+        humanLabel: "pass",
+        origin: { kind: "inferred_negative" },
+        ratedBy: a.ratedBy,
+      });
+    }
 
+    // 3. Assign train/dev/test PER CLASS (stratified) so a scarce class is
+    //    represented proportionally in dev/test instead of landing entirely in
+    //    one bucket. Reuses the existing class-aware splitter (splits.computeSplit)
+    //    instead of the old single-running-index hash, which starved the test split.
+    const ids = pending.map((p) => keyOf(p.source));
+    const labelMap = new Map(
+      pending.map((p) => [keyOf(p.source), p.humanLabel] as const),
+    );
+    const split = computeSplit(
+      ids,
+      { trainPct: 60, devPct: 20, testPct: 20 },
+      seed,
+      labelMap,
+    );
+    const splitOf = new Map<string, "train" | "dev" | "test">();
+    for (const id of split.train) splitOf.set(id, "train");
+    for (const id of split.dev) splitOf.set(id, "dev");
+    for (const id of split.test) splitOf.set(id, "test");
+
+    for (const p of pending) {
       await ctx.db.insert("evaluatorLabels", {
         orgId,
         evaluatorId: evalId,
         failureModeId: fm._id,
-        source: a.source,
-        humanLabel: "pass" as const,
-        splitAssignment: assignSplit(idx++, seed),
-        origin: { kind: "inferred_negative" as const },
-        ratedBy: a.ratedBy,
+        source: p.source,
+        humanLabel: p.humanLabel,
+        splitAssignment: splitOf.get(keyOf(p.source)) ?? "train",
+        origin: p.origin,
+        ratedBy: p.ratedBy,
         createdAt: Date.now(),
       });
     }

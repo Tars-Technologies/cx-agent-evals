@@ -79,6 +79,7 @@ import type * as lib_vectorSearch from "../lib/vectorSearch.js";
 import type * as lib_workpool from "../lib/workpool.js";
 import type * as livechat_actions from "../livechat/actions.js";
 import type * as livechat_orchestration from "../livechat/orchestration.js";
+import type * as migrations_clearLegacyEvalRows from "../migrations/clearLegacyEvalRows.js";
 import type * as retrieval_chunks from "../retrieval/chunks.js";
 import type * as retrieval_indexing from "../retrieval/indexing.js";
 import type * as retrieval_indexingActions from "../retrieval/indexingActions.js";
@@ -165,6 +166,7 @@ declare const fullApi: ApiFromModules<{
   "lib/workpool": typeof lib_workpool;
   "livechat/actions": typeof livechat_actions;
   "livechat/orchestration": typeof livechat_orchestration;
+  "migrations/clearLegacyEvalRows": typeof migrations_clearLegacyEvalRows;
   "retrieval/chunks": typeof retrieval_chunks;
   "retrieval/indexing": typeof retrieval_indexing;
   "retrieval/indexingActions": typeof retrieval_indexingActions;
@@ -207,4 +209,5 @@ export declare const components: {
   scrapingPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"scrapingPool">;
   livechatAnalysisPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"livechatAnalysisPool">;
   conversationSimPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"conversationSimPool">;
+  conversationGenPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"conversationGenPool">;
 };

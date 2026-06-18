@@ -210,6 +210,27 @@ Guidelines:
       }>;
     };
 
+    // Validate the LLM payload BEFORE the destructive wipe below. A malformed or
+    // hallucinated shape (e.g. snake_case `failure_modes`, missing fields, empty
+    // names) must not delete the existing modes and leave the analysis empty.
+    if (
+      !parsed ||
+      !Array.isArray(parsed.failureModes) ||
+      parsed.failureModes.some(
+        (m) =>
+          !m ||
+          typeof m.name !== "string" ||
+          m.name.trim() === "" ||
+          typeof m.description !== "string" ||
+          m.description.trim() === "" ||
+          !Array.isArray(m.itemIndices),
+      )
+    ) {
+      throw new Error(
+        "LLM returned an invalid failure-mode payload; existing modes preserved",
+      );
+    }
+
     // NOTE: from here the action is non-atomic across mutations — a crash between
     // this wipe and the create loop below would leave modes empty until the next
     // recluster. Still an improvement over wiping before the LLM call (which lost
