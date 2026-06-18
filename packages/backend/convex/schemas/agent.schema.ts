@@ -260,7 +260,8 @@ export const agentTables = {
   crawlJobs: defineTable({
     orgId: v.string(),
     kbId: v.id("knowledgeBases"),
-    userId: v.id("users"),
+    // Widened: legacy rows may store the raw Clerk subject string (see createdBy).
+    userId: v.union(v.id("users"), v.string()),
     startUrl: v.string(),
     config: v.object({
       maxDepth: v.optional(v.number()),

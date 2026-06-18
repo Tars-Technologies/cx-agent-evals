@@ -61,7 +61,9 @@ export const startIndexing = internalMutation({
     kbId: v.id("knowledgeBases"),
     indexConfigHash: v.string(),
     indexConfig: v.any(),
-    createdBy: v.id("users"),
+    // Union to match the widened createdBy column: callers may forward a legacy
+    // Clerk-string createdBy (e.g. from an existing experiment) which is stored as-is.
+    createdBy: v.union(v.id("users"), v.string()),
     tier: v.optional(v.string()),
     force: v.optional(v.boolean())
   },
