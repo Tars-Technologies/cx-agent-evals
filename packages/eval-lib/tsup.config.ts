@@ -20,6 +20,7 @@ export default defineConfig({
     "src/llm/index.ts",
     "src/shared/index.ts",
     "src/file-processing/index.ts",
+    "src/file-processing/markdown-images.ts",
     "src/scraper/index.ts",
     "src/scraper/link-extractor.ts",
     "src/registry/index.ts",

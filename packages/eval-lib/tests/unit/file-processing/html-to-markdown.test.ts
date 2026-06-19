@@ -134,3 +134,21 @@ describe("htmlToMarkdown", () => {
     expect(result.content).toContain("Footer")
   })
 })
+
+describe("htmlToMarkdown image src resolution", () => {
+  it("resolves relative <img src> against baseUrl", async () => {
+    const html = `<html><body><main><p>hi</p><img src="/images/x.png" alt="diagram"></main></body></html>`
+    const { content } = await htmlToMarkdown(html, {
+      baseUrl: "https://example.com/docs/page"
+    })
+    expect(content).toContain("![diagram](https://example.com/images/x.png)")
+  })
+
+  it("leaves absolute <img src> unchanged", async () => {
+    const html = `<html><body><main><img src="https://cdn.example.com/y.png" alt="y"></main></body></html>`
+    const { content } = await htmlToMarkdown(html, {
+      baseUrl: "https://example.com/"
+    })
+    expect(content).toContain("![y](https://cdn.example.com/y.png)")
+  })
+})

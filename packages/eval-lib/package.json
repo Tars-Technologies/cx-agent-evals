@@ -92,6 +92,10 @@
       "types": "./dist/file-processing/index.d.ts",
       "import": "./dist/file-processing/index.js"
     },
+    "./file-processing/markdown-images": {
+      "types": "./dist/file-processing/markdown-images.d.ts",
+      "import": "./dist/file-processing/markdown-images.js"
+    },
     "./scraper": {
       "types": "./dist/scraper/index.d.ts",
       "import": "./dist/scraper/index.js"

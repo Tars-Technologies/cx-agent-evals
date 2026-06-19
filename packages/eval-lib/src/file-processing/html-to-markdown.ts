@@ -57,10 +57,25 @@ export async function htmlToMarkdown(
         el.remove()
       }
     }
-    htmlForConversion = doc.body?.innerHTML || html
-  } else {
-    htmlForConversion = doc.body?.innerHTML || html
   }
+
+  // Resolve relative <img src> against the page base URL so stored markdown
+  // carries absolute, fetchable image URLs (turndown does NOT resolve img src;
+  // it only resolved anchor hrefs via extractLinks). This is the single change
+  // that makes crawled images usable by the multimodal agent path.
+  if (baseUrl) {
+    for (const img of doc.querySelectorAll("img")) {
+      const src = img.getAttribute("src")
+      if (!src) continue
+      try {
+        img.setAttribute("src", new URL(src, baseUrl).href)
+      } catch {
+        /* leave malformed src untouched */
+      }
+    }
+  }
+
+  htmlForConversion = doc.body?.innerHTML || html
 
   const turndown = new TurndownService({
     headingStyle: "atx",
