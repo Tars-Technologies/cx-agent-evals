@@ -107,7 +107,14 @@ export async function runAgentLoop(
           content: c.content,
           documentId: c.documentId,
           start: c.start,
-          end: c.end
+          end: c.end,
+          ...(c.metadata?.images?.length
+            ? {
+                images: (
+                  c.metadata.images as Array<{ imageId: string; alt: string }>
+                ).map((i) => ({ imageId: i.imageId, alt: i.alt }))
+              }
+            : {})
         }))
 
         collectedToolCalls.push({

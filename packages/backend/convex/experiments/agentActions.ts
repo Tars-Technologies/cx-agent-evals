@@ -256,6 +256,7 @@ export const evaluateAgentQuestion = internalAction({
         docId: string
         start: number
         end: number
+        images?: Array<{ imageId: string; alt: string }>
       }>
     }> = []
 
@@ -288,7 +289,17 @@ export const evaluateAgentQuestion = internalAction({
             content: c.content,
             docId: c.docId,
             start: c.start,
-            end: c.end
+            end: c.end,
+            ...(c.metadata?.images?.length
+              ? {
+                  images: (
+                    c.metadata.images as Array<{
+                      imageId: string
+                      alt: string
+                    }>
+                  ).map((i) => ({ imageId: i.imageId, alt: i.alt }))
+                }
+              : {})
           }))
 
           allToolCallResults.push({

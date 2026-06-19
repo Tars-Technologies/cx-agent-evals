@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { imageIdFor } from "../convex/lib/vision"
+import { buildImageMenuFromChunks, imageIdFor } from "../convex/lib/vision"
 
 describe("imageIdFor", () => {
   it("is deterministic and prefixed", () => {
@@ -20,5 +20,30 @@ describe("imageIdFor", () => {
     expect(imageIdFor("kb_1", "https://x.com/p.png")).not.toBe(
       imageIdFor("kb_2", "https://x.com/p.png")
     )
+  })
+})
+
+describe("buildImageMenuFromChunks", () => {
+  it("flattens + dedups metadata.images across chunks, first-seen order", () => {
+    const chunks = [
+      { metadata: { images: [{ imageId: "img_a", alt: "a" }] } },
+      { metadata: {} },
+      {
+        metadata: {
+          images: [
+            { imageId: "img_b", alt: "b" },
+            { imageId: "img_a", alt: "a" }
+          ]
+        }
+      }
+    ]
+    expect(buildImageMenuFromChunks(chunks)).toEqual([
+      { imageId: "img_a", alt: "a" },
+      { imageId: "img_b", alt: "b" }
+    ])
+  })
+
+  it("returns [] when no chunk has images", () => {
+    expect(buildImageMenuFromChunks([{ metadata: {} }, {}])).toEqual([])
   })
 })
