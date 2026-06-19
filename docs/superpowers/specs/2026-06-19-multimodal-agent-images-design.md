@@ -190,4 +190,10 @@ RK4: provider fetch fail on source url (D3=A) → model ? hallucinate img conten
 RK5: url rot in stored conversations (§9.11) — accepted POC; frontend ! graceful broken-img fallback
 RK6: maxSteps exhaust pre-text in live chat (§9.8) → recovery pass (task 7)
 RK7: existing KB chunks metadata.images = nil → manual reindex (D5); communicate to users (§9.3)
+RK8: vision cost ∝ image pixel dims (≠ file bytes); tokens ≈ (w×h)/750, capped ~1600/img (~4784 high-res Opus 4.7+)
+     → worst case get_images=4 high-res Opus 4.8 ≈ 19k tok ≈ $0.096/turn; text-only turn = $0 (V7 skip)
+     → system cost levers: V7 cap (≤4/turn) + skip-when-⊥-images + (future) D3→B downscale @ ingest
+     ! agent.model = USER config → ⊥ auto-switch model for cost (breaks cache + changes answer quality silently). cost varies w/ user's model — informational only.
+RK9: D3=A → ⊥ control image dims (provider fetches url). per-img cost CAPPED (provider downsamples huge→ceiling, bills resized)
+     but ⊥ reducible below cap. downsize <cap ! fetch bytes = D3→B (re-host _storage, resize ~800-1024px @ ingest). accepted POC tradeoff.
 ```
