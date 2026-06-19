@@ -13,13 +13,47 @@ import {
   PositionAwareChunkId,
   RecursiveCharacterChunker
 } from "@tars-inc/eval-lib"
+import {
+  parseMarkdownImages,
+  rewriteMarkdownImages
+} from "@tars-inc/eval-lib/file-processing/markdown-images"
 import { createEmbedder } from "@tars-inc/eval-lib/llm"
 import { CLEANUP_BATCH_SIZE, EMBED_BATCH_SIZE } from "@tars-inc/eval-lib/shared"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
+import { imageIdFor } from "../lib/vision"
 import { assertIndexableDimension } from "./dimension_guard"
 import { buildQdrantStore } from "./retrieval_runtime"
+
+/**
+ * Parse images from a chunk's content, mint deterministic ids, rewrite the
+ * inline ![alt](url) → ![alt](img_<id>) marker (position preserved, no pixels),
+ * and return the rewritten content + the {imageId,url,alt} list to persist.
+ */
+export function extractChunkImages(kbId: string, content: string) {
+  const parsed = parseMarkdownImages(content)
+  if (parsed.length === 0) {
+    return {
+      content,
+      images: [] as Array<{ imageId: string; url: string; alt: string }>
+    }
+  }
+  const images: Array<{ imageId: string; url: string; alt: string }> = []
+  const seen = new Set<string>()
+  const rewritten = rewriteMarkdownImages(content, ({ alt, url }) => {
+    // rewriteMarkdownImages invokes map for every complete match, including
+    // unsupported targets; only menu-eligible (parsed) urls get an id.
+    if (!parsed.some((p) => p.url === url)) return url // leave unsupported untouched
+    const imageId = imageIdFor(kbId, url)
+    if (!seen.has(imageId)) {
+      seen.add(imageId)
+      images.push({ imageId, url, alt })
+    }
+    return imageId
+  })
+  return { content: rewritten, images }
+}
 
 /** Retry a mutation that may fail with TooManyWrites under concurrent load. */
 async function retryOnWriteLimit<T>(
@@ -115,20 +149,48 @@ export const indexDocument = internalAction({
           return { skipped: false, chunksInserted: 0, chunksEmbedded: 0 }
         }
 
-        // Insert parent chunks (no embedding — level: "parent")
-        const parentResult = await ctx.runMutation(
-          internal.kb.chunks.insertChunkBatch,
-          {
-            chunks: parentChunks.map((c) => ({
+        // Insert parent chunks (no embedding — level: "parent").
+        // Only parents carry the returned text, so images are parsed/rewritten
+        // on parents only (§6.4); child content is left untouched.
+        const parentMapped = parentChunks.map((c) => {
+          const { content, images } = extractChunkImages(args.kbId, c.content)
+          return {
+            row: {
               documentId: args.documentId,
               kbId: args.kbId,
               indexConfigHash: args.indexConfigHash,
               chunkId: c.id,
-              content: c.content,
+              content,
               start: c.start,
               end: c.end,
-              metadata: { level: "parent" }
-            }))
+              metadata: {
+                level: "parent" as const,
+                ...(images.length > 0
+                  ? {
+                      images: images.map((i) => ({
+                        imageId: i.imageId,
+                        alt: i.alt
+                      }))
+                    }
+                  : {})
+              }
+            },
+            images
+          }
+        })
+        const parentImages = parentMapped.flatMap((m) => m.images)
+        if (parentImages.length > 0) {
+          await ctx.runMutation(internal.kb.images.upsertImagesForChunk, {
+            kbId: args.kbId,
+            orgId: doc.orgId,
+            sourceDocId: args.documentId,
+            images: parentImages
+          })
+        }
+        const parentResult = await ctx.runMutation(
+          internal.kb.chunks.insertChunkBatch,
+          {
+            chunks: parentMapped.map((m) => m.row)
           }
         )
 
@@ -186,18 +248,49 @@ export const indexDocument = internalAction({
           return { skipped: false, chunksInserted: 0, chunksEmbedded: 0 }
         }
 
+        // Parse + rewrite images once per chunk (avoids double parsing).
+        const mapped = chunks.map((c) => {
+          const { content, images } = extractChunkImages(args.kbId, c.content)
+          return {
+            row: {
+              documentId: args.documentId,
+              kbId: args.kbId,
+              indexConfigHash: args.indexConfigHash,
+              chunkId: c.id,
+              content,
+              start: c.start,
+              end: c.end,
+              metadata: {
+                ...(c.metadata ?? {}),
+                ...(images.length > 0
+                  ? {
+                      images: images.map((i) => ({
+                        imageId: i.imageId,
+                        alt: i.alt
+                      }))
+                    }
+                  : {})
+              }
+            },
+            images
+          }
+        })
+
+        // Persist image registry rows before inserting chunks (so get_images can
+        // resolve them even if embedding (Phase B) is interrupted).
+        const allPlainImages = mapped.flatMap((m) => m.images)
+        if (allPlainImages.length > 0) {
+          await ctx.runMutation(internal.kb.images.upsertImagesForChunk, {
+            kbId: args.kbId,
+            orgId: doc.orgId,
+            sourceDocId: args.documentId,
+            images: allPlainImages
+          })
+        }
+
         // Insert ALL chunks WITHOUT embeddings in one atomic mutation
         await ctx.runMutation(internal.kb.chunks.insertChunkBatch, {
-          chunks: chunks.map((c) => ({
-            documentId: args.documentId,
-            kbId: args.kbId,
-            indexConfigHash: args.indexConfigHash,
-            chunkId: c.id,
-            content: c.content,
-            start: c.start,
-            end: c.end,
-            metadata: c.metadata ?? {}
-          }))
+          chunks: mapped.map((m) => m.row)
         })
       }
     }

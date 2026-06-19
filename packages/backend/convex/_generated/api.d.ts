@@ -62,6 +62,7 @@ import type * as kb_experiment_actions from "../kb/experiment_actions.js";
 import type * as kb_experiments from "../kb/experiments.js";
 import type * as kb_generation from "../kb/generation.js";
 import type * as kb_generation_actions from "../kb/generation_actions.js";
+import type * as kb_images from "../kb/images.js";
 import type * as kb_indexing from "../kb/indexing.js";
 import type * as kb_indexing_actions from "../kb/indexing_actions.js";
 import type * as kb_langsmithRetry from "../kb/langsmithRetry.js";
@@ -87,6 +88,7 @@ import type * as lib_experimentConcurrency from "../lib/experimentConcurrency.js
 import type * as lib_labels from "../lib/labels.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as lib_vectorSearch from "../lib/vectorSearch.js";
+import type * as lib_vision from "../lib/vision.js";
 import type * as lib_workpool from "../lib/workpool.js";
 import type * as livechat_actions from "../livechat/actions.js";
 import type * as livechat_orchestration from "../livechat/orchestration.js";
@@ -152,6 +154,7 @@ declare const fullApi: ApiFromModules<{
   "kb/experiments": typeof kb_experiments;
   "kb/generation": typeof kb_generation;
   "kb/generation_actions": typeof kb_generation_actions;
+  "kb/images": typeof kb_images;
   "kb/indexing": typeof kb_indexing;
   "kb/indexing_actions": typeof kb_indexing_actions;
   "kb/langsmithRetry": typeof kb_langsmithRetry;
@@ -177,6 +180,7 @@ declare const fullApi: ApiFromModules<{
   "lib/labels": typeof lib_labels;
   "lib/validators": typeof lib_validators;
   "lib/vectorSearch": typeof lib_vectorSearch;
+  "lib/vision": typeof lib_vision;
   "lib/workpool": typeof lib_workpool;
   "livechat/actions": typeof livechat_actions;
   "livechat/orchestration": typeof livechat_orchestration;

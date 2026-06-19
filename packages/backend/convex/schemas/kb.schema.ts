@@ -326,6 +326,22 @@ export const storageObjectValidator = v.object({
 })
 export type StorageObject = Infer<typeof storageObjectValidator>
 
+// ─── KB Images (queryable image registry for multimodal agent answers) ───
+// imageId is deterministic: "img_" + sha256(kbId + url).slice(0,16). Stable
+// across re-index so saved answers referencing an image keep resolving.
+// url-only for the POC; storageId is reserved for the future re-host path (D3→B).
+export const kbImageValidator = v.object({
+  imageId: v.string(),
+  kbId: v.id("knowledgeBases"),
+  orgId: v.string(),
+  url: v.optional(v.string()),
+  storageId: v.optional(v.id("_storage")),
+  alt: v.string(),
+  sourceDocId: v.id("documents"),
+  createdAt: v.number()
+})
+export type KbImage = Infer<typeof kbImageValidator>
+
 export const kbTables = {
   // ─── Knowledge Bases (org-scoped, replaces "corpora") ───
   knowledgeBases: defineTable(knowledgeBaseValidator)
@@ -411,6 +427,11 @@ export const kbTables = {
       dimensions: 1536,
       filterFields: ["kbId", "indexConfigHash"]
     }),
+
+  // ─── KB Images (deterministic-id image registry; FK target for get_images) ───
+  kbImages: defineTable(kbImageValidator)
+    .index("by_image_id", ["imageId"])
+    .index("by_kb", ["kbId"]),
 
   // ─── Indexing Jobs (WorkPool-based KB indexing tracking) ───
   indexingJobs: defineTable(indexingJobValidator)
