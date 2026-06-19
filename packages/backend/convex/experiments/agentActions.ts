@@ -18,6 +18,8 @@ import type { Id } from "../_generated/dataModel"
 import { internalAction } from "../_generated/server"
 import { composeSystemPrompt } from "../agents/promptTemplate"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
+import { buildGetImagesTool } from "../lib/vision"
+import { isVisionCapable } from "../lib/visionShared"
 
 // ─── Helpers ───
 
@@ -240,11 +242,16 @@ export const evaluateAgentQuestion = internalAction({
       throw new Error("Agent has no ready retrievers")
     }
 
-    // 3. Build system prompt
+    // 3. Build system prompt. Vision degrades to text on a non-vision model.
+    const hasVision =
+      (agent.enableMultimodal ?? false) && isVisionCapable(agent.model)
     const systemPrompt = composeSystemPrompt(
       agent,
-      retrieverInfos.map((r) => ({ name: r.name, kbName: r.kbName }))
+      retrieverInfos.map((r) => ({ name: r.name, kbName: r.kbName })),
+      { hasVision }
     )
+    // Images the model fetched via get_images, for whitelist + shownImages.
+    const resolvedImages = new Map<string, { url: string; alt: string }>()
 
     // 4. Build AI SDK tools — one per retriever
     const allToolCallResults: Array<{
@@ -312,6 +319,17 @@ export const evaluateAgentQuestion = internalAction({
           return mappedChunks
         }
       })
+    }
+
+    if (hasVision && retrieverInfos.length > 0) {
+      tools.get_images = buildGetImagesTool(
+        ctx,
+        { kbId: retrieverInfos[0].kbId as Id<"knowledgeBases">, orgId: agent.orgId },
+        (resolved) => {
+          for (const r of resolved)
+            resolvedImages.set(r.imageId, { url: r.url, alt: r.alt })
+        }
+      )
     }
 
     // 5. Load question

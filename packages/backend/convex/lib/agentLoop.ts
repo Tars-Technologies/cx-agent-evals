@@ -4,8 +4,10 @@ import { anthropic } from "@ai-sdk/anthropic"
 import { openai } from "@ai-sdk/openai"
 import { generateText, type LanguageModel, tool } from "ai"
 import { z } from "zod"
+import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
 import { vectorSearchWithFilter } from "./vectorSearch"
+import { buildGetImagesTool } from "./vision"
 
 // === Shared types ===
 
@@ -24,6 +26,9 @@ export interface AgentLoopConfig {
   modelId: string
   systemPrompt: string
   retrieverInfos: RetrieverInfo[]
+  /** When true (and imageScope set), register the get_images vision tool. */
+  hasVision?: boolean
+  imageScope?: { kbId: string; orgId: string }
 }
 
 export interface ToolCallRecord {
@@ -39,6 +44,8 @@ export interface AgentLoopResult {
   usage: { promptTokens: number; completionTokens: number }
   done: boolean
   error?: string
+  /** Images the model fetched via get_images this turn (record-only). */
+  shownImages: Array<{ imageId: string; url: string; alt: string }>
 }
 
 // === Shared helpers ===
@@ -71,6 +78,8 @@ export async function runAgentLoop(
   messages: Array<{ role: "user" | "assistant"; content: string }>
 ): Promise<AgentLoopResult> {
   const collectedToolCalls: ToolCallRecord[] = []
+  // Images the model fetched via get_images this turn (whitelist + record).
+  const resolvedImages = new Map<string, { url: string; alt: string }>()
 
   // Build tools from retriever infos (same pattern as agents/actions.ts)
   const tools: Record<string, any> = {}
@@ -129,6 +138,27 @@ export async function runAgentLoop(
     })
   }
 
+  if (config.hasVision && config.imageScope) {
+    tools.get_images = buildGetImagesTool(
+      ctx,
+      {
+        kbId: config.imageScope.kbId as Id<"knowledgeBases">,
+        orgId: config.imageScope.orgId
+      },
+      (resolved) => {
+        for (const r of resolved)
+          resolvedImages.set(r.imageId, { url: r.url, alt: r.alt })
+      }
+    )
+  }
+
+  const shownImages = () =>
+    Array.from(resolvedImages.entries()).map(([imageId, v]) => ({
+      imageId,
+      url: v.url,
+      alt: v.alt
+    }))
+
   try {
     const hasTools = Object.keys(tools).length > 0
     const result = await generateText({
@@ -178,7 +208,8 @@ export async function runAgentLoop(
       // Only flag done when we genuinely have nothing to say (recovery also
       // failed). A normal "agent finished its turn with text" must NOT mark
       // the conversation as done — the user-sim drives termination.
-      done: !finalText || finalText.trim().length === 0
+      done: !finalText || finalText.trim().length === 0,
+      shownImages: shownImages()
     }
   } catch (err: any) {
     return {
@@ -186,7 +217,8 @@ export async function runAgentLoop(
       toolCalls: collectedToolCalls,
       usage: { promptTokens: 0, completionTokens: 0 },
       done: false,
-      error: err.message ?? String(err)
+      error: err.message ?? String(err),
+      shownImages: shownImages()
     }
   }
 }

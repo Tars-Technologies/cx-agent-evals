@@ -112,4 +112,15 @@ describe("composeSystemPrompt", () => {
     const prompt = composeSystemPrompt(agent, [])
     expect(prompt).toContain("friendly, professional, concise")
   })
+
+  it("omits image instructions by default", () => {
+    const prompt = composeSystemPrompt(baseAgent, [])
+    expect(prompt).not.toContain("get_images")
+  })
+
+  it("includes image instructions when hasVision", () => {
+    const prompt = composeSystemPrompt(baseAgent, [], { hasVision: true })
+    expect(prompt).toContain("get_images")
+    expect(prompt).toContain("![")
+  })
 })

@@ -8,6 +8,7 @@ import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
 import { resolveModel, slugify } from "../lib/agentLoop"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
+import { buildGetImagesTool, isVisionCapable } from "../lib/vision"
 import { composeSystemPrompt } from "./promptTemplate"
 
 // Helper: convert stored messages to AI SDK format
@@ -125,13 +126,19 @@ export const runAgent = internalAction({
         })
       }
 
-      // 3. Build system prompt
+      // 3. Build system prompt. Vision degrades to text-only on a non-vision
+      // model — it never re-routes the user-chosen model.
+      const hasVision =
+        (agent.enableMultimodal ?? false) &&
+        isVisionCapable(agent.model) &&
+        retrieverInfos.length > 0
       const systemPrompt = composeSystemPrompt(
         agent,
         retrieverInfos.map((r) => ({
           name: r.name,
           kbName: r.kbName
-        }))
+        })),
+        { hasVision }
       )
 
       // 4. Build AI SDK tools — one per retriever
@@ -139,6 +146,8 @@ export const runAgent = internalAction({
       const retrieverMap = new Map(
         retrieverInfos.map((r) => [slugify(r.name), r])
       )
+      // Image ids the model fetched via get_images, for finalize whitelist (V4).
+      const resolvedImages = new Map<string, { url: string; alt: string }>()
 
       for (const info of retrieverInfos) {
         const toolName = slugify(info.name)
@@ -181,6 +190,19 @@ export const runAgent = internalAction({
             }))
           }
         })
+      }
+
+      // get_images: scope to the first retriever's KB (images are KB-scoped;
+      // getImagesByIds validates kb+org so a cross-KB id simply won't resolve).
+      if (hasVision && retrieverInfos.length > 0) {
+        tools.get_images = buildGetImagesTool(
+          ctx,
+          { kbId: retrieverInfos[0].kbId as any, orgId: agent.orgId },
+          (resolved) => {
+            for (const r of resolved)
+              resolvedImages.set(r.imageId, { url: r.url, alt: r.alt })
+          }
+        )
       }
 
       // 5. Load conversation history

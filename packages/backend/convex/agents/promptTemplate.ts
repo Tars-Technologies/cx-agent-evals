@@ -3,6 +3,8 @@
  * No "use node" dependencies — importable from actions, mutations, and tests.
  */
 
+import { IMAGE_INSTRUCTIONS } from "../lib/visionShared"
+
 interface AgentPromptConfig {
   identity: {
     agentName: string
@@ -35,7 +37,8 @@ interface RetrieverInfo {
 
 export function composeSystemPrompt(
   agent: AgentPromptConfig,
-  retrievers: RetrieverInfo[]
+  retrievers: RetrieverInfo[],
+  opts?: { hasVision?: boolean }
 ): string {
   const sections: string[] = []
 
@@ -104,6 +107,11 @@ export function composeSystemPrompt(
     sections.push(
       `# Self-Evaluation\nBefore delivering your final answer, briefly assess:\n1. Is the answer grounded in retrieved content (factual accuracy)?\n2. Does it comply with the guardrails above?\n3. Is it helpful and complete?\nIf not, revise before responding.`
     )
+  }
+
+  // Images (only when the runtime model is vision-capable AND multimodal is on)
+  if (opts?.hasVision) {
+    sections.push(IMAGE_INSTRUCTIONS)
   }
 
   // Additional Instructions

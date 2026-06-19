@@ -315,6 +315,7 @@ export const agentTables = {
 
     model: v.string(),
     enableReflection: v.boolean(),
+    enableMultimodal: v.optional(v.boolean()),
     retrieverIds: v.array(v.id("retrievers")),
 
     status: v.union(v.literal("draft"), v.literal("ready"), v.literal("error")),

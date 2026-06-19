@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { buildImageMenuFromChunks, imageIdFor } from "../convex/lib/vision"
+import { imageIdFor } from "../convex/lib/vision"
+import {
+  buildImageMenuFromChunks,
+  isVisionCapable,
+  MAX_IMAGES_PER_TURN,
+  VISION_CAPABLE_MODELS
+} from "../convex/lib/visionShared"
 
 describe("imageIdFor", () => {
   it("is deterministic and prefixed", () => {
@@ -45,5 +51,21 @@ describe("buildImageMenuFromChunks", () => {
 
   it("returns [] when no chunk has images", () => {
     expect(buildImageMenuFromChunks([{ metadata: {} }, {}])).toEqual([])
+  })
+})
+
+describe("isVisionCapable", () => {
+  it("accepts known vision models", () => {
+    expect(isVisionCapable("claude-opus-4-8")).toBe(true)
+    expect(isVisionCapable("claude-sonnet-4-6")).toBe(true)
+    expect(isVisionCapable("gpt-4o")).toBe(true)
+  })
+  it("rejects unknown / non-vision models", () => {
+    expect(isVisionCapable("o1-mini")).toBe(false)
+    expect(isVisionCapable("some-future-model")).toBe(false)
+  })
+  it("caps images per turn at 4", () => {
+    expect(MAX_IMAGES_PER_TURN).toBe(4)
+    expect(VISION_CAPABLE_MODELS.length).toBeGreaterThan(0)
   })
 })
