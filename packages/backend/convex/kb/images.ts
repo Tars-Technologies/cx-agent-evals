@@ -61,6 +61,34 @@ export const listChunkIdsForKb = internalQuery({
   }
 })
 
+/** Map of imageId → url for a KB, for re-evaluating existing img_ markers. */
+export const imageUrlMapForKb = internalQuery({
+  args: { kbId: v.id("knowledgeBases") },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("kbImages")
+      .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
+      .collect()
+    return rows.flatMap((r) =>
+      r.url ? [{ imageId: r.imageId, url: r.url }] : []
+    )
+  }
+})
+
+/** Delete kbImages rows (e.g. decorative images dropped during a re-clean). */
+export const deleteKbImagesByIds = internalMutation({
+  args: { kbId: v.id("knowledgeBases"), imageIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    for (const imageId of args.imageIds) {
+      const row = await ctx.db
+        .query("kbImages")
+        .withIndex("by_image_id", (q) => q.eq("imageId", imageId))
+        .first()
+      if (row && row.kbId === args.kbId) await ctx.db.delete(row._id)
+    }
+  }
+})
+
 /** Patch a chunk's rewritten content + metadata.images (backfill). */
 export const patchChunkImages = internalMutation({
   args: {

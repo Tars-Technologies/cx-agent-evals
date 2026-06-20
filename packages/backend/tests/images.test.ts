@@ -227,7 +227,7 @@ describe("backfillImagesForKb", () => {
     )
     expect(kbImageRows.length).toBe(1)
 
-    // Second run is a no-op (img_ targets are non-http → skipped).
+    // Second run is a no-op (good img_ marker resolves to a kept url).
     const contentAfter1 = after!.content
     await t.action(internal.kb.images_actions.backfillImagesForKb, {
       kbId,
@@ -235,5 +235,82 @@ describe("backfillImagesForKb", () => {
     })
     const after2 = await t.run((ctx) => ctx.db.get(chunkId))
     expect(after2!.content).toBe(contentAfter1)
+  })
+
+  it("re-cleans an already-rewritten decorative marker", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const orgId = TEST_ORG_ID
+    const docId = await t.run((ctx) =>
+      ctx.db.insert("documents", {
+        orgId,
+        kbId,
+        docId: "d1",
+        title: "t",
+        content: "c",
+        contentLength: 1,
+        metadata: {},
+        createdAt: Date.now()
+      })
+    )
+    // Two pre-existing markers: a decorative pin and a real photo.
+    const pinUrl =
+      "https://upload.wikimedia.org/x/thumb/y/12px-Red_pog.svg.png"
+    const photoUrl = "https://x.com/skyline.jpg"
+    await t.run(async (ctx) => {
+      await ctx.db.insert("kbImages", {
+        imageId: "img_pin",
+        kbId,
+        orgId,
+        url: pinUrl,
+        alt: "pin",
+        sourceDocId: docId,
+        createdAt: Date.now()
+      })
+      await ctx.db.insert("kbImages", {
+        imageId: "img_photo",
+        kbId,
+        orgId,
+        url: photoUrl,
+        alt: "view",
+        sourceDocId: docId,
+        createdAt: Date.now()
+      })
+    })
+    const chunkId = await t.run((ctx) =>
+      ctx.db.insert("documentChunks", {
+        documentId: docId,
+        kbId,
+        chunkId: "c1",
+        content: "City ![pin](img_pin) and ![view](img_photo)",
+        start: 0,
+        end: 5,
+        metadata: {
+          images: [
+            { imageId: "img_pin", alt: "pin" },
+            { imageId: "img_photo", alt: "view" }
+          ]
+        }
+      })
+    )
+
+    const res = await t.action(
+      internal.kb.images_actions.backfillImagesForKb,
+      { kbId, orgId }
+    )
+    expect(res.dropped).toBe(1)
+
+    const after = await t.run((ctx) => ctx.db.get(chunkId))
+    expect(after!.content).toBe("City  and ![view](img_photo)")
+    expect(after!.metadata.images).toEqual([{ imageId: "img_photo", alt: "view" }])
+    // Decorative registry row removed; real one kept.
+    const remaining = await t.run((ctx) =>
+      ctx.db
+        .query("kbImages")
+        .withIndex("by_kb", (q) => q.eq("kbId", kbId))
+        .collect()
+    )
+    expect(remaining.map((r) => r.imageId).sort()).toEqual(["img_photo"])
   })
 })

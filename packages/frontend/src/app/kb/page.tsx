@@ -85,6 +85,8 @@ function KBPageContent() {
   // --- Mutations ---
   const removeDoc = useMutation(api.kb.documents.remove)
   const cancelCrawl = useMutation(api.kb.crawl.cancelCrawl)
+  const reindexImages = useMutation(api.kb.images.reindexForImages)
+  const [imageReindexMsg, setImageReindexMsg] = useState<string | null>(null)
 
   // --- Search ---
   const searchTrimmed = docSearchQuery.trim()
@@ -255,6 +257,29 @@ function KBPageContent() {
                     >
                       Import from URL
                     </button>
+                    <button
+                      onClick={async () => {
+                        if (!selectedKbId) return
+                        setImageReindexMsg("Re-indexing images…")
+                        try {
+                          await reindexImages({ kbId: selectedKbId })
+                          setImageReindexMsg(
+                            "Image re-index started — refresh in a minute."
+                          )
+                        } catch {
+                          setImageReindexMsg("Failed to start image re-index.")
+                        }
+                      }}
+                      title="Re-parse this KB's chunks for images and apply the latest image filter (no re-embedding)."
+                      className="px-3 py-1.5 text-xs border border-border text-text rounded hover:border-accent transition-colors whitespace-nowrap"
+                    >
+                      Re-index images
+                    </button>
+                    {imageReindexMsg && (
+                      <p className="text-[11px] text-text-dim">
+                        {imageReindexMsg}
+                      </p>
+                    )}
 
                     {/* Crawl progress */}
                     {crawlJob && (

@@ -2,6 +2,7 @@
 
 import { createHash } from "node:crypto"
 import {
+  isUnsupportedImageUrl,
   parseMarkdownImages,
   rewriteMarkdownImages
 } from "@tars-inc/eval-lib/file-processing/markdown-images"
@@ -81,6 +82,59 @@ export function extractChunkImages(kbId: string, content: string) {
     return imageId
   })
   return { content: rewritten, images }
+}
+
+/**
+ * Re-clean a chunk's images, handling BOTH pre-feature raw ![alt](url) markers
+ * AND already-rewritten ![alt](img_<id>) markers. Used by the backfill so an
+ * existing KB picks up the decorative filter without a full re-embed:
+ *  - raw url → mint id (unless decorative/unsupported)
+ *  - img_ id → resolve via imgIdToUrl; drop if it now reads as decorative
+ * `changed` is true only when something was actually rewritten/dropped
+ * (idempotent: a second pass over a clean chunk reports no change).
+ */
+export function recleanChunkImages(
+  kbId: string,
+  content: string,
+  imgIdToUrl: Map<string, string>
+) {
+  const keptImages: Array<{ imageId: string; alt: string }> = []
+  const newImages: Array<{ imageId: string; url: string; alt: string }> = []
+  const droppedIds: string[] = []
+  const seenKept = new Set<string>()
+  const seenNew = new Set<string>()
+  let changed = false
+
+  const next = rewriteMarkdownImages(content, ({ alt, url }) => {
+    if (url.startsWith("img_")) {
+      const realUrl = imgIdToUrl.get(url)
+      if (realUrl && isLikelyDecorativeImage(realUrl)) {
+        droppedIds.push(url)
+        changed = true
+        return null
+      }
+      if (!seenKept.has(url)) {
+        seenKept.add(url)
+        keptImages.push({ imageId: url, alt })
+      }
+      return url // keep existing good marker unchanged
+    }
+    // Pre-feature raw url.
+    if (isUnsupportedImageUrl(url)) return url // leave svg/data/non-http alone
+    if (isLikelyDecorativeImage(url)) {
+      changed = true
+      return null
+    }
+    const imageId = imageIdFor(kbId, url)
+    if (!seenNew.has(imageId)) {
+      seenNew.add(imageId)
+      newImages.push({ imageId, url, alt })
+    }
+    changed = true
+    return imageId
+  })
+
+  return { content: next, keptImages, newImages, droppedIds, changed }
 }
 
 // Skip oversized images (provider limits ≈5MB; we also bill for what we send).
