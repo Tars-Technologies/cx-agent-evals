@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { imageIdFor } from "../convex/lib/vision"
+import {
+  extractChunkImages,
+  imageIdFor,
+  isLikelyDecorativeImage
+} from "../convex/lib/vision"
 import {
   buildImageMenuFromChunks,
   isVisionCapable,
@@ -107,5 +111,45 @@ describe("whitelistImageMarkdown", () => {
     expect(
       whitelistImageMarkdown("a ![e](https://evil.com/x.png) b", resolved)
     ).toBe("a  b")
+  })
+})
+
+describe("isLikelyDecorativeImage", () => {
+  it("flags tiny rendered thumbnails (icons, flags, location pins)", () => {
+    expect(
+      isLikelyDecorativeImage(
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Red_pog.svg/12px-Red_pog.svg.png"
+      )
+    ).toBe(true)
+    expect(
+      isLikelyDecorativeImage(
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/Flag.svg/23px-Flag.svg.png"
+      )
+    ).toBe(true)
+  })
+  it("flags known decorative filenames", () => {
+    expect(
+      isLikelyDecorativeImage("https://x.org/thumb/Commons-logo.svg.png")
+    ).toBe(true)
+  })
+  it("keeps real content images", () => {
+    expect(
+      isLikelyDecorativeImage(
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/x/y/440px-Eiffel_Tower.jpg"
+      )
+    ).toBe(false)
+    expect(isLikelyDecorativeImage("https://x.com/photo.jpg")).toBe(false)
+  })
+})
+
+describe("extractChunkImages decorative filtering", () => {
+  it("drops a location pin but keeps the real photo", () => {
+    const md =
+      "City ![pin](https://upload.wikimedia.org/x/thumb/y/12px-Red_pog.svg.png) and ![view](https://x.com/skyline.jpg)"
+    const { content, images } = extractChunkImages("kb_1", md)
+    expect(images.map((i) => i.url)).toEqual(["https://x.com/skyline.jpg"])
+    expect(content).toContain("![view](img_")
+    expect(content).not.toContain("Red_pog")
+    expect(content).not.toContain("![pin]")
   })
 })

@@ -45,7 +45,8 @@ To show an image to the user:
 
 Rules:
 - Only reference imageIds that appeared in retrieved results and that \`get_images\` returned. Never invent image IDs or URLs.
-- Only include an image when it genuinely helps answer the question.
+- Only include an image when it directly illustrates the answer. After calling \`get_images\`, look at what each image actually depicts and skip any that don't clearly help — never include decorative icons, logos, flags, location pins/dots, charts you can't read, or images unrelated to the question.
+- Prefer including no image over including a marginally-relevant one.
 - Do not write raw external image URLs; use the imageId form only.`
 
 export interface ImageMenuEntry {

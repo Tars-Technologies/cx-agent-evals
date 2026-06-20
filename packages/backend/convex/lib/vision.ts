@@ -28,11 +28,35 @@ export function imageIdFor(kbId: string, url: string): string {
   return `img_${hash.slice(0, 16)}`
 }
 
+// Drop tiny rendered images: icons, flags, location pins (e.g. Wikipedia's
+// "12px-Red_pog.svg.png" location dot). Content images render much larger.
+const MIN_IMAGE_WIDTH_PX = 100
+
+// Common decorative/chrome image filenames (MediaWiki + general web). Matched
+// case-insensitively against the URL; these are never answer-relevant content.
+const DECORATIVE_NAME_RE =
+  /(_pog\.|red_pog|green_pog|blue_pog|location_dot|disambig|commons-logo|wiktionary|wikidata|wikisource|wikiquote|wikinews|ooui_|oojs_|ambox|question_book|edit-icon|magnify-clip|cscr-featured|featured_article|sound-icon|speakerlink|symbol_|wiki_letter|increase2|decrease2|steady2|padlock|spoken_)/i
+
+/**
+ * Heuristic: is this image decorative chrome (icon/flag/pin/logo) rather than
+ * answer-relevant content? Keeps such images out of the agent's image menu so
+ * it can't surface a stray location dot. URL is the only signal available at
+ * the markdown layer (turndown drops width/height attrs).
+ */
+export function isLikelyDecorativeImage(url: string): boolean {
+  // MediaWiki/most CDNs encode the rendered width as "<N>px-" in thumb paths.
+  const m = url.match(/\/(\d+)px-/)
+  if (m && Number(m[1]) < MIN_IMAGE_WIDTH_PX) return true
+  if (DECORATIVE_NAME_RE.test(url)) return true
+  return false
+}
+
 /**
  * Parse images from a chunk's content, mint deterministic ids, rewrite the
  * inline ![alt](url) → ![alt](img_<id>) marker (position preserved, no pixels),
  * and return the rewritten content + the {imageId,url,alt} list to persist.
- * Shared by ingestion (indexing_actions) and the backfill action.
+ * Decorative/tiny images are dropped from the content entirely so they never
+ * reach the model. Shared by ingestion (indexing_actions) and the backfill.
  */
 export function extractChunkImages(kbId: string, content: string) {
   const parsed = parseMarkdownImages(content)
@@ -48,6 +72,7 @@ export function extractChunkImages(kbId: string, content: string) {
     // rewriteMarkdownImages invokes map for every complete match, including
     // unsupported targets; only menu-eligible (parsed) urls get an id.
     if (!parsed.some((p) => p.url === url)) return url // leave unsupported untouched
+    if (isLikelyDecorativeImage(url)) return null // drop icons/pins/logos
     const imageId = imageIdFor(kbId, url)
     if (!seen.has(imageId)) {
       seen.add(imageId)
