@@ -1,7 +1,7 @@
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalMutation, internalQuery } from "../_generated/server"
-import { tenantMutation } from "../lib/auth/tenant"
+import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 
 const imageInputValidator = v.object({
   imageId: v.string(),
@@ -126,6 +126,21 @@ export const getImagesByIds = internalQuery({
       out.push({ imageId: row.imageId, url: row.url, alt: row.alt })
     }
     return out
+  }
+})
+
+/** How many images are indexed for a KB (diagnostic for the multimodal path). */
+export const countForKb = tenantQuery({
+  args: { kbId: v.id("knowledgeBases") },
+  handler: async (ctx, args) => {
+    const { orgId } = ctx
+    const kb = await ctx.db.get(args.kbId)
+    if (!kb || kb.orgId !== orgId) return 0
+    const rows = await ctx.db
+      .query("kbImages")
+      .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
+      .collect()
+    return rows.length
   }
 })
 

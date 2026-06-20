@@ -87,6 +87,10 @@ function KBPageContent() {
   const cancelCrawl = useMutation(api.kb.crawl.cancelCrawl)
   const reindexImages = useMutation(api.kb.images.reindexForImages)
   const [imageReindexMsg, setImageReindexMsg] = useState<string | null>(null)
+  const imageCount = useQuery(
+    api.kb.images.countForKb,
+    selectedKbId ? { kbId: selectedKbId } : "skip"
+  )
 
   // --- Search ---
   const searchTrimmed = docSearchQuery.trim()
@@ -275,6 +279,11 @@ function KBPageContent() {
                     >
                       Re-index images
                     </button>
+                    {imageCount !== undefined && (
+                      <p className="text-[11px] text-text-dim">
+                        {imageCount} image{imageCount === 1 ? "" : "s"} indexed
+                      </p>
+                    )}
                     {imageReindexMsg && (
                       <p className="text-[11px] text-text-dim">
                         {imageReindexMsg}

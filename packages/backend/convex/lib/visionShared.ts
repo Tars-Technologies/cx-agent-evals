@@ -37,14 +37,15 @@ export function isVisionCapable(modelId: string): boolean {
 
 /** Appended to the system prompt only when hasVision (V6). */
 export const IMAGE_INSTRUCTIONS = `# Images
-Some retrieved results include an image menu: each entry has an \`imageId\` and \`alt\` text, and the chunk text shows where the image sits as \`![alt](imageId)\`.
+Some retrieved results include an image menu: each entry has an \`imageId\` and \`alt\` text, and the chunk text shows where the image sits as \`![alt](imageId)\`. Every real imageId begins with \`img_\` (e.g. \`img_3f9a2c1b4d5e6f70\`).
 
 To show an image to the user:
-1. Call the \`get_images\` tool with the imageIds you want (you may request up to ${MAX_IMAGES_PER_TURN}).
-2. After it returns, write \`![alt](imageId)\` exactly where you want each image to appear in your answer, using only imageIds the tool returned.
+1. Call the \`get_images\` tool, passing imageIds copied EXACTLY from the retrieved image menu (you may request up to ${MAX_IMAGES_PER_TURN}).
+2. After it returns, write \`![alt](imageId)\` exactly where you want each image to appear in your answer, using only imageIds the tool actually returned.
 
 Rules:
-- Only reference imageIds that appeared in retrieved results and that \`get_images\` returned. Never invent image IDs or URLs.
+- ONLY pass imageIds that literally appear in the retrieved results (they start with \`img_\`). Copy them character-for-character. NEVER invent, guess, abbreviate, or reformat an imageId or URL.
+- If the retrieved results contain NO image menu, do not call \`get_images\` and do not include any image — just answer in text. An empty \`get_images\` result means the id did not exist; never retry with a made-up id.
 - Only include an image when it directly illustrates the answer. After calling \`get_images\`, look at what each image actually depicts and skip any that don't clearly help — never include decorative icons, logos, flags, location pins/dots, charts you can't read, or images unrelated to the question.
 - Prefer including no image over including a marginally-relevant one.
 - Do not write raw external image URLs; use the imageId form only.`
