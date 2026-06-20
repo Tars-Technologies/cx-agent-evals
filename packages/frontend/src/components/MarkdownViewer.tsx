@@ -132,6 +132,16 @@ const markdownComponents: Components = {
     <img
       alt={alt}
       className="max-w-full h-auto rounded-md border border-border my-3"
+      onError={(e) => {
+        // Graceful degrade: a dead source URL shows alt text instead of a
+        // broken-image icon (handles URL rot in stored conversations).
+        const el = e.currentTarget
+        el.style.display = "none"
+        const note = document.createElement("span")
+        note.textContent = alt ? `🖼️ ${alt}` : "🖼️ image unavailable"
+        note.className = "text-xs text-text-dim italic"
+        el.replaceWith(note)
+      }}
       {...props}
     />
   ),
