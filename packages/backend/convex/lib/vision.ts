@@ -140,14 +140,11 @@ export function recleanChunkImages(
 // Skip oversized images (provider limits ≈5MB; we also bill for what we send).
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
-/** A resolved image with optionally-fetched pixel bytes for the vision model. */
-interface ResolvedImageWithData {
+/** Lightweight tool result — NO pixel bytes (this value gets persisted). */
+interface ResolvedImageRef {
   imageId: string
   url: string
   alt: string
-  /** base64-encoded bytes, present only when the fetch succeeded. */
-  data?: string
-  mimeType?: string
 }
 
 /**
@@ -180,8 +177,12 @@ async function fetchImageAsBase64(
  *
  * AI SDK v4 tool-result image parts require base64 `data` (not a URL), so we
  * fetch + encode server-side in `execute` and surface the pixels via
- * `experimental_toToolResultContent`. Images that fail to fetch still return
- * their id + alt as text so the model can reference them by id.
+ * `experimental_toToolResultContent`. The base64 is kept ONLY in an in-memory
+ * map — never in the tool's return value — so the persisted tool_result rows
+ * (and replayed history) stay small and contain just {imageId,url,alt}. When
+ * images move to dedicated storage later, this fetch/encode step is all that
+ * changes. Images that fail to fetch still return id + alt so the model can
+ * reference them by id.
  */
 export function buildGetImagesTool(
   ctx: ActionCtx,
@@ -190,6 +191,9 @@ export function buildGetImagesTool(
     resolved: Array<{ imageId: string; url: string; alt: string }>
   ) => void
 ) {
+  // Transient pixel cache for this tool instance; consumed by
+  // experimental_toToolResultContent, then discarded when the action ends.
+  const fetchedBytes = new Map<string, { data: string; mimeType?: string }>()
   return tool({
     description:
       "Fetch knowledge-base images by their imageIds so you can see them and decide whether to include them in your answer. Returns the images plus the imageIds you may reference as ![alt](imageId).",
@@ -198,42 +202,38 @@ export function buildGetImagesTool(
         .array(z.string())
         .describe("imageIds from the retrieved image menu (max 4 used)")
     }),
-    execute: async ({ imageIds }): Promise<ResolvedImageWithData[]> => {
+    execute: async ({ imageIds }): Promise<ResolvedImageRef[]> => {
       const capped = imageIds.slice(0, MAX_IMAGES_PER_TURN)
-      const resolved: Array<{ imageId: string; url: string; alt: string }> =
-        await ctx.runQuery(internal.kb.images.getImagesByIds, {
-          kbId: scope.kbId,
-          orgId: scope.orgId,
-          imageIds: capped
-        })
+      const resolved: ResolvedImageRef[] = await ctx.runQuery(
+        internal.kb.images.getImagesByIds,
+        { kbId: scope.kbId, orgId: scope.orgId, imageIds: capped }
+      )
       // Record the validated ids/urls so finalize can whitelist the answer.
       onResolved(resolved)
-      // Fetch pixels so a vision model can actually inspect each image.
-      return Promise.all(
-        resolved.map(async (r): Promise<ResolvedImageWithData> => {
+      // Fetch pixels into the transient map (NOT into the return value) so the
+      // model can see them without the base64 ever being persisted.
+      await Promise.all(
+        resolved.map(async (r) => {
           const fetched = await fetchImageAsBase64(r.url)
-          return {
-            imageId: r.imageId,
-            url: r.url,
-            alt: r.alt,
-            ...(fetched ?? {})
-          }
+          if (fetched) fetchedBytes.set(r.imageId, fetched)
         })
       )
+      return resolved // { imageId, url, alt } only — small, safe to store
     },
-    // Map the fetched bytes into multimodal tool-result content (v4 shape).
-    experimental_toToolResultContent: (result: ResolvedImageWithData[]) => {
+    // Map the cached bytes into multimodal tool-result content (v4 shape).
+    experimental_toToolResultContent: (result: ResolvedImageRef[]) => {
       const parts: Array<
         | { type: "text"; text: string }
         | { type: "image"; data: string; mimeType?: string }
       > = []
       for (const r of result) {
+        const bytes = fetchedBytes.get(r.imageId)
         parts.push({
           type: "text",
-          text: `imageId: ${r.imageId} — alt: ${r.alt}${r.data ? "" : " (image could not be fetched; reference by id only)"}`
+          text: `imageId: ${r.imageId} — alt: ${r.alt}${bytes ? "" : " (image could not be fetched; reference by id only)"}`
         })
-        if (r.data) {
-          parts.push({ type: "image", data: r.data, mimeType: r.mimeType })
+        if (bytes) {
+          parts.push({ type: "image", data: bytes.data, mimeType: bytes.mimeType })
         }
       }
       if (parts.length === 0) {
