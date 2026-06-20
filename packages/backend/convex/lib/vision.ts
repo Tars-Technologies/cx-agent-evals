@@ -137,6 +137,40 @@ export function recleanChunkImages(
   return { content: next, keptImages, newImages, droppedIds, changed }
 }
 
+// Matches image markers the model writes referencing a KB image id.
+const IMG_MARKER_RE = /!\[[^\]]*\]\((img_[0-9a-f]+)\)/g
+
+/**
+ * Build the resolved-image map for finalize whitelisting. Seeds with images the
+ * model fetched via get_images (pixels seen), then resolves any remaining
+ * `img_` markers the model wrote inline — straight from the retrieved chunk
+ * content — against the KB registry (org+kb scoped). This lets a relevant image
+ * render even when the model skipped the get_images call, while hallucinated /
+ * external / cross-KB targets still resolve to nothing and get dropped (V4/V9).
+ */
+export async function resolveAnswerImageMarkers(
+  ctx: ActionCtx,
+  scope: { kbId: Id<"knowledgeBases">; orgId: string },
+  text: string,
+  seed: Map<string, { url: string; alt: string }>
+): Promise<Map<string, { url: string; alt: string }>> {
+  const merged = new Map(seed)
+  const missing = new Set<string>()
+  for (const m of text.matchAll(IMG_MARKER_RE)) {
+    if (!merged.has(m[1])) missing.add(m[1])
+  }
+  if (missing.size > 0) {
+    const rows: Array<{ imageId: string; url: string; alt: string }> =
+      await ctx.runQuery(internal.kb.images.getImagesByIds, {
+        kbId: scope.kbId,
+        orgId: scope.orgId,
+        imageIds: [...missing]
+      })
+    for (const r of rows) merged.set(r.imageId, { url: r.url, alt: r.alt })
+  }
+  return merged
+}
+
 // Skip oversized images (provider limits ≈5MB; we also bill for what we send).
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 

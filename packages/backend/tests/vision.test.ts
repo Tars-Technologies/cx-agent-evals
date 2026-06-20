@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest"
 import {
   extractChunkImages,
   imageIdFor,
-  isLikelyDecorativeImage
+  isLikelyDecorativeImage,
+  resolveAnswerImageMarkers
 } from "../convex/lib/vision"
 import {
   buildImageMenuFromChunks,
@@ -151,5 +152,54 @@ describe("extractChunkImages decorative filtering", () => {
     expect(content).toContain("![view](img_")
     expect(content).not.toContain("Red_pog")
     expect(content).not.toContain("![pin]")
+  })
+})
+
+describe("resolveAnswerImageMarkers", () => {
+  it("keeps seed and resolves inline markers via the registry; ignores unknowns", async () => {
+    const seed = new Map([
+      ["img_seed", { url: "https://x.com/seed.png", alt: "s" }]
+    ])
+    const ctx = {
+      runQuery: async (_ref: unknown, args: { imageIds: string[] }) =>
+        args.imageIds
+          .filter((id) => id === "img_aaaaaaaaaaaaaaaa")
+          .map((id) => ({ imageId: id, url: "https://x.com/a.png", alt: "a" }))
+    } as any
+    const text =
+      "see ![a](img_aaaaaaaaaaaaaaaa) and ![s](img_seed) and ![bad](img_ffffffffffffffff)"
+    const resolved = await resolveAnswerImageMarkers(
+      ctx,
+      { kbId: "kb1" as any, orgId: "o1" },
+      text,
+      seed
+    )
+    expect(resolved.get("img_aaaaaaaaaaaaaaaa")).toEqual({
+      url: "https://x.com/a.png",
+      alt: "a"
+    })
+    expect(resolved.get("img_seed")).toEqual({
+      url: "https://x.com/seed.png",
+      alt: "s"
+    })
+    expect(resolved.has("img_ffffffffffffffff")).toBe(false)
+  })
+
+  it("makes no query when every marker is already seeded", async () => {
+    let called = false
+    const ctx = {
+      runQuery: async () => {
+        called = true
+        return []
+      }
+    } as any
+    const seed = new Map([["img_seed", { url: "https://x.com/s.png", alt: "s" }]])
+    await resolveAnswerImageMarkers(
+      ctx,
+      { kbId: "kb1" as any, orgId: "o1" },
+      "![s](img_seed)",
+      seed
+    )
+    expect(called).toBe(false)
   })
 })

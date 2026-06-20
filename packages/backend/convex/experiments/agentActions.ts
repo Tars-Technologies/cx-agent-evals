@@ -17,7 +17,7 @@ import { internalAction } from "../_generated/server"
 import { composeSystemPrompt } from "../agents/promptTemplate"
 import { resolveModel } from "../lib/agentLoop"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
-import { buildGetImagesTool } from "../lib/vision"
+import { buildGetImagesTool, resolveAnswerImageMarkers } from "../lib/vision"
 import { isVisionCapable, whitelistImageMarkdown } from "../lib/visionShared"
 
 // ─── Helpers ───
@@ -337,10 +337,20 @@ export const evaluateAgentQuestion = internalAction({
 
       const latencyMs = Date.now() - startTime
 
-      // Whitelist image markers → urls; drop hallucinated/external (V4/V9).
-      const answerText = hasVision
-        ? whitelistImageMarkdown(result.text, resolvedImages)
-        : result.text
+      // Resolve inline markers (even without a get_images call) against the KB
+      // registry, then whitelist → urls; drop hallucinated/external (V4/V9).
+      const resolvedForFinalize = hasVision
+        ? await resolveAnswerImageMarkers(
+            ctx,
+            {
+              kbId: retrieverInfos[0].kbId as Id<"knowledgeBases">,
+              orgId: agent.orgId
+            },
+            result.text,
+            resolvedImages
+          )
+        : new Map<string, { url: string; alt: string }>()
+      const answerText = whitelistImageMarkdown(result.text, resolvedForFinalize)
 
       // 7. Extract tool calls + chunks
       const toolCalls = [...allToolCallResults]

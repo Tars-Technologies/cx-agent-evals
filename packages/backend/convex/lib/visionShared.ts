@@ -50,6 +50,7 @@ Rules:
 - If the retrieved results contain NO image menu, do not call \`get_images\` and do not include any image — just answer in text. An empty \`get_images\` result means the id did not exist; never retry with a made-up id.
 - If a retrieved image is on-topic, include it — a relevant screenshot or diagram makes the answer much more useful. After calling \`get_images\`, look at what each image actually depicts and skip any that don't clearly help — never include decorative icons, logos, flags, location pins/dots, charts you can't read, or images unrelated to the question.
 - When in doubt about a clearly on-topic image, include it; only skip images that are off-topic or decorative.
+- To actually show an image you MUST write the marker ![alt](imageId) inline in your answer. Never just say "here is an image" without the marker — a sentence alone shows nothing.
 - Do not write raw external image URLs; use the imageId form only.`
 
 export interface ImageMenuEntry {

@@ -7,7 +7,7 @@ import { z } from "zod"
 import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
 import { vectorSearchWithFilter } from "./vectorSearch"
-import { buildGetImagesTool } from "./vision"
+import { buildGetImagesTool, resolveAnswerImageMarkers } from "./vision"
 import { whitelistImageMarkdown } from "./visionShared"
 
 // === Shared types ===
@@ -202,10 +202,22 @@ export async function runAgentLoop(
       completionTokens += recovery.usage?.completionTokens ?? 0
     }
 
-    // Whitelist image markers → urls; drop hallucinated/external (V4/V9).
-    if (config.hasVision) {
-      finalText = whitelistImageMarkdown(finalText, resolvedImages)
-    }
+    // Resolve inline image markers (even without a get_images call) against the
+    // KB registry, then whitelist → urls; drop hallucinated/external (V4/V9).
+    // Always whitelist so stray img_ markers can't leak as broken images.
+    const resolved =
+      config.hasVision && config.imageScope
+        ? await resolveAnswerImageMarkers(
+            ctx,
+            {
+              kbId: config.imageScope.kbId as Id<"knowledgeBases">,
+              orgId: config.imageScope.orgId
+            },
+            finalText,
+            resolvedImages
+          )
+        : new Map<string, { url: string; alt: string }>()
+    finalText = whitelistImageMarkdown(finalText, resolved)
 
     return {
       text: finalText,

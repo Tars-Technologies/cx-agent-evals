@@ -8,7 +8,11 @@ import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
 import { resolveModel, slugify } from "../lib/agentLoop"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
-import { buildGetImagesTool, isVisionCapable } from "../lib/vision"
+import {
+  buildGetImagesTool,
+  isVisionCapable,
+  resolveAnswerImageMarkers
+} from "../lib/vision"
 import { whitelistImageMarkdown } from "../lib/visionShared"
 import { composeSystemPrompt } from "./promptTemplate"
 
@@ -332,11 +336,20 @@ export const runAgent = internalAction({
       }
 
       // Whitelist rewrites known image markers → urls and drops
-      // hallucinated/external ones (V4/V9). Runs only on the final content;
-      // streamed deltas may briefly show raw markers.
-      const finalText = hasVision
-        ? whitelistImageMarkdown(rawFinalText, resolvedImages)
-        : rawFinalText
+      // hallucinated/external ones (V4/V9). Resolve markers the model wrote
+      // inline (even without a get_images call) against the KB registry so a
+      // relevant image still renders. Always run it so stray img_ markers from
+      // retrieved chunk text can't leak as broken images on text-only agents.
+      const resolvedForFinalize =
+        hasVision && retrieverInfos.length > 0
+          ? await resolveAnswerImageMarkers(
+              ctx,
+              { kbId: retrieverInfos[0].kbId as any, orgId: agent.orgId },
+              rawFinalText,
+              resolvedImages
+            )
+          : new Map<string, { url: string; alt: string }>()
+      const finalText = whitelistImageMarkdown(rawFinalText, resolvedForFinalize)
       await ctx.runMutation(internal.crud.conversations.updateMessage, {
         messageId: assistantMessageId,
         content: finalText,
