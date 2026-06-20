@@ -105,7 +105,10 @@ export const runConversationSim = internalAction({
       hasVision,
       imageScope:
         hasVision && retrieverInfos.length > 0
-          ? { kbId: retrieverInfos[0].kbId, orgId: simulation.orgId }
+          ? {
+              kbIds: [...new Set(retrieverInfos.map((r) => r.kbId))],
+              orgId: simulation.orgId
+            }
           : undefined
     }
 

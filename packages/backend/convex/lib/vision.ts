@@ -150,7 +150,7 @@ const IMG_MARKER_RE = /!\[[^\]]*\]\((img_[0-9a-f]+)\)/g
  */
 export async function resolveAnswerImageMarkers(
   ctx: ActionCtx,
-  scope: { kbId: Id<"knowledgeBases">; orgId: string },
+  scope: { kbIds: Array<Id<"knowledgeBases">>; orgId: string },
   text: string,
   seed: Map<string, { url: string; alt: string }>
 ): Promise<Map<string, { url: string; alt: string }>> {
@@ -159,10 +159,10 @@ export async function resolveAnswerImageMarkers(
   for (const m of text.matchAll(IMG_MARKER_RE)) {
     if (!merged.has(m[1])) missing.add(m[1])
   }
-  if (missing.size > 0) {
+  if (missing.size > 0 && scope.kbIds.length > 0) {
     const rows: Array<{ imageId: string; url: string; alt: string }> =
       await ctx.runQuery(internal.kb.images.getImagesByIds, {
-        kbId: scope.kbId,
+        kbIds: scope.kbIds,
         orgId: scope.orgId,
         imageIds: [...missing]
       })
@@ -220,7 +220,7 @@ async function fetchImageAsBase64(
  */
 export function buildGetImagesTool(
   ctx: ActionCtx,
-  scope: { kbId: Id<"knowledgeBases">; orgId: string },
+  scope: { kbIds: Array<Id<"knowledgeBases">>; orgId: string },
   onResolved: (
     resolved: Array<{ imageId: string; url: string; alt: string }>
   ) => void
@@ -240,7 +240,7 @@ export function buildGetImagesTool(
       const capped = imageIds.slice(0, MAX_IMAGES_PER_TURN)
       const resolved: ResolvedImageRef[] = await ctx.runQuery(
         internal.kb.images.getImagesByIds,
-        { kbId: scope.kbId, orgId: scope.orgId, imageIds: capped }
+        { kbIds: scope.kbIds, orgId: scope.orgId, imageIds: capped }
       )
       // Record the validated ids/urls so finalize can whitelist the answer.
       onResolved(resolved)

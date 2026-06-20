@@ -106,14 +106,19 @@ export const patchChunkImages = internalMutation({
   }
 })
 
-/** Resolve a set of image IDs to {imageId,url,alt}, scoped to org + kb. */
+/**
+ * Resolve image IDs to {imageId,url,alt}, scoped to the org and the set of KBs
+ * the agent can search (one agent may link retrievers across several KBs, so a
+ * single-KB scope would drop images from all but the first).
+ */
 export const getImagesByIds = internalQuery({
   args: {
-    kbId: v.id("knowledgeBases"),
+    kbIds: v.array(v.id("knowledgeBases")),
     orgId: v.string(),
     imageIds: v.array(v.string())
   },
   handler: async (ctx, args) => {
+    const allowedKbs = new Set<string>(args.kbIds.map((id) => id))
     const out: Array<{ imageId: string; url: string; alt: string }> = []
     for (const imageId of args.imageIds) {
       const row = await ctx.db
@@ -121,7 +126,7 @@ export const getImagesByIds = internalQuery({
         .withIndex("by_image_id", (q) => q.eq("imageId", imageId))
         .first()
       if (!row) continue
-      if (row.kbId !== args.kbId || row.orgId !== args.orgId) continue // V3
+      if (!allowedKbs.has(row.kbId) || row.orgId !== args.orgId) continue // V3
       if (!row.url) continue // POC: url-only; storageId path is future D3→B
       out.push({ imageId: row.imageId, url: row.url, alt: row.alt })
     }

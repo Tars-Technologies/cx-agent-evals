@@ -314,3 +314,61 @@ describe("backfillImagesForKb", () => {
     expect(remaining.map((r) => r.imageId).sort()).toEqual(["img_photo"])
   })
 })
+
+describe("getImagesByIds multi-KB scoping", () => {
+  it("resolves ids across all provided KBs but not outside them", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kb1 = await seedKB(t, userId)
+    const kb2 = await seedKB(t, userId)
+    const orgId = TEST_ORG_ID
+    const docId = await t.run((ctx) =>
+      ctx.db.insert("documents", {
+        orgId,
+        kbId: kb1,
+        docId: "d1",
+        title: "t",
+        content: "c",
+        contentLength: 1,
+        metadata: {},
+        createdAt: Date.now()
+      })
+    )
+    await t.run(async (ctx) => {
+      await ctx.db.insert("kbImages", {
+        imageId: "img_one",
+        kbId: kb1,
+        orgId,
+        url: "https://x.com/1.png",
+        alt: "one",
+        sourceDocId: docId,
+        createdAt: Date.now()
+      })
+      await ctx.db.insert("kbImages", {
+        imageId: "img_two",
+        kbId: kb2,
+        orgId,
+        url: "https://x.com/2.png",
+        alt: "two",
+        sourceDocId: docId,
+        createdAt: Date.now()
+      })
+    })
+
+    // Both KBs in scope → both resolve.
+    const both = await t.query(internal.kb.images.getImagesByIds, {
+      kbIds: [kb1, kb2],
+      orgId,
+      imageIds: ["img_one", "img_two"]
+    })
+    expect(both.map((r) => r.imageId).sort()).toEqual(["img_one", "img_two"])
+
+    // Only kb1 in scope → img_two (in kb2) is excluded.
+    const onlyKb1 = await t.query(internal.kb.images.getImagesByIds, {
+      kbIds: [kb1],
+      orgId,
+      imageIds: ["img_one", "img_two"]
+    })
+    expect(onlyKb1.map((r) => r.imageId)).toEqual(["img_one"])
+  })
+})

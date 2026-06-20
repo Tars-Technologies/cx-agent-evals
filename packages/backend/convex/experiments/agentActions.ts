@@ -308,10 +308,14 @@ export const evaluateAgentQuestion = internalAction({
       })
     }
 
-    if (hasVision && retrieverInfos.length > 0) {
+    // Scope images to every KB this agent can search (not just the first).
+    const imageKbIds = [
+      ...new Set(retrieverInfos.map((r) => r.kbId))
+    ] as Id<"knowledgeBases">[]
+    if (hasVision && imageKbIds.length > 0) {
       tools.get_images = buildGetImagesTool(
         ctx,
-        { kbId: retrieverInfos[0].kbId as Id<"knowledgeBases">, orgId: agent.orgId },
+        { kbIds: imageKbIds, orgId: agent.orgId },
         (resolved) => {
           for (const r of resolved)
             resolvedImages.set(r.imageId, { url: r.url, alt: r.alt })
@@ -342,10 +346,7 @@ export const evaluateAgentQuestion = internalAction({
       const resolvedForFinalize = hasVision
         ? await resolveAnswerImageMarkers(
             ctx,
-            {
-              kbId: retrieverInfos[0].kbId as Id<"knowledgeBases">,
-              orgId: agent.orgId
-            },
+            { kbIds: imageKbIds, orgId: agent.orgId },
             result.text,
             resolvedImages
           )

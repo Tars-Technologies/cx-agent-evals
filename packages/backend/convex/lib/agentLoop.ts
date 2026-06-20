@@ -29,7 +29,7 @@ export interface AgentLoopConfig {
   retrieverInfos: RetrieverInfo[]
   /** When true (and imageScope set), register the get_images vision tool. */
   hasVision?: boolean
-  imageScope?: { kbId: string; orgId: string }
+  imageScope?: { kbIds: string[]; orgId: string }
 }
 
 export interface ToolCallRecord {
@@ -143,7 +143,7 @@ export async function runAgentLoop(
     tools.get_images = buildGetImagesTool(
       ctx,
       {
-        kbId: config.imageScope.kbId as Id<"knowledgeBases">,
+        kbIds: config.imageScope.kbIds as Id<"knowledgeBases">[],
         orgId: config.imageScope.orgId
       },
       (resolved) => {
@@ -210,7 +210,7 @@ export async function runAgentLoop(
         ? await resolveAnswerImageMarkers(
             ctx,
             {
-              kbId: config.imageScope.kbId as Id<"knowledgeBases">,
+              kbIds: config.imageScope.kbIds as Id<"knowledgeBases">[],
               orgId: config.imageScope.orgId
             },
             finalText,

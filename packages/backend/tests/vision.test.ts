@@ -170,7 +170,7 @@ describe("resolveAnswerImageMarkers", () => {
       "see ![a](img_aaaaaaaaaaaaaaaa) and ![s](img_seed) and ![bad](img_ffffffffffffffff)"
     const resolved = await resolveAnswerImageMarkers(
       ctx,
-      { kbId: "kb1" as any, orgId: "o1" },
+      { kbIds: ["kb1"] as any, orgId: "o1" },
       text,
       seed
     )
@@ -196,7 +196,7 @@ describe("resolveAnswerImageMarkers", () => {
     const seed = new Map([["img_seed", { url: "https://x.com/s.png", alt: "s" }]])
     await resolveAnswerImageMarkers(
       ctx,
-      { kbId: "kb1" as any, orgId: "o1" },
+      { kbIds: ["kb1"] as any, orgId: "o1" },
       "![s](img_seed)",
       seed
     )

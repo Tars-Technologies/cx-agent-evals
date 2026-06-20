@@ -5,6 +5,7 @@ import { generateText, streamText, tool } from "ai"
 import { v } from "convex/values"
 import { z } from "zod"
 import { internal } from "../_generated/api"
+import type { Id } from "../_generated/dataModel"
 import { internalAction } from "../_generated/server"
 import { resolveModel, slugify } from "../lib/agentLoop"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
@@ -197,12 +198,15 @@ export const runAgent = internalAction({
         })
       }
 
-      // get_images: scope to the first retriever's KB (images are KB-scoped;
-      // getImagesByIds validates kb+org so a cross-KB id simply won't resolve).
-      if (hasVision && retrieverInfos.length > 0) {
+      // Images are scoped to every KB this agent can search (one agent may link
+      // retrievers across several KBs; getImagesByIds validates kb+org).
+      const imageKbIds = [
+        ...new Set(retrieverInfos.map((r) => r.kbId))
+      ] as Id<"knowledgeBases">[]
+      if (hasVision && imageKbIds.length > 0) {
         tools.get_images = buildGetImagesTool(
           ctx,
-          { kbId: retrieverInfos[0].kbId as any, orgId: agent.orgId },
+          { kbIds: imageKbIds, orgId: agent.orgId },
           (resolved) => {
             for (const r of resolved)
               resolvedImages.set(r.imageId, { url: r.url, alt: r.alt })
@@ -341,10 +345,10 @@ export const runAgent = internalAction({
       // relevant image still renders. Always run it so stray img_ markers from
       // retrieved chunk text can't leak as broken images on text-only agents.
       const resolvedForFinalize =
-        hasVision && retrieverInfos.length > 0
+        hasVision && imageKbIds.length > 0
           ? await resolveAnswerImageMarkers(
               ctx,
-              { kbId: retrieverInfos[0].kbId as any, orgId: agent.orgId },
+              { kbIds: imageKbIds, orgId: agent.orgId },
               rawFinalText,
               resolvedImages
             )
