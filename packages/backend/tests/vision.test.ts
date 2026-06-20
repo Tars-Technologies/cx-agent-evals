@@ -4,7 +4,8 @@ import {
   buildImageMenuFromChunks,
   isVisionCapable,
   MAX_IMAGES_PER_TURN,
-  VISION_CAPABLE_MODELS
+  VISION_CAPABLE_MODELS,
+  whitelistImageMarkdown
 } from "../convex/lib/visionShared"
 
 describe("imageIdFor", () => {
@@ -67,5 +68,27 @@ describe("isVisionCapable", () => {
   it("caps images per turn at 4", () => {
     expect(MAX_IMAGES_PER_TURN).toBe(4)
     expect(VISION_CAPABLE_MODELS.length).toBeGreaterThan(0)
+  })
+})
+
+describe("whitelistImageMarkdown", () => {
+  const resolved = new Map([
+    ["img_a", { url: "https://x.com/a.png", alt: "a" }]
+  ])
+
+  it("rewrites known imageId markers to real urls", () => {
+    expect(whitelistImageMarkdown("see ![a](img_a)", resolved)).toBe(
+      "see ![a](https://x.com/a.png)"
+    )
+  })
+  it("drops unknown imageIds", () => {
+    expect(whitelistImageMarkdown("x ![h](img_hallucinated) y", resolved)).toBe(
+      "x  y"
+    )
+  })
+  it("drops raw external image urls (injection guard)", () => {
+    expect(
+      whitelistImageMarkdown("a ![e](https://evil.com/x.png) b", resolved)
+    ).toBe("a  b")
   })
 })

@@ -9,6 +9,7 @@ import { internalAction } from "../_generated/server"
 import { resolveModel, slugify } from "../lib/agentLoop"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
 import { buildGetImagesTool, isVisionCapable } from "../lib/vision"
+import { whitelistImageMarkdown } from "../lib/visionShared"
 import { composeSystemPrompt } from "./promptTemplate"
 
 // Helper: convert stored messages to AI SDK format
@@ -299,8 +300,16 @@ export const runAgent = internalAction({
       }
       await flushBuffer()
 
-      // 8. Finalize the assistant message
-      const [finalText, usage] = await Promise.all([result.text, result.usage])
+      // 8. Finalize the assistant message. Whitelist rewrites known image
+      // markers → urls and drops hallucinated/external ones (V4/V9). Runs only
+      // on the final content; streamed deltas may briefly show raw markers.
+      const [rawFinalText, usage] = await Promise.all([
+        result.text,
+        result.usage
+      ])
+      const finalText = hasVision
+        ? whitelistImageMarkdown(rawFinalText, resolvedImages)
+        : rawFinalText
       await ctx.runMutation(internal.crud.conversations.updateMessage, {
         messageId: assistantMessageId,
         content: finalText,

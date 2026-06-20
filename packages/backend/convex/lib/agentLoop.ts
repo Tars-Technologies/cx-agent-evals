@@ -8,6 +8,7 @@ import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
 import { vectorSearchWithFilter } from "./vectorSearch"
 import { buildGetImagesTool } from "./vision"
+import { whitelistImageMarkdown } from "./visionShared"
 
 // === Shared types ===
 
@@ -199,6 +200,11 @@ export async function runAgentLoop(
       finalText = recovery.text
       promptTokens += recovery.usage?.promptTokens ?? 0
       completionTokens += recovery.usage?.completionTokens ?? 0
+    }
+
+    // Whitelist image markers → urls; drop hallucinated/external (V4/V9).
+    if (config.hasVision) {
+      finalText = whitelistImageMarkdown(finalText, resolvedImages)
     }
 
     return {

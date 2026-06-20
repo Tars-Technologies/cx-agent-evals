@@ -19,7 +19,7 @@ import { internalAction } from "../_generated/server"
 import { composeSystemPrompt } from "../agents/promptTemplate"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
 import { buildGetImagesTool } from "../lib/vision"
-import { isVisionCapable } from "../lib/visionShared"
+import { isVisionCapable, whitelistImageMarkdown } from "../lib/visionShared"
 
 // ─── Helpers ───
 
@@ -350,6 +350,11 @@ export const evaluateAgentQuestion = internalAction({
 
       const latencyMs = Date.now() - startTime
 
+      // Whitelist image markers → urls; drop hallucinated/external (V4/V9).
+      const answerText = hasVision
+        ? whitelistImageMarkdown(result.text, resolvedImages)
+        : result.text
+
       // 7. Extract tool calls + chunks
       const toolCalls = [...allToolCallResults]
       const retrievedChunks = toolCalls.flatMap((tc) => tc.chunks)
@@ -364,7 +369,7 @@ export const evaluateAgentQuestion = internalAction({
       await ctx.runMutation(internal.experiments.agentResults.insert, {
         experimentId: args.experimentId,
         questionId: args.questionId,
-        answerText: result.text,
+        answerText,
         toolCalls: toolCalls.map((tc) => ({
           toolName: tc.toolName,
           query: tc.query,

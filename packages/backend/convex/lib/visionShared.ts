@@ -4,6 +4,8 @@
  * buildGetImagesTool) live in `vision.ts`, which re-exports everything here.
  */
 
+import { rewriteMarkdownImages } from "@tars-inc/eval-lib/file-processing/markdown-images"
+
 export const MAX_IMAGES_PER_TURN = 4
 
 // Explicit allowlist — resolveModel routes by id but has no vision check.
@@ -54,4 +56,21 @@ export function buildImageMenuFromChunks(
     }
   }
   return out
+}
+
+/**
+ * Finalize guard (V4/V9): keep only images whose target is a resolved imageId,
+ * rewriting them to the real URL. Everything else (hallucinated ids, raw
+ * external urls the model may have written) is removed. Authoritative
+ * regardless of KB content.
+ */
+export function whitelistImageMarkdown(
+  text: string,
+  resolved: Map<string, { url: string; alt: string }>
+): string {
+  return rewriteMarkdownImages(text, ({ url }) => {
+    // `url` here is whatever the model wrote in (...) — an imageId or a real url.
+    const hit = resolved.get(url)
+    return hit ? hit.url : null
+  })
 }
