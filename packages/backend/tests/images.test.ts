@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { internal } from "../convex/_generated/api"
-import { extractChunkImages } from "../convex/kb/indexing_actions"
+import { extractChunkImages } from "../convex/lib/vision"
 import {
   seedDataset,
   seedKB,
@@ -178,5 +178,62 @@ describe("agentExperimentResults.insert with images", () => {
     )
     expect(rows.length).toBe(1)
     expect(rows[0].shownImages).toBeUndefined()
+  })
+})
+
+describe("backfillImagesForKb", () => {
+  it("backfills images and is idempotent", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const orgId = TEST_ORG_ID
+    const docId = await t.run((ctx) =>
+      ctx.db.insert("documents", {
+        orgId,
+        kbId,
+        docId: "d1",
+        title: "t",
+        content: "c",
+        contentLength: 1,
+        metadata: {},
+        createdAt: Date.now()
+      })
+    )
+    const chunkId = await t.run((ctx) =>
+      ctx.db.insert("documentChunks", {
+        documentId: docId,
+        kbId,
+        chunkId: "c1",
+        content: "x ![cat](https://x.com/c.png) y",
+        start: 0,
+        end: 5,
+        metadata: {}
+      })
+    )
+
+    await t.action(internal.kb.images_actions.backfillImagesForKb, {
+      kbId,
+      orgId
+    })
+
+    const after = await t.run((ctx) => ctx.db.get(chunkId))
+    expect(after!.content).toMatch(/!\[cat\]\(img_[0-9a-f]{16}\)/)
+    expect(after!.metadata.images.length).toBe(1)
+    const kbImageRows = await t.run((ctx) =>
+      ctx.db
+        .query("kbImages")
+        .withIndex("by_kb", (q) => q.eq("kbId", kbId))
+        .collect()
+    )
+    expect(kbImageRows.length).toBe(1)
+
+    // Second run is a no-op (img_ targets are non-http → skipped).
+    const contentAfter1 = after!.content
+    await t.action(internal.kb.images_actions.backfillImagesForKb, {
+      kbId,
+      orgId
+    })
+    const after2 = await t.run((ctx) => ctx.db.get(chunkId))
+    expect(after2!.content).toBe(contentAfter1)
   })
 })

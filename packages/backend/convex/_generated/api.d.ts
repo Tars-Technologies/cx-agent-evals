@@ -63,6 +63,7 @@ import type * as kb_experiments from "../kb/experiments.js";
 import type * as kb_generation from "../kb/generation.js";
 import type * as kb_generation_actions from "../kb/generation_actions.js";
 import type * as kb_images from "../kb/images.js";
+import type * as kb_images_actions from "../kb/images_actions.js";
 import type * as kb_indexing from "../kb/indexing.js";
 import type * as kb_indexing_actions from "../kb/indexing_actions.js";
 import type * as kb_langsmithRetry from "../kb/langsmithRetry.js";
@@ -156,6 +157,7 @@ declare const fullApi: ApiFromModules<{
   "kb/generation": typeof kb_generation;
   "kb/generation_actions": typeof kb_generation_actions;
   "kb/images": typeof kb_images;
+  "kb/images_actions": typeof kb_images_actions;
   "kb/indexing": typeof kb_indexing;
   "kb/indexing_actions": typeof kb_indexing_actions;
   "kb/langsmithRetry": typeof kb_langsmithRetry;

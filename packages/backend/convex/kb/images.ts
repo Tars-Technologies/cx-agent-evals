@@ -1,5 +1,7 @@
 import { v } from "convex/values"
+import { internal } from "../_generated/api"
 import { internalMutation, internalQuery } from "../_generated/server"
+import { tenantMutation } from "../lib/auth/tenant"
 
 const imageInputValidator = v.object({
   imageId: v.string(),
@@ -38,6 +40,44 @@ export const upsertImagesForChunk = internalMutation({
   }
 })
 
+/**
+ * List all chunks for a KB (id + content + metadata) for the backfill action.
+ * POC: uses .collect(); for large KBs this should paginate (chunks carry 12KB
+ * vectors). Flagged as a follow-up — see plan Task 9.
+ */
+export const listChunkIdsForKb = internalQuery({
+  args: { kbId: v.id("knowledgeBases") },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("documentChunks")
+      .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
+      .collect()
+    return rows.map((r) => ({
+      id: r._id,
+      content: r.content,
+      documentId: r.documentId,
+      metadata: r.metadata
+    }))
+  }
+})
+
+/** Patch a chunk's rewritten content + metadata.images (backfill). */
+export const patchChunkImages = internalMutation({
+  args: {
+    chunkId: v.id("documentChunks"),
+    content: v.string(),
+    images: v.array(v.object({ imageId: v.string(), alt: v.string() }))
+  },
+  handler: async (ctx, args) => {
+    const chunk = await ctx.db.get(args.chunkId)
+    if (!chunk) return
+    await ctx.db.patch(args.chunkId, {
+      content: args.content,
+      metadata: { ...(chunk.metadata ?? {}), images: args.images }
+    })
+  }
+})
+
 /** Resolve a set of image IDs to {imageId,url,alt}, scoped to org + kb. */
 export const getImagesByIds = internalQuery({
   args: {
@@ -58,5 +98,24 @@ export const getImagesByIds = internalQuery({
       out.push({ imageId: row.imageId, url: row.url, alt: row.alt })
     }
     return out
+  }
+})
+
+/**
+ * Tenant-triggered backfill: re-parse a KB's existing chunks for images.
+ * Schedules the node action (idempotent). For KBs indexed before this feature.
+ */
+export const reindexForImages = tenantMutation({
+  args: { kbId: v.id("knowledgeBases") },
+  handler: async (ctx, args) => {
+    const { orgId } = ctx
+    const kb = await ctx.db.get(args.kbId)
+    if (!kb || kb.orgId !== orgId) throw new Error("Knowledge base not found")
+    await ctx.scheduler.runAfter(
+      0,
+      internal.kb.images_actions.backfillImagesForKb,
+      { kbId: args.kbId, orgId }
+    )
+    return { scheduled: true }
   }
 })

@@ -13,47 +13,14 @@ import {
   PositionAwareChunkId,
   RecursiveCharacterChunker
 } from "@tars-inc/eval-lib"
-import {
-  parseMarkdownImages,
-  rewriteMarkdownImages
-} from "@tars-inc/eval-lib/file-processing/markdown-images"
 import { createEmbedder } from "@tars-inc/eval-lib/llm"
 import { CLEANUP_BATCH_SIZE, EMBED_BATCH_SIZE } from "@tars-inc/eval-lib/shared"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
-import { imageIdFor } from "../lib/vision"
+import { extractChunkImages } from "../lib/vision"
 import { assertIndexableDimension } from "./dimension_guard"
 import { buildQdrantStore } from "./retrieval_runtime"
-
-/**
- * Parse images from a chunk's content, mint deterministic ids, rewrite the
- * inline ![alt](url) → ![alt](img_<id>) marker (position preserved, no pixels),
- * and return the rewritten content + the {imageId,url,alt} list to persist.
- */
-export function extractChunkImages(kbId: string, content: string) {
-  const parsed = parseMarkdownImages(content)
-  if (parsed.length === 0) {
-    return {
-      content,
-      images: [] as Array<{ imageId: string; url: string; alt: string }>
-    }
-  }
-  const images: Array<{ imageId: string; url: string; alt: string }> = []
-  const seen = new Set<string>()
-  const rewritten = rewriteMarkdownImages(content, ({ alt, url }) => {
-    // rewriteMarkdownImages invokes map for every complete match, including
-    // unsupported targets; only menu-eligible (parsed) urls get an id.
-    if (!parsed.some((p) => p.url === url)) return url // leave unsupported untouched
-    const imageId = imageIdFor(kbId, url)
-    if (!seen.has(imageId)) {
-      seen.add(imageId)
-      images.push({ imageId, url, alt })
-    }
-    return imageId
-  })
-  return { content: rewritten, images }
-}
 
 /** Retry a mutation that may fail with TooManyWrites under concurrent load. */
 async function retryOnWriteLimit<T>(
