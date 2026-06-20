@@ -1,7 +1,7 @@
 "use node"
 
 import { anthropic } from "@ai-sdk/anthropic"
-import { streamText, tool } from "ai"
+import { generateText, streamText, tool } from "ai"
 import { v } from "convex/values"
 import { z } from "zod"
 import { internal } from "../_generated/api"
@@ -225,6 +225,7 @@ export const runAgent = internalAction({
 
       // 7. Stream the response using fullStream (handles multi-step tool use properly)
       let streamCursor = 0
+      let toolCallCount = 0
       let buffer = ""
       const FLUSH_INTERVAL_MS = 200
       const FLUSH_CHAR_THRESHOLD = 50
@@ -251,7 +252,7 @@ export const runAgent = internalAction({
         system: systemPrompt,
         messages: aiMessages,
         tools: Object.keys(tools).length > 0 ? tools : undefined,
-        maxSteps: 5
+        maxSteps: 8
       })
 
       for await (const part of result.fullStream) {
@@ -265,6 +266,7 @@ export const runAgent = internalAction({
             await flushBuffer()
           }
         } else if (part.type === "tool-call") {
+          toolCallCount++
           const retrieverInfo = retrieverMap.get(part.toolName)
           await ctx.runMutation(internal.crud.conversations.insertMessage, {
             conversationId,
@@ -300,13 +302,38 @@ export const runAgent = internalAction({
       }
       await flushBuffer()
 
-      // 8. Finalize the assistant message. Whitelist rewrites known image
-      // markers → urls and drops hallucinated/external ones (V4/V9). Runs only
-      // on the final content; streamed deltas may briefly show raw markers.
-      const [rawFinalText, usage] = await Promise.all([
-        result.text,
-        result.usage
-      ])
+      // 8. Finalize the assistant message.
+      let rawFinalText = (await result.text) ?? ""
+      const usage = await result.usage
+
+      // Recovery: if the step budget was spent on tool calls (e.g. retrieve +
+      // get_images) without producing text, force one text-only pass so live
+      // chat never silently truncates to empty. Mirrors lib/agentLoop.ts.
+      if (
+        (!rawFinalText || rawFinalText.trim().length === 0) &&
+        toolCallCount > 0
+      ) {
+        const responseMessages = (await result.response)?.messages
+        const recovery = await generateText({
+          model: resolveModel(agent.model),
+          system:
+            systemPrompt +
+            "\n\nYou have already gathered information using tools. Provide your best response to the user based on what you found. Do not call any more tools.",
+          messages: responseMessages
+            ? [...aiMessages, ...(responseMessages as any)]
+            : aiMessages
+        })
+        rawFinalText = recovery.text ?? ""
+        // Streaming already finished; flush the recovered text as one delta.
+        if (rawFinalText) {
+          buffer += rawFinalText
+          await flushBuffer()
+        }
+      }
+
+      // Whitelist rewrites known image markers → urls and drops
+      // hallucinated/external ones (V4/V9). Runs only on the final content;
+      // streamed deltas may briefly show raw markers.
       const finalText = hasVision
         ? whitelistImageMarkdown(rawFinalText, resolvedImages)
         : rawFinalText

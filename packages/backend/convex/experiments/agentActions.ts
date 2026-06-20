@@ -345,7 +345,7 @@ export const evaluateAgentQuestion = internalAction({
         system: systemPrompt,
         messages: [{ role: "user", content: question.queryText }],
         tools: Object.keys(tools).length > 0 ? tools : undefined,
-        maxSteps: 5
+        maxSteps: 8
       })
 
       const latencyMs = Date.now() - startTime
