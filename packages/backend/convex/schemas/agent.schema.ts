@@ -118,7 +118,10 @@ export const agentTables = {
             content: v.string(),
             docId: v.string(),
             start: v.number(),
-            end: v.number()
+            end: v.number(),
+            images: v.optional(
+              v.array(v.object({ imageId: v.string(), alt: v.string() }))
+            )
           })
         )
       })
@@ -128,10 +131,16 @@ export const agentTables = {
         content: v.string(),
         docId: v.string(),
         start: v.number(),
-        end: v.number()
+        end: v.number(),
+        images: v.optional(
+          v.array(v.object({ imageId: v.string(), alt: v.string() }))
+        )
       })
     ),
     scores: v.optional(v.record(v.string(), v.number())),
+    shownImages: v.optional(
+      v.array(v.object({ imageId: v.string(), url: v.string() }))
+    ),
     usage: v.optional(
       v.object({
         promptTokens: v.number(),

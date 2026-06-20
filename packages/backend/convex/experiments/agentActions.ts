@@ -365,6 +365,11 @@ export const evaluateAgentQuestion = internalAction({
         question.relevantSpans
       )
 
+      // Record (only) which images the model fetched this turn (D8: no scoring).
+      const shownImages = Array.from(resolvedImages.entries()).map(
+        ([imageId, vimg]) => ({ imageId, url: vimg.url })
+      )
+
       // 9. Insert result
       await ctx.runMutation(internal.experiments.agentResults.insert, {
         experimentId: args.experimentId,
@@ -378,6 +383,7 @@ export const evaluateAgentQuestion = internalAction({
         })),
         retrievedChunks,
         scores,
+        shownImages: shownImages.length > 0 ? shownImages : undefined,
         usage: result.usage
           ? {
               promptTokens: result.usage.promptTokens,
