@@ -9,13 +9,26 @@ import { rewriteMarkdownImages } from "@tars-inc/eval-lib/file-processing/markdo
 export const MAX_IMAGES_PER_TURN = 4
 
 // Explicit allowlist — resolveModel routes by id but has no vision check.
+// Must track the model menu in AgentConfigPanel.tsx: every selectable model
+// here is vision-capable, so the toggle works regardless of which one is
+// picked. Add new model ids here when the dropdown gains them.
 export const VISION_CAPABLE_MODELS = [
+  // Claude (Anthropic) — all 4.x are multimodal
   "claude-opus-4-8",
+  "claude-opus-4-6",
   "claude-sonnet-4-6",
+  "claude-sonnet-4-20250514",
   "claude-haiku-4-5",
+  "claude-haiku-4-5-20251001",
+  // OpenAI — 4.1 family, 4o family, and o-series are multimodal
+  "gpt-4.1",
+  "gpt-4.1-mini",
+  "gpt-4.1-nano",
   "gpt-4o",
   "gpt-4o-mini",
-  "gpt-4-turbo"
+  "gpt-4-turbo",
+  "o3",
+  "o4-mini"
 ]
 
 export function isVisionCapable(modelId: string): boolean {

@@ -61,6 +61,23 @@ describe("isVisionCapable", () => {
     expect(isVisionCapable("claude-sonnet-4-6")).toBe(true)
     expect(isVisionCapable("gpt-4o")).toBe(true)
   })
+  it("accepts every model the agent dropdown offers", () => {
+    // Keep in sync with AgentConfigPanel.tsx model <option> values.
+    for (const m of [
+      "claude-opus-4-6",
+      "claude-sonnet-4-6",
+      "claude-sonnet-4-20250514",
+      "claude-haiku-4-5-20251001",
+      "gpt-4.1",
+      "gpt-4.1-mini",
+      "gpt-4.1-nano",
+      "o3",
+      "o4-mini",
+      "gpt-4o"
+    ]) {
+      expect(isVisionCapable(m)).toBe(true)
+    }
+  })
   it("rejects unknown / non-vision models", () => {
     expect(isVisionCapable("o1-mini")).toBe(false)
     expect(isVisionCapable("some-future-model")).toBe(false)
