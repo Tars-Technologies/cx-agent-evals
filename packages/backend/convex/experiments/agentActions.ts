@@ -1,7 +1,5 @@
 "use node"
 
-import { anthropic } from "@ai-sdk/anthropic"
-import { openai } from "@ai-sdk/openai"
 import {
   type CharacterSpan,
   DocumentId,
@@ -10,30 +8,19 @@ import {
   precision,
   recall
 } from "@tars-inc/eval-lib"
-import { generateText, type LanguageModel, tool } from "ai"
+import { generateText, tool } from "ai"
 import { v } from "convex/values"
 import { z } from "zod"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { internalAction } from "../_generated/server"
 import { composeSystemPrompt } from "../agents/promptTemplate"
+import { resolveModel } from "../lib/agentLoop"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
 import { buildGetImagesTool } from "../lib/vision"
 import { isVisionCapable, whitelistImageMarkdown } from "../lib/visionShared"
 
 // ─── Helpers ───
-
-function resolveModel(modelId: string): LanguageModel {
-  if (
-    modelId.startsWith("gpt-") ||
-    modelId.startsWith("o1") ||
-    modelId.startsWith("o3") ||
-    modelId.startsWith("o4")
-  ) {
-    return openai(modelId)
-  }
-  return anthropic(modelId)
-}
 
 function slugify(name: string): string {
   return name
