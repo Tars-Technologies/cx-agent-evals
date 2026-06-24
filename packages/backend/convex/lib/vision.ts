@@ -1,11 +1,6 @@
 "use node"
 
 import { createHash } from "node:crypto"
-import {
-  isUnsupportedImageUrl,
-  parseMarkdownImages,
-  rewriteMarkdownImages
-} from "@tars-inc/eval-lib/file-processing/markdown-images"
 import { assertPublicHttpUrl } from "@tars-inc/eval-lib/scraper"
 import { normalizeUrl } from "@tars-inc/eval-lib/scraper/link-extractor"
 import { tool } from "ai"
@@ -50,91 +45,6 @@ export function isLikelyDecorativeImage(url: string): boolean {
   if (m && Number(m[1]) < MIN_IMAGE_WIDTH_PX) return true
   if (DECORATIVE_NAME_RE.test(url)) return true
   return false
-}
-
-/**
- * Parse images from a chunk's content, mint deterministic ids, rewrite the
- * inline ![alt](url) → ![alt](img_<id>) marker (position preserved, no pixels),
- * and return the rewritten content + the {imageId,url,alt} list to persist.
- * Decorative/tiny images are dropped from the content entirely so they never
- * reach the model. Shared by ingestion (indexing_actions) and the backfill.
- */
-export function extractChunkImages(kbId: string, content: string) {
-  const parsed = parseMarkdownImages(content)
-  if (parsed.length === 0) {
-    return {
-      content,
-      images: [] as Array<{ imageId: string; url: string; alt: string }>
-    }
-  }
-  const images: Array<{ imageId: string; url: string; alt: string }> = []
-  const seen = new Set<string>()
-  const rewritten = rewriteMarkdownImages(content, ({ alt, url }) => {
-    // rewriteMarkdownImages invokes map for every complete match, including
-    // unsupported targets; only menu-eligible (parsed) urls get an id.
-    if (!parsed.some((p) => p.url === url)) return url // leave unsupported untouched
-    if (isLikelyDecorativeImage(url)) return null // drop icons/pins/logos
-    const imageId = imageIdFor(kbId, url)
-    if (!seen.has(imageId)) {
-      seen.add(imageId)
-      images.push({ imageId, url, alt })
-    }
-    return imageId
-  })
-  return { content: rewritten, images }
-}
-
-/**
- * Re-clean a chunk's images, handling BOTH pre-feature raw ![alt](url) markers
- * AND already-rewritten ![alt](img_<id>) markers. Used by the backfill so an
- * existing KB picks up the decorative filter without a full re-embed:
- *  - raw url → mint id (unless decorative/unsupported)
- *  - img_ id → resolve via imgIdToUrl; drop if it now reads as decorative
- * `changed` is true only when something was actually rewritten/dropped
- * (idempotent: a second pass over a clean chunk reports no change).
- */
-export function recleanChunkImages(
-  kbId: string,
-  content: string,
-  imgIdToUrl: Map<string, string>
-) {
-  const keptImages: Array<{ imageId: string; alt: string }> = []
-  const newImages: Array<{ imageId: string; url: string; alt: string }> = []
-  const droppedIds: string[] = []
-  const seenKept = new Set<string>()
-  const seenNew = new Set<string>()
-  let changed = false
-
-  const next = rewriteMarkdownImages(content, ({ alt, url }) => {
-    if (url.startsWith("img_")) {
-      const realUrl = imgIdToUrl.get(url)
-      if (realUrl && isLikelyDecorativeImage(realUrl)) {
-        droppedIds.push(url)
-        changed = true
-        return null
-      }
-      if (!seenKept.has(url)) {
-        seenKept.add(url)
-        keptImages.push({ imageId: url, alt })
-      }
-      return url // keep existing good marker unchanged
-    }
-    // Pre-feature raw url.
-    if (isUnsupportedImageUrl(url)) return url // leave svg/data/non-http alone
-    if (isLikelyDecorativeImage(url)) {
-      changed = true
-      return null
-    }
-    const imageId = imageIdFor(kbId, url)
-    if (!seenNew.has(imageId)) {
-      seenNew.add(imageId)
-      newImages.push({ imageId, url, alt })
-    }
-    changed = true
-    return imageId
-  })
-
-  return { content: next, keptImages, newImages, droppedIds, changed }
 }
 
 // Matches image markers the model writes referencing a KB image id.

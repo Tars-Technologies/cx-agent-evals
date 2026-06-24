@@ -1,7 +1,6 @@
 import type { MarkdownImage } from "@tars-inc/eval-lib/file-processing/markdown-images"
 import { describe, expect, it } from "vitest"
 import {
-  extractChunkImages,
   imageIdFor,
   isLikelyDecorativeImage,
   resolveAnswerImageMarkers
@@ -193,18 +192,6 @@ describe("isLikelyDecorativeImage", () => {
       )
     ).toBe(false)
     expect(isLikelyDecorativeImage("https://x.com/photo.jpg")).toBe(false)
-  })
-})
-
-describe("extractChunkImages decorative filtering", () => {
-  it("drops a location pin but keeps the real photo", () => {
-    const md =
-      "City ![pin](https://upload.wikimedia.org/x/thumb/y/12px-Red_pog.svg.png) and ![view](https://x.com/skyline.jpg)"
-    const { content, images } = extractChunkImages("kb_1", md)
-    expect(images.map((i) => i.url)).toEqual(["https://x.com/skyline.jpg"])
-    expect(content).toContain("![view](img_")
-    expect(content).not.toContain("Red_pog")
-    expect(content).not.toContain("![pin]")
   })
 })
 
