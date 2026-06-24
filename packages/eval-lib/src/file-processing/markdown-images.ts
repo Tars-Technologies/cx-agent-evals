@@ -57,3 +57,20 @@ export function rewriteMarkdownImages(
     return `![${alt}](${next})`
   })
 }
+
+/** Matches the non-rendering image-id annotation `<!--img:img_xxxx-->`. */
+const IMG_COMMENT_RE = /<!--img:[^>]*-->/g
+
+/** Remove `<!--img:...-->` annotations, leaving the surrounding text intact. */
+export function stripImageComments(content: string): string {
+  return content.replace(IMG_COMMENT_RE, "")
+}
+
+/**
+ * Remove all complete `![alt](url)` images AND `<!--img:...-->` annotations,
+ * producing clean text for chunking. Order matters: drop comments first so a
+ * stripped image never leaves a dangling annotation behind.
+ */
+export function stripImageMarkdown(content: string): string {
+  return stripImageComments(content).replace(IMAGE_RE, "")
+}
