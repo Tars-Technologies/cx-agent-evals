@@ -64,6 +64,19 @@ export const upsertDocImages = internalMutation({
   }
 })
 
+/** Patch a document's content with re-annotated image markers (E5). */
+export const setDocImageAnnotations = internalMutation({
+  args: { docId: v.id("documents"), content: v.string() },
+  handler: async (ctx, args) => {
+    const doc = await ctx.db.get(args.docId)
+    if (!doc) return
+    await ctx.db.patch(args.docId, {
+      content: args.content,
+      contentLength: args.content.length
+    })
+  }
+})
+
 /**
  * Doc-gated image pool for retrieval (E9): each document's images, tagged with
  * their documentId so the caller can group by doc order. Skips rows with no

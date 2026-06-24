@@ -1,6 +1,16 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { internal } from "../convex/_generated/api"
 import { extractChunkImages } from "../convex/lib/vision"
+
+// Deterministic embeddings so processDocImages ranking/storage is assertable.
+vi.mock("@tars-inc/eval-lib/llm", () => ({
+  createEmbedder: () => ({
+    name: "mock",
+    dimension: 2,
+    embed: async (texts: readonly string[]) => texts.map((_t, i) => [i + 1, 0]),
+    embedQuery: async () => [1, 0]
+  })
+}))
 import {
   seedDataset,
   seedKB,
@@ -406,6 +416,66 @@ describe("backfillImagesForKb", () => {
         .collect()
     )
     expect(remaining.map((r) => r.imageId).sort()).toEqual(["img_photo"])
+  })
+})
+
+describe("kb.images_actions.processDocImages", () => {
+  const sampleContent =
+    `## Revenue dashboard\n` +
+    `![Quarterly revenue chart](https://x/rev.png)\n` +
+    `*Figure 1: revenue by quarter*\n` +
+    `![](https://x/12px-Red_pog.svg.png)\n` // decorative → skipped
+
+  async function seedDoc(t: ReturnType<typeof setupTest>, content: string) {
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const orgId = TEST_ORG_ID
+    const docId = await t.run((ctx) =>
+      ctx.db.insert("documents", {
+        orgId,
+        kbId,
+        docId: "d1",
+        title: "t",
+        content,
+        contentLength: content.length,
+        metadata: {},
+        parseStatus: "done",
+        createdAt: Date.now()
+      })
+    )
+    return { kbId, orgId, docId }
+  }
+
+  it("writes rows with embeddings, annotates content, skips decorative (E4)", async () => {
+    const t = setupTest()
+    const { kbId, docId } = await seedDoc(t, sampleContent)
+
+    await t.action(internal.kb.images_actions.processDocImages, { docId })
+
+    const rows = await t.query(internal.kb.images.imagesForDocs, {
+      kbId,
+      documentIds: [docId]
+    })
+    expect(rows.length).toBe(1)
+    expect(rows[0].alt).toBe("Quarterly revenue chart")
+    expect(rows[0].embedding).toEqual([1, 0])
+
+    const doc = await t.run((ctx) => ctx.db.get(docId))
+    expect(doc!.content).toContain(
+      `![Quarterly revenue chart](https://x/rev.png)<!--img:${rows[0].imageId}-->`
+    )
+    // decorative image kept visible, but not annotated (E4)
+    expect(doc!.content).toContain("![](https://x/12px-Red_pog.svg.png)")
+    expect(doc!.content).not.toContain("Red_pog.svg.png)<!--img")
+  })
+
+  it("is idempotent (E5): re-run does not duplicate annotations", async () => {
+    const t = setupTest()
+    const { docId } = await seedDoc(t, sampleContent)
+    await t.action(internal.kb.images_actions.processDocImages, { docId })
+    await t.action(internal.kb.images_actions.processDocImages, { docId })
+    const doc = await t.run((ctx) => ctx.db.get(docId))
+    expect((doc!.content.match(/<!--img:/g) ?? []).length).toBe(1)
   })
 })
 
