@@ -14,12 +14,7 @@ import {
   isVisionCapable,
   resolveAnswerImageMarkers
 } from "../lib/vision"
-import {
-  type DocImage,
-  MENU_IMAGE_CAP,
-  rankDocImagesForQuery,
-  whitelistImageMarkdown
-} from "../lib/visionShared"
+import { MENU_IMAGE_CAP, whitelistImageMarkdown } from "../lib/visionShared"
 import { composeSystemPrompt } from "./promptTemplate"
 
 // Helper: convert stored messages to AI SDK format
@@ -184,6 +179,7 @@ export const runAgent = internalAction({
             })
 
             // Doc-gated image menu (E9): docs ordered by best chunk rank.
+            // Ranking happens DB-side so embeddings never ship to the action.
             const docOrder: Id<"documents">[] = []
             const seenDoc = new Set<string>()
             for (const c of chunks) {
@@ -193,23 +189,14 @@ export const runAgent = internalAction({
                 docOrder.push(id)
               }
             }
-            const docImages = await ctx.runQuery(
-              internal.kb.images.imagesForDocs,
-              { kbId: info.kbId as Id<"knowledgeBases">, documentIds: docOrder }
-            )
-            const groups: DocImage[][] = docOrder.map((d) =>
-              docImages
-                .filter((r) => r.documentId === d)
-                .map((r) => ({
-                  imageId: r.imageId,
-                  alt: r.alt,
-                  embedding: r.embedding
-                }))
-            )
-            const images = rankDocImagesForQuery(
-              queryEmbedding,
-              groups,
-              MENU_IMAGE_CAP
+            const images = await ctx.runQuery(
+              internal.kb.images.rankedImagesForDocs,
+              {
+                kbId: info.kbId as Id<"knowledgeBases">,
+                documentIds: docOrder,
+                queryEmbedding,
+                cap: MENU_IMAGE_CAP
+              }
             )
 
             const cleanChunks = chunks.map((c: any) => ({

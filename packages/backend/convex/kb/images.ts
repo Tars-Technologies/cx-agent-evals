@@ -8,6 +8,7 @@ import {
   type MutationCtx
 } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
+import { type DocImage, rankDocImagesForQuery } from "../lib/visionShared"
 
 // Bounded-concurrency pool so a crawl finalizing many docs at once does not
 // slam OpenAI; transient embed failures retry (E7).
@@ -129,6 +130,41 @@ export const imagesForDocs = internalQuery({
       }
     }
     return out
+  }
+})
+
+/**
+ * Doc-gated image menu, ranked DB-side (efficiency: avoids shipping every
+ * matched doc's 1536-d embeddings back to the retrieval action). `documentIds`
+ * are in retrieved-chunk-rank order; within each doc images are ranked by cosine
+ * to `queryEmbedding`, round-robined across docs, deduped, capped (E9). Returns
+ * only `[{imageId, alt}]` — url/embedding never leave the query.
+ */
+export const rankedImagesForDocs = internalQuery({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    documentIds: v.array(v.id("documents")),
+    queryEmbedding: v.array(v.float64()),
+    cap: v.number()
+  },
+  handler: async (ctx, args) => {
+    const groups: DocImage[][] = []
+    for (const documentId of args.documentIds) {
+      const rows = await ctx.db
+        .query("kbImages")
+        .withIndex("by_source_doc", (q) => q.eq("sourceDocId", documentId))
+        .collect()
+      groups.push(
+        rows
+          .filter((r) => r.kbId === args.kbId && r.url)
+          .map((r) => ({
+            imageId: r.imageId,
+            alt: r.alt,
+            embedding: r.embedding
+          }))
+      )
+    }
+    return rankDocImagesForQuery(args.queryEmbedding, groups, args.cap)
   }
 })
 

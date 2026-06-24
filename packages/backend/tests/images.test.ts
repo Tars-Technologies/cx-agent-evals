@@ -332,6 +332,19 @@ describe("doc-gated menu (imagesForDocs + rankDocImagesForQuery)", () => {
     const menu = rankDocImagesForQuery([1, 0], groups, 6)
     // round-robin: docA #1, docB #1, docA #2
     expect(menu.map((m) => m.imageId)).toEqual(["img_a1", "img_b1", "img_a2"])
+
+    // DB-side ranking (rankedImagesForDocs) returns the same menu, only [{imageId, alt}].
+    const dbMenu = await t.query(internal.kb.images.rankedImagesForDocs, {
+      kbId,
+      documentIds: docOrder,
+      queryEmbedding: [1, 0],
+      cap: 6
+    })
+    expect(dbMenu).toEqual([
+      { imageId: "img_a1", alt: "a1" },
+      { imageId: "img_b1", alt: "b1" },
+      { imageId: "img_a2", alt: "a2" }
+    ])
   })
 })
 
