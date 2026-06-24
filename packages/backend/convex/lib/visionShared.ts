@@ -4,9 +4,13 @@
  * buildGetImagesTool) live in `vision.ts`, which re-exports everything here.
  */
 
-import { rewriteMarkdownImages } from "@tars-inc/eval-lib/file-processing/markdown-images"
+import {
+  rewriteMarkdownImages,
+  type MarkdownImage
+} from "@tars-inc/eval-lib/file-processing/markdown-images"
 
 export const MAX_IMAGES_PER_TURN = 4
+export const MENU_IMAGE_CAP = 6
 
 // Explicit allowlist — resolveModel routes by id but has no vision check.
 // Must track the model menu in AgentConfigPanel.tsx: every selectable model
@@ -37,7 +41,7 @@ export function isVisionCapable(modelId: string): boolean {
 
 /** Appended to the system prompt only when hasVision (V6). */
 export const IMAGE_INSTRUCTIONS = `# Images
-Some retrieved results include an image menu: each entry has an \`imageId\` and \`alt\` text, and the chunk text shows where the image sits as \`![alt](imageId)\`. Every real imageId begins with \`img_\` (e.g. \`img_3f9a2c1b4d5e6f70\`).
+The search results include a ranked list of images drawn from the relevant documents — each entry has an \`imageId\` and \`alt\` text. Every real imageId begins with \`img_\` (e.g. \`img_3f9a2c1b4d5e6f70\`).
 
 When the retrieved results include an image relevant to your answer (a screenshot, diagram, photo, UI, map, or chart), you SHOULD show it — default to including a clearly relevant image rather than leaving it out.
 
@@ -58,17 +62,197 @@ export interface ImageMenuEntry {
   alt: string
 }
 
-/** Flatten metadata.images across retrieved chunks, dedup by imageId. */
-export function buildImageMenuFromChunks(
-  chunks: Array<{
-    metadata?: { images?: Array<{ imageId: string; alt: string }> }
-  }>
+// ─── Context-aware embedding input (D10) ───
+
+const ALT_DENYLIST = new Set([
+  "image",
+  "photo",
+  "figure",
+  "screenshot",
+  "logo",
+  "banner",
+  "icon",
+  "img",
+  "graphic",
+  "picture",
+  ""
+])
+const HEADING_DENYLIST = new Set([
+  "Overview",
+  "Introduction",
+  "Summary",
+  "Background",
+  "About",
+  "Details",
+  "More",
+  "Content",
+  "Section"
+])
+const SURROUNDING_CHARS = 300
+const CAPTION_KEYWORD_RE = /^(Figure|Fig\.|Caption:|Source:|Photo:)/i
+const HEADING_RE = /^(#{2,3})\s+(.+)$/gm
+
+const wordCount = (s: string) => s.trim().split(/\s+/).filter(Boolean).length
+
+// Lightweight local strip so surrounding text never carries image syntax.
+function stripImageMarkdownInline(s: string): string {
+  return s.replace(/<!--img:[^>]*-->/g, "").replace(/!\[[^\]]*\]\([^)\s]+\)/g, "")
+}
+
+/** Nearest `##`/`###` heading text above `pos`, or "". */
+function nearestHeadingAbove(content: string, pos: number): string {
+  let heading = ""
+  for (const m of content.matchAll(HEADING_RE)) {
+    if ((m.index ?? 0) < pos) heading = m[2].trim()
+    else break
+  }
+  return heading
+}
+
+/**
+ * The caption line immediately after the image (skipping at most one blank
+ * line). `strong` when italic / caption-keyword / <figcaption>; weak otherwise
+ * (a short, single-sentence plain line).
+ */
+function captionAfter(
+  content: string,
+  img: MarkdownImage
+): { text: string; strong: boolean } {
+  const after = content.slice(img.index + img.raw.length)
+  const lines = after.split("\n")
+  // lines[0] is the remainder of the image's own line (usually empty).
+  let i = 1
+  if (i < lines.length && lines[i].trim() === "") i++ // skip one blank line
+  const line = (lines[i] ?? "").trim()
+  if (!line) return { text: "", strong: false }
+  const isItalic = /^\*[^*].*\*$/.test(line) || /^_[^_].*_$/.test(line)
+  const isKeyword = CAPTION_KEYWORD_RE.test(line)
+  const isFigcaption = /^<figcaption>/i.test(line)
+  if (isItalic || isKeyword || isFigcaption) {
+    return {
+      text: line
+        .replace(/^[*_]|[*_]$/g, "")
+        .replace(/<\/?figcaption>/gi, "")
+        .trim(),
+      strong: true
+    }
+  }
+  // weak: short single-sentence plain line
+  if (line.length < 100 && !/[.!?].+[.!?]/.test(line)) {
+    return { text: line, strong: false }
+  }
+  return { text: "", strong: false }
+}
+
+/** N chars before+after the image, bounded to the current section. */
+function surrounding(content: string, img: MarkdownImage): string {
+  let sectionStart = 0
+  let sectionEnd = content.length
+  for (const m of content.matchAll(HEADING_RE)) {
+    const at = m.index ?? 0
+    if (at <= img.index) sectionStart = at
+    else {
+      sectionEnd = at
+      break
+    }
+  }
+  const before = content.slice(
+    Math.max(sectionStart, img.index - SURROUNDING_CHARS),
+    img.index
+  )
+  const afterStart = img.index + img.raw.length
+  const after = content.slice(
+    afterStart,
+    Math.min(sectionEnd, afterStart + SURROUNDING_CHARS)
+  )
+  return stripImageMarkdownInline(`${before} ${after}`).replace(/\s+/g, " ").trim()
+}
+
+/**
+ * Build the context-aware embedding input for one image (D10). Returns the
+ * effective alt (placeholder when empty), the assembled input string, and
+ * whether surrounding text was folded in (only when all signals are weak).
+ */
+export function buildImageEmbeddingInput(
+  content: string,
+  img: MarkdownImage
+): { alt: string; input: string; usedSurrounding: boolean } {
+  const alt = img.alt.trim() === "" ? "image" : img.alt.trim()
+  const caption = captionAfter(content, img)
+  const heading = nearestHeadingAbove(content, img.index)
+
+  const altOk = wordCount(alt) >= 2 && !ALT_DENYLIST.has(alt.toLowerCase())
+  const captionOk = caption.strong
+  const headingOk = wordCount(heading) >= 3 && !HEADING_DENYLIST.has(heading)
+
+  // A weak caption is only used when alt is also weak (per D10).
+  const captionText = captionOk || !altOk ? caption.text : ""
+  const parts = [captionText, alt, heading].filter(Boolean)
+
+  if (altOk || captionOk || headingOk) {
+    return { alt, input: parts.join(". "), usedSurrounding: false }
+  }
+  const surr = surrounding(content, img)
+  return {
+    alt,
+    input: [...parts, surr].filter(Boolean).join(". "),
+    usedSurrounding: true
+  }
+}
+
+// ─── Doc-gated round-robin ranking (E9) ───
+
+export interface DocImage {
+  imageId: string
+  alt: string
+  embedding?: number[]
+}
+
+function cosine(a: number[], b: number[]): number {
+  let dot = 0
+  let na = 0
+  let nb = 0
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i]
+    na += a[i] * a[i]
+    nb += b[i] * b[i]
+  }
+  return na && nb ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0
+}
+
+/**
+ * Build the doc-gated image menu. `docGroups` are pre-ordered by document
+ * relevance (best retrieved-chunk rank first). Within each group images are
+ * ranked by cosine to `queryEmbedding` when the embedding exists and dimensions
+ * match (E3); otherwise input order is preserved. Selection is round-robin
+ * across groups (E9) with dedup by imageId, capped at `cap`.
+ */
+export function rankDocImagesForQuery(
+  queryEmbedding: number[],
+  docGroups: DocImage[][],
+  cap: number
 ): ImageMenuEntry[] {
-  const seen = new Set<string>()
+  const ranked = docGroups.map((group) =>
+    [...group].sort((x, y) => {
+      const xs =
+        x.embedding && x.embedding.length === queryEmbedding.length
+          ? cosine(queryEmbedding, x.embedding)
+          : -Infinity
+      const ys =
+        y.embedding && y.embedding.length === queryEmbedding.length
+          ? cosine(queryEmbedding, y.embedding)
+          : -Infinity
+      return ys - xs // higher cosine first; -Infinity ties keep input order
+    })
+  )
   const out: ImageMenuEntry[] = []
-  for (const c of chunks) {
-    for (const img of c.metadata?.images ?? []) {
-      if (seen.has(img.imageId)) continue
+  const seen = new Set<string>()
+  const maxLen = Math.max(0, ...ranked.map((g) => g.length))
+  for (let rank = 0; rank < maxLen && out.length < cap; rank++) {
+    for (const group of ranked) {
+      if (out.length >= cap) break
+      const img = group[rank]
+      if (!img || seen.has(img.imageId)) continue
       seen.add(img.imageId)
       out.push({ imageId: img.imageId, alt: img.alt })
     }

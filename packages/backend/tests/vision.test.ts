@@ -1,3 +1,4 @@
+import type { MarkdownImage } from "@tars-inc/eval-lib/file-processing/markdown-images"
 import { describe, expect, it } from "vitest"
 import {
   extractChunkImages,
@@ -6,9 +7,11 @@ import {
   resolveAnswerImageMarkers
 } from "../convex/lib/vision"
 import {
-  buildImageMenuFromChunks,
+  buildImageEmbeddingInput,
   isVisionCapable,
   MAX_IMAGES_PER_TURN,
+  MENU_IMAGE_CAP,
+  rankDocImagesForQuery,
   VISION_CAPABLE_MODELS,
   whitelistImageMarkdown
 } from "../convex/lib/visionShared"
@@ -35,28 +38,78 @@ describe("imageIdFor", () => {
   })
 })
 
-describe("buildImageMenuFromChunks", () => {
-  it("flattens + dedups metadata.images across chunks, first-seen order", () => {
-    const chunks = [
-      { metadata: { images: [{ imageId: "img_a", alt: "a" }] } },
-      { metadata: {} },
-      {
-        metadata: {
-          images: [
-            { imageId: "img_b", alt: "b" },
-            { imageId: "img_a", alt: "a" }
-          ]
-        }
-      }
-    ]
-    expect(buildImageMenuFromChunks(chunks)).toEqual([
-      { imageId: "img_a", alt: "a" },
-      { imageId: "img_b", alt: "b" }
-    ])
+describe("buildImageEmbeddingInput", () => {
+  const img = (alt: string, content: string): MarkdownImage => ({
+    alt,
+    url: "https://x/i.png",
+    raw: `![${alt}](https://x/i.png)`,
+    index: content.indexOf("![")
   })
 
-  it("returns [] when no chunk has images", () => {
-    expect(buildImageMenuFromChunks([{ metadata: {} }, {}])).toEqual([])
+  it("strong alt → no surrounding text", () => {
+    const content = `## Pricing tiers\n![Comparison of pricing plans](https://x/i.png)\nbody text here`
+    const r = buildImageEmbeddingInput(
+      content,
+      img("Comparison of pricing plans", content)
+    )
+    expect(r.usedSurrounding).toBe(false)
+    expect(r.input).toContain("Comparison of pricing plans")
+    expect(r.input).toContain("Pricing tiers")
+  })
+
+  it("empty alt → placeholder and all-weak → surrounding included", () => {
+    const content = `## More\n![](https://x/i.png)\nthe quick brown fox jumps`
+    const r = buildImageEmbeddingInput(content, img("", content))
+    expect(r.alt).toBe("image")
+    expect(r.usedSurrounding).toBe(true)
+    expect(r.input).toContain("quick brown fox")
+  })
+
+  it("weak alt + strong italic caption → no surrounding", () => {
+    const content = `## x\n![logo](https://x/i.png)\n*Figure 2: the revenue dashboard*\nmore`
+    const r = buildImageEmbeddingInput(content, img("logo", content))
+    expect(r.usedSurrounding).toBe(false)
+    expect(r.input).toContain("revenue dashboard")
+  })
+})
+
+describe("rankDocImagesForQuery", () => {
+  const q = [1, 0]
+  it("round-robins across docs (one doc can't fill all slots)", () => {
+    const docA = [
+      { imageId: "img_a1", alt: "a1", embedding: [1, 0] },
+      { imageId: "img_a2", alt: "a2", embedding: [0.9, 0.1] }
+    ]
+    const docB = [{ imageId: "img_b1", alt: "b1", embedding: [0.8, 0.2] }]
+    const menu = rankDocImagesForQuery(q, [docA, docB], 2)
+    expect(menu.map((m) => m.imageId)).toEqual(["img_a1", "img_b1"])
+  })
+
+  it("dedups a shared imageId across docs (first occurrence wins)", () => {
+    const docA = [{ imageId: "img_x", alt: "x", embedding: [1, 0] }]
+    const docB = [{ imageId: "img_x", alt: "x", embedding: [1, 0] }]
+    const menu = rankDocImagesForQuery(q, [docA, docB], 6)
+    expect(menu.map((m) => m.imageId)).toEqual(["img_x"])
+  })
+
+  it("falls back to input order when embeddings are missing/mismatched", () => {
+    const docA = [
+      { imageId: "img_a1", alt: "a1" },
+      { imageId: "img_a2", alt: "a2", embedding: [1, 2, 3] }
+    ]
+    const menu = rankDocImagesForQuery(q, [docA], 6)
+    expect(menu.map((m) => m.imageId)).toEqual(["img_a1", "img_a2"])
+  })
+
+  it("caps at MENU_IMAGE_CAP", () => {
+    const group = Array.from({ length: 10 }, (_, i) => ({
+      imageId: `img_${i}`,
+      alt: `${i}`,
+      embedding: [1 - i / 100, 0]
+    }))
+    expect(rankDocImagesForQuery(q, [group], MENU_IMAGE_CAP).length).toBe(
+      MENU_IMAGE_CAP
+    )
   })
 })
 
