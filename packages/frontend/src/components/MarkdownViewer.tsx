@@ -24,6 +24,10 @@ interface MarkdownViewerProps {
 
 type Mode = "raw" | "rendered"
 
+/** Non-rendering image-id annotations added at scrape time (Component 5):
+ *  invisible in rendered output, shown verbatim in raw mode. */
+const IMG_COMMENT_RE = /<!--img:[^>]*-->/g
+
 const markdownComponents: Components = {
   h1: ({ children, ...props }: ComponentPropsWithoutRef<"h1">) => (
     <h1
@@ -303,7 +307,7 @@ export function MarkdownViewer({
             rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
             components={markdownComponents}
           >
-            {content}
+            {content.replace(IMG_COMMENT_RE, "")}
           </ReactMarkdown>
         </div>
       )}
