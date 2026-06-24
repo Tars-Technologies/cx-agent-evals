@@ -75,6 +75,100 @@ describe("kb.images.upsertImagesForChunk", () => {
   })
 })
 
+describe("kb.images.upsertDocImages (delete-and-replace)", () => {
+  it("inserts, then reconciles removed images on re-run", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const orgId = TEST_ORG_ID
+    const docId = await t.run((ctx) =>
+      ctx.db.insert("documents", {
+        orgId,
+        kbId,
+        docId: "d1",
+        title: "t",
+        content: "c",
+        contentLength: 1,
+        metadata: {},
+        parseStatus: "done",
+        createdAt: Date.now()
+      })
+    )
+    await t.mutation(internal.kb.images.upsertDocImages, {
+      kbId,
+      orgId,
+      sourceDocId: docId,
+      images: [
+        { imageId: "img_a", url: "https://x/a.png", alt: "a", embedding: [1, 0] },
+        { imageId: "img_b", url: "https://x/b.png", alt: "b" }
+      ]
+    })
+    let rows = await t.query(internal.kb.images.imagesForDocs, {
+      kbId,
+      documentIds: [docId]
+    })
+    expect(rows.map((r) => r.imageId).sort()).toEqual(["img_a", "img_b"])
+
+    // Re-run without img_b → it must be deleted (E2); img_a alt/embedding updated.
+    await t.mutation(internal.kb.images.upsertDocImages, {
+      kbId,
+      orgId,
+      sourceDocId: docId,
+      images: [
+        { imageId: "img_a", url: "https://x/a.png", alt: "a2", embedding: [0, 1] }
+      ]
+    })
+    rows = await t.query(internal.kb.images.imagesForDocs, {
+      kbId,
+      documentIds: [docId]
+    })
+    expect(rows.map((r) => r.imageId)).toEqual(["img_a"])
+    expect(rows[0].alt).toBe("a2")
+    expect(rows[0].embedding).toEqual([0, 1])
+  })
+
+  it("allows one row per (sourceDocId, imageId) for a shared url (E1)", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const orgId = TEST_ORG_ID
+    const mk = (d: string) =>
+      t.run((ctx) =>
+        ctx.db.insert("documents", {
+          orgId,
+          kbId,
+          docId: d,
+          title: d,
+          content: "c",
+          contentLength: 1,
+          metadata: {},
+          parseStatus: "done",
+          createdAt: Date.now()
+        })
+      )
+    const docA = await mk("a")
+    const docB = await mk("b")
+    const shared = { imageId: "img_s", url: "https://x/s.png", alt: "s" }
+    await t.mutation(internal.kb.images.upsertDocImages, {
+      kbId,
+      orgId,
+      sourceDocId: docA,
+      images: [shared]
+    })
+    await t.mutation(internal.kb.images.upsertDocImages, {
+      kbId,
+      orgId,
+      sourceDocId: docB,
+      images: [shared]
+    })
+    const rowsB = await t.query(internal.kb.images.imagesForDocs, {
+      kbId,
+      documentIds: [docB]
+    })
+    expect(rowsB.map((r) => r.imageId)).toEqual(["img_s"])
+  })
+})
+
 describe("agentExperimentResults.insert with images", () => {
   async function seedExperimentAndQuestion(
     t: ReturnType<typeof setupTest>

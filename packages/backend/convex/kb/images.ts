@@ -1,5 +1,6 @@
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
+import type { Id } from "../_generated/dataModel"
 import { internalMutation, internalQuery } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 
@@ -7,6 +8,96 @@ const imageInputValidator = v.object({
   imageId: v.string(),
   url: v.string(),
   alt: v.string()
+})
+
+const docImageInputValidator = v.object({
+  imageId: v.string(),
+  url: v.string(),
+  alt: v.string(),
+  embedding: v.optional(v.array(v.float64()))
+})
+
+/**
+ * Delete-and-replace a document's images (E1/E2). Rows are keyed by
+ * (sourceDocId, imageId): rows for this doc whose imageId is not in `images`
+ * are deleted, the rest are inserted or patched (alt/url/embedding). This is
+ * what keeps the doc-gated pool free of dead rows after a re-scrape.
+ */
+export const upsertDocImages = internalMutation({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    orgId: v.string(),
+    sourceDocId: v.id("documents"),
+    images: v.array(docImageInputValidator)
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("kbImages")
+      .withIndex("by_source_doc", (q) => q.eq("sourceDocId", args.sourceDocId))
+      .collect()
+    const keep = new Set(args.images.map((i) => i.imageId))
+    for (const row of existing) {
+      if (!keep.has(row.imageId)) await ctx.db.delete(row._id)
+    }
+    const byId = new Map(existing.map((r) => [r.imageId, r]))
+    for (const img of args.images) {
+      const prev = byId.get(img.imageId)
+      if (prev) {
+        await ctx.db.patch(prev._id, {
+          url: img.url,
+          alt: img.alt,
+          embedding: img.embedding
+        })
+      } else {
+        await ctx.db.insert("kbImages", {
+          imageId: img.imageId,
+          kbId: args.kbId,
+          orgId: args.orgId,
+          url: img.url,
+          alt: img.alt,
+          embedding: img.embedding,
+          sourceDocId: args.sourceDocId,
+          createdAt: Date.now()
+        })
+      }
+    }
+  }
+})
+
+/**
+ * Doc-gated image pool for retrieval (E9): each document's images, tagged with
+ * their documentId so the caller can group by doc order. Skips rows with no
+ * resolvable url (a future storage-only row should never enter the menu).
+ */
+export const imagesForDocs = internalQuery({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    documentIds: v.array(v.id("documents"))
+  },
+  handler: async (ctx, args) => {
+    const out: Array<{
+      documentId: Id<"documents">
+      imageId: string
+      alt: string
+      embedding?: number[]
+    }> = []
+    for (const documentId of args.documentIds) {
+      const rows = await ctx.db
+        .query("kbImages")
+        .withIndex("by_source_doc", (q) => q.eq("sourceDocId", documentId))
+        .collect()
+      for (const r of rows) {
+        if (r.kbId !== args.kbId || !r.url) continue
+        out.push({
+          documentId,
+          imageId: r.imageId,
+          alt: r.alt,
+          embedding: r.embedding
+        })
+      }
+    }
+    return out
+  }
 })
 
 /** Idempotent upsert of parsed images for one chunk, keyed by (kbId, imageId). */
