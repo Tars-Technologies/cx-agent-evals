@@ -4,11 +4,17 @@ import { anthropic } from "@ai-sdk/anthropic"
 import { openai } from "@ai-sdk/openai"
 import { generateText, type LanguageModel, tool } from "ai"
 import { z } from "zod"
+import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
 import { vectorSearchWithFilter } from "./vectorSearch"
 import { buildGetImagesTool, resolveAnswerImageMarkers } from "./vision"
-import { whitelistImageMarkdown } from "./visionShared"
+import {
+  type DocImage,
+  MENU_IMAGE_CAP,
+  rankDocImagesForQuery,
+  whitelistImageMarkdown
+} from "./visionShared"
 
 // === Shared types ===
 
@@ -113,19 +119,42 @@ export async function runAgentLoop(
           indexStrategy: info.indexStrategy
         })
 
-        const result = chunks.map((c: any) => ({
+        // Doc-gated image menu (E9): docs ordered by best chunk rank.
+        const docOrder: Id<"documents">[] = []
+        const seenDoc = new Set<string>()
+        for (const c of chunks) {
+          const id = c.documentId as Id<"documents">
+          if (!seenDoc.has(id)) {
+            seenDoc.add(id)
+            docOrder.push(id)
+          }
+        }
+        const docImages = await ctx.runQuery(internal.kb.images.imagesForDocs, {
+          kbId: info.kbId as Id<"knowledgeBases">,
+          documentIds: docOrder
+        })
+        const groups: DocImage[][] = docOrder.map((d) =>
+          docImages
+            .filter((r) => r.documentId === d)
+            .map((r) => ({
+              imageId: r.imageId,
+              alt: r.alt,
+              embedding: r.embedding
+            }))
+        )
+        const images = rankDocImagesForQuery(
+          queryEmbedding,
+          groups,
+          MENU_IMAGE_CAP
+        )
+
+        const cleanChunks = chunks.map((c: any) => ({
           content: c.content,
           documentId: c.documentId,
           start: c.start,
-          end: c.end,
-          ...(c.metadata?.images?.length
-            ? {
-                images: (
-                  c.metadata.images as Array<{ imageId: string; alt: string }>
-                ).map((i) => ({ imageId: i.imageId, alt: i.alt }))
-              }
-            : {})
+          end: c.end
         }))
+        const result = { chunks: cleanChunks, images }
 
         collectedToolCalls.push({
           toolName,

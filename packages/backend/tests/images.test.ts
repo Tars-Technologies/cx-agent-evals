@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { internal } from "../convex/_generated/api"
 import { extractChunkImages } from "../convex/lib/vision"
+import { rankDocImagesForQuery } from "../convex/lib/visionShared"
 
 // Deterministic embeddings so processDocImages ranking/storage is assertable.
 vi.mock("@tars-inc/eval-lib/llm", () => ({
@@ -476,6 +477,62 @@ describe("kb.images_actions.processDocImages", () => {
     await t.action(internal.kb.images_actions.processDocImages, { docId })
     const doc = await t.run((ctx) => ctx.db.get(docId))
     expect((doc!.content.match(/<!--img:/g) ?? []).length).toBe(1)
+  })
+})
+
+describe("doc-gated menu (imagesForDocs + rankDocImagesForQuery)", () => {
+  it("ranks within docs and round-robins across docs in doc order", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const orgId = TEST_ORG_ID
+    const mk = (d: string) =>
+      t.run((ctx) =>
+        ctx.db.insert("documents", {
+          orgId,
+          kbId,
+          docId: d,
+          title: d,
+          content: "c",
+          contentLength: 1,
+          metadata: {},
+          parseStatus: "done",
+          createdAt: Date.now()
+        })
+      )
+    const docA = await mk("a")
+    const docB = await mk("b")
+    await t.mutation(internal.kb.images.upsertDocImages, {
+      kbId,
+      orgId,
+      sourceDocId: docA,
+      images: [
+        { imageId: "img_a1", url: "https://x/a1.png", alt: "a1", embedding: [1, 0] },
+        { imageId: "img_a2", url: "https://x/a2.png", alt: "a2", embedding: [0.5, 0.5] }
+      ]
+    })
+    await t.mutation(internal.kb.images.upsertDocImages, {
+      kbId,
+      orgId,
+      sourceDocId: docB,
+      images: [
+        { imageId: "img_b1", url: "https://x/b1.png", alt: "b1", embedding: [0.9, 0.1] }
+      ]
+    })
+
+    const docOrder = [docA, docB]
+    const rows = await t.query(internal.kb.images.imagesForDocs, {
+      kbId,
+      documentIds: docOrder
+    })
+    const groups = docOrder.map((d) =>
+      rows
+        .filter((r) => r.documentId === d)
+        .map((r) => ({ imageId: r.imageId, alt: r.alt, embedding: r.embedding }))
+    )
+    const menu = rankDocImagesForQuery([1, 0], groups, 6)
+    // round-robin: docA #1, docB #1, docA #2
+    expect(menu.map((m) => m.imageId)).toEqual(["img_a1", "img_b1", "img_a2"])
   })
 })
 

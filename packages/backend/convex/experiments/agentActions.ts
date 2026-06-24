@@ -18,7 +18,13 @@ import { composeSystemPrompt } from "../agents/promptTemplate"
 import { resolveModel } from "../lib/agentLoop"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
 import { buildGetImagesTool, resolveAnswerImageMarkers } from "../lib/vision"
-import { isVisionCapable, whitelistImageMarkdown } from "../lib/visionShared"
+import {
+  type DocImage,
+  isVisionCapable,
+  MENU_IMAGE_CAP,
+  rankDocImagesForQuery,
+  whitelistImageMarkdown
+} from "../lib/visionShared"
 
 // ─── Helpers ───
 
@@ -279,21 +285,40 @@ export const evaluateAgentQuestion = internalAction({
             indexStrategy: info.indexStrategy
           })
 
+          // Doc-gated image menu (E9): docs ordered by best chunk rank.
+          const docOrder: Id<"documents">[] = []
+          const seenDoc = new Set<string>()
+          for (const c of chunks) {
+            const id = c.documentId as Id<"documents">
+            if (!seenDoc.has(id)) {
+              seenDoc.add(id)
+              docOrder.push(id)
+            }
+          }
+          const docImages = await ctx.runQuery(
+            internal.kb.images.imagesForDocs,
+            { kbId: info.kbId as Id<"knowledgeBases">, documentIds: docOrder }
+          )
+          const groups: DocImage[][] = docOrder.map((d) =>
+            docImages
+              .filter((r) => r.documentId === d)
+              .map((r) => ({
+                imageId: r.imageId,
+                alt: r.alt,
+                embedding: r.embedding
+              }))
+          )
+          const images = rankDocImagesForQuery(
+            queryEmbedding,
+            groups,
+            MENU_IMAGE_CAP
+          )
+
           const mappedChunks = chunks.map((c: any) => ({
             content: c.content,
             docId: c.docId,
             start: c.start,
-            end: c.end,
-            ...(c.metadata?.images?.length
-              ? {
-                  images: (
-                    c.metadata.images as Array<{
-                      imageId: string
-                      alt: string
-                    }>
-                  ).map((i) => ({ imageId: i.imageId, alt: i.alt }))
-                }
-              : {})
+            end: c.end
           }))
 
           allToolCallResults.push({
@@ -303,7 +328,7 @@ export const evaluateAgentQuestion = internalAction({
             chunks: mappedChunks
           })
 
-          return mappedChunks
+          return { chunks: mappedChunks, images }
         }
       })
     }
