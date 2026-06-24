@@ -12,14 +12,6 @@ import { imageIdFor, isLikelyDecorativeImage } from "../lib/vision"
 import { buildImageEmbeddingInput } from "../lib/visionShared"
 
 /**
- * Re-parse every chunk in a KB for images and apply the current decorative
- * filter, WITHOUT re-embedding:
- *  - pre-feature raw ![alt](url) → mint ids, upsert kbImages, rewrite markers
- *  - already-rewritten ![alt](img_<id>) → drop ones that now read as decorative
- *    (icons/pins/logos), removing them from content, metadata, and kbImages
- * Idempotent: a second run finds nothing to change.
- */
-/**
  * Document-level image processing (E1–E9). Reads the finalized document content
  * (E8), builds a context-aware embedding per menu-eligible image, writes one
  * kbImages row per image via delete-and-replace (E2), and re-annotates the
