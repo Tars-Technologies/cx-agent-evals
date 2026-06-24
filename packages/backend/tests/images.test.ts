@@ -479,6 +479,33 @@ describe("kb.images_actions.processDocImages", () => {
   })
 })
 
+describe("finalize triggers processDocImages", () => {
+  it("createFromScrape schedules image processing (rows appear after run)", async () => {
+    vi.useFakeTimers()
+    try {
+      const t = setupTest()
+      const userId = await seedUser(t)
+      const kbId = await seedKB(t, userId)
+      const orgId = TEST_ORG_ID
+      const docId = await t.mutation(internal.kb.documents.createFromScrape, {
+        orgId,
+        kbId,
+        title: "t",
+        content: "## H\n![A revenue chart](https://x/r.png)\n",
+        sourceUrl: "https://example.com/page"
+      })
+      await t.finishAllScheduledFunctions(vi.runAllTimers)
+      const rows = await t.query(internal.kb.images.imagesForDocs, {
+        kbId,
+        documentIds: [docId]
+      })
+      expect(rows.map((r) => r.imageId).length).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe("getImagesByIds multi-KB scoping", () => {
   it("resolves ids across all provided KBs but not outside them", async () => {
     const t = setupTest()

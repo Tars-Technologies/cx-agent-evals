@@ -13,6 +13,7 @@ import {
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
 import { capContent } from "../lib/contentCap"
 import { computeDocId } from "../lib/docId"
+import { scheduleDocImageProcessing } from "./images"
 
 /**
  * Bind an uploaded blob to the caller's org, claiming it on first use.
@@ -138,6 +139,7 @@ export const create = tenantMutation({
       documentCount: (kb.documentCount ?? 0) + 1
     })
 
+    await scheduleDocImageProcessing(ctx, docRowId)
     return docRowId
   }
 })
@@ -429,6 +431,7 @@ export const createFromScrape = internalMutation({
       })
     }
 
+    await scheduleDocImageProcessing(ctx, docRowId)
     return docRowId
   }
 })
@@ -593,6 +596,7 @@ export const finishParse = internalMutation({
           documentCount: (kb.documentCount ?? 0) + 1
         })
       }
+      await scheduleDocImageProcessing(ctx, doc._id)
     } else {
       // Persist why it failed (the remote error, or a content-less "ok") so the
       // reason is visible on the document, matching recordParseFailure.
@@ -640,6 +644,7 @@ export const createParsed = internalMutation({
         documentCount: (kb.documentCount ?? 0) + 1
       })
     }
+    await scheduleDocImageProcessing(ctx, docRowId)
     return docRowId
   }
 })

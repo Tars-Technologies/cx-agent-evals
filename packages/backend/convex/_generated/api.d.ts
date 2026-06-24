@@ -224,4 +224,5 @@ export declare const components: {
   agentExperimentPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"agentExperimentPool">;
   livechatAnalysisPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"livechatAnalysisPool">;
   conversationSimPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"conversationSimPool">;
+  imageProcessingPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"imageProcessingPool">;
 };

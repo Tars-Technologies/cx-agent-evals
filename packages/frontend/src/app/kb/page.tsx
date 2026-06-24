@@ -85,7 +85,7 @@ function KBPageContent() {
   // --- Mutations ---
   const removeDoc = useMutation(api.kb.documents.remove)
   const cancelCrawl = useMutation(api.kb.crawl.cancelCrawl)
-  const reindexImages = useMutation(api.kb.images.reindexForImages)
+  const reindexImages = useMutation(api.kb.images.reprocessKbImages)
   const [imageReindexMsg, setImageReindexMsg] = useState<string | null>(null)
   const imageCount = useQuery(
     api.kb.images.countForKb,
@@ -264,20 +264,20 @@ function KBPageContent() {
                     <button
                       onClick={async () => {
                         if (!selectedKbId) return
-                        setImageReindexMsg("Re-indexing images…")
+                        setImageReindexMsg("Reprocessing images…")
                         try {
                           await reindexImages({ kbId: selectedKbId })
                           setImageReindexMsg(
-                            "Image re-index started — refresh in a minute."
+                            "Image reprocess started — refresh in a minute."
                           )
                         } catch {
-                          setImageReindexMsg("Failed to start image re-index.")
+                          setImageReindexMsg("Failed to start image reprocess.")
                         }
                       }}
-                      title="Re-parse this KB's chunks for images and apply the latest image filter (no re-embedding)."
+                      title="Reprocess this KB's documents for images (rebuilds the document-level image registry and embeddings)."
                       className="px-3 py-1.5 text-xs border border-border text-text rounded hover:border-accent transition-colors whitespace-nowrap"
                     >
-                      Re-index images
+                      Reprocess images
                     </button>
                     {imageCount !== undefined && (
                       <p className="text-[11px] text-text-dim">

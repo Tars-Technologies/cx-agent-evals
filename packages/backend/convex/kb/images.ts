@@ -1,8 +1,33 @@
+import { Workpool } from "@convex-dev/workpool"
 import { v } from "convex/values"
-import { internal } from "../_generated/api"
+import { components, internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
-import { internalMutation, internalQuery } from "../_generated/server"
+import {
+  internalMutation,
+  internalQuery,
+  type MutationCtx
+} from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
+
+// Bounded-concurrency pool so a crawl finalizing many docs at once does not
+// slam OpenAI; transient embed failures retry (E7).
+const imagePool = new Workpool(components.imageProcessingPool, {
+  maxParallelism: 5,
+  retryActionsByDefault: true,
+  defaultRetryBehavior: { maxAttempts: 3, initialBackoffMs: 2000, base: 2 }
+})
+
+/** Enqueue document image processing (E7/E8). Safe to call from any mutation. */
+export async function scheduleDocImageProcessing(
+  ctx: MutationCtx,
+  docId: Id<"documents">
+): Promise<void> {
+  await imagePool.enqueueAction(
+    ctx,
+    internal.kb.images_actions.processDocImages,
+    { docId }
+  )
+}
 
 const imageInputValidator = v.object({
   imageId: v.string(),
@@ -254,20 +279,26 @@ export const countForKb = tenantQuery({
 })
 
 /**
- * Tenant-triggered backfill: re-parse a KB's existing chunks for images.
- * Schedules the node action (idempotent). For KBs indexed before this feature.
+ * Tenant-triggered reprocess: run document-level image processing over every
+ * finalized document in a KB (replaces the old chunk-rewrite backfill). Each
+ * doc is enqueued through the bounded image pool (E7).
  */
-export const reindexForImages = tenantMutation({
+export const reprocessKbImages = tenantMutation({
   args: { kbId: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
     const { orgId } = ctx
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) throw new Error("Knowledge base not found")
-    await ctx.scheduler.runAfter(
-      0,
-      internal.kb.images_actions.backfillImagesForKb,
-      { kbId: args.kbId, orgId }
-    )
-    return { scheduled: true }
+    const docs = await ctx.db
+      .query("documents")
+      .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
+      .collect()
+    let scheduled = 0
+    for (const d of docs) {
+      if (d.parseStatus && d.parseStatus !== "done") continue // skip placeholders
+      await scheduleDocImageProcessing(ctx, d._id)
+      scheduled++
+    }
+    return { scheduled }
   }
 })

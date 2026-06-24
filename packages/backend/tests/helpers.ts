@@ -26,6 +26,7 @@ export function setupTest() {
   workpoolTest.register(t, "experimentPool")
   workpoolTest.register(t, "scrapingPool")
   workpoolTest.register(t, "livechatAnalysisPool")
+  workpoolTest.register(t, "imageProcessingPool")
   return t
 }
 
