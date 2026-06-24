@@ -1,9 +1,17 @@
+import { stripImageMarkdown } from "@tars-inc/eval-lib/file-processing/markdown-images"
 import type { convexTest } from "convex-test"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { internal } from "../convex/_generated/api"
 import type { Id } from "../convex/_generated/dataModel"
 import { qdrantCollectionName } from "../convex/kb/vector_backend"
 import { seedKB, seedUser, setupTest, TEST_ORG_ID } from "./helpers"
+
+describe("chunk image stripping", () => {
+  it("removes image markdown + annotations from chunk content", () => {
+    const input = "intro ![cat](https://x/c.png)<!--img:img_abc--> body"
+    expect(stripImageMarkdown(input)).toBe("intro  body")
+  })
+})
 
 // ─── Domain-Specific Seeders ───
 

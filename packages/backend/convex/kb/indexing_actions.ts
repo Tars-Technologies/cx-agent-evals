@@ -13,12 +13,12 @@ import {
   PositionAwareChunkId,
   RecursiveCharacterChunker
 } from "@tars-inc/eval-lib"
+import { stripImageMarkdown } from "@tars-inc/eval-lib/file-processing/markdown-images"
 import { createEmbedder } from "@tars-inc/eval-lib/llm"
 import { CLEANUP_BATCH_SIZE, EMBED_BATCH_SIZE } from "@tars-inc/eval-lib/shared"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
-import { extractChunkImages } from "../lib/vision"
 import { assertIndexableDimension } from "./dimension_guard"
 import { buildQdrantStore } from "./retrieval_runtime"
 
@@ -116,48 +116,24 @@ export const indexDocument = internalAction({
           return { skipped: false, chunksInserted: 0, chunksEmbedded: 0 }
         }
 
-        // Insert parent chunks (no embedding — level: "parent").
-        // Only parents carry the returned text, so images are parsed/rewritten
-        // on parents only (§6.4); child content is left untouched.
-        const parentMapped = parentChunks.map((c) => {
-          const { content, images } = extractChunkImages(args.kbId, c.content)
-          return {
-            row: {
-              documentId: args.documentId,
-              kbId: args.kbId,
-              indexConfigHash: args.indexConfigHash,
-              chunkId: c.id,
-              content,
-              start: c.start,
-              end: c.end,
-              metadata: {
-                level: "parent" as const,
-                ...(images.length > 0
-                  ? {
-                      images: images.map((i) => ({
-                        imageId: i.imageId,
-                        alt: i.alt
-                      }))
-                    }
-                  : {})
-              }
-            },
-            images
-          }
-        })
-        const parentImages = parentMapped.flatMap((m) => m.images)
-        if (parentImages.length > 0) {
-          await ctx.runMutation(internal.kb.images.upsertImagesForChunk, {
-            kbId: args.kbId,
-            orgId: doc.orgId,
-            sourceDocId: args.documentId,
-            images: parentImages
-          })
-        }
+        // Insert parent chunks (no embedding — level: "parent"). Only parents
+        // carry the returned text; image markdown is stripped so chunks are
+        // clean text (images live at the document level now). Child content is
+        // left untouched.
+        const parentMapped = parentChunks.map((c) => ({
+          documentId: args.documentId,
+          kbId: args.kbId,
+          indexConfigHash: args.indexConfigHash,
+          chunkId: c.id,
+          content: stripImageMarkdown(c.content),
+          start: c.start,
+          end: c.end,
+          metadata: { level: "parent" as const }
+        }))
         const parentResult = await ctx.runMutation(
           internal.kb.chunks.insertChunkBatch,
           {
-            chunks: parentMapped.map((m) => m.row)
+            chunks: parentMapped
           }
         )
 
@@ -215,49 +191,22 @@ export const indexDocument = internalAction({
           return { skipped: false, chunksInserted: 0, chunksEmbedded: 0 }
         }
 
-        // Parse + rewrite images once per chunk (avoids double parsing).
-        const mapped = chunks.map((c) => {
-          const { content, images } = extractChunkImages(args.kbId, c.content)
-          return {
-            row: {
-              documentId: args.documentId,
-              kbId: args.kbId,
-              indexConfigHash: args.indexConfigHash,
-              chunkId: c.id,
-              content,
-              start: c.start,
-              end: c.end,
-              metadata: {
-                ...(c.metadata ?? {}),
-                ...(images.length > 0
-                  ? {
-                      images: images.map((i) => ({
-                        imageId: i.imageId,
-                        alt: i.alt
-                      }))
-                    }
-                  : {})
-              }
-            },
-            images
-          }
-        })
-
-        // Persist image registry rows before inserting chunks (so get_images can
-        // resolve them even if embedding (Phase B) is interrupted).
-        const allPlainImages = mapped.flatMap((m) => m.images)
-        if (allPlainImages.length > 0) {
-          await ctx.runMutation(internal.kb.images.upsertImagesForChunk, {
-            kbId: args.kbId,
-            orgId: doc.orgId,
-            sourceDocId: args.documentId,
-            images: allPlainImages
-          })
-        }
+        // Strip image markdown so chunks are clean text (images are processed
+        // at the document level, decoupled from chunk boundaries).
+        const mapped = chunks.map((c) => ({
+          documentId: args.documentId,
+          kbId: args.kbId,
+          indexConfigHash: args.indexConfigHash,
+          chunkId: c.id,
+          content: stripImageMarkdown(c.content),
+          start: c.start,
+          end: c.end,
+          metadata: { ...(c.metadata ?? {}) }
+        }))
 
         // Insert ALL chunks WITHOUT embeddings in one atomic mutation
         await ctx.runMutation(internal.kb.chunks.insertChunkBatch, {
-          chunks: mapped.map((m) => m.row)
+          chunks: mapped
         })
       }
     }
