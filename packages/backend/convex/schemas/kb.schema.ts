@@ -337,6 +337,11 @@ export const kbImageValidator = v.object({
   url: v.optional(v.string()),
   storageId: v.optional(v.id("_storage")),
   alt: v.string(),
+  // Context-aware embedding (text-embedding-3-small, 1536). Input is
+  // caption+alt+heading, or +surrounding when all signals are weak (D10).
+  embedding: v.optional(v.array(v.float64())),
+  // Reserved for the future media-description pipeline; null for now.
+  description: v.optional(v.string()),
   sourceDocId: v.id("documents"),
   createdAt: v.number()
 })
@@ -431,7 +436,8 @@ export const kbTables = {
   // ─── KB Images (deterministic-id image registry; FK target for get_images) ───
   kbImages: defineTable(kbImageValidator)
     .index("by_image_id", ["imageId"])
-    .index("by_kb", ["kbId"]),
+    .index("by_kb", ["kbId"])
+    .index("by_source_doc", ["sourceDocId"]),
 
   // ─── Indexing Jobs (WorkPool-based KB indexing tracking) ───
   indexingJobs: defineTable(indexingJobValidator)
