@@ -34,7 +34,8 @@ const docImageInputValidator = v.object({
   imageId: v.string(),
   url: v.string(),
   alt: v.string(),
-  embedding: v.optional(v.array(v.float64()))
+  embedding: v.optional(v.array(v.float64())),
+  embeddingInputHash: v.optional(v.string())
 })
 
 /**
@@ -66,7 +67,8 @@ export const upsertDocImages = internalMutation({
         await ctx.db.patch(prev._id, {
           url: img.url,
           alt: img.alt,
-          embedding: img.embedding
+          embedding: img.embedding,
+          embeddingInputHash: img.embeddingInputHash
         })
       } else {
         await ctx.db.insert("kbImages", {
@@ -76,6 +78,7 @@ export const upsertDocImages = internalMutation({
           url: img.url,
           alt: img.alt,
           embedding: img.embedding,
+          embeddingInputHash: img.embeddingInputHash,
           sourceDocId: args.sourceDocId,
           createdAt: Date.now()
         })
@@ -94,6 +97,26 @@ export const setDocImageAnnotations = internalMutation({
       content: args.content,
       contentLength: args.content.length
     })
+  }
+})
+
+/**
+ * Existing embeddings + their input hashes for a document's images, so
+ * processDocImages can reuse an unchanged image's vector instead of re-calling
+ * the embedding API on every re-scrape/reprocess.
+ */
+export const docImageEmbeddings = internalQuery({
+  args: { sourceDocId: v.id("documents") },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("kbImages")
+      .withIndex("by_source_doc", (q) => q.eq("sourceDocId", args.sourceDocId))
+      .collect()
+    return rows.map((r) => ({
+      imageId: r.imageId,
+      embedding: r.embedding,
+      embeddingInputHash: r.embeddingInputHash
+    }))
   }
 })
 

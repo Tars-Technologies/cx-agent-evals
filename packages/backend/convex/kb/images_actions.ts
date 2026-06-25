@@ -1,5 +1,6 @@
 "use node"
 
+import { createHash } from "node:crypto"
 import {
   parseMarkdownImages,
   stripImageComments
@@ -33,29 +34,53 @@ export const processDocImages = internalAction({
     const eligible = parsed.filter((p) => !isLikelyDecorativeImage(p.url))
 
     // Build embedding inputs + mint ids (dedup by imageId within the doc).
+    const embedder = createEmbedder()
     const seen = new Set<string>()
-    const toEmbed: Array<{
+    const items: Array<{
       imageId: string
       url: string
       alt: string
       input: string
+      hash: string
     }> = []
     for (const img of eligible) {
       const imageId = imageIdFor(kbId, img.url)
       if (seen.has(imageId)) continue
       seen.add(imageId)
       const { alt, input } = buildImageEmbeddingInput(base, img)
-      toEmbed.push({ imageId, url: img.url, alt, input })
+      // Hash includes the model so switching embedders re-embeds (avoids
+      // reusing a vector from a different model/dimension).
+      const hash = createHash("sha256")
+        .update(`${embedder.name}:${input}`)
+        .digest("hex")
+      items.push({ imageId, url: img.url, alt, input, hash })
     }
 
-    // Batched embed (E7); on failure, upsert without embeddings (E3).
-    let embeddings: number[][] | null = null
-    if (toEmbed.length > 0) {
+    // Reuse stored embeddings whose input+model hash is unchanged (skip the
+    // OpenAI call); only embed new/changed images in one batch (E7). On embed
+    // failure those rows are upserted without an embedding (E3).
+    const prior = await ctx.runQuery(internal.kb.images.docImageEmbeddings, {
+      sourceDocId: args.docId
+    })
+    const priorById = new Map(prior.map((p) => [p.imageId, p]))
+    const embeddings: Array<number[] | undefined> = new Array(items.length)
+    const toCompute: number[] = []
+    items.forEach((e, i) => {
+      const prev = priorById.get(e.imageId)
+      if (prev?.embeddingInputHash === e.hash && prev.embedding) {
+        embeddings[i] = prev.embedding // unchanged → reuse
+      } else {
+        toCompute.push(i)
+      }
+    })
+    if (toCompute.length > 0) {
       try {
-        const embedder = createEmbedder()
-        embeddings = await embedder.embed(toEmbed.map((e) => e.input))
+        const fresh = await embedder.embed(toCompute.map((i) => items[i].input))
+        toCompute.forEach((idx, j) => {
+          embeddings[idx] = fresh[j]
+        })
       } catch {
-        embeddings = null
+        // leave the changed entries' embeddings undefined; retried next run
       }
     }
 
@@ -63,16 +88,17 @@ export const processDocImages = internalAction({
       kbId: doc.kbId,
       orgId: doc.orgId,
       sourceDocId: args.docId,
-      images: toEmbed.map((e, i) => ({
+      images: items.map((e, i) => ({
         imageId: e.imageId,
         url: e.url,
         alt: e.alt,
-        embedding: embeddings ? embeddings[i] : undefined
+        embedding: embeddings[i],
+        embeddingInputHash: e.hash
       }))
     })
 
     // Step 5: re-annotate menu images only (E4/E5).
-    const urlToId = new Map(toEmbed.map((e) => [e.url, e.imageId]))
+    const urlToId = new Map(items.map((e) => [e.url, e.imageId]))
     const annotated = base.replace(
       /!\[([^\]]*)\]\(([^)\s]+)\)/g,
       (raw, _alt: string, url: string) => {

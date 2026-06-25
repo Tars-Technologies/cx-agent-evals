@@ -340,6 +340,9 @@ export const kbImageValidator = v.object({
   // Context-aware embedding (text-embedding-3-small, 1536). Input is
   // caption+alt+heading, or +surrounding when all signals are weak (D10).
   embedding: v.optional(v.array(v.float64())),
+  // sha256("<model>:<embedding input>") — lets processDocImages skip re-embedding
+  // an image whose context-aware input (and model) is unchanged on re-scrape.
+  embeddingInputHash: v.optional(v.string()),
   // Reserved for the future media-description pipeline; null for now.
   description: v.optional(v.string()),
   sourceDocId: v.id("documents"),

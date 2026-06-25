@@ -3,11 +3,16 @@ import { internal } from "../convex/_generated/api"
 import { rankDocImagesForQuery } from "../convex/lib/visionShared"
 
 // Deterministic embeddings so processDocImages ranking/storage is assertable.
+// `calls` counts how many times embed() ran, to prove unchanged images skip it.
+const embedState = vi.hoisted(() => ({ calls: 0 }))
 vi.mock("@tars-inc/eval-lib/llm", () => ({
   createEmbedder: () => ({
     name: "mock",
     dimension: 2,
-    embed: async (texts: readonly string[]) => texts.map((_t, i) => [i + 1, 0]),
+    embed: async (texts: readonly string[]) => {
+      embedState.calls++
+      return texts.map((_t, i) => [i + 1, 0])
+    },
     embedQuery: async () => [1, 0]
   })
 }))
@@ -276,6 +281,31 @@ describe("kb.images_actions.processDocImages", () => {
     await t.action(internal.kb.images_actions.processDocImages, { docId })
     const doc = await t.run((ctx) => ctx.db.get(docId))
     expect((doc!.content.match(/<!--img:/g) ?? []).length).toBe(1)
+  })
+
+  it("skips re-embedding when the image input is unchanged", async () => {
+    const t = setupTest()
+    const { kbId, docId } = await seedDoc(t, sampleContent)
+
+    const before = embedState.calls
+    await t.action(internal.kb.images_actions.processDocImages, { docId })
+    const afterFirst = embedState.calls
+    expect(afterFirst).toBe(before + 1) // first run embeds
+
+    const rows1 = await t.query(internal.kb.images.imagesForDocs, {
+      kbId,
+      documentIds: [docId]
+    })
+
+    // Re-run on identical content: no new embed call, embedding preserved.
+    await t.action(internal.kb.images_actions.processDocImages, { docId })
+    expect(embedState.calls).toBe(afterFirst)
+
+    const rows2 = await t.query(internal.kb.images.imagesForDocs, {
+      kbId,
+      documentIds: [docId]
+    })
+    expect(rows2[0].embedding).toEqual(rows1[0].embedding)
   })
 })
 
