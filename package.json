@@ -16,7 +16,7 @@
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@clerk/themes": "^2.4.52",
+    "@clerk/themes": "^2.4.62",
     "next": "16.1.6"
   },
   "devDependencies": {
