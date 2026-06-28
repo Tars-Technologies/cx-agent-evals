@@ -16,8 +16,11 @@ import { QdrantVectorStore } from "../../src/vector-stores/qdrant.js"
 const LIVE = process.env.QDRANT_LIVE === "1"
 const URL = process.env.QDRANT_URL ?? ""
 const API_KEY = process.env.QDRANT_API_KEY || undefined
-const SPARSE_COLLECTION = "eval_sparse_verify_tmp"
-const DENSE_COLLECTION = "eval_dense_verify_tmp"
+// Unique per run so isolated `-t` filters and concurrent live jobs against the
+// same Qdrant instance never share (or clobber) a collection.
+const RUN_ID = `${process.pid}_${Date.now()}`
+const SPARSE_COLLECTION = `eval_sparse_verify_${RUN_ID}`
+const DENSE_COLLECTION = `eval_dense_verify_${RUN_ID}`
 const DIM = 4
 const SCOPE = { kbId: "kb_live", indexConfigHash: "h_live", documentId: "doc_live" }
 
@@ -54,20 +57,6 @@ run("QdrantVectorStore live (sparse / named hybrid)", () => {
   // top-level `new QdrantVectorStore({ url: "" })` would throw at collection
   // time. beforeAll runs only for the non-skipped (live) suite.
   let store: QdrantVectorStore
-  beforeAll(() => {
-    store = new QdrantVectorStore({
-      url: URL,
-      apiKey: API_KEY,
-      collection: SPARSE_COLLECTION,
-      dimension: DIM,
-      sparse: true
-    })
-  })
-
-  afterAll(async () => {
-    await dropCollection(SPARSE_COLLECTION)
-  })
-
   const chunks = [
     chunk("c1", "alpha alpha banana"),
     chunk("c2", "bravo charlie delta"),
@@ -79,9 +68,24 @@ run("QdrantVectorStore live (sparse / named hybrid)", () => {
     [0, 0, 1, 0]
   ]
 
-  it("creates the named-hybrid collection and upserts dense + bm25", async () => {
+  // Seed once up front so each `it` stands on its own regardless of run order.
+  beforeAll(async () => {
+    store = new QdrantVectorStore({
+      url: URL,
+      apiKey: API_KEY,
+      collection: SPARSE_COLLECTION,
+      dimension: DIM,
+      sparse: true
+    })
     await dropCollection(SPARSE_COLLECTION)
     await store.add(chunks, embeddings, SCOPE)
+  })
+
+  afterAll(async () => {
+    await dropCollection(SPARSE_COLLECTION)
+  })
+
+  it("creates the named-hybrid collection and upserts dense + bm25", async () => {
     const info = await getCollection(SPARSE_COLLECTION)
     const params = info.result?.config?.params
     // Named dense vector present at the expected dimension...
@@ -119,13 +123,15 @@ run("QdrantVectorStore live (sparse / named hybrid)", () => {
 
 run("QdrantVectorStore live (sparse: false unchanged)", () => {
   let store: QdrantVectorStore
-  beforeAll(() => {
+  beforeAll(async () => {
     store = new QdrantVectorStore({
       url: URL,
       apiKey: API_KEY,
       collection: DENSE_COLLECTION,
       dimension: DIM
     })
+    await dropCollection(DENSE_COLLECTION)
+    await store.add([chunk("d1", "hello world")], [[1, 0, 0, 0]], SCOPE)
   })
 
   afterAll(async () => {
@@ -133,8 +139,6 @@ run("QdrantVectorStore live (sparse: false unchanged)", () => {
   })
 
   it("creates an unnamed-dense collection (top-level vector size)", async () => {
-    await dropCollection(DENSE_COLLECTION)
-    await store.add([chunk("d1", "hello world")], [[1, 0, 0, 0]], SCOPE)
     const info = await getCollection(DENSE_COLLECTION)
     const params = info.result?.config?.params
     expect(params?.vectors?.size).toBe(DIM)

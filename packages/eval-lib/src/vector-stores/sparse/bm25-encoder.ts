@@ -85,6 +85,16 @@ export function encodeDocument(
   const b = params.b ?? DEFAULT_BM25_B
   const avgdl = params.avgdl ?? DEFAULT_BM25_AVGDL
 
+  if (!Number.isFinite(k1) || k1 < 0) {
+    throw new Error("encodeDocument: k1 must be a finite number >= 0")
+  }
+  if (!Number.isFinite(b) || b < 0 || b > 1) {
+    throw new Error("encodeDocument: b must be a finite number in [0, 1]")
+  }
+  if (!Number.isFinite(avgdl) || avgdl <= 0) {
+    throw new Error("encodeDocument: avgdl must be a finite number > 0")
+  }
+
   const tokens = tokenize(content)
   const length = tokens.length
   if (length === 0) return { indices: [], values: [] }

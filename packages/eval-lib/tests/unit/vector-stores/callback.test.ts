@@ -68,14 +68,30 @@ describe("CallbackVectorStore", () => {
     expect(out).toHaveLength(1)
   })
 
-  it("supportsSparse can be forced false even with a searchSparse callback", async () => {
+  it("supportsSparse forced false: searchSparse no-ops even with a callback", async () => {
+    const searchSparse = vi.fn().mockResolvedValue([])
     const store = new CallbackVectorStore({
       name: "t",
       search: async () => [],
-      searchSparse: async () => [],
+      searchSparse,
       supportsSparse: false
     })
     expect(store.supportsSparse).toBe(false)
+    expect(
+      await store.searchSparse("q", { k: 3, filter: { kbId: "kb1" } })
+    ).toEqual([])
+    expect(searchSparse).not.toHaveBeenCalled()
+  })
+
+  it("throws when supportsSparse is forced true without a searchSparse callback", () => {
+    expect(
+      () =>
+        new CallbackVectorStore({
+          name: "t",
+          search: async () => [],
+          supportsSparse: true
+        })
+    ).toThrow(/supportsSparse=true without a searchSparse callback/)
   })
 
   it("delegates delete callbacks", async () => {

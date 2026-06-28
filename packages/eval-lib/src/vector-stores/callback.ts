@@ -57,7 +57,13 @@ export class CallbackVectorStore implements VectorStore {
   constructor(config: CallbackVectorStoreConfig) {
     this.name = config.name
     this._cfg = config
-    this.supportsSparse = config.supportsSparse ?? config.searchSparse !== undefined
+    if (config.supportsSparse === true && !config.searchSparse) {
+      throw new Error(
+        `${config.name} cannot set supportsSparse=true without a searchSparse callback`
+      )
+    }
+    this.supportsSparse =
+      config.supportsSparse ?? config.searchSparse !== undefined
   }
 
   private _unsupported(method: string): never {
@@ -68,7 +74,7 @@ export class CallbackVectorStore implements VectorStore {
     query: string,
     opts: VectorSearchOptions
   ): Promise<VectorSearchResult[]> {
-    if (!this._cfg.searchSparse) return []
+    if (!this.supportsSparse || !this._cfg.searchSparse) return []
     return this._cfg.searchSparse(query, opts)
   }
 

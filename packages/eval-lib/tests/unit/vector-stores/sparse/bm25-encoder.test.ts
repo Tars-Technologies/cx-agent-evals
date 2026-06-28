@@ -97,6 +97,15 @@ describe("bm25-encoder", () => {
     it("returns an empty vector for content with no tokens", () => {
       expect(encodeDocument("   !!!  ")).toEqual({ indices: [], values: [] })
     })
+
+    it("rejects invalid BM25 params before producing weights", () => {
+      expect(() => encodeDocument("x", { k1: -1 })).toThrow(/k1/)
+      expect(() => encodeDocument("x", { k1: Infinity })).toThrow(/k1/)
+      expect(() => encodeDocument("x", { b: 1.5 })).toThrow(/b/)
+      expect(() => encodeDocument("x", { b: -0.1 })).toThrow(/b/)
+      expect(() => encodeDocument("x", { avgdl: 0 })).toThrow(/avgdl/)
+      expect(() => encodeDocument("x", { avgdl: NaN })).toThrow(/avgdl/)
+    })
   })
 
   describe("encodeQuery", () => {
