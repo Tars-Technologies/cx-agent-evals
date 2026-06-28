@@ -56,6 +56,28 @@ export interface VectorStore {
   readonly name: string
 
   /**
+   * True when this store maintains a sparse (keyword/BM25) index alongside its
+   * dense vectors, so `searchSparse` returns real scored hits. When false the
+   * store has no keyword side: `searchSparse` no-ops to `[]` and callers fall
+   * back to a dense or external (e.g. MiniSearch) keyword path.
+   */
+  readonly supportsSparse: boolean
+
+  /**
+   * Keyword search from the store's own sparse index. The store owns the sparse
+   * encoder end-to-end: it encodes the query `text` exactly as it encoded the
+   * documents at `add` time, mirroring how `search` hides the dense ANN behind
+   * an embedding. Returns the same scored shape as `search`. Stores where
+   * `supportsSparse` is false return `[]`.
+   * @param opts.k - Maximum number of results to return.
+   * @param opts.filter - Tenant/scope restriction, same semantics as `search`.
+   */
+  searchSparse(
+    query: string,
+    opts: VectorSearchOptions
+  ): Promise<VectorSearchResult[]>
+
+  /**
    * Insert chunks and their corresponding embedding vectors.
    * @param chunks - Chunks to index; must be the same length as `embeddings`.
    * @param embeddings - One vector per chunk, aligned by index.

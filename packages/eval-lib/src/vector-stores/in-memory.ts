@@ -24,7 +24,14 @@ function matchesFilter(entry: StoredEntry, filter?: VectorFilter): boolean {
 
 export class InMemoryVectorStore implements VectorStore {
   readonly name = "in-memory"
+  // Dense-only store: no co-located sparse index, so keyword routing falls back
+  // to the retriever's MiniSearch path.
+  readonly supportsSparse = false
   private _entries = new Map<string, StoredEntry>()
+
+  async searchSparse(): Promise<VectorSearchResult[]> {
+    return []
+  }
 
   async add(
     chunks: readonly PositionAwareChunk[],

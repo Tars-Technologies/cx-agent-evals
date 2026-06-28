@@ -198,16 +198,13 @@ export class StatelessQueryRetriever {
     cfg: Record<string, unknown> & { strategy: string }
   ): Promise<ScoredChunk[]> {
     switch (cfg.strategy) {
-      case "bm25": {
-        const bm25 = await this._getBm25(cfg)
-        return [...bm25.searchWithScores(query, k)]
-      }
+      case "bm25":
+        return this._keywordSearch(query, k, cfg)
       case "hybrid": {
         const candidateK = k * ((cfg.candidateMultiplier as number) ?? 4)
-        const bm25 = await this._getBm25(cfg)
         const [denseResults, sparseResults] = await Promise.all([
           this._denseSearch(query, candidateK),
-          Promise.resolve([...bm25.searchWithScores(query, candidateK)])
+          this._keywordSearch(query, candidateK, cfg)
         ])
         const fused =
           cfg.fusionMethod === "rrf"
@@ -237,6 +234,30 @@ export class StatelessQueryRetriever {
     })
     assertVectorSearchResults(results)
     return results.map(({ chunk, score }) => ({ chunk, score }))
+  }
+
+  /**
+   * Keyword (BM25) search. When the injected store maintains a sparse index
+   * (`supportsSparse`), the store does the keyword search server-side via
+   * `searchSparse` — corpus-independent, no per-query rebuild. Otherwise this
+   * falls back to the in-memory MiniSearch index built from the full corpus
+   * (cx-agent, CI, and any non-Qdrant backend keep working exactly as before).
+   */
+  private async _keywordSearch(
+    query: string,
+    k: number,
+    cfg: Record<string, unknown>
+  ): Promise<ScoredChunk[]> {
+    if (this._deps.vectorStore.supportsSparse) {
+      const results = await this._deps.vectorStore.searchSparse(query, {
+        k,
+        filter: this._deps.filter
+      })
+      assertVectorSearchResults(results, "VectorStore.searchSparse")
+      return results.map(({ chunk, score }) => ({ chunk, score }))
+    }
+    const bm25 = await this._getBm25(cfg)
+    return [...bm25.searchWithScores(query, k)]
   }
 
   private _getBm25(cfg: Record<string, unknown>): Promise<BM25SearchIndex> {

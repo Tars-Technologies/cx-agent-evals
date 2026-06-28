@@ -16,6 +16,22 @@ export interface CallbackVectorStoreConfig {
     queryEmbedding: readonly number[],
     opts: VectorSearchOptions
   ) => Promise<VectorSearchResult[]>
+  /**
+   * Optional keyword search. When supplied (and `supportsSparse` is not set
+   * false), the host store advertises sparse support and the retriever routes
+   * `bm25`/`hybrid` here. When omitted, the store is dense-only and
+   * `searchSparse` no-ops to `[]`.
+   */
+  readonly searchSparse?: (
+    query: string,
+    opts: VectorSearchOptions
+  ) => Promise<VectorSearchResult[]>
+  /**
+   * Whether this host store maintains a sparse index. Defaults to whether a
+   * `searchSparse` callback was supplied, so a host only has to pass the
+   * callback. Set explicitly to override (e.g. force false).
+   */
+  readonly supportsSparse?: boolean
   readonly add?: VectorStore["add"]
   readonly deleteByDocument?: (
     documentId: string,
@@ -31,15 +47,29 @@ export interface CallbackVectorStoreConfig {
 
 export class CallbackVectorStore implements VectorStore {
   readonly name: string
+  // Sparse support is opt-in: a host that can serve keyword search (e.g. a
+  // wrapper over a sparse Qdrant store) supplies a `searchSparse` callback;
+  // otherwise the store is dense-only and the retriever uses its MiniSearch
+  // fallback.
+  readonly supportsSparse: boolean
   private readonly _cfg: CallbackVectorStoreConfig
 
   constructor(config: CallbackVectorStoreConfig) {
     this.name = config.name
     this._cfg = config
+    this.supportsSparse = config.supportsSparse ?? config.searchSparse !== undefined
   }
 
   private _unsupported(method: string): never {
     throw new Error(`${this.name} does not support ${method}`)
+  }
+
+  async searchSparse(
+    query: string,
+    opts: VectorSearchOptions
+  ): Promise<VectorSearchResult[]> {
+    if (!this._cfg.searchSparse) return []
+    return this._cfg.searchSparse(query, opts)
   }
 
   async add(
