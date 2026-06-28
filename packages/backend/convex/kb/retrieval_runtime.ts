@@ -119,7 +119,12 @@ export function buildQdrantStore(opts: {
     url: qdrant.url,
     apiKey: qdrant.apiKey,
     collection: opts.collection,
-    dimension: opts.dimension
+    dimension: opts.dimension,
+    // Named-hybrid collections: a co-located BM25 sparse vector backs keyword
+    // (bm25/hybrid) search server-side, so it scales without a per-query
+    // full-corpus MiniSearch rebuild. Index, query, and delete all go through
+    // this builder, so the collection shape stays consistent across them.
+    sparse: true
   })
 }
 
@@ -291,58 +296,71 @@ export function wrapWithParentSwap(
   inner: VectorStore,
   kbId: Id<"knowledgeBases">
 ): VectorStore {
+  // Replace child results with their Convex parent rows. Applied to both dense
+  // (`search`) and keyword (`searchSparse`) hits: the co-located sparse vector
+  // is on children only (parents are not embedded), so keyword returns children
+  // that must be swapped exactly like dense.
+  const swapChildrenForParents = async (
+    children: VectorSearchResult[]
+  ): Promise<VectorSearchResult[]> => {
+    const parentIds = [
+      ...new Set(
+        children
+          .map((r) => r.chunk.metadata?.parentChunkId as string | undefined)
+          .filter((id): id is string => Boolean(id))
+      )
+    ]
+    if (parentIds.length === 0) return children
+    // Parent ids come from the Qdrant payload (external store), so scope the
+    // lookup to this KB: a poisoned/foreign parent id must not surface another
+    // tenant's chunk content here.
+    const parents: Array<{
+      _id: unknown
+      chunkId: string
+      content: string
+      documentId: Id<"documents">
+      start: number
+      end: number
+      metadata?: Record<string, unknown>
+    }> = await ctx.runQuery(internal.kb.chunks.fetchChunksByIds, {
+      ids: parentIds as unknown as Id<"documentChunks">[],
+      kbId
+    })
+    const docIdMap: Record<string, string> = await ctx.runQuery(
+      internal.kb.chunks.fetchDocIdMap,
+      { documentIds: [...new Set(parents.map((p) => p.documentId))] }
+    )
+    const parentMap = new Map(parents.map((p) => [String(p._id), p]))
+    return parentSwap(children, {
+      getParentId: (child) =>
+        child.chunk.metadata?.parentChunkId as string | undefined,
+      getParent: (parentId) => parentMap.get(parentId),
+      fromParent: (parent, child) => ({
+        chunk: {
+          id: PositionAwareChunkId(parent.chunkId),
+          content: parent.content,
+          docId: DocumentId(
+            docIdMap[String(parent.documentId)] ?? String(child.chunk.docId)
+          ),
+          start: parent.start,
+          end: parent.end,
+          metadata: parent.metadata ?? {}
+        },
+        score: child.score
+      }),
+      keepChild: (child) => child
+    })
+  }
+
   return new CallbackVectorStore({
     name: `${inner.name}+parent-swap`,
-    search: async (queryEmbedding, opts) => {
-      const children = await inner.search(queryEmbedding, opts)
-      const parentIds = [
-        ...new Set(
-          children
-            .map((r) => r.chunk.metadata?.parentChunkId as string | undefined)
-            .filter((id): id is string => Boolean(id))
-        )
-      ]
-      if (parentIds.length === 0) return children
-      // Parent ids come from the Qdrant payload (external store), so scope the
-      // lookup to this KB: a poisoned/foreign parent id must not surface another
-      // tenant's chunk content here.
-      const parents: Array<{
-        _id: unknown
-        chunkId: string
-        content: string
-        documentId: Id<"documents">
-        start: number
-        end: number
-        metadata?: Record<string, unknown>
-      }> = await ctx.runQuery(internal.kb.chunks.fetchChunksByIds, {
-        ids: parentIds as unknown as Id<"documentChunks">[],
-        kbId
-      })
-      const docIdMap: Record<string, string> = await ctx.runQuery(
-        internal.kb.chunks.fetchDocIdMap,
-        { documentIds: [...new Set(parents.map((p) => p.documentId))] }
-      )
-      const parentMap = new Map(parents.map((p) => [String(p._id), p]))
-      return parentSwap(children, {
-        getParentId: (child) =>
-          child.chunk.metadata?.parentChunkId as string | undefined,
-        getParent: (parentId) => parentMap.get(parentId),
-        fromParent: (parent, child) => ({
-          chunk: {
-            id: PositionAwareChunkId(parent.chunkId),
-            content: parent.content,
-            docId: DocumentId(
-              docIdMap[String(parent.documentId)] ?? String(child.chunk.docId)
-            ),
-            start: parent.start,
-            end: parent.end,
-            metadata: parent.metadata ?? {}
-          },
-          score: child.score
-        }),
-        keepChild: (child) => child
-      })
-    }
+    // Forward keyword capability so bm25/hybrid keeps routing to the sparse
+    // store (not the MiniSearch fallback) even for parent-child indexes.
+    supportsSparse: inner.supportsSparse,
+    search: async (queryEmbedding, opts) =>
+      swapChildrenForParents(await inner.search(queryEmbedding, opts)),
+    searchSparse: async (query, opts) =>
+      swapChildrenForParents(await inner.searchSparse(query, opts))
   })
 }
 
