@@ -206,13 +206,8 @@ export class StatelessQueryRetriever {
           this._denseSearch(query, candidateK),
           this._keywordSearch(query, candidateK, cfg)
         ])
-        // Sparse-owning stores return raw BM25·IDF (unbounded), so weighted
-        // fusion against bounded cosine is meaningless — default them to RRF.
-        const fusionMethod =
-          (cfg.fusionMethod as string | undefined) ??
-          (this._deps.vectorStore.supportsSparse ? "rrf" : "weighted")
         const fused =
-          fusionMethod === "rrf"
+          cfg.fusionMethod === "rrf"
             ? reciprocalRankFusion({
                 denseResults,
                 sparseResults,
@@ -267,7 +262,13 @@ export class StatelessQueryRetriever {
         filter: this._deps.filter
       })
       assertVectorSearchResults(results, "VectorStore.searchSparse")
-      return results.map(({ chunk, score }) => ({ chunk, score }))
+      // Bound raw BM25·IDF to [0, 1] by dividing by the top score, matching the
+      // MiniSearch fallback so the sparse scale agrees across backends.
+      const max = results.reduce((m, r) => Math.max(m, r.score), 0)
+      return results.map(({ chunk, score }) => ({
+        chunk,
+        score: max > 0 ? score / max : 0
+      }))
     }
     const bm25 = await this._getBm25(cfg)
     return [...bm25.searchWithScores(query, k)]
