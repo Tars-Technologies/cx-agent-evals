@@ -92,7 +92,9 @@ describe("QdrantVectorStore (sparse / named hybrid)", () => {
           quantization_config: { scalar: { type: "int8", always_ram: true } }
         }
       },
-      sparse_vectors: { bm25: { modifier: "idf" } },
+      sparse_vectors: {
+        bm25: { modifier: "idf", index: { on_disk: true } }
+      },
       on_disk_payload: true,
       hnsw_config: { m: 0, payload_m: 16 }
     })

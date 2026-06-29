@@ -246,7 +246,10 @@ export class QdrantVectorStore implements VectorStore {
     }
     return {
       vectors: { dense },
-      sparse_vectors: { bm25: { modifier: "idf" } },
+      // Keep the sparse index on disk too, matching the dense vector's hardening.
+      sparse_vectors: {
+        bm25: { modifier: "idf", index: { on_disk: opts.onDisk } }
+      },
       on_disk_payload: opts.onDiskPayload,
       hnsw_config: { m: opts.m, payload_m: opts.payloadM }
     }
