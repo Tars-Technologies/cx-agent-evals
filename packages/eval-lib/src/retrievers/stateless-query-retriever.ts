@@ -249,14 +249,9 @@ export class StatelessQueryRetriever {
     cfg: Record<string, unknown>
   ): Promise<ScoredChunk[]> {
     if (this._deps.vectorStore.supportsSparse) {
-      // The store owns BM25 weighting (encoded at index time); per-query
-      // k1/b tuning can't be honored here, so fail loud rather than silently
-      // diverge from the fallback path.
-      if (cfg.k1 !== undefined || cfg.b !== undefined) {
-        throw new Error(
-          "StatelessQueryRetriever: search.k1/search.b are unsupported when the vector store owns sparse search; configure BM25 on the store instead"
-        )
-      }
+      // The store owns BM25 weighting (baked in at index time), so query-time
+      // k1/b are a no-op here -- ignored rather than thrown, since the default
+      // search config carries them.
       const results = await this._deps.vectorStore.searchSparse(query, {
         k,
         filter: this._deps.filter

@@ -421,18 +421,24 @@ describe("StatelessQueryRetriever sparse routing", () => {
     expect(source.listChunks).toHaveBeenCalledTimes(1)
   })
 
-  it("bm25: throws if k1/b are set, since the store owns BM25 weighting", async () => {
-    const { store } = sparseStore([], [result(CHUNKS[1], 0.8)])
+  it("bm25: ignores query-time k1/b (store owns BM25 weighting) instead of throwing", async () => {
+    const { store, searchSparse } = sparseStore([], [result(CHUNKS[1], 0.8)])
+    const source = makeSource(CHUNKS)
     const r = new StatelessQueryRetriever({
       config: { name: "t", search: { strategy: "bm25", k1: 1.5, b: 0.5 } },
       vectorStore: store,
-      chunkSource: makeSource(CHUNKS),
+      chunkSource: source,
       embedder: fakeEmbedder,
       filter: FILTER
     })
-    await expect(r.retrieveScored("delta echo", 3)).rejects.toThrow(
-      /k1\/search\.b are unsupported/
-    )
+    const out = await r.retrieveScored("delta echo", 3)
+    expect(out.map((s) => String(s.chunk.id))).toEqual(["c2"])
+    expect(searchSparse).toHaveBeenCalledWith("delta echo", {
+      k: 3,
+      filter: FILTER
+    })
+    // Still no per-query corpus pull -- k1/b are simply dropped, not honored.
+    expect(source.listChunks).not.toHaveBeenCalled()
   })
 
   it("hybrid: fuses dense and searchSparse (both fed real scores)", async () => {
