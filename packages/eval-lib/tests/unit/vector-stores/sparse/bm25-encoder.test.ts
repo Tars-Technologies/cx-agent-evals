@@ -10,6 +10,14 @@ import {
 } from "../../../../src/vector-stores/sparse/bm25-encoder.js"
 
 describe("bm25-encoder", () => {
+  describe("defaults", () => {
+    it("pins the BM25 constants (changing these reweights every stored vector)", () => {
+      expect(DEFAULT_BM25_K1).toBe(1.2)
+      expect(DEFAULT_BM25_B).toBe(0.75)
+      expect(DEFAULT_BM25_AVGDL).toBe(256)
+    })
+  })
+
   describe("tokenize", () => {
     it("lowercases and splits on runs of non-alphanumeric characters", () => {
       expect(tokenize("Hello, WORLD!  foo_bar  baz")).toEqual([
@@ -34,6 +42,10 @@ describe("bm25-encoder", () => {
       expect(Number.isInteger(a)).toBe(true)
       expect(a).toBeGreaterThanOrEqual(0)
       expect(a).toBeLessThanOrEqual(0xffffffff)
+    })
+
+    it("pins the FNV-1a output (token→index is an on-disk contract)", () => {
+      expect(stableHash("retrieval")).toBe(2299776251)
     })
 
     it("separates distinct tokens", () => {
@@ -75,6 +87,8 @@ describe("bm25-encoder", () => {
         DEFAULT_BM25_K1 * (1 - DEFAULT_BM25_B + (DEFAULT_BM25_B * len) / DEFAULT_BM25_AVGDL)
       const expected = (tf * (DEFAULT_BM25_K1 + 1)) / (tf + norm)
       expect(values[0]).toBeCloseTo(expected, 10)
+      // Hand-computed golden: 5632/3337, independent of the DEFAULT_* above.
+      expect(values[0]).toBeCloseTo(1.6877434821696133, 12)
     })
 
     it("saturates: doubling tf less than doubles the weight (k1 effect)", () => {

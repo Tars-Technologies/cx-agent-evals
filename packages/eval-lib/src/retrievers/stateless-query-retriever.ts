@@ -206,8 +206,13 @@ export class StatelessQueryRetriever {
           this._denseSearch(query, candidateK),
           this._keywordSearch(query, candidateK, cfg)
         ])
+        // Sparse-owning stores return raw BM25·IDF (unbounded), so weighted
+        // fusion against bounded cosine is meaningless — default them to RRF.
+        const fusionMethod =
+          (cfg.fusionMethod as string | undefined) ??
+          (this._deps.vectorStore.supportsSparse ? "rrf" : "weighted")
         const fused =
-          cfg.fusionMethod === "rrf"
+          fusionMethod === "rrf"
             ? reciprocalRankFusion({
                 denseResults,
                 sparseResults,
