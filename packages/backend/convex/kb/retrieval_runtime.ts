@@ -33,7 +33,11 @@ import { backendConfig } from "../config"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
 import { assertIndexableDimension } from "./dimension_guard"
 import { resolveRerankerSelection } from "./reranker_selection"
-import { qdrantCollectionNameFor, resolveVectorBackend } from "./vector_backend"
+import {
+  collectionIsSparse,
+  qdrantCollectionNameFor,
+  resolveVectorBackend
+} from "./vector_backend"
 
 /** Convert raw Convex chunk rows + the vector-search score map to results. */
 export function rawChunksToResults(
@@ -120,11 +124,8 @@ export function buildQdrantStore(opts: {
     apiKey: qdrant.apiKey,
     collection: opts.collection,
     dimension: opts.dimension,
-    // Named-hybrid collections: a co-located BM25 sparse vector backs keyword
-    // (bm25/hybrid) search server-side, so it scales without a per-query
-    // full-corpus MiniSearch rebuild. Index, query, and delete all go through
-    // this builder, so the collection shape stays consistent across them.
-    sparse: true
+    // The suffixed name (named-hybrid collection) is what enables server-side BM25; legacy dense-only names stay dense.
+    sparse: collectionIsSparse(opts.collection)
   })
 }
 
