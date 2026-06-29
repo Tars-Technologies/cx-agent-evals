@@ -87,7 +87,7 @@ describe("bm25-encoder", () => {
         DEFAULT_BM25_K1 * (1 - DEFAULT_BM25_B + (DEFAULT_BM25_B * len) / DEFAULT_BM25_AVGDL)
       const expected = (tf * (DEFAULT_BM25_K1 + 1)) / (tf + norm)
       expect(values[0]).toBeCloseTo(expected, 10)
-      // Hand-computed golden: 5632/3337, independent of the DEFAULT_* above.
+      // Absolute golden (5632/3337): pins the encode formula at the default k1/b/avgdl.
       expect(values[0]).toBeCloseTo(1.6877434821696133, 12)
     })
 

@@ -263,11 +263,12 @@ export class StatelessQueryRetriever {
       })
       assertVectorSearchResults(results, "VectorStore.searchSparse")
       // Bound raw BM25·IDF to [0, 1] by dividing by the top score, matching the
-      // MiniSearch fallback so the sparse scale agrees across backends.
-      const max = results.reduce((m, r) => Math.max(m, r.score), 0)
+      // MiniSearch fallback so the sparse scale agrees across backends. Keep raw
+      // scores when no score is positive so all-negative IDF can't collapse to 0.
+      const top = results.reduce((m, r) => Math.max(m, r.score), 0)
       return results.map(({ chunk, score }) => ({
         chunk,
-        score: max > 0 ? score / max : 0
+        score: top > 0 ? score / top : score
       }))
     }
     const bm25 = await this._getBm25(cfg)
