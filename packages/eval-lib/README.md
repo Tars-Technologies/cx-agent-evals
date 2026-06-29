@@ -284,7 +284,7 @@ Notes on the Qdrant backend:
 
 ### Keyword search via BM25 sparse vectors
 
-Every `VectorStore` exposes a `supportsSparse` capability flag and a `searchSparse(query, opts)` method. Stores without a keyword index (in-memory, host-backed) return `false` / `[]`; the Qdrant store returns real scored hits when built with `sparse: true`. The store owns the encoder end-to-end — keyword is the mirror of dense (the encoder defines the vector; Qdrant runs the sparse dot-product + IDF), so the retriever just calls `searchSparse` and never sees the BM25 representation.
+Every `VectorStore` exposes a `supportsSparse` capability flag and a `searchSparse(query, opts)` method. The in-memory store has no keyword index, so it returns `false` / `[]`; the Qdrant store returns real scored hits when built with `sparse: true`; and `CallbackVectorStore` (host-backed) opts in by supplying a `searchSparse` callback — `supportsSparse` then reports `true` and queries route to that callback (omit it and the store reports `false` / `[]`). The store owns the encoder end-to-end — keyword is the mirror of dense (the encoder defines the vector; Qdrant runs the sparse dot-product + IDF), so the retriever just calls `searchSparse` and never sees the BM25 representation.
 
 The sparse vector is a **BM25 dot product split across index time and query time** (`vector-stores/sparse/bm25-encoder.ts`):
 
