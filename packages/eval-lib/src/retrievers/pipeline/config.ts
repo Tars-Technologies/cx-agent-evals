@@ -262,6 +262,12 @@ function buildIndexPayload(index: IndexConfig): Record<string, unknown> {
   if (index.embeddingProvider && index.embeddingProvider !== "openai") {
     payload.embeddingProvider = index.embeddingProvider
   }
+  // Qdrant collections are named-hybrid (dense + bm25 sparse); fold the shape in
+  // so a pre-sparse index gets a fresh hash and re-indexes instead of serving an
+  // empty suffixed collection.
+  if (index.vectorBackend === "qdrant") {
+    payload.sparse = true
+  }
   return payload
 }
 
