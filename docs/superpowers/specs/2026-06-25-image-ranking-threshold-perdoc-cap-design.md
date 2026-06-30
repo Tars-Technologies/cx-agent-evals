@@ -54,13 +54,22 @@ Define "usable embedding" = `image.embedding` present AND
      b. Drop unscored images entirely (Q6 — an un-scoreable image never jumps
         ahead of a scored one).
      c. Sort survivors by `score` desc (stable; ties keep first-occurrence order).
-     d. Walk the sorted list, skipping any image whose document already has
-        `PER_DOC_IMAGE_CAP` selected and any duplicate `imageId`; stop at `cap`.
+     d. Compute the **effective per-doc cap** (see below) from the surviving pool.
+     e. Walk the sorted list, skipping any image whose document already has the
+        effective cap selected and any duplicate `imageId`; stop at `cap`.
    - **None usable (fallback, Q4b — e.g. non-default retriever dim mismatch, or
      embeds failed):** ignore the threshold (cosine is meaningless), and select in
      document order — walk `docGroups` in order, within each doc keep input order,
-     applying `PER_DOC_IMAGE_CAP` and dedup, until `cap`. This preserves the
+     applying the effective per-doc cap and dedup, until `cap`. This preserves the
      pre-change "show something sensible" behavior rather than showing nothing.
+
+**Effective per-doc cap (Q-followup, option b).** The per-doc cap exists only to
+stop one document beating others, so it is applied **only when the candidate pool
+spans more than one document**. Count the distinct documents that contribute at
+least one *eligible* image (post-threshold in the normal path; all images in the
+fallback path). If that count is `1`, the effective cap is `MENU_IMAGE_CAP` (no
+limit — a single relevant document may fill all six slots). If it is `> 1`, the
+effective cap is `PER_DOC_IMAGE_CAP`.
 
 Dedup by `imageId` is global across documents in both paths (a shared image counts
 once; first occurrence wins).
@@ -90,19 +99,20 @@ without dominating six slots.
   contributes all it has.
 - **Mixed pools** (some usable, some not, with ≥1 usable): unscored images are
   dropped (Q6); only the normal path runs.
-- **Single matched document:** global sort + per-doc cap still applies; with one
-  doc the cap (2) limits it, which is intended (don't fill all six from one doc
-  even when it's the only match — leaves room for none rather than flooding).
-  *(Note: if a single-doc query should be allowed more than 2, that's a future
-  tuning question; for now the cap is uniform.)*
+- **Single matched document (option b):** the per-doc cap is **not** applied — a
+  lone relevant document may fill up to `MENU_IMAGE_CAP`. The cap only guards
+  against cross-document domination, which can't happen with one document. (This
+  is the common single-relevant-doc query, so under-showing there would hurt.)
 
 ## Testing (extend `tests/vision.test.ts`)
 
 `rankDocImagesForQuery` unit tests (pure, deterministic vectors):
 - threshold: an image below `MIN_IMAGE_SIMILARITY` is excluded; one at/above is kept.
 - all-below-threshold → empty menu.
-- per-doc cap: a single doc with many high-cosine images contributes at most
-  `PER_DOC_IMAGE_CAP`; remaining slots go to other docs.
+- per-doc cap (multi-doc pool): with images from >1 doc, any single doc
+  contributes at most `PER_DOC_IMAGE_CAP`; remaining slots go to other docs.
+- single-doc pool (option b): when all eligible images come from one document,
+  the cap is NOT applied — it may fill up to `MENU_IMAGE_CAP`.
 - global ordering: a strongly-matched doc's high-cosine image outranks a
   weakly-matched doc's lower-cosine image (the round-robin regression case).
 - dedup: a shared `imageId` across docs counts once.
