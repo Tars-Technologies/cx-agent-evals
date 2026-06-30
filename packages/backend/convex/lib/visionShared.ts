@@ -11,6 +11,14 @@ import {
 
 export const MAX_IMAGES_PER_TURN = 4
 export const MENU_IMAGE_CAP = 6
+// Max images one document may contribute when the candidate pool spans more than
+// one document (B5). A single-document pool is exempt (option b) — see
+// rankDocImagesForQuery.
+export const PER_DOC_IMAGE_CAP = 2
+// Cosine floor below which an image is treated as off-topic and excluded (B4).
+// Conservative starting value for text-embedding-3-small alt embeddings; tune
+// once image-retrieval metrics exist.
+export const MIN_IMAGE_SIMILARITY = 0.2
 
 // Explicit allowlist — resolveModel routes by id but has no vision check.
 // Must track the model menu in AgentConfigPanel.tsx: every selectable model
@@ -222,40 +230,72 @@ function cosine(a: number[], b: number[]): number {
 
 /**
  * Build the doc-gated image menu. `docGroups` are pre-ordered by document
- * relevance (best retrieved-chunk rank first). Within each group images are
- * ranked by cosine to `queryEmbedding` when the embedding exists and dimensions
- * match (E3); otherwise input order is preserved. Selection is round-robin
- * across groups (E9) with dedup by imageId, capped at `cap`.
+ * relevance (best retrieved-chunk rank first).
+ *
+ * Normal path (at least one image has a usable embedding — present and matching
+ * the query dimension): drop images below `MIN_IMAGE_SIMILARITY` (B4) and any
+ * un-scoreable image, sort the rest by cosine desc, then select highest-first
+ * with a per-document cap (B5) and global dedup, up to `cap`.
+ *
+ * Fallback path (no usable embedding — e.g. a non-default retriever's dimension
+ * mismatches, or embeds failed): cosine is meaningless, so ignore the threshold
+ * and select in document order, still applying the per-document cap and dedup.
+ *
+ * The per-document cap is `PER_DOC_IMAGE_CAP` only when the eligible pool spans
+ * more than one document; a single-document pool is exempt (option b) so one
+ * relevant document may fill the whole menu.
  */
 export function rankDocImagesForQuery(
   queryEmbedding: number[],
   docGroups: DocImage[][],
   cap: number
 ): ImageMenuEntry[] {
-  const ranked = docGroups.map((group) =>
-    [...group].sort((x, y) => {
-      const xs =
-        x.embedding && x.embedding.length === queryEmbedding.length
-          ? cosine(queryEmbedding, x.embedding)
-          : -Infinity
-      const ys =
-        y.embedding && y.embedding.length === queryEmbedding.length
-          ? cosine(queryEmbedding, y.embedding)
-          : -Infinity
-      return ys - xs // higher cosine first; -Infinity ties keep input order
-    })
-  )
+  interface Candidate {
+    imageId: string
+    alt: string
+    docIdx: number
+    order: number
+    score: number | null
+  }
+  const candidates: Candidate[] = []
+  let order = 0
+  docGroups.forEach((group, docIdx) => {
+    for (const img of group) {
+      const usable =
+        !!img.embedding && img.embedding.length === queryEmbedding.length
+      candidates.push({
+        imageId: img.imageId,
+        alt: img.alt,
+        docIdx,
+        order: order++,
+        score: usable ? cosine(queryEmbedding, img.embedding!) : null
+      })
+    }
+  })
+
+  const anyUsable = candidates.some((c) => c.score !== null)
+  const pool = anyUsable
+    ? candidates
+        .filter((c) => c.score !== null && c.score >= MIN_IMAGE_SIMILARITY)
+        .sort((a, b) => b.score! - a.score! || a.order - b.order)
+    : candidates.slice().sort((a, b) => a.order - b.order)
+
+  // Per-doc cap only guards cross-document domination, so it is skipped when the
+  // eligible pool comes from a single document (option b).
+  const distinctDocs = new Set(pool.map((c) => c.docIdx)).size
+  const perDocCap = distinctDocs > 1 ? PER_DOC_IMAGE_CAP : cap
+
   const out: ImageMenuEntry[] = []
   const seen = new Set<string>()
-  const maxLen = Math.max(0, ...ranked.map((g) => g.length))
-  for (let rank = 0; rank < maxLen && out.length < cap; rank++) {
-    for (const group of ranked) {
-      if (out.length >= cap) break
-      const img = group[rank]
-      if (!img || seen.has(img.imageId)) continue
-      seen.add(img.imageId)
-      out.push({ imageId: img.imageId, alt: img.alt })
-    }
+  const perDocCount = new Map<number, number>()
+  for (const c of pool) {
+    if (out.length >= cap) break
+    if (seen.has(c.imageId)) continue
+    const used = perDocCount.get(c.docIdx) ?? 0
+    if (used >= perDocCap) continue
+    seen.add(c.imageId)
+    perDocCount.set(c.docIdx, used + 1)
+    out.push({ imageId: c.imageId, alt: c.alt })
   }
   return out
 }

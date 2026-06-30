@@ -74,39 +74,87 @@ describe("buildImageEmbeddingInput", () => {
 
 describe("rankDocImagesForQuery", () => {
   const q = [1, 0]
-  it("round-robins across docs (one doc can't fill all slots)", () => {
+  // cos(q, [1,0]) = 1 ; cos(q, [0.1,1]) ≈ 0.0995 (< MIN_IMAGE_SIMILARITY)
+
+  it("drops images below the relevance threshold (B4)", () => {
+    const docA = [
+      { imageId: "img_good", alt: "g", embedding: [1, 0] },
+      { imageId: "img_bad", alt: "b", embedding: [0.1, 1] }
+    ]
+    const menu = rankDocImagesForQuery(q, [docA], 6)
+    expect(menu.map((m) => m.imageId)).toEqual(["img_good"])
+  })
+
+  it("returns an empty menu when every candidate is below threshold", () => {
+    const docA = [{ imageId: "img_bad", alt: "b", embedding: [0.1, 1] }]
+    expect(rankDocImagesForQuery(q, [docA], 6)).toEqual([])
+  })
+
+  it("caps per document when the pool spans multiple docs (B5)", () => {
     const docA = [
       { imageId: "img_a1", alt: "a1", embedding: [1, 0] },
-      { imageId: "img_a2", alt: "a2", embedding: [0.9, 0.1] }
+      { imageId: "img_a2", alt: "a2", embedding: [0.99, 0.01] },
+      { imageId: "img_a3", alt: "a3", embedding: [0.98, 0.02] }
     ]
-    const docB = [{ imageId: "img_b1", alt: "b1", embedding: [0.8, 0.2] }]
-    const menu = rankDocImagesForQuery(q, [docA, docB], 2)
-    expect(menu.map((m) => m.imageId)).toEqual(["img_a1", "img_b1"])
+    const docB = [{ imageId: "img_b1", alt: "b1", embedding: [0.9, 0.1] }]
+    const menu = rankDocImagesForQuery(q, [docA, docB], 6)
+    // docA capped at PER_DOC_IMAGE_CAP (2); a3 drops out, b1 fills the slot
+    expect(menu.map((m) => m.imageId)).toEqual(["img_a1", "img_a2", "img_b1"])
+  })
+
+  it("does NOT cap a single-document pool (option b)", () => {
+    const docA = [
+      { imageId: "img_a1", alt: "a1", embedding: [1, 0] },
+      { imageId: "img_a2", alt: "a2", embedding: [0.99, 0.01] },
+      { imageId: "img_a3", alt: "a3", embedding: [0.98, 0.02] }
+    ]
+    const menu = rankDocImagesForQuery(q, [docA], 6)
+    expect(menu.map((m) => m.imageId)).toEqual(["img_a1", "img_a2", "img_a3"])
+  })
+
+  it("ranks globally by cosine, not by document order", () => {
+    // docA ranks first by chunk order but holds a weak image; docB's is stronger.
+    const docA = [{ imageId: "img_a1", alt: "a1", embedding: [0.5, 1] }] // ≈0.447
+    const docB = [{ imageId: "img_b1", alt: "b1", embedding: [1, 0.1] }] // ≈0.995
+    const menu = rankDocImagesForQuery(q, [docA, docB], 6)
+    expect(menu.map((m) => m.imageId)).toEqual(["img_b1", "img_a1"])
   })
 
   it("dedups a shared imageId across docs (first occurrence wins)", () => {
     const docA = [{ imageId: "img_x", alt: "x", embedding: [1, 0] }]
     const docB = [{ imageId: "img_x", alt: "x", embedding: [1, 0] }]
-    const menu = rankDocImagesForQuery(q, [docA, docB], 6)
-    expect(menu.map((m) => m.imageId)).toEqual(["img_x"])
+    expect(rankDocImagesForQuery(q, [docA, docB], 6).map((m) => m.imageId)).toEqual(
+      ["img_x"]
+    )
   })
 
-  it("falls back to input order when embeddings are missing/mismatched", () => {
+  it("falls back to doc-order (cap, no threshold) when no embedding is usable", () => {
     const docA = [
       { imageId: "img_a1", alt: "a1" },
-      { imageId: "img_a2", alt: "a2", embedding: [1, 2, 3] }
+      { imageId: "img_a2", alt: "a2" },
+      { imageId: "img_a3", alt: "a3" }
     ]
-    const menu = rankDocImagesForQuery(q, [docA], 6)
-    expect(menu.map((m) => m.imageId)).toEqual(["img_a1", "img_a2"])
+    const docB = [{ imageId: "img_b1", alt: "b1" }]
+    const menu = rankDocImagesForQuery(q, [docA, docB], 6)
+    // doc order, per-doc cap applies (multi-doc): a3 drops
+    expect(menu.map((m) => m.imageId)).toEqual(["img_a1", "img_a2", "img_b1"])
+  })
+
+  it("drops unscored images when a usable one exists (mixed pool)", () => {
+    const docA = [
+      { imageId: "img_a1", alt: "a1", embedding: [1, 0] },
+      { imageId: "img_a2", alt: "a2" } // no embedding → dropped
+    ]
+    expect(rankDocImagesForQuery(q, [docA], 6).map((m) => m.imageId)).toEqual([
+      "img_a1"
+    ])
   })
 
   it("caps at MENU_IMAGE_CAP", () => {
-    const group = Array.from({ length: 10 }, (_, i) => ({
-      imageId: `img_${i}`,
-      alt: `${i}`,
-      embedding: [1 - i / 100, 0]
-    }))
-    expect(rankDocImagesForQuery(q, [group], MENU_IMAGE_CAP).length).toBe(
+    const groups = Array.from({ length: 10 }, (_, i) => [
+      { imageId: `img_${i}`, alt: `${i}`, embedding: [1 - i / 100, 0] }
+    ])
+    expect(rankDocImagesForQuery(q, groups, MENU_IMAGE_CAP).length).toBe(
       MENU_IMAGE_CAP
     )
   })
