@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   assertEmbeddingBackendCompatible,
+  collectionIsSparse,
   qdrantCollectionName,
   qdrantCollectionNameFor,
   resolveVectorBackend
@@ -39,34 +40,58 @@ describe("qdrantCollectionName", () => {
       qdrantCollectionName("openai", "text-embedding-3-small")
     )
   })
+
+  it("defaults to dense-only (no suffix) and opts into the sparse suffix", () => {
+    expect(qdrantCollectionName("openai", "text-embedding-3-small", false)).toBe(
+      "kb_vec_openai_text-embedding-3-small"
+    )
+    expect(qdrantCollectionName("openai", "text-embedding-3-small", true)).toBe(
+      "kb_vec_openai_text-embedding-3-small-with-sparse-vector"
+    )
+  })
+})
+
+describe("collectionIsSparse", () => {
+  it("is true only for the sparse-suffixed name produced by qdrantCollectionName", () => {
+    expect(
+      collectionIsSparse(qdrantCollectionName("openai", "m", true))
+    ).toBe(true)
+    expect(
+      collectionIsSparse(qdrantCollectionName("openai", "m", false))
+    ).toBe(false)
+  })
 })
 
 describe("qdrantCollectionNameFor", () => {
+  // The backend always adopts sparse, so every resolved name carries the suffix.
   it("reads provider/model from the index config", () => {
     expect(
       qdrantCollectionNameFor({
         embeddingProvider: "cohere",
         embeddingModel: "embed-english-v3.0"
       })
-    ).toBe("kb_vec_cohere_embed-english-v3_0")
+    ).toBe("kb_vec_cohere_embed-english-v3_0-with-sparse-vector")
   })
 
   it("falls back to the (openai, text-embedding-3-small) defaults", () => {
     // An index config with no embedding fields, and one with them omitted,
     // must both resolve to the same default-keyed collection.
     expect(qdrantCollectionNameFor({})).toBe(
-      "kb_vec_openai_text-embedding-3-small"
+      "kb_vec_openai_text-embedding-3-small-with-sparse-vector"
     )
     expect(qdrantCollectionNameFor({ strategy: "plain" })).toBe(
       qdrantCollectionNameFor({})
     )
   })
 
-  it("matches qdrantCollectionName with the same resolved identity", () => {
-    // Index time and retrieve time call this helper with the same config, so
-    // the single source of truth must equal the raw namer for that identity.
+  it("always names the sparse (named-hybrid) collection", () => {
+    // Backend adopts sparse from day one — the resolver equals the raw namer
+    // with sparse=true, regardless of any config flag.
     expect(qdrantCollectionNameFor({})).toBe(
-      qdrantCollectionName("openai", "text-embedding-3-small")
+      qdrantCollectionName("openai", "text-embedding-3-small", true)
+    )
+    expect(qdrantCollectionNameFor({ sparse: false })).toBe(
+      qdrantCollectionNameFor({})
     )
   })
 })

@@ -74,4 +74,15 @@ describe("indexConfigHash preservation", () => {
     expect(cohere).not.toBe(LOCKED.plainDefaults)
     expect(qdrant).not.toBe(cohere)
   })
+
+  it("qdrant hash is pinned (drift forces a full re-index of every qdrant KB)", () => {
+    // Qdrant folds the named-hybrid (sparse) collection shape into the hash.
+    // This value must not change casually -- any change re-indexes all qdrant KBs.
+    expect(
+      computeIndexConfigHash({
+        name: "t",
+        index: { strategy: "plain", vectorBackend: "qdrant" }
+      })
+    ).toBe("91ead45ca606b5f5a8075160357a832b6165404324842c1f809ea62828e9e03e")
+  })
 })

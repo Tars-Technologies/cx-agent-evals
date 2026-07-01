@@ -91,9 +91,10 @@ describe("indexing: startIndexing vector backend", () => {
       expect(job!.vectorBackend).toBe("qdrant")
       // The config carries no embeddingProvider/embeddingModel, so the
       // collection name is keyed on the (openai, text-embedding-3-small)
-      // defaults, not on this KB's id or index-config hash.
+      // defaults. The backend adopts sparse from day one, so the name carries
+      // the named-hybrid suffix.
       expect(job!.qdrantCollection).toBe(
-        qdrantCollectionName("openai", "text-embedding-3-small")
+        qdrantCollectionName("openai", "text-embedding-3-small", true)
       )
     } finally {
       vi.useRealTimers()

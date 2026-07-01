@@ -192,4 +192,47 @@ describe("wrapWithParentSwap", () => {
     expect(out[0].chunk.content).toBe("child text")
     expect(runQuery).not.toHaveBeenCalled()
   })
+
+  it("forwards sparse support and parent-swaps keyword (searchSparse) hits", async () => {
+    // A sparse-capable inner store: keyword returns children that must be
+    // swapped to parents exactly like dense results.
+    const inner = new CallbackVectorStore({
+      name: "inner",
+      search: async () => [] as never,
+      searchSparse: async () => [childWithParent("parent-1")] as never
+    })
+    const runQuery = vi.fn(
+      async (_ref: unknown, args: Record<string, unknown>) => {
+        if (args && "ids" in args) {
+          return [
+            {
+              _id: "parent-1",
+              chunkId: "pchunk-1",
+              content: "PARENT TEXT",
+              documentId: "docx",
+              start: 0,
+              end: 11,
+              metadata: { level: "parent" }
+            }
+          ]
+        }
+        return { docx: "doc-1" }
+      }
+    )
+    const ctx = { runQuery } as unknown as ActionCtx
+
+    const store = wrapWithParentSwap(ctx, inner, KB_ID)
+    expect(store.supportsSparse).toBe(true)
+
+    const out = await store.searchSparse("alpha", { k: 5, filter: { kbId: "kb" } })
+    expect(out).toHaveLength(1)
+    expect(out[0].chunk.content).toBe("PARENT TEXT")
+    expect(String(out[0].chunk.id)).toBe("pchunk-1")
+    expect(out[0].score).toBe(0.8)
+    // Same tenant-scoped parent lookup as the dense path.
+    expect(runQuery).toHaveBeenCalledWith(
+      internal.kb.chunks.fetchChunksByIds,
+      expect.objectContaining({ ids: ["parent-1"], kbId: KB_ID })
+    )
+  })
 })

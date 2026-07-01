@@ -52,6 +52,8 @@ describe("VectorRAGRetriever", () => {
 
     mockVectorStore = {
       name: "mock-store",
+      supportsSparse: false,
+      searchSparse: vi.fn().mockResolvedValue([]),
       add: vi.fn().mockResolvedValue(undefined),
       search: vi.fn().mockResolvedValue([
         {

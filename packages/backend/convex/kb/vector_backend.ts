@@ -34,13 +34,22 @@ function sanitizeCollectionPart(part: string): string {
   return part.replace(/[^A-Za-z0-9_-]/g, "_")
 }
 
-/**
- * One Qdrant collection per (provider, model). Stored on the indexing
- * job and retriever at creation time. Do not recompute elsewhere except for
- * the legacy experiment path, which has no retriever record.
- */
-export function qdrantCollectionName(provider: string, model: string): string {
-  return `kb_vec_${sanitizeCollectionPart(provider)}_${sanitizeCollectionPart(model)}`
+/** Marks a named-hybrid (dense + BM25 sparse) collection vs. legacy dense-only. */
+export const SPARSE_COLLECTION_SUFFIX = "-with-sparse-vector"
+
+/** One Qdrant collection per (provider, model[, sparse]); sparse opts into a distinct suffixed name. */
+export function qdrantCollectionName(
+  provider: string,
+  model: string,
+  sparse = false
+): string {
+  const base = `kb_vec_${sanitizeCollectionPart(provider)}_${sanitizeCollectionPart(model)}`
+  return sparse ? `${base}${SPARSE_COLLECTION_SUFFIX}` : base
+}
+
+/** The persisted name is the source of truth for whether a collection is sparse. */
+export function collectionIsSparse(collection: string): boolean {
+  return collection.endsWith(SPARSE_COLLECTION_SUFFIX)
 }
 
 /**
@@ -64,6 +73,8 @@ export function qdrantCollectionNameFor(
 ): string {
   return qdrantCollectionName(
     (index.embeddingProvider as string) ?? DEFAULT_EMBEDDING_PROVIDER,
-    (index.embeddingModel as string) ?? DEFAULT_EMBEDDING_MODEL
+    (index.embeddingModel as string) ?? DEFAULT_EMBEDDING_MODEL,
+    // The Convex backend adopts sparse (named-hybrid) from day one — always on.
+    true
   )
 }

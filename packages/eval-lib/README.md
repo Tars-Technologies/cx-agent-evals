@@ -246,7 +246,7 @@ Notes:
 |---|---|---|
 | Host-backed | `"native"` | The host app supplies the search implementation through callbacks (e.g. a database's built-in vector index). |
 | In-process | `"memory"` | `InMemoryVectorStore` for tests and local experiments. |
-| Qdrant | `"qdrant"` | An external Qdrant collection over its REST API. Self-contained point payloads, deterministic point ids, any embedding dimension. A single collection can hold many tenants, separated by payload filters. |
+| Qdrant | `"qdrant"` | An external Qdrant collection over its REST API. Self-contained point payloads, deterministic point ids, any embedding dimension. A single collection can hold many tenants, separated by payload filters. With `sparse: true` it co-locates a BM25 sparse vector alongside each dense vector for server-side keyword/hybrid search. |
 
 ```ts
 import { makeVectorStore } from "@tars-inc/eval-lib"
@@ -260,7 +260,8 @@ const qdrant = makeVectorStore({
   url: "https://xyz.cloud.qdrant.io:6333",
   apiKey: process.env.QDRANT_API_KEY,
   collection: "my-index",
-  dimension: 1024
+  dimension: 1024,
+  sparse: true
 })
 
 // Host-backed (the host app supplies the search implementation)
@@ -279,6 +280,20 @@ Notes on the Qdrant backend:
 - Collection creation tolerates a concurrent create conflict by re-verifying the winner and throws loudly when an existing collection's dimension does not match the configured one.
 - Point payloads carry the chunk text and character offsets, so search results need no separate hydration step; upserts are idempotent via point ids derived from the chunk id.
 - Each REST request is retried with backoff and bounded by `timeoutMs` (default `30000`) so a hung request cannot stall indefinitely. A scoped delete against a never-created collection is treated as success, so cleanup is safe to retry. Because the collection is shared across tenants, every delete is scoped: `clear()` removes only the points matching its filter and refuses an unscoped call rather than wipe the whole collection.
+- With `sparse: true` the collection is a **named hybrid**: every point holds a `dense` vector *and* a `bm25` sparse vector, upserted together so they cannot drift. Dense and sparse shapes are incompatible and the store fails closed on a mismatch (a sparse store refuses an old unnamed-dense collection, and vice versa), so switching an existing collection means dropping and re-indexing it. `sparse: false` (the default) keeps the legacy unnamed-dense shape unchanged.
+
+### Keyword search via BM25 sparse vectors
+
+Every `VectorStore` exposes a `supportsSparse` capability flag and a `searchSparse(query, opts)` method. The in-memory store has no keyword index, so it returns `false` / `[]`; the Qdrant store returns real scored hits when built with `sparse: true`; and `CallbackVectorStore` (host-backed) opts in by supplying a `searchSparse` callback — `supportsSparse` then reports `true` and queries route to that callback (omit it and the store reports `false` / `[]`). The store owns the encoder end-to-end — keyword is the mirror of dense (the encoder defines the vector; Qdrant runs the sparse dot-product + IDF), so the retriever just calls `searchSparse` and never sees the BM25 representation.
+
+The sparse vector is a **BM25 dot product split across index time and query time** (`vector-stores/sparse/bm25-encoder.ts`):
+
+- **Tokenizer** — lowercase, then split on runs of non-alphanumeric characters (Unicode letters/digits kept). Documents and queries share the same tokenizer, which is what guarantees a query term lands on the same sparse index as the document term it should match.
+- **Indices** — each token maps to a `uint32` index via a stable FNV-1a hash (`stableHash`). There is no global vocabulary to build or maintain, so encoding a document needs no corpus state and two processes encode identically. Hash collisions are negligible and, when they happen, are aggregated into one term (sparse indices stay unique, as Qdrant requires).
+- **Document values** — the BM25 term-frequency weight `tf·(k1+1) / (tf + k1·(1 − b + b·|d|/avgdl))`, baked in at `add` time. Defaults `k1 = 1.2`, `b = 0.75` match the in-memory `BM25SearchIndex`, so a `k1`/`b` config means the same thing across both keyword paths; `avgdl` is a fixed constant (set `b = 0` to drop length normalization).
+- **Query values** — `1` per unique term. The inverse-document-frequency factor is applied **server-side** by Qdrant's `modifier: "idf"` on the sparse vector, so the query carries no corpus-dependent weights of its own.
+
+Together the stored document value and the server-side IDF reproduce a BM25 score: `score(q, d) = Σ_{t∈q} idf(t) · docValue_d(t)`. `StatelessQueryRetriever` routes `bm25`/`hybrid` to `searchSparse` when the store supports it (corpus-independent, server-side top-k, no per-query index rebuild) and otherwise falls back to the in-memory MiniSearch index; hybrid fusion is unchanged and now has real scores on both the dense and keyword sides.
 
 `StatelessQueryRetriever` runs the query-time pipeline (query expansion, dense/BM25/hybrid search, refinement chain) over an existing index reached through a `VectorStore` plus a `ChunkSource`, with `retrieveWithTrace()` reporting every stage's inputs, outputs, and latency.
 
