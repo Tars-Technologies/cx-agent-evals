@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { ToolCallGroup } from "@/components/conversation-sim/ToolCallGroup"
+import { markdownComponents } from "@/components/MarkdownViewer"
 import { api } from "@/lib/convex"
 import { groupMessagesWithToolCalls } from "@/lib/messageDisplay"
 
@@ -211,7 +212,10 @@ export default function AgentPlayground({ agentId }: AgentPlaygroundProps) {
                       </p>
                     ) : (
                       <div className="text-sm text-text prose-agent">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={markdownComponents}
+                        >
                           {displayContent || ""}
                         </ReactMarkdown>
                         {isStreaming && !isStuck && (

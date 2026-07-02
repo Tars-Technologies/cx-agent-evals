@@ -146,7 +146,7 @@ function videoElementFor(url: string, label?: string): ReactElement | null {
   return null
 }
 
-const markdownComponents: Components = {
+export const markdownComponents: Components = {
   h1: ({ children, ...props }: ComponentPropsWithoutRef<"h1">) => (
     <h1
       className="text-xl font-semibold text-text mt-6 mb-3 pb-2 border-b border-border"
