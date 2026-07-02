@@ -118,6 +118,61 @@ describe("kb.images.upsertDocImages (delete-and-replace)", () => {
   })
 })
 
+describe("mediaType: doc_link excluded from ranking", () => {
+  it("rankedImagesForDocs skips doc_link rows", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const orgId = TEST_ORG_ID
+    const docId = await t.run((ctx) =>
+      ctx.db.insert("documents", {
+        orgId,
+        kbId,
+        docId: "d1",
+        title: "t",
+        content: "c",
+        contentLength: 1,
+        metadata: {},
+        parseStatus: "done",
+        createdAt: Date.now()
+      })
+    )
+    await t.mutation(internal.kb.images.upsertDocImages, {
+      kbId,
+      orgId,
+      sourceDocId: docId,
+      images: [
+        {
+          imageId: "img_i",
+          url: "https://x/i.png",
+          alt: "i",
+          embedding: [1, 0],
+          mediaType: "image"
+        },
+        {
+          imageId: "img_d",
+          url: "https://x/s.pdf",
+          alt: "Spec",
+          mediaType: "doc_link"
+        }
+      ]
+    })
+    const menu = await t.query(internal.kb.images.rankedImagesForDocs, {
+      kbId,
+      documentIds: [docId],
+      queryEmbedding: [1, 0],
+      cap: 6
+    })
+    expect(menu.map((m) => m.imageId)).toEqual(["img_i"]) // doc_link excluded
+    // imagesForDocs also excludes it
+    const rows = await t.query(internal.kb.images.imagesForDocs, {
+      kbId,
+      documentIds: [docId]
+    })
+    expect(rows.map((r) => r.imageId)).toEqual(["img_i"])
+  })
+})
+
 describe("agentExperimentResults.insert with images", () => {
   async function seedExperimentAndQuestion(
     t: ReturnType<typeof setupTest>

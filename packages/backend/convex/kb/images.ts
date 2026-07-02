@@ -34,6 +34,9 @@ const docImageInputValidator = v.object({
   imageId: v.string(),
   url: v.string(),
   alt: v.string(),
+  mediaType: v.optional(
+    v.union(v.literal("image"), v.literal("video"), v.literal("doc_link"))
+  ),
   embedding: v.optional(v.array(v.float64())),
   embeddingInputHash: v.optional(v.string())
 })
@@ -67,6 +70,7 @@ export const upsertDocImages = internalMutation({
         await ctx.db.patch(prev._id, {
           url: img.url,
           alt: img.alt,
+          mediaType: img.mediaType ?? "image",
           embedding: img.embedding,
           embeddingInputHash: img.embeddingInputHash
         })
@@ -77,6 +81,7 @@ export const upsertDocImages = internalMutation({
           orgId: args.orgId,
           url: img.url,
           alt: img.alt,
+          mediaType: img.mediaType ?? "image",
           embedding: img.embedding,
           embeddingInputHash: img.embeddingInputHash,
           sourceDocId: args.sourceDocId,
@@ -144,6 +149,7 @@ export const imagesForDocs = internalQuery({
         .collect()
       for (const r of rows) {
         if (r.kbId !== args.kbId || !r.url) continue
+        if ((r.mediaType ?? "image") === "doc_link") continue // not a menu item
         out.push({
           documentId,
           imageId: r.imageId,
@@ -179,7 +185,12 @@ export const rankedImagesForDocs = internalQuery({
         .collect()
       groups.push(
         rows
-          .filter((r) => r.kbId === args.kbId && r.url)
+          .filter(
+            (r) =>
+              r.kbId === args.kbId &&
+              r.url &&
+              (r.mediaType ?? "image") !== "doc_link"
+          )
           .map((r) => ({
             imageId: r.imageId,
             alt: r.alt,
