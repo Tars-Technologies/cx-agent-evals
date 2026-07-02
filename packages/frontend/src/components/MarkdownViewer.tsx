@@ -24,9 +24,70 @@ interface MarkdownViewerProps {
 
 type Mode = "raw" | "rendered"
 
-/** Non-rendering image-id annotations added at scrape time (Component 5):
+/** Non-rendering media-id annotations added at scrape time (Component 5):
  *  invisible in rendered output, shown verbatim in raw mode. */
-const IMG_COMMENT_RE = /<!--img:[^>]*-->/g
+const IMG_COMMENT_RE = /<!--(?:img|media):[^>]*-->/g
+
+// Video providers we can safely iframe-embed (embed-form URLs only).
+const VIDEO_EMBED_HOSTS =
+  /(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be|vimeo\.com|player\.vimeo\.com|loom\.com|wistia\.com|wistia\.net)$/i
+
+function hostOf(u: string): string {
+  try {
+    return new URL(u).hostname
+  } catch {
+    return ""
+  }
+}
+
+/** Extract a YouTube video id from an embed/watch/short URL, or "". */
+function youTubeId(u: string): string {
+  const m = u.match(
+    /(?:youtube(?:-nocookie)?\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([\w-]{6,})/
+  )
+  return m ? m[1] : ""
+}
+
+/**
+ * Video renderer. For YouTube we show a derived poster thumbnail with a play
+ * overlay and load the (sandboxed) iframe only on click — faster and avoids
+ * auto-loading the tracking player (V6). Other allowlisted providers iframe
+ * directly.
+ */
+function VideoEmbed({ url, alt }: { url: string; alt?: string }) {
+  const [playing, setPlaying] = useState(false)
+  const ytId = youTubeId(url)
+
+  if (ytId && !playing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setPlaying(true)}
+        className="relative block w-full max-w-full my-3 rounded-md overflow-hidden border border-border group"
+        aria-label={alt ? `Play video: ${alt}` : "Play video"}
+      >
+        <img
+          src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
+          alt={alt ?? "video thumbnail"}
+          className="w-full h-auto block"
+        />
+        <span className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40 transition-colors">
+          <span className="text-4xl">▶️</span>
+        </span>
+      </button>
+    )
+  }
+
+  return (
+    <iframe
+      src={url}
+      title={alt || "Embedded video"}
+      className="w-full aspect-video max-w-full my-3 rounded-md border border-border"
+      sandbox="allow-scripts allow-same-origin allow-presentation"
+      allowFullScreen
+    />
+  )
+}
 
 const markdownComponents: Components = {
   h1: ({ children, ...props }: ComponentPropsWithoutRef<"h1">) => (
@@ -132,23 +193,42 @@ const markdownComponents: Components = {
     <hr className="border-border my-6" {...props} />
   ),
 
-  img: ({ alt, ...props }: ComponentPropsWithoutRef<"img">) => (
-    <img
-      alt={alt}
-      className="max-w-full h-auto rounded-md border border-border my-3"
-      onError={(e) => {
-        // Graceful degrade: a dead source URL shows alt text instead of a
-        // broken-image icon (handles URL rot in stored conversations).
-        const el = e.currentTarget
-        el.style.display = "none"
-        const note = document.createElement("span")
-        note.textContent = alt ? `🖼️ ${alt}` : "🖼️ image unavailable"
-        note.className = "text-xs text-text-dim italic"
-        el.replaceWith(note)
-      }}
-      {...props}
-    />
-  ),
+  img: ({ alt, src, ...props }: ComponentPropsWithoutRef<"img">) => {
+    // A media marker resolves to a URL whose kind we detect: allowlisted video
+    // embed → sandboxed iframe (YouTube click-to-load); direct mp4/webm →
+    // <video>; otherwise an ordinary image.
+    const url = typeof src === "string" ? src : ""
+    if (/\.(mp4|webm)(\?|#|$)/i.test(url)) {
+      return (
+        <video
+          src={url}
+          controls
+          className="max-w-full h-auto rounded-md border border-border my-3"
+        />
+      )
+    }
+    if (VIDEO_EMBED_HOSTS.test(hostOf(url))) {
+      return <VideoEmbed url={url} alt={alt} />
+    }
+    return (
+      <img
+        alt={alt}
+        src={src}
+        className="max-w-full h-auto rounded-md border border-border my-3"
+        onError={(e) => {
+          // Graceful degrade: a dead source URL shows alt text instead of a
+          // broken-image icon (handles URL rot in stored conversations).
+          const el = e.currentTarget
+          el.style.display = "none"
+          const note = document.createElement("span")
+          note.textContent = alt ? `🖼️ ${alt}` : "🖼️ image unavailable"
+          note.className = "text-xs text-text-dim italic"
+          el.replaceWith(note)
+        }}
+        {...props}
+      />
+    )
+  },
 
   table: ({ children, ...props }: ComponentPropsWithoutRef<"table">) => (
     <div className="overflow-x-auto my-3">
