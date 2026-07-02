@@ -194,7 +194,8 @@ export const rankedImagesForDocs = internalQuery({
           .map((r) => ({
             imageId: r.imageId,
             alt: r.alt,
-            embedding: r.embedding
+            embedding: r.embedding,
+            type: (r.mediaType ?? "image") as "image" | "video"
           }))
       )
     }

@@ -13,7 +13,7 @@ import {
   PositionAwareChunkId,
   RecursiveCharacterChunker
 } from "@tars-inc/eval-lib"
-import { stripImageMarkdown } from "@tars-inc/eval-lib/file-processing/markdown-images"
+import { stripMediaMarkdown } from "@tars-inc/eval-lib/file-processing/markdown-images"
 import { createEmbedder } from "@tars-inc/eval-lib/llm"
 import { CLEANUP_BATCH_SIZE, EMBED_BATCH_SIZE } from "@tars-inc/eval-lib/shared"
 import { v } from "convex/values"
@@ -125,7 +125,7 @@ export const indexDocument = internalAction({
           kbId: args.kbId,
           indexConfigHash: args.indexConfigHash,
           chunkId: c.id,
-          content: stripImageMarkdown(c.content),
+          content: stripMediaMarkdown(c.content),
           start: c.start,
           end: c.end,
           metadata: { level: "parent" as const }
@@ -198,7 +198,7 @@ export const indexDocument = internalAction({
           kbId: args.kbId,
           indexConfigHash: args.indexConfigHash,
           chunkId: c.id,
-          content: stripImageMarkdown(c.content),
+          content: stripMediaMarkdown(c.content),
           start: c.start,
           end: c.end,
           metadata: { ...(c.metadata ?? {}) }

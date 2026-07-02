@@ -70,6 +70,8 @@ Rules:
 export interface ImageMenuEntry {
   imageId: string
   alt: string
+  /** "image" | "video" — tells the agent whether to fetch pixels or emit a link. */
+  type?: "image" | "video"
 }
 
 // ─── Context-aware embedding input (D10) ───
@@ -216,6 +218,7 @@ export interface DocImage {
   imageId: string
   alt: string
   embedding?: number[]
+  type?: "image" | "video"
 }
 
 function cosine(a: number[], b: number[]): number {
@@ -255,6 +258,7 @@ export function rankDocImagesForQuery(
   interface Candidate {
     imageId: string
     alt: string
+    type?: "image" | "video"
     docIdx: number
     order: number
     score: number | null
@@ -268,6 +272,7 @@ export function rankDocImagesForQuery(
       candidates.push({
         imageId: img.imageId,
         alt: img.alt,
+        type: img.type,
         docIdx,
         order: order++,
         score: usable ? cosine(queryEmbedding, img.embedding!) : null
@@ -297,7 +302,7 @@ export function rankDocImagesForQuery(
     if (used >= perDocCap) continue
     seen.add(c.imageId)
     perDocCount.set(c.docIdx, used + 1)
-    out.push({ imageId: c.imageId, alt: c.alt })
+    out.push({ imageId: c.imageId, alt: c.alt, type: c.type ?? "image" })
   }
   return out
 }

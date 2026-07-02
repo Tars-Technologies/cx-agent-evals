@@ -164,6 +164,7 @@ describe("mediaType: doc_link excluded from ranking", () => {
       cap: 6
     })
     expect(menu.map((m) => m.imageId)).toEqual(["img_i"]) // doc_link excluded
+    expect(menu[0].type).toBe("image") // menu entries carry media type
     // imagesForDocs also excludes it
     const rows = await t.query(internal.kb.images.imagesForDocs, {
       kbId,
@@ -453,9 +454,9 @@ describe("doc-gated menu (imagesForDocs + rankDocImagesForQuery)", () => {
       cap: 6
     })
     expect(dbMenu).toEqual([
-      { imageId: "img_a1", alt: "a1" },
-      { imageId: "img_b1", alt: "b1" },
-      { imageId: "img_a2", alt: "a2" }
+      { imageId: "img_a1", alt: "a1", type: "image" },
+      { imageId: "img_b1", alt: "b1", type: "image" },
+      { imageId: "img_a2", alt: "a2", type: "image" }
     ])
   })
 })
