@@ -1,6 +1,10 @@
 "use client"
 
-import { type ComponentPropsWithoutRef, useState } from "react"
+import {
+  type ComponentPropsWithoutRef,
+  type ReactElement,
+  useState
+} from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import rehypeRaw from "rehype-raw"
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize"
@@ -109,6 +113,39 @@ function VideoEmbed({ url, alt }: { url: string; alt?: string }) {
   )
 }
 
+/**
+ * If `url` points at a video (direct mp4/webm/ogg file, or an allowlisted embed
+ * host), return the video element; otherwise null. Shared by the image and link
+ * renderers so a video renders whether the model wrote `![alt](url)` or the plain
+ * link form `[alt](url)`.
+ */
+function videoElementFor(url: string, label?: string): ReactElement | null {
+  if (/\.(mp4|webm|ogg)(\?|#|$)/i.test(url)) {
+    return (
+      <video
+        src={url}
+        controls
+        className="max-w-full h-auto rounded-md border border-border my-3"
+        onError={(e) => {
+          const el = e.currentTarget
+          const link = document.createElement("a")
+          link.href = url
+          link.target = "_blank"
+          link.rel = "noopener noreferrer"
+          link.textContent = label ? `▶ ${label}` : "▶ Open video"
+          link.className =
+            "text-accent hover:text-accent-bright underline text-sm"
+          el.replaceWith(link)
+        }}
+      />
+    )
+  }
+  if (VIDEO_EMBED_HOSTS.test(hostOf(url))) {
+    return <VideoEmbed url={url} alt={label} />
+  }
+  return null
+}
+
 const markdownComponents: Components = {
   h1: ({ children, ...props }: ComponentPropsWithoutRef<"h1">) => (
     <h1
@@ -153,17 +190,25 @@ const markdownComponents: Components = {
     </p>
   ),
 
-  a: ({ children, href, ...props }: ComponentPropsWithoutRef<"a">) => (
-    <a
-      href={href}
-      className="text-accent hover:text-accent-bright underline underline-offset-2 transition-colors"
-      target="_blank"
-      rel="noopener noreferrer"
-      {...props}
-    >
-      {children}
-    </a>
-  ),
+  a: ({ children, href, ...props }: ComponentPropsWithoutRef<"a">) => {
+    // The model sometimes writes a video as a plain link `[title](url)` instead
+    // of the image marker — embed it as a player rather than a bare link.
+    const url = typeof href === "string" ? href : ""
+    const label = typeof children === "string" ? children : undefined
+    const asVideo = videoElementFor(url, label)
+    if (asVideo) return asVideo
+    return (
+      <a
+        href={href}
+        className="text-accent hover:text-accent-bright underline underline-offset-2 transition-colors"
+        target="_blank"
+        rel="noopener noreferrer"
+        {...props}
+      >
+        {children}
+      </a>
+    )
+  },
 
   strong: ({ children, ...props }: ComponentPropsWithoutRef<"strong">) => (
     <strong className="font-semibold text-text" {...props}>
@@ -214,36 +259,11 @@ const markdownComponents: Components = {
   ),
 
   img: ({ alt, src, ...props }: ComponentPropsWithoutRef<"img">) => {
-    // A media marker resolves to a URL whose kind we detect: allowlisted video
-    // embed → sandboxed iframe (YouTube click-to-load); direct mp4/webm →
-    // <video>; otherwise an ordinary image.
+    // A media marker resolves to a URL whose kind we detect: video embed / mp4 →
+    // player; otherwise an ordinary image.
     const url = typeof src === "string" ? src : ""
-    if (/\.(mp4|webm|ogg)(\?|#|$)/i.test(url)) {
-      // Direct media file → native <video>. If the host blocks inline playback
-      // (hotlink/CORS/odd content-type), degrade to a clickable link so the
-      // user can still open it.
-      return (
-        <video
-          src={url}
-          controls
-          className="max-w-full h-auto rounded-md border border-border my-3"
-          onError={(e) => {
-            const el = e.currentTarget
-            const link = document.createElement("a")
-            link.href = url
-            link.target = "_blank"
-            link.rel = "noopener noreferrer"
-            link.textContent = alt ? `▶ ${alt}` : "▶ Open video"
-            link.className =
-              "text-accent hover:text-accent-bright underline text-sm"
-            el.replaceWith(link)
-          }}
-        />
-      )
-    }
-    if (VIDEO_EMBED_HOSTS.test(hostOf(url))) {
-      return <VideoEmbed url={url} alt={alt} />
-    }
+    const asVideo = videoElementFor(url, alt)
+    if (asVideo) return asVideo
     return (
       <img
         alt={alt}
