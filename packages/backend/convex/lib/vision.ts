@@ -131,6 +131,11 @@ async function fetchImageAsBase64(
     if (!res.ok) return null
     const mimeType = res.headers.get("content-type")?.split(";")[0]?.trim()
     if (!mimeType || !mimeType.startsWith("image/")) return null
+    // Skip oversized files up front (before buffering the body) when the server
+    // advertises the size. Chunked responses omit Content-Length, so the
+    // post-download byte check below stays as the backstop.
+    const declared = Number(res.headers.get("content-length"))
+    if (Number.isFinite(declared) && declared > MAX_IMAGE_BYTES) return null
     const buf = Buffer.from(await res.arrayBuffer())
     if (buf.byteLength === 0 || buf.byteLength > MAX_IMAGE_BYTES) return null
     return { data: buf.toString("base64"), mimeType }
