@@ -48,10 +48,12 @@ export function isVisionCapable(modelId: string): boolean {
 }
 
 /** Appended to the system prompt only when hasVision (V6). */
-export const IMAGE_INSTRUCTIONS = `# Images
-The search results include a ranked list of images drawn from the relevant documents — each entry has an \`imageId\` and \`alt\` text. Every real imageId begins with \`img_\` (e.g. \`img_3f9a2c1b4d5e6f70\`).
+export const IMAGE_INSTRUCTIONS = `# Images & media
+The search results include a ranked list of media drawn from the relevant documents — each entry has an \`imageId\`, an \`alt\`/label, and a \`type\` (\`image\` or \`video\`). Every real imageId begins with \`img_\` (e.g. \`img_3f9a2c1b4d5e6f70\`).
 
 When the retrieved results include an image relevant to your answer (a screenshot, diagram, photo, UI, map, or chart), you SHOULD show it — default to including a clearly relevant image rather than leaving it out.
+
+For a \`type: "video"\` entry, do NOT call \`get_images\` (there are no pixels to view); if the video is clearly relevant, write the marker \`![alt](imageId)\` to embed it. Some retrieved chunk text also contains inline document links written as \`[title](img_...)\` — you may include such a link verbatim when it helps; do not call \`get_images\` for it.
 
 To show an image to the user:
 1. Call the \`get_images\` tool, passing imageIds copied EXACTLY from the retrieved image menu (you may request up to ${MAX_IMAGES_PER_TURN}).
@@ -300,19 +302,34 @@ export function rankDocImagesForQuery(
   return out
 }
 
+// Matches a markdown link `[text](target)` that is NOT an image (`![...]`).
+const LINK_MARKER_RE = /(?<!!)\[([^\]]*)\]\(([^)\s]+)\)/g
+
 /**
  * Finalize guard (V4/V9): keep only images whose target is a resolved imageId,
- * rewriting them to the real URL. Everything else (hallucinated ids, raw
- * external urls the model may have written) is removed. Authoritative
- * regardless of KB content.
+ * rewriting them to the real URL; everything else (hallucinated ids, raw external
+ * urls) is removed. THEN, additively, rewrite plain link markers `[text](id)`
+ * whose target is a known media id (doc pointers) to the real URL.
+ *
+ * The two passes are intentionally asymmetric: the image pass DROPS unknown
+ * targets (injection guard); the link pass is resolve-known-only and leaves every
+ * other link untouched — the model writes legitimate hyperlinks to real URLs all
+ * the time, so we must never drop or mangle them.
  */
 export function whitelistImageMarkdown(
   text: string,
   resolved: Map<string, { url: string; alt: string }>
 ): string {
-  return rewriteMarkdownImages(text, ({ url }) => {
+  const imagesRewritten = rewriteMarkdownImages(text, ({ url }) => {
     // `url` here is whatever the model wrote in (...) — an imageId or a real url.
     const hit = resolved.get(url)
     return hit ? hit.url : null
   })
+  return imagesRewritten.replace(
+    LINK_MARKER_RE,
+    (raw, linkText: string, target: string) => {
+      const hit = resolved.get(target)
+      return hit ? `[${linkText}](${hit.url})` : raw // resolve-known-only
+    }
+  )
 }

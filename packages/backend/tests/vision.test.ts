@@ -213,6 +213,13 @@ describe("whitelistImageMarkdown", () => {
       whitelistImageMarkdown("a ![e](https://evil.com/x.png) b", resolved)
     ).toBe("a  b")
   })
+  it("resolves a known doc-id link but leaves real hyperlinks untouched", () => {
+    const map = new Map([["img_d", { url: "https://x.com/s.pdf", alt: "Spec" }]])
+    const text = "see [Spec](img_d) and [our blog](https://blog.com/post)"
+    expect(whitelistImageMarkdown(text, map)).toBe(
+      "see [Spec](https://x.com/s.pdf) and [our blog](https://blog.com/post)"
+    )
+  })
 })
 
 describe("isLikelyDecorativeImage", () => {

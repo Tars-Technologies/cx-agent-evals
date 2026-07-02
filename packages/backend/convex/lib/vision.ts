@@ -48,7 +48,9 @@ export function isLikelyDecorativeImage(url: string): boolean {
 }
 
 // Matches image markers the model writes referencing a KB image id.
-const IMG_MARKER_RE = /!\[[^\]]*\]\((img_[0-9a-f]+)\)/g
+// Matches media markers the model writes: image form `![alt](img_..)` AND plain
+// link form `[text](img_..)` (doc pointers). The leading `!` is optional.
+const IMG_MARKER_RE = /!?\[[^\]]*\]\((img_[0-9a-f]+)\)/g
 
 /**
  * Build the resolved-image map for finalize whitelisting. Seeds with images the
