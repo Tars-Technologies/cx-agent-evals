@@ -58,19 +58,78 @@ export function rewriteMarkdownImages(
   })
 }
 
-/** Matches the non-rendering image-id annotation `<!--img:img_xxxx-->`. */
-const IMG_COMMENT_RE = /<!--img:[^>]*-->/g
+/** Matches the non-rendering media-id annotation `<!--media:img_xxxx-->`
+ *  (and the legacy `<!--img:...-->` form). */
+const IMG_COMMENT_RE = /<!--(?:img|media):[^>]*-->/g
 
-/** Remove `<!--img:...-->` annotations, leaving the surrounding text intact. */
+/** Remove media annotations, leaving the surrounding text intact. */
 export function stripImageComments(content: string): string {
   return content.replace(IMG_COMMENT_RE, "")
 }
 
 /**
- * Remove all complete `![alt](url)` images AND `<!--img:...-->` annotations,
- * producing clean text for chunking. Order matters: drop comments first so a
- * stripped image never leaves a dangling annotation behind.
+ * Remove all complete `![alt](url)` images AND media annotations, producing clean
+ * text for chunking. Order matters: drop comments first so a stripped image never
+ * leaves a dangling annotation behind.
  */
 export function stripImageMarkdown(content: string): string {
   return stripImageComments(content).replace(IMAGE_RE, "")
+}
+
+// ─── Generic media (image / video / doc) ───
+
+export type MediaType = "image" | "video" | "doc_link"
+
+/** A complete media occurrence (image, embedded video, or embedded doc). */
+export interface MarkdownMedia {
+  type: MediaType
+  alt: string
+  url: string
+  /** The full matched substring. */
+  raw: string
+  /** Start offset of `raw` within the source string. */
+  index: number
+}
+
+// Normalized non-image embeds carried through markdown (which has no native
+// video/doc syntax): [embed:video](url "optional title") / [embed:doc](url "...").
+const EMBED_RE = /\[embed:(video|doc)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g
+// The video token alone, for stripping from chunks (doc tokens are rewritten to
+// plain links before chunking, so they are not matched here).
+const VIDEO_EMBED_RE = /\[embed:video\]\([^)\s]+(?:\s+"[^"]*")?\)/g
+
+/** Parse every image, video, and doc-embed occurrence, in document order. */
+export function parseMarkdownMedia(content: string): MarkdownMedia[] {
+  const out: MarkdownMedia[] = []
+  for (const m of content.matchAll(IMAGE_RE)) {
+    if (isUnsupportedImageUrl(m[2])) continue
+    out.push({
+      type: "image",
+      alt: m[1],
+      url: m[2],
+      raw: m[0],
+      index: m.index ?? 0
+    })
+  }
+  for (const m of content.matchAll(EMBED_RE)) {
+    out.push({
+      type: m[1] === "video" ? "video" : "doc_link",
+      alt: m[3] ?? "",
+      url: m[2],
+      raw: m[0],
+      index: m.index ?? 0
+    })
+  }
+  return out.sort((a, b) => a.index - b.index)
+}
+
+/**
+ * Strip image + video tokens and media annotations, producing clean chunk text.
+ * Doc pointers (`[title](img_id)` plain links) are intentionally KEPT so the agent
+ * can cite them — they are not part of the ranked media menu.
+ */
+export function stripMediaMarkdown(content: string): string {
+  return stripImageComments(content)
+    .replace(IMAGE_RE, "")
+    .replace(VIDEO_EMBED_RE, "")
 }
