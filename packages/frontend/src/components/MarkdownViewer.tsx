@@ -218,12 +218,26 @@ const markdownComponents: Components = {
     // embed → sandboxed iframe (YouTube click-to-load); direct mp4/webm →
     // <video>; otherwise an ordinary image.
     const url = typeof src === "string" ? src : ""
-    if (/\.(mp4|webm)(\?|#|$)/i.test(url)) {
+    if (/\.(mp4|webm|ogg)(\?|#|$)/i.test(url)) {
+      // Direct media file → native <video>. If the host blocks inline playback
+      // (hotlink/CORS/odd content-type), degrade to a clickable link so the
+      // user can still open it.
       return (
         <video
           src={url}
           controls
           className="max-w-full h-auto rounded-md border border-border my-3"
+          onError={(e) => {
+            const el = e.currentTarget
+            const link = document.createElement("a")
+            link.href = url
+            link.target = "_blank"
+            link.rel = "noopener noreferrer"
+            link.textContent = alt ? `▶ ${alt}` : "▶ Open video"
+            link.className =
+              "text-accent hover:text-accent-bright underline text-sm"
+            el.replaceWith(link)
+          }}
         />
       )
     }
