@@ -49,23 +49,27 @@ export function isVisionCapable(modelId: string): boolean {
 
 /** Appended to the system prompt only when hasVision (V6). */
 export const IMAGE_INSTRUCTIONS = `# Images & media
-The search results include a ranked list of media drawn from the relevant documents — each entry has an \`imageId\`, an \`alt\`/label, and a \`type\` (\`image\` or \`video\`). Every real imageId begins with \`img_\` (e.g. \`img_3f9a2c1b4d5e6f70\`).
+The search results include a ranked list of media from the relevant documents — each entry has an \`imageId\` (always begins with \`img_\`, e.g. \`img_3f9a2c1b4d5e6f70\`), an \`alt\`/label, and a \`type\` (\`image\` or \`video\`).
 
-When the retrieved results include an image relevant to your answer (a screenshot, diagram, photo, UI, map, or chart), you SHOULD show it — default to including a clearly relevant image rather than leaving it out.
+## Showing an IMAGE (type: "image")
+1. Call the \`get_images\` tool with imageIds copied EXACTLY from the menu (up to ${MAX_IMAGES_PER_TURN}).
+2. After it returns, write \`![alt](imageId)\` where you want each image to appear, using only imageIds the tool returned.
+- Default to including a clearly relevant image (screenshot, diagram, photo, UI, map, chart). After \`get_images\`, look at what each image depicts and skip decorative icons/logos/pins or anything off-topic.
 
-For a \`type: "video"\` entry, do NOT call \`get_images\` (there are no pixels to view); if the video is clearly relevant, write the marker \`![alt](imageId)\` to embed it. Some retrieved chunk text also contains inline document links written as \`[title](img_...)\` — you may include such a link verbatim when it helps; do not call \`get_images\` for it.
+## Showing a VIDEO (type: "video")
+- Do NOT call \`get_images\` for a video — it has no pixels and the call will look empty. That does NOT mean the video is unavailable.
+- To show it, write the marker \`![alt](imageId)\` inline exactly where it belongs, copying the imageId verbatim. **This renders a real, playable video embed for the user.** Showing a video works the SAME way as an image: the marker is all you need.
+- NEVER say you "cannot display the video", and NEVER tell the user to search for it, open YouTube, or visit another site. Writing the marker IS how you display it. You do not have — and do not need — the raw URL.
+- If a video is clearly relevant to the question, include it.
 
-To show an image to the user:
-1. Call the \`get_images\` tool, passing imageIds copied EXACTLY from the retrieved image menu (you may request up to ${MAX_IMAGES_PER_TURN}).
-2. After it returns, write \`![alt](imageId)\` exactly where you want each image to appear in your answer, using only imageIds the tool actually returned.
+## Document links
+Some retrieved chunk text contains inline document links written as \`[title](img_...)\`. You may include such a link verbatim when it helps. Do not call \`get_images\` for it.
 
-Rules:
-- ONLY pass imageIds that literally appear in the retrieved results (they start with \`img_\`). Copy them character-for-character. NEVER invent, guess, abbreviate, or reformat an imageId or URL.
-- If the retrieved results contain NO image menu, do not call \`get_images\` and do not include any image — just answer in text. An empty \`get_images\` result means the id did not exist; never retry with a made-up id.
-- If a retrieved image is on-topic, include it — a relevant screenshot or diagram makes the answer much more useful. After calling \`get_images\`, look at what each image actually depicts and skip any that don't clearly help — never include decorative icons, logos, flags, location pins/dots, charts you can't read, or images unrelated to the question.
-- When in doubt about a clearly on-topic image, include it; only skip images that are off-topic or decorative.
-- To actually show an image you MUST write the marker ![alt](imageId) inline in your answer. Never just say "here is an image" without the marker — a sentence alone shows nothing.
-- Do not write raw external image URLs; use the imageId form only.`
+## Rules (all media)
+- ONLY use imageIds that literally appear in the retrieved results (they start with \`img_\`). Copy them character-for-character. NEVER invent, guess, abbreviate, or reformat an imageId or URL.
+- If the retrieved results contain NO media menu, do not call \`get_images\` and do not include any media — just answer in text. An empty \`get_images\` result means the id did not exist; never retry with a made-up id.
+- To actually show any media you MUST write the marker \`![alt](imageId)\` inline. Never just say "here is a video/image" without the marker — a sentence alone shows nothing.
+- Do not write raw external image or video URLs; use the imageId form only.`
 
 export interface ImageMenuEntry {
   imageId: string
