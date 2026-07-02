@@ -40,6 +40,26 @@ function hostOf(u: string): string {
   }
 }
 
+/**
+ * Prepare document content for rendered display: strip media annotations, and
+ * convert the scrape-time embed tokens into renderable markdown so the preview
+ * actually embeds them instead of showing the raw `[embed:video](...)` token.
+ * `[embed:video]` → `![title](url)` (the img renderer's video branch handles it);
+ * `[embed:doc]` → a plain `[title](url)` link.
+ */
+function prepareRendered(content: string): string {
+  return content
+    .replace(IMG_COMMENT_RE, "")
+    .replace(
+      /\[embed:video\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,
+      (_r, url: string, title?: string) => `![${title ?? ""}](${url})`
+    )
+    .replace(
+      /\[embed:doc\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,
+      (_r, url: string, title?: string) => `[${title || "document"}](${url})`
+    )
+}
+
 /** Extract a YouTube video id from an embed/watch/short URL, or "". */
 function youTubeId(u: string): string {
   const m = u.match(
@@ -387,7 +407,7 @@ export function MarkdownViewer({
             rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
             components={markdownComponents}
           >
-            {content.replace(IMG_COMMENT_RE, "")}
+            {prepareRendered(content)}
           </ReactMarkdown>
         </div>
       )}
