@@ -322,11 +322,11 @@ describe("kb.images_actions.processDocImages", () => {
 
     const doc = await t.run((ctx) => ctx.db.get(docId))
     expect(doc!.content).toContain(
-      `![Quarterly revenue chart](https://x/rev.png)<!--img:${rows[0].imageId}-->`
+      `![Quarterly revenue chart](https://x/rev.png)<!--media:${rows[0].imageId}-->`
     )
     // decorative image kept visible, but not annotated (E4)
     expect(doc!.content).toContain("![](https://x/12px-Red_pog.svg.png)")
-    expect(doc!.content).not.toContain("Red_pog.svg.png)<!--img")
+    expect(doc!.content).not.toContain("Red_pog.svg.png)<!--media")
   })
 
   it("is idempotent (E5): re-run does not duplicate annotations", async () => {
@@ -335,7 +335,34 @@ describe("kb.images_actions.processDocImages", () => {
     await t.action(internal.kb.images_actions.processDocImages, { docId })
     await t.action(internal.kb.images_actions.processDocImages, { docId })
     const doc = await t.run((ctx) => ctx.db.get(docId))
-    expect((doc!.content.match(/<!--img:/g) ?? []).length).toBe(1)
+    expect((doc!.content.match(/<!--media:/g) ?? []).length).toBe(1)
+  })
+
+  it("embeds video and rewrites doc embed to an inline [title](id) pointer", async () => {
+    const t = setupTest()
+    const content =
+      `## Guides\n[embed:video](https://youtube.com/embed/ID "Setup demo")\n` +
+      `[embed:doc](https://x/spec.pdf "Full spec")\n`
+    const { kbId, docId } = await seedDoc(t, content)
+    await t.action(internal.kb.images_actions.processDocImages, { docId })
+
+    const rows = await t.run((ctx) =>
+      ctx.db
+        .query("kbMedia")
+        .withIndex("by_source_doc", (q) => q.eq("sourceDocId", docId))
+        .collect()
+    )
+    const video = rows.find((r) => r.mediaType === "video")!
+    const docLink = rows.find((r) => r.mediaType === "doc_link")!
+    expect(video.embedding).toEqual([1, 0]) // video embedded
+    expect(docLink.embedding).toBeUndefined() // doc_link not embedded
+
+    const doc = await t.run((ctx) => ctx.db.get(docId))
+    expect(doc!.content).toContain(`[Full spec](${docLink.imageId})`) // inline pointer
+    expect(doc!.content).toContain(
+      `[embed:video](https://youtube.com/embed/ID "Setup demo")<!--media:${video.imageId}-->`
+    )
+    expect(doc!.content).not.toContain("[embed:doc]") // doc token rewritten away
   })
 
   it("skips re-embedding when the image input is unchanged", async () => {
