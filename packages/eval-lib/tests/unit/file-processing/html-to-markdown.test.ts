@@ -135,6 +135,51 @@ describe("htmlToMarkdown", () => {
   })
 })
 
+describe("htmlToMarkdown media capture", () => {
+  it("captures a YouTube iframe as a video token (embed form)", async () => {
+    const html = `<body><main><iframe src="https://www.youtube.com/embed/abc123" title="Demo"></iframe></main></body>`
+    const { content } = await htmlToMarkdown(html)
+    expect(content).toContain(
+      '[embed:video](https://www.youtube.com/embed/abc123 "Demo")'
+    )
+  })
+
+  it("captures <video> with an mp4 source as a video token", async () => {
+    const html = `<body><main><video title="Clip"><source src="https://x.com/v.mp4"></video></main></body>`
+    const { content } = await htmlToMarkdown(html)
+    expect(content).toContain('[embed:video](https://x.com/v.mp4 "Clip")')
+  })
+
+  it("captures a docs.google.com iframe as a doc token", async () => {
+    const html = `<body><main><iframe src="https://docs.google.com/document/d/XYZ/preview" title="Policy"></iframe></main></body>`
+    const { content } = await htmlToMarkdown(html)
+    expect(content).toContain(
+      '[embed:doc](https://docs.google.com/document/d/XYZ/preview "Policy")'
+    )
+  })
+
+  it("captures a .pdf iframe as a doc token", async () => {
+    const html = `<body><main><iframe src="https://x.com/files/spec.pdf" title="Spec"></iframe></main></body>`
+    const { content } = await htmlToMarkdown(html)
+    expect(content).toContain('[embed:doc](https://x.com/files/spec.pdf "Spec")')
+  })
+
+  it("still removes a non-allowlisted iframe", async () => {
+    const html = `<body><main><iframe src="https://ads.example.com/x"></iframe><p>hi</p></main></body>`
+    const { content } = await htmlToMarkdown(html)
+    expect(content).not.toContain("ads.example.com")
+    expect(content).toContain("hi")
+  })
+
+  it("resolves a relative video iframe src against baseUrl", async () => {
+    const html = `<body><main><iframe src="/embed/v" title="T"></iframe></main></body>`
+    const { content } = await htmlToMarkdown(html, {
+      baseUrl: "https://player.vimeo.com/x"
+    })
+    expect(content).toContain('[embed:video](https://player.vimeo.com/embed/v "T")')
+  })
+})
+
 describe("htmlToMarkdown image src resolution", () => {
   it("resolves relative <img src> against baseUrl", async () => {
     const html = `<html><body><main><p>hi</p><img src="/images/x.png" alt="diagram"></main></body></html>`

@@ -26,9 +26,26 @@ const BOILERPLATE_SELECTORS = [
   "#gdpr",
   "script",
   "style",
-  "noscript",
-  "iframe"
+  "noscript"
+  // NOTE: <iframe> is intentionally NOT blanket-removed here — the media-capture
+  // pass below converts allowlisted video/doc embeds to markdown tokens and
+  // removes everything else. Removing it here would drop videos/docs before capture.
 ]
+
+// Video players we can safely iframe-embed downstream; others are dropped.
+const VIDEO_EMBED_HOSTS =
+  /(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be|vimeo\.com|player\.vimeo\.com|loom\.com|wistia\.com|wistia\.net)$/i
+// Doc viewers captured as pointer links (never ingested).
+const DOC_VIEWER_HOSTS =
+  /(^|\.)(docs\.google\.com|view\.officeapps\.live\.com|onedrive\.live\.com)$/i
+
+function hostOf(u: string): string {
+  try {
+    return new URL(u).hostname
+  } catch {
+    return ""
+  }
+}
 
 export async function htmlToMarkdown(
   html: string,
@@ -81,6 +98,51 @@ export async function htmlToMarkdown(
     headingStyle: "atx",
     codeBlockStyle: "fenced"
   })
+
+  // Media capture (via a turndown rule, not a DOM pass): rule outputs are inserted
+  // verbatim — no markdown escaping of the token brackets — and the rule can read
+  // attributes turndown otherwise discards. Allowlisted video/doc embeds become
+  // normalized tokens; everything else (ads/maps/trackers) is dropped.
+  const absolutize = (u: string): string => {
+    try {
+      return baseUrl ? new URL(u, baseUrl).href : u
+    } catch {
+      return u
+    }
+  }
+  const titleOf = (node: any): string =>
+    (node.getAttribute?.("title") || node.getAttribute?.("aria-label") || "").trim()
+
+  turndown.addRule("mediaEmbed", {
+    filter: (node: any) =>
+      node.nodeName === "IFRAME" || node.nodeName === "VIDEO",
+    replacement: (_content: string, node: any): string => {
+      if (node.nodeName === "IFRAME") {
+        const raw = node.getAttribute("src")
+        if (!raw) return ""
+        const abs = absolutize(raw)
+        const host = hostOf(abs)
+        const path = abs.split(/[?#]/)[0].toLowerCase()
+        const title = titleOf(node)
+        if (VIDEO_EMBED_HOSTS.test(host))
+          return `\n\n[embed:video](${abs} "${title}")\n\n`
+        if (DOC_VIEWER_HOSTS.test(host) || path.endsWith(".pdf"))
+          return `\n\n[embed:doc](${abs} "${title}")\n\n`
+        return "" // non-allowlisted iframe — dropped
+      }
+      // <video>: use src or the first <source src>, direct mp4/webm only.
+      const src =
+        node.getAttribute("src") ||
+        node.querySelector?.("source")?.getAttribute("src") ||
+        ""
+      if (!src) return ""
+      const abs = absolutize(src)
+      if (/\.(mp4|webm)(\?|#|$)/i.test(abs))
+        return `\n\n[embed:video](${abs} "${titleOf(node)}")\n\n`
+      return ""
+    }
+  })
+
   let markdown = turndown.turndown(htmlForConversion)
   markdown = cleanupMarkdown(markdown)
 
