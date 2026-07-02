@@ -53,7 +53,7 @@ export const upsertDocImages = internalMutation({
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
-      .query("kbImages")
+      .query("kbMedia")
       .withIndex("by_source_doc", (q) => q.eq("sourceDocId", args.sourceDocId))
       .collect()
     const keep = new Set(args.images.map((i) => i.imageId))
@@ -71,7 +71,7 @@ export const upsertDocImages = internalMutation({
           embeddingInputHash: img.embeddingInputHash
         })
       } else {
-        await ctx.db.insert("kbImages", {
+        await ctx.db.insert("kbMedia", {
           imageId: img.imageId,
           kbId: args.kbId,
           orgId: args.orgId,
@@ -109,7 +109,7 @@ export const docImageEmbeddings = internalQuery({
   args: { sourceDocId: v.id("documents") },
   handler: async (ctx, args) => {
     const rows = await ctx.db
-      .query("kbImages")
+      .query("kbMedia")
       .withIndex("by_source_doc", (q) => q.eq("sourceDocId", args.sourceDocId))
       .collect()
     return rows.map((r) => ({
@@ -139,7 +139,7 @@ export const imagesForDocs = internalQuery({
     }> = []
     for (const documentId of args.documentIds) {
       const rows = await ctx.db
-        .query("kbImages")
+        .query("kbMedia")
         .withIndex("by_source_doc", (q) => q.eq("sourceDocId", documentId))
         .collect()
       for (const r of rows) {
@@ -174,7 +174,7 @@ export const rankedImagesForDocs = internalQuery({
     const groups: DocImage[][] = []
     for (const documentId of args.documentIds) {
       const rows = await ctx.db
-        .query("kbImages")
+        .query("kbMedia")
         .withIndex("by_source_doc", (q) => q.eq("sourceDocId", documentId))
         .collect()
       groups.push(
@@ -207,7 +207,7 @@ export const getImagesByIds = internalQuery({
     const out: Array<{ imageId: string; url: string; alt: string }> = []
     for (const imageId of args.imageIds) {
       const row = await ctx.db
-        .query("kbImages")
+        .query("kbMedia")
         .withIndex("by_image_id", (q) => q.eq("imageId", imageId))
         .first()
       if (!row) continue
@@ -227,7 +227,7 @@ export const countForKb = tenantQuery({
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) return 0
     const rows = await ctx.db
-      .query("kbImages")
+      .query("kbMedia")
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
       .collect()
     return rows.length

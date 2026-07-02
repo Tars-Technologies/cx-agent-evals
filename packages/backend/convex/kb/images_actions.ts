@@ -15,7 +15,7 @@ import { buildImageEmbeddingInput } from "../lib/visionShared"
 /**
  * Document-level image processing (E1–E9). Reads the finalized document content
  * (E8), builds a context-aware embedding per menu-eligible image, writes one
- * kbImages row per image via delete-and-replace (E2), and re-annotates the
+ * kbMedia row per image via delete-and-replace (E2), and re-annotates the
  * content with `<!--img:id-->` (strip-then-reannotate, E5). Decorative images
  * stay visible in content but get no row/annotation (E4).
  */

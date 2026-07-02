@@ -114,7 +114,7 @@ async function fetchImageAsBase64(
 }
 
 /**
- * Build the get_images tool. It validates requested ids against kbImages
+ * Build the get_images tool. It validates requested ids against kbMedia
  * (org+kb scoped, V3), caps at MAX_IMAGES_PER_TURN (V7), fetches pixels so a
  * vision model can see them, and records every returned id via `onResolved`
  * so finalize can whitelist against it (V4).

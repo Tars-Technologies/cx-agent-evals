@@ -326,29 +326,37 @@ export const storageObjectValidator = v.object({
 })
 export type StorageObject = Infer<typeof storageObjectValidator>
 
-// ─── KB Images (queryable image registry for multimodal agent answers) ───
+// ─── KB Media (queryable media registry: images, videos, doc-link pointers) ───
 // imageId is deterministic: "img_" + sha256(kbId + url).slice(0,16). Stable
-// across re-index so saved answers referencing an image keep resolving.
-// url-only for the POC; storageId is reserved for the future re-host path (D3→B).
-export const kbImageValidator = v.object({
+// across re-scrape so saved answers referencing media keep resolving. The id field
+// keeps the `img_`/imageId name (media-agnostic, opaque) so the answer marker,
+// whitelist, and get_images resolution are unchanged.
+// url-only for the POC; storageId is reserved for the future re-host path.
+export const kbMediaValidator = v.object({
   imageId: v.string(),
   kbId: v.id("knowledgeBases"),
   orgId: v.string(),
+  // "image" | "video" | "doc_link"; optional to tolerate pre-rename rows (treated
+  // as "image"). Videos store the embed-form url; doc_links carry no embedding.
+  mediaType: v.optional(
+    v.union(v.literal("image"), v.literal("video"), v.literal("doc_link"))
+  ),
   url: v.optional(v.string()),
   storageId: v.optional(v.id("_storage")),
   alt: v.string(),
   // Context-aware embedding (text-embedding-3-small, 1536). Input is
   // caption+alt+heading, or +surrounding when all signals are weak (D10).
+  // Absent for doc_link rows (never ranked).
   embedding: v.optional(v.array(v.float64())),
-  // sha256("<model>:<embedding input>") — lets processDocImages skip re-embedding
-  // an image whose context-aware input (and model) is unchanged on re-scrape.
+  // sha256("<model>:<embedding input>") — lets processDocMedia skip re-embedding
+  // media whose context-aware input (and model) is unchanged on re-scrape.
   embeddingInputHash: v.optional(v.string()),
   // Reserved for the future media-description pipeline; null for now.
   description: v.optional(v.string()),
   sourceDocId: v.id("documents"),
   createdAt: v.number()
 })
-export type KbImage = Infer<typeof kbImageValidator>
+export type KbMedia = Infer<typeof kbMediaValidator>
 
 export const kbTables = {
   // ─── Knowledge Bases (org-scoped, replaces "corpora") ───
@@ -437,7 +445,7 @@ export const kbTables = {
     }),
 
   // ─── KB Images (deterministic-id image registry; FK target for get_images) ───
-  kbImages: defineTable(kbImageValidator)
+  kbMedia: defineTable(kbMediaValidator)
     .index("by_image_id", ["imageId"])
     .index("by_kb", ["kbId"])
     .index("by_source_doc", ["sourceDocId"]),

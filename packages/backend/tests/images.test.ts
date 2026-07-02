@@ -425,7 +425,7 @@ describe("getImagesByIds multi-KB scoping", () => {
       })
     )
     await t.run(async (ctx) => {
-      await ctx.db.insert("kbImages", {
+      await ctx.db.insert("kbMedia", {
         imageId: "img_one",
         kbId: kb1,
         orgId,
@@ -434,7 +434,7 @@ describe("getImagesByIds multi-KB scoping", () => {
         sourceDocId: docId,
         createdAt: Date.now()
       })
-      await ctx.db.insert("kbImages", {
+      await ctx.db.insert("kbMedia", {
         imageId: "img_two",
         kbId: kb2,
         orgId,
