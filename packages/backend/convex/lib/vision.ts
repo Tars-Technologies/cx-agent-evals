@@ -83,14 +83,20 @@ export async function resolveAnswerImageMarkers(
   return merged
 }
 
-// Skip oversized images (provider limits ≈5MB; we also bill for what we send).
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+// Cap the bytes we base64 into the model context. Kept well under provider
+// limits because base64 of a large original can blow the context window (a
+// multi-megapixel image expands to hundreds of thousands of tokens).
+const MAX_IMAGE_BYTES = 1_500_000
+// Clamp width/height query params many CDNs honor (NASA, WordPress, etc.) so we
+// fetch a sane-sized variant instead of a 4800px original.
+const MAX_IMAGE_DIMENSION = 1280
 
 /** Lightweight tool result — NO pixel bytes (this value gets persisted). */
 interface ResolvedImageRef {
   imageId: string
   url: string
   alt: string
+  mediaType?: "image" | "video" | "doc_link"
 }
 
 /**
@@ -98,11 +104,29 @@ interface ResolvedImageRef {
  * hosts only; loopback/private/metadata blocked). Returns null on any failure
  * so the model degrades to text (imageId + alt) rather than the turn erroring.
  */
+/** Clamp CDN width/height query params so we don't fetch a giant original. */
+function clampImageDimensions(rawUrl: string): string {
+  try {
+    const u = new URL(rawUrl)
+    let changed = false
+    for (const key of ["w", "h", "width", "height"]) {
+      const val = u.searchParams.get(key)
+      if (val && Number(val) > MAX_IMAGE_DIMENSION) {
+        u.searchParams.set(key, String(MAX_IMAGE_DIMENSION))
+        changed = true
+      }
+    }
+    return changed ? u.href : rawUrl
+  } catch {
+    return rawUrl
+  }
+}
+
 async function fetchImageAsBase64(
   rawUrl: string
 ): Promise<{ data: string; mimeType: string } | null> {
   try {
-    const url = assertPublicHttpUrl(rawUrl)
+    const url = assertPublicHttpUrl(clampImageDimensions(rawUrl))
     const res = await fetch(url, { redirect: "error" })
     if (!res.ok) return null
     const mimeType = res.headers.get("content-type")?.split(";")[0]?.trim()
@@ -156,10 +180,11 @@ export function buildGetImagesTool(
       )
       // Record the validated ids/urls so finalize can whitelist the answer.
       onResolved(resolved)
-      // Fetch pixels into the transient map (NOT into the return value) so the
-      // model can see them without the base64 ever being persisted.
+      // Fetch pixels ONLY for images — videos/docs have no pixels and a giant
+      // original would blow the context, so we never fetch them here.
       await Promise.all(
         resolved.map(async (r) => {
+          if ((r.mediaType ?? "image") !== "image") return
           const fetched = await fetchImageAsBase64(r.url)
           if (fetched) fetchedBytes.set(r.imageId, fetched)
         })
@@ -173,10 +198,19 @@ export function buildGetImagesTool(
         | { type: "image"; data: string; mimeType?: string }
       > = []
       for (const r of result) {
+        const kind = r.mediaType ?? "image"
+        if (kind !== "image") {
+          // Video/doc: no pixels. Steer the model to embed via the marker.
+          parts.push({
+            type: "text",
+            text: `imageId: ${r.imageId} — ${kind === "video" ? "VIDEO" : "DOCUMENT"} "${r.alt}". This has no pixels to view — do NOT try to fetch it; write the marker ![alt](${r.imageId}) to embed it.`
+          })
+          continue
+        }
         const bytes = fetchedBytes.get(r.imageId)
         parts.push({
           type: "text",
-          text: `imageId: ${r.imageId} — alt: ${r.alt}${bytes ? "" : " (image could not be fetched; reference by id only)"}`
+          text: `imageId: ${r.imageId} — alt: ${r.alt}${bytes ? "" : " (image too large or unavailable to preview; you may still embed it with ![alt](imageId))"}`
         })
         if (bytes) {
           parts.push({ type: "image", data: bytes.data, mimeType: bytes.mimeType })

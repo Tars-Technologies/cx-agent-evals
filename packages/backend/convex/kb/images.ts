@@ -216,7 +216,12 @@ export const getImagesByIds = internalQuery({
   },
   handler: async (ctx, args) => {
     const allowedKbs = new Set<string>(args.kbIds.map((id) => id))
-    const out: Array<{ imageId: string; url: string; alt: string }> = []
+    const out: Array<{
+      imageId: string
+      url: string
+      alt: string
+      mediaType: "image" | "video" | "doc_link"
+    }> = []
     for (const imageId of args.imageIds) {
       const row = await ctx.db
         .query("kbMedia")
@@ -225,7 +230,12 @@ export const getImagesByIds = internalQuery({
       if (!row) continue
       if (!allowedKbs.has(row.kbId) || row.orgId !== args.orgId) continue // V3
       if (!row.url) continue // POC: url-only; storageId path is future D3→B
-      out.push({ imageId: row.imageId, url: row.url, alt: row.alt })
+      out.push({
+        imageId: row.imageId,
+        url: row.url,
+        alt: row.alt,
+        mediaType: row.mediaType ?? "image"
+      })
     }
     return out
   }
