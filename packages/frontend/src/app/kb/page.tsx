@@ -9,6 +9,7 @@ import { Header } from "@/components/Header"
 import { ImportUrlModal } from "@/components/ImportUrlModal"
 import { LivechatView } from "@/components/livechat/LivechatView"
 import { MarkdownViewer } from "@/components/MarkdownViewer"
+import { MediaContextEditor } from "@/components/MediaContextEditor"
 import { ResizablePanel } from "@/components/ResizablePanel"
 import { api } from "@/lib/convex"
 import { useKbFromUrl } from "@/lib/useKbFromUrl"
@@ -87,6 +88,7 @@ function KBPageContent() {
   const cancelCrawl = useMutation(api.kb.crawl.cancelCrawl)
   const reindexImages = useMutation(api.kb.images.reprocessKbImages)
   const [imageReindexMsg, setImageReindexMsg] = useState<string | null>(null)
+  const [showMediaEditor, setShowMediaEditor] = useState(false)
   const imageCount = useQuery(
     api.kb.images.countForKb,
     selectedKbId ? { kbId: selectedKbId } : "skip"
@@ -278,6 +280,13 @@ function KBPageContent() {
                       className="px-3 py-1.5 text-xs border border-border text-text rounded hover:border-accent transition-colors whitespace-nowrap"
                     >
                       Reprocess images
+                    </button>
+                    <button
+                      onClick={() => setShowMediaEditor(true)}
+                      title="Add or edit user context for media items (highest-priority signal for matching)."
+                      className="px-3 py-1.5 text-xs border border-border text-text rounded hover:border-accent transition-colors whitespace-nowrap"
+                    >
+                      Edit media context
                     </button>
                     {imageCount !== undefined && (
                       <p className="text-[11px] text-text-dim">
@@ -539,6 +548,12 @@ function KBPageContent() {
           kbId={selectedKbId}
           defaultUrl={selectedKb?.sourceUrl}
           onStarted={(jobId) => setCrawlJobId(jobId)}
+        />
+      )}
+      {selectedKbId && showMediaEditor && (
+        <MediaContextEditor
+          kbId={selectedKbId}
+          onClose={() => setShowMediaEditor(false)}
         />
       )}
     </div>
