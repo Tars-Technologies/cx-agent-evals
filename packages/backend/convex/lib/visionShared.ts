@@ -226,14 +226,19 @@ export function buildImageEmbeddingInput(
     usedSurrounding = true
   }
 
-  // Blend with manual context weighted higher: repeating it lifts its share of
-  // the (roughly token-proportional) embedding, so it dominates the match while
-  // the scraped signals still contribute. MANUAL_CONTEXT_WEIGHT tunes how strong.
+  // Blend, with manual context guaranteed to dominate regardless of how long the
+  // scraped text is. Two levers make the weighting RELATIVE, not absolute:
+  //  (1) drop the bulky surrounding-text fallback — the user's context replaces
+  //      that weak signal; keep only the short strong signals (caption/alt/heading).
+  //  (2) cap that support to the manual context's own length, then repeat the
+  //      manual context MANUAL_CONTEXT_WEIGHT×. So manual is always ≥ ~W/(W+1) of
+  //      the input by volume (≈75% at W=3), even if the raw scraped text was huge.
   const manual = manualContext?.trim()
   if (!manual) return { alt, input: scraped, usedSurrounding }
+  const support = parts.join(". ").slice(0, manual.length)
   const weighted = Array(MANUAL_CONTEXT_WEIGHT).fill(manual).join(". ")
-  const input = [weighted, scraped].filter(Boolean).join(". ")
-  return { alt, input, usedSurrounding }
+  const input = [weighted, support].filter(Boolean).join(". ")
+  return { alt, input, usedSurrounding: false }
 }
 
 // ─── Doc-gated round-robin ranking (E9) ───

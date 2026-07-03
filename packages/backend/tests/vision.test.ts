@@ -98,6 +98,23 @@ describe("buildImageEmbeddingInput", () => {
     expect(r.input).toContain("Pricing tiers")
   })
 
+  it("manual context still dominates when scraped signals would be large", () => {
+    const body = "lorem ipsum dolor ".repeat(60) // ~1000 chars of body text
+    const content = `# a\n![x](https://x/i.png)\n${body}`
+    const r = buildImageEmbeddingInput(
+      content,
+      img("x", content),
+      "buy our premium plan"
+    )
+    // bulky surrounding text is dropped when manual context is present
+    expect(r.input).not.toContain("lorem ipsum dolor")
+    expect(r.usedSurrounding).toBe(false)
+    // manual context is the majority of the input by volume
+    const phrase = "buy our premium plan"
+    const manualChars = (r.input.match(/buy our premium plan/g) ?? []).length * phrase.length
+    expect(manualChars).toBeGreaterThan(r.input.length / 2)
+  })
+
   it("blank manual context falls back to the scraped signals", () => {
     const content = `## Pricing tiers\n![Comparison of pricing plans](https://x/i.png)\nbody`
     const r = buildImageEmbeddingInput(
