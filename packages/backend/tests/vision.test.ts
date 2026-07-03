@@ -89,10 +89,11 @@ describe("buildImageEmbeddingInput", () => {
       img("Comparison of pricing plans", content),
       "the CEO on stage at the 2024 launch keynote"
     )
-    // manual context leads (dominant), scraped signals still contribute
+    // manual context leads and is weighted (repeated), scraped signals follow
     expect(r.input.startsWith("the CEO on stage at the 2024 launch keynote")).toBe(
       true
     )
+    expect((r.input.match(/the CEO on stage/g) ?? []).length).toBeGreaterThan(1)
     expect(r.input).toContain("Comparison of pricing plans")
     expect(r.input).toContain("Pricing tiers")
   })

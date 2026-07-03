@@ -106,6 +106,9 @@ const HEADING_DENYLIST = new Set([
   "Section"
 ])
 const SURROUNDING_CHARS = 300
+// How many times manual context is repeated in the embedding input, to weight it
+// above the scraped signals (higher = manual context dominates the match more).
+const MANUAL_CONTEXT_WEIGHT = 3
 const CAPTION_KEYWORD_RE = /^(Figure|Fig\.|Caption:|Source:|Photo:)/i
 const HEADING_RE = /^(#{2,3})\s+(.+)$/gm
 
@@ -223,9 +226,13 @@ export function buildImageEmbeddingInput(
     usedSurrounding = true
   }
 
-  // Blend: manual context leads (dominates), scraped signals follow.
+  // Blend with manual context weighted higher: repeating it lifts its share of
+  // the (roughly token-proportional) embedding, so it dominates the match while
+  // the scraped signals still contribute. MANUAL_CONTEXT_WEIGHT tunes how strong.
   const manual = manualContext?.trim()
-  const input = manual ? [manual, scraped].filter(Boolean).join(". ") : scraped
+  if (!manual) return { alt, input: scraped, usedSurrounding }
+  const weighted = Array(MANUAL_CONTEXT_WEIGHT).fill(manual).join(". ")
+  const input = [weighted, scraped].filter(Boolean).join(". ")
   return { alt, input, usedSurrounding }
 }
 
