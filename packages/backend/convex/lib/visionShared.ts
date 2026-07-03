@@ -190,9 +190,9 @@ function surrounding(content: string, img: MarkdownImage): string {
  * effective alt (placeholder when empty), the assembled input string, and
  * whether surrounding text was folded in (only when all signals are weak).
  *
- * `manualContext` is the highest-priority signal: when present (non-blank) it
- * becomes the entire embedding input, overriding all scraped signals — the user
- * curated it deliberately, so it should dominate what the media matches on.
+ * `manualContext`, when present (non-blank), is BLENDED in as the leading,
+ * highest-priority signal — it heads the input so it dominates the vector, while
+ * the scraped signals still contribute.
  */
 export function buildImageEmbeddingInput(
   content: string,
@@ -201,11 +201,7 @@ export function buildImageEmbeddingInput(
 ): { alt: string; input: string; usedSurrounding: boolean } {
   const alt = img.alt.trim() === "" ? "image" : img.alt.trim()
 
-  const manual = manualContext?.trim()
-  if (manual) {
-    return { alt, input: manual, usedSurrounding: false }
-  }
-
+  // Scraped, context-aware signals (D10).
   const caption = captionAfter(content, img)
   const heading = nearestHeadingAbove(content, img.index)
 
@@ -217,15 +213,20 @@ export function buildImageEmbeddingInput(
   const captionText = captionOk || !altOk ? caption.text : ""
   const parts = [captionText, alt, heading].filter(Boolean)
 
+  let scraped: string
+  let usedSurrounding: boolean
   if (altOk || captionOk || headingOk) {
-    return { alt, input: parts.join(". "), usedSurrounding: false }
+    scraped = parts.join(". ")
+    usedSurrounding = false
+  } else {
+    scraped = [...parts, surrounding(content, img)].filter(Boolean).join(". ")
+    usedSurrounding = true
   }
-  const surr = surrounding(content, img)
-  return {
-    alt,
-    input: [...parts, surr].filter(Boolean).join(". "),
-    usedSurrounding: true
-  }
+
+  // Blend: manual context leads (dominates), scraped signals follow.
+  const manual = manualContext?.trim()
+  const input = manual ? [manual, scraped].filter(Boolean).join(". ") : scraped
+  return { alt, input, usedSurrounding }
 }
 
 // ─── Doc-gated round-robin ranking (E9) ───
