@@ -60,15 +60,34 @@ export const upsertDocImages = internalMutation({
       .query("kbMedia")
       .withIndex("by_source_doc", (q) => q.eq("sourceDocId", args.sourceDocId))
       .collect()
-    const keep = new Set(args.images.map((i) => i.imageId))
-    for (const row of existing) {
-      if (!keep.has(row.imageId)) await ctx.db.delete(row._id)
+
+    // Dedup the input by imageId (last wins) so one call can't insert twice.
+    const inputById = new Map(args.images.map((i) => [i.imageId, i]))
+
+    // Group existing rows by imageId (there may be pre-existing duplicates from
+    // an earlier race — this call collapses them to a single survivor).
+    const existingById = new Map<string, typeof existing>()
+    for (const r of existing) {
+      const arr = existingById.get(r.imageId) ?? []
+      arr.push(r)
+      existingById.set(r.imageId, arr)
     }
-    const byId = new Map(existing.map((r) => [r.imageId, r]))
-    for (const img of args.images) {
-      const prev = byId.get(img.imageId)
-      if (prev) {
-        await ctx.db.patch(prev._id, {
+
+    // Delete rows no longer present, and collapse any duplicate survivors.
+    const survivorById = new Map<string, (typeof existing)[number]>()
+    for (const [imageId, rows] of existingById) {
+      if (!inputById.has(imageId)) {
+        for (const r of rows) await ctx.db.delete(r._id)
+        continue
+      }
+      survivorById.set(imageId, rows[0])
+      for (const dup of rows.slice(1)) await ctx.db.delete(dup._id) // dedup
+    }
+
+    for (const [imageId, img] of inputById) {
+      const survivor = survivorById.get(imageId)
+      if (survivor) {
+        await ctx.db.patch(survivor._id, {
           url: img.url,
           alt: img.alt,
           mediaType: img.mediaType ?? "image",
@@ -78,7 +97,7 @@ export const upsertDocImages = internalMutation({
         })
       } else {
         await ctx.db.insert("kbMedia", {
-          imageId: img.imageId,
+          imageId,
           kbId: args.kbId,
           orgId: args.orgId,
           url: img.url,

@@ -76,6 +76,55 @@ describe("kb.images.upsertDocImages (delete-and-replace)", () => {
     expect(rows[0].embedding).toEqual([0, 1])
   })
 
+  it("collapses pre-existing duplicate rows for the same (doc, imageId)", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const orgId = TEST_ORG_ID
+    const docId = await t.run((ctx) =>
+      ctx.db.insert("documents", {
+        orgId,
+        kbId,
+        docId: "d1",
+        title: "t",
+        content: "c",
+        contentLength: 1,
+        metadata: {},
+        parseStatus: "done",
+        createdAt: Date.now()
+      })
+    )
+    // Simulate the observed bug: 3 rows for the same image.
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 3; i++) {
+        await ctx.db.insert("kbMedia", {
+          imageId: "img_dup",
+          kbId,
+          orgId,
+          url: "https://x/d.png",
+          alt: "d",
+          mediaType: "image",
+          sourceDocId: docId,
+          createdAt: Date.now()
+        })
+      }
+    })
+    // A normal upsert must collapse them to one.
+    await t.mutation(internal.kb.images.upsertDocImages, {
+      kbId,
+      orgId,
+      sourceDocId: docId,
+      images: [{ imageId: "img_dup", url: "https://x/d.png", alt: "d" }]
+    })
+    const rows = await t.run((ctx) =>
+      ctx.db
+        .query("kbMedia")
+        .withIndex("by_source_doc", (q) => q.eq("sourceDocId", docId))
+        .collect()
+    )
+    expect(rows.length).toBe(1)
+  })
+
   it("allows one row per (sourceDocId, imageId) for a shared url (E1)", async () => {
     const t = setupTest()
     const userId = await seedUser(t)
