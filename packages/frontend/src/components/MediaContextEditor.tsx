@@ -21,6 +21,16 @@ export function MediaContextEditor({
   const setContext = useMutation(api.kb.images.setMediaContext)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [savedId, setSavedId] = useState<string | null>(null)
+  const [search, setSearch] = useState("")
+
+  const q = search.trim().toLowerCase()
+  const filtered = (media ?? []).filter((m) =>
+    q === ""
+      ? true
+      : `${m.alt} ${m.mediaType} ${m.manualContext ?? ""}`
+          .toLowerCase()
+          .includes(q)
+  )
 
   return (
     <div
@@ -41,11 +51,20 @@ export function MediaContextEditor({
             ✕
           </button>
         </div>
-        <p className="text-[11px] text-text-dim mb-4">
+        <p className="text-[11px] text-text-dim mb-3">
           Add context to a media item to control how it&apos;s matched to
-          questions. Your text is given the <strong>highest priority</strong> — it
-          overrides the scraped label/caption. Saving re-embeds the item.
+          questions. Your text leads the match as the{" "}
+          <strong>highest-priority</strong> signal (blended with the scraped
+          label/caption). Saving re-embeds the item.
         </p>
+
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search media by label, type, or context…"
+          className="w-full mb-4 text-xs bg-bg-surface border border-border rounded p-2 text-text"
+        />
 
         {media === undefined && (
           <p className="text-xs text-text-dim">Loading…</p>
@@ -55,9 +74,12 @@ export function MediaContextEditor({
             No media in this knowledge base yet.
           </p>
         )}
+        {media && media.length > 0 && filtered.length === 0 && (
+          <p className="text-xs text-text-dim">No media matches “{search}”.</p>
+        )}
 
         <div className="space-y-4">
-          {media?.map((m) => {
+          {filtered.map((m) => {
             const draft = drafts[m.imageId] ?? m.manualContext ?? ""
             return (
               <div
