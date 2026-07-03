@@ -55,7 +55,7 @@ export const processDocImages = internalAction({
 
     for (const m of media) {
       if (m.type === "image" && isLikelyDecorativeImage(m.url)) continue // E4
-      const imageId = imageIdFor(kbId, m.url)
+      const imageId = imageIdFor(kbId, m.url, m.type)
       if (seen.has(imageId)) continue
       seen.add(imageId)
       if (m.type === "doc_link") {

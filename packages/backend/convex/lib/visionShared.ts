@@ -49,7 +49,7 @@ export function isVisionCapable(modelId: string): boolean {
 
 /** Appended to the system prompt only when hasVision (V6). */
 export const IMAGE_INSTRUCTIONS = `# Images & media
-The search results include a ranked list of media from the relevant documents — each entry has an \`imageId\` (always begins with \`img_\`, e.g. \`img_3f9a2c1b4d5e6f70\`), an \`alt\`/label, and a \`type\` (\`image\` or \`video\`).
+The search results include a ranked list of media from the relevant documents — each entry has an \`imageId\` (begins with \`img_\` for images, \`vid_\` for videos, or \`doc_\` for documents, e.g. \`vid_3f9a2c1b4d5e6f70\`), an \`alt\`/label, and a \`type\` (\`image\` or \`video\`).
 
 ## Showing an IMAGE (type: "image")
 1. Call the \`get_images\` tool with imageIds copied EXACTLY from the menu (up to ${MAX_IMAGES_PER_TURN}).

@@ -35,6 +35,17 @@ describe("imageIdFor", () => {
       imageIdFor("kb_2", "https://x.com/p.png")
     )
   })
+
+  it("prefixes by media type (img_/vid_/doc_), same hash across types", () => {
+    const u = "https://x.com/p"
+    expect(imageIdFor("kb_1", u, "image").startsWith("img_")).toBe(true)
+    expect(imageIdFor("kb_1", u, "video").startsWith("vid_")).toBe(true)
+    expect(imageIdFor("kb_1", u, "doc_link").startsWith("doc_")).toBe(true)
+    // same 16-hex suffix, only the prefix differs
+    expect(imageIdFor("kb_1", u, "image").slice(4)).toBe(
+      imageIdFor("kb_1", u, "video").slice(4)
+    )
+  })
 })
 
 describe("buildImageEmbeddingInput", () => {

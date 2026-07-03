@@ -17,11 +17,21 @@ export * from "./visionShared"
  * Deterministic image ID: stable across re-index so saved answers keep
  * resolving. Space separator avoids kbId/url concatenation collisions.
  */
-export function imageIdFor(kbId: string, url: string): string {
+const MEDIA_ID_PREFIX = {
+  image: "img",
+  video: "vid",
+  doc_link: "doc"
+} as const
+
+export function imageIdFor(
+  kbId: string,
+  url: string,
+  type: "image" | "video" | "doc_link" = "image"
+): string {
   const hash = createHash("sha256")
     .update(`${kbId} ${normalizeUrl(url)}`)
     .digest("hex")
-  return `img_${hash.slice(0, 16)}`
+  return `${MEDIA_ID_PREFIX[type]}_${hash.slice(0, 16)}`
 }
 
 // Drop tiny rendered images: icons, flags, location pins (e.g. Wikipedia's
@@ -50,7 +60,7 @@ export function isLikelyDecorativeImage(url: string): boolean {
 // Matches image markers the model writes referencing a KB image id.
 // Matches media markers the model writes: image form `![alt](img_..)` AND plain
 // link form `[text](img_..)` (doc pointers). The leading `!` is optional.
-const IMG_MARKER_RE = /!?\[[^\]]*\]\((img_[0-9a-f]+)\)/g
+const IMG_MARKER_RE = /!?\[[^\]]*\]\(((?:img|vid|doc)_[0-9a-f]+)\)/g
 
 /**
  * Build the resolved-image map for finalize whitelisting. Seeds with images the
