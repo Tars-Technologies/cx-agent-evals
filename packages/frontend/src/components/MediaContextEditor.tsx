@@ -22,15 +22,24 @@ export function MediaContextEditor({
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [savedId, setSavedId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
+  const [docFilter, setDocFilter] = useState<string>("all")
+
+  // Distinct documents that have media, for the filter dropdown.
+  const docOptions = new Map<string, string>()
+  for (const m of media ?? [])
+    for (const d of m.docs) docOptions.set(d.id, d.title)
 
   const q = search.trim().toLowerCase()
-  const filtered = (media ?? []).filter((m) =>
-    q === ""
-      ? true
-      : `${m.alt} ${m.mediaType} ${m.manualContext ?? ""}`
-          .toLowerCase()
-          .includes(q)
-  )
+  const filtered = (media ?? []).filter((m) => {
+    const matchesSearch =
+      q === "" ||
+      `${m.alt} ${m.mediaType} ${m.manualContext ?? ""}`
+        .toLowerCase()
+        .includes(q)
+    const matchesDoc =
+      docFilter === "all" || m.docs.some((d) => d.id === docFilter)
+    return matchesSearch && matchesDoc
+  })
 
   return (
     <div
@@ -58,13 +67,27 @@ export function MediaContextEditor({
           label/caption). Saving re-embeds the item.
         </p>
 
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search media by label, type, or context…"
-          className="w-full mb-4 text-xs bg-bg-surface border border-border rounded p-2 text-text"
-        />
+        <div className="flex gap-2 mb-4">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search media by label, type, or context…"
+            className="flex-1 text-xs bg-bg-surface border border-border rounded p-2 text-text"
+          />
+          <select
+            value={docFilter}
+            onChange={(e) => setDocFilter(e.target.value)}
+            className="text-xs bg-bg-surface border border-border rounded p-2 text-text max-w-[45%]"
+          >
+            <option value="all">All documents</option>
+            {[...docOptions.entries()].map(([id, title]) => (
+              <option key={id} value={id}>
+                {title}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {media === undefined && (
           <p className="text-xs text-text-dim">Loading…</p>
@@ -104,6 +127,17 @@ export function MediaContextEditor({
                       title={m.alt}
                     >
                       {m.alt || "(no label)"}
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {m.docs.map((d) => (
+                        <span
+                          key={d.id}
+                          className="text-[10px] text-text-dim bg-bg-surface border border-border rounded px-1 py-0.5 truncate max-w-[10rem]"
+                          title={d.title}
+                        >
+                          {d.title}
+                        </span>
+                      ))}
                     </div>
                   </div>
                 </div>

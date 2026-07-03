@@ -304,7 +304,8 @@ export const reprocessKbImages = tenantMutation({
   }
 })
 
-/** List a KB's media (deduped by imageId) for the manual-context editor UI. */
+/** List a KB's media (deduped by imageId) for the manual-context editor UI,
+ *  tagged with the documents each media appears on (for grouping/filtering). */
 export const listMediaForKb = tenantQuery({
   args: { kbId: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
@@ -316,7 +317,7 @@ export const listMediaForKb = tenantQuery({
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
       .collect()
     // Same media (url) can appear in several docs → one entry per imageId,
-    // preferring a row that already carries manual context.
+    // collecting all its source docs and preferring a manual-context row.
     const byId = new Map<
       string,
       {
@@ -325,21 +326,45 @@ export const listMediaForKb = tenantQuery({
         url?: string
         mediaType: "image" | "video" | "doc_link"
         manualContext?: string
+        docIds: Set<string>
       }
     >()
     for (const r of rows) {
       const prev = byId.get(r.imageId)
-      if (!prev || (!prev.manualContext && r.manualContext)) {
+      if (!prev) {
         byId.set(r.imageId, {
           imageId: r.imageId,
           alt: r.alt,
           url: r.url,
           mediaType: r.mediaType ?? "image",
-          manualContext: r.manualContext
+          manualContext: r.manualContext,
+          docIds: new Set([r.sourceDocId])
         })
+      } else {
+        prev.docIds.add(r.sourceDocId)
+        if (!prev.manualContext && r.manualContext)
+          prev.manualContext = r.manualContext
       }
     }
-    return [...byId.values()]
+    // Resolve document titles for the docs referenced by any media.
+    const allDocIds = new Set<string>()
+    for (const e of byId.values()) for (const d of e.docIds) allDocIds.add(d)
+    const titleById = new Map<string, string>()
+    for (const docId of allDocIds) {
+      const doc = await ctx.db.get(docId as Id<"documents">)
+      if (doc) titleById.set(docId, doc.title || doc.docId || docId)
+    }
+    return [...byId.values()].map((e) => ({
+      imageId: e.imageId,
+      alt: e.alt,
+      url: e.url,
+      mediaType: e.mediaType,
+      manualContext: e.manualContext,
+      docs: [...e.docIds].map((id) => ({
+        id,
+        title: titleById.get(id) ?? id
+      }))
+    }))
   }
 })
 
