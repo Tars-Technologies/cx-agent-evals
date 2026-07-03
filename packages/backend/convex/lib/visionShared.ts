@@ -189,12 +189,23 @@ function surrounding(content: string, img: MarkdownImage): string {
  * Build the context-aware embedding input for one image (D10). Returns the
  * effective alt (placeholder when empty), the assembled input string, and
  * whether surrounding text was folded in (only when all signals are weak).
+ *
+ * `manualContext` is the highest-priority signal: when present (non-blank) it
+ * becomes the entire embedding input, overriding all scraped signals — the user
+ * curated it deliberately, so it should dominate what the media matches on.
  */
 export function buildImageEmbeddingInput(
   content: string,
-  img: MarkdownImage
+  img: MarkdownImage,
+  manualContext?: string
 ): { alt: string; input: string; usedSurrounding: boolean } {
   const alt = img.alt.trim() === "" ? "image" : img.alt.trim()
+
+  const manual = manualContext?.trim()
+  if (manual) {
+    return { alt, input: manual, usedSurrounding: false }
+  }
+
   const caption = captionAfter(content, img)
   const heading = nearestHeadingAbove(content, img.index)
 

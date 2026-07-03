@@ -38,7 +38,8 @@ const docImageInputValidator = v.object({
     v.union(v.literal("image"), v.literal("video"), v.literal("doc_link"))
   ),
   embedding: v.optional(v.array(v.float64())),
-  embeddingInputHash: v.optional(v.string())
+  embeddingInputHash: v.optional(v.string()),
+  manualContext: v.optional(v.string())
 })
 
 /**
@@ -72,7 +73,8 @@ export const upsertDocImages = internalMutation({
           alt: img.alt,
           mediaType: img.mediaType ?? "image",
           embedding: img.embedding,
-          embeddingInputHash: img.embeddingInputHash
+          embeddingInputHash: img.embeddingInputHash,
+          manualContext: img.manualContext
         })
       } else {
         await ctx.db.insert("kbMedia", {
@@ -84,6 +86,7 @@ export const upsertDocImages = internalMutation({
           mediaType: img.mediaType ?? "image",
           embedding: img.embedding,
           embeddingInputHash: img.embeddingInputHash,
+          manualContext: img.manualContext,
           sourceDocId: args.sourceDocId,
           createdAt: Date.now()
         })
@@ -120,7 +123,8 @@ export const docImageEmbeddings = internalQuery({
     return rows.map((r) => ({
       imageId: r.imageId,
       embedding: r.embedding,
-      embeddingInputHash: r.embeddingInputHash
+      embeddingInputHash: r.embeddingInputHash,
+      manualContext: r.manualContext
     }))
   }
 })
@@ -278,5 +282,79 @@ export const reprocessKbImages = tenantMutation({
       scheduled++
     }
     return { scheduled }
+  }
+})
+
+/** List a KB's media (deduped by imageId) for the manual-context editor UI. */
+export const listMediaForKb = tenantQuery({
+  args: { kbId: v.id("knowledgeBases") },
+  handler: async (ctx, args) => {
+    const { orgId } = ctx
+    const kb = await ctx.db.get(args.kbId)
+    if (!kb || kb.orgId !== orgId) return []
+    const rows = await ctx.db
+      .query("kbMedia")
+      .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
+      .collect()
+    // Same media (url) can appear in several docs → one entry per imageId,
+    // preferring a row that already carries manual context.
+    const byId = new Map<
+      string,
+      {
+        imageId: string
+        alt: string
+        url?: string
+        mediaType: "image" | "video" | "doc_link"
+        manualContext?: string
+      }
+    >()
+    for (const r of rows) {
+      const prev = byId.get(r.imageId)
+      if (!prev || (!prev.manualContext && r.manualContext)) {
+        byId.set(r.imageId, {
+          imageId: r.imageId,
+          alt: r.alt,
+          url: r.url,
+          mediaType: r.mediaType ?? "image",
+          manualContext: r.manualContext
+        })
+      }
+    }
+    return [...byId.values()]
+  }
+})
+
+/**
+ * Set (or clear) user-authored context for a media item, then re-embed. Applies
+ * to every row sharing the imageId in this KB (same media across docs), and
+ * reschedules processing for each affected document so the new context takes
+ * effect in ranking (highest-priority signal).
+ */
+export const setMediaContext = tenantMutation({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    imageId: v.string(),
+    manualContext: v.string()
+  },
+  handler: async (ctx, args) => {
+    const { orgId } = ctx
+    const kb = await ctx.db.get(args.kbId)
+    if (!kb || kb.orgId !== orgId) throw new Error("Knowledge base not found")
+    const rows = await ctx.db
+      .query("kbMedia")
+      .withIndex("by_image_id", (q) => q.eq("imageId", args.imageId))
+      .collect()
+    const mine = rows.filter((r) => r.kbId === args.kbId && r.orgId === orgId)
+    if (mine.length === 0) throw new Error("Media not found")
+    const trimmed = args.manualContext.trim()
+    const docs = new Set<string>()
+    for (const r of mine) {
+      await ctx.db.patch(r._id, { manualContext: trimmed || undefined })
+      docs.add(r.sourceDocId)
+    }
+    for (const docId of docs) {
+      await scheduleDocImageProcessing(ctx, docId as Id<"documents">)
+    }
+    return { updated: mine.length }
   }
 })

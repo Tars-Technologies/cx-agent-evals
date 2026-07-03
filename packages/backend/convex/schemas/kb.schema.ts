@@ -351,6 +351,9 @@ export const kbMediaValidator = v.object({
   // sha256("<model>:<embedding input>") — lets processDocMedia skip re-embedding
   // media whose context-aware input (and model) is unchanged on re-scrape.
   embeddingInputHash: v.optional(v.string()),
+  // User-authored context. When set it DOMINATES the embedding (highest-priority
+  // signal, over alt/caption/heading/surrounding) and survives re-scrapes.
+  manualContext: v.optional(v.string()),
   // Reserved for the future media-description pipeline; null for now.
   description: v.optional(v.string()),
   sourceDocId: v.id("documents"),

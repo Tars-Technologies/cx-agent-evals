@@ -118,6 +118,61 @@ describe("kb.images.upsertDocImages (delete-and-replace)", () => {
   })
 })
 
+describe("manual context", () => {
+  it("setMediaContext stores context and it survives reprocess, dominating the embedding", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    const orgId = TEST_ORG_ID
+    const content = `## Heading\n![A chart](https://x/c.png)\n`
+    const docId = await t.run((ctx) =>
+      ctx.db.insert("documents", {
+        orgId,
+        kbId,
+        docId: "d1",
+        title: "t",
+        content,
+        contentLength: content.length,
+        metadata: {},
+        parseStatus: "done",
+        createdAt: Date.now()
+      })
+    )
+    await t.action(internal.kb.images_actions.processDocImages, { docId })
+    const [row] = await t.query(internal.kb.images.imagesForDocs, {
+      kbId,
+      documentIds: [docId]
+    })
+
+    // Simulate the manual-context edit (setMediaContext patches the row, then
+    // reprocesses): here we patch directly, then reprocess.
+    await t.run(async (ctx) => {
+      const m = await ctx.db
+        .query("kbMedia")
+        .withIndex("by_image_id", (q) => q.eq("imageId", row.imageId))
+        .first()
+      await ctx.db.patch(m!._id, {
+        manualContext: "the quarterly revenue keynote"
+      })
+    })
+    await t.action(internal.kb.images_actions.processDocImages, { docId })
+
+    const after = await t.run((ctx) =>
+      ctx.db
+        .query("kbMedia")
+        .withIndex("by_image_id", (q) => q.eq("imageId", row.imageId))
+        .first()
+    )
+    expect(after!.manualContext).toBe("the quarterly revenue keynote")
+    // hash reflects the manual context (dominant embedding input)
+    const { createHash } = await import("node:crypto")
+    const expectedHash = createHash("sha256")
+      .update("mock:the quarterly revenue keynote")
+      .digest("hex")
+    expect(after!.embeddingInputHash).toBe(expectedHash)
+  })
+})
+
 describe("mediaType: doc_link excluded from ranking", () => {
   it("rankedImagesForDocs skips doc_link rows", async () => {
     const t = setupTest()

@@ -70,6 +70,30 @@ describe("buildImageEmbeddingInput", () => {
     expect(r.usedSurrounding).toBe(false)
     expect(r.input).toContain("revenue dashboard")
   })
+
+  it("manual context dominates the embedding input (highest priority)", () => {
+    const content = `## Pricing tiers\n![Comparison of pricing plans](https://x/i.png)\nbody text here`
+    const r = buildImageEmbeddingInput(
+      content,
+      img("Comparison of pricing plans", content),
+      "the CEO on stage at the 2024 launch keynote"
+    )
+    expect(r.input).toBe("the CEO on stage at the 2024 launch keynote")
+    expect(r.usedSurrounding).toBe(false)
+    // scraped signals are NOT mixed in when manual context is present
+    expect(r.input).not.toContain("Pricing tiers")
+    expect(r.input).not.toContain("Comparison of pricing plans")
+  })
+
+  it("blank manual context falls back to the scraped signals", () => {
+    const content = `## Pricing tiers\n![Comparison of pricing plans](https://x/i.png)\nbody`
+    const r = buildImageEmbeddingInput(
+      content,
+      img("Comparison of pricing plans", content),
+      "   "
+    )
+    expect(r.input).toContain("Comparison of pricing plans")
+  })
 })
 
 describe("rankDocImagesForQuery", () => {

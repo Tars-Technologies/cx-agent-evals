@@ -32,6 +32,13 @@ export const processDocImages = internalAction({
     const base = stripImageComments(doc.content)
     const media = parseMarkdownMedia(base)
 
+    // Existing rows carry user-authored manualContext (must survive re-scrape,
+    // and dominates the embedding) + prior embeddings for the skip-reembed check.
+    const prior = await ctx.runQuery(internal.kb.images.docImageEmbeddings, {
+      sourceDocId: args.docId
+    })
+    const priorById = new Map(prior.map((p) => [p.imageId, p]))
+
     const embedder = createEmbedder()
     const seen = new Set<string>()
     // Ranked media (image/video) — embedded. doc_link — pointer, no embedding.
@@ -42,6 +49,7 @@ export const processDocImages = internalAction({
       mediaType: "image" | "video"
       input: string
       hash: string
+      manualContext?: string
     }> = []
     const docItems: Array<{ imageId: string; url: string; alt: string }> = []
 
@@ -54,22 +62,27 @@ export const processDocImages = internalAction({
         docItems.push({ imageId, url: m.url, alt: m.alt || "document" })
         continue
       }
-      const { alt, input } = buildImageEmbeddingInput(base, m)
+      const manualContext = priorById.get(imageId)?.manualContext
+      const { alt, input } = buildImageEmbeddingInput(base, m, manualContext)
       // Hash includes the model so switching embedders re-embeds (avoids
       // reusing a vector from a different model/dimension).
       const hash = createHash("sha256")
         .update(`${embedder.name}:${input}`)
         .digest("hex")
-      embedItems.push({ imageId, url: m.url, alt, mediaType: m.type, input, hash })
+      embedItems.push({
+        imageId,
+        url: m.url,
+        alt,
+        mediaType: m.type,
+        input,
+        hash,
+        manualContext
+      })
     }
 
     // Reuse stored embeddings whose input+model hash is unchanged (skip the
     // OpenAI call); only embed new/changed items in one batch (E7). On embed
     // failure those rows are upserted without an embedding (E3).
-    const prior = await ctx.runQuery(internal.kb.images.docImageEmbeddings, {
-      sourceDocId: args.docId
-    })
-    const priorById = new Map(prior.map((p) => [p.imageId, p]))
     const embeddings: Array<number[] | undefined> = new Array(embedItems.length)
     const toCompute: number[] = []
     embedItems.forEach((e, i) => {
@@ -104,7 +117,8 @@ export const processDocImages = internalAction({
           alt: e.alt,
           mediaType: e.mediaType,
           embedding: embeddings[i],
-          embeddingInputHash: e.hash
+          embeddingInputHash: e.hash,
+          manualContext: e.manualContext
         })),
         ...docItems.map((e) => ({
           imageId: e.imageId,
