@@ -1,5 +1,11 @@
 # @tars-inc/eval-lib
 
+## 0.4.1
+
+### Patch Changes
+
+- 42f7190: Bump optional dependency `@anthropic-ai/sdk` from `^0.82.0` to `^0.91.1`.
+
 ## 0.4.0
 
 ### Minor Changes
