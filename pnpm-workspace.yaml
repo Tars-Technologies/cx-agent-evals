@@ -1,6 +1,13 @@
 packages:
   - "packages/*"
 
-
+allowBuilds:
+  '@clerk/shared': false
+  esbuild: false
+  sharp: false
 
 minimumReleaseAge: 10080 # 7 Days
+
+overrides:
+  rollup: ^4.59.0
+  picomatch@4: ^4.0.4
