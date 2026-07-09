@@ -3,6 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10.6.5",
   "scripts": {
+    "install:secure": "sfw pnpm install",
     "build": "pnpm -C packages/eval-lib build",
     "dev": "pnpm -C packages/frontend dev",
     "dev:backend": "pnpm -C packages/backend dev",
