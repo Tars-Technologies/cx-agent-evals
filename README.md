@@ -180,6 +180,10 @@ Backend changes in `packages/backend/convex/` are automatically picked up by `pn
 
 For how the frontend (Vercel), backend (Convex), and `@tars-inc/eval-lib` (npm) are deployed — including what every push to GitHub does, what Convex deployment a Vercel preview talks to, and the manual `npx convex deploy` flow for production — see [DEPLOYMENT.md](./DEPLOYMENT.md).
 
+## Releasing `@tars-inc/eval-lib`
+
+`@tars-inc/eval-lib` is published to npm via Changesets. For the versioning policy (patch vs. minor, why major isn't used yet) and the step-by-step release flow, see [packages/eval-lib/releasing-eval-lib.md](./packages/eval-lib/releasing-eval-lib.md).
+
 ## License
 
 MIT
