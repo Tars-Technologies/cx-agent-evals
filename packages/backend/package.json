@@ -20,7 +20,7 @@
     "@mozilla/readability": "^0.6.0",
     "@tars-inc/eval-lib": "workspace:*",
     "ai": "^4.3.0",
-    "convex": "^1.36.0",
+    "convex": "^1.42.1",
     "convex-helpers": "0.1.118",
     "csv-parse": "^6.2.1",
     "langsmith": "^0.6.0",
