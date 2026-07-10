@@ -27,7 +27,7 @@ Optional:
 ### 1. Install dependencies
 
 ```bash
-pnpm install
+sfw pnpm install
 ```
 
 ### 2. Build the eval library
