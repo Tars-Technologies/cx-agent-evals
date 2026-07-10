@@ -2,4 +2,4 @@
 "@tars-inc/eval-lib": patch
 ---
 
-Security hardening: `QdrantVectorStore` now refuses to follow HTTP redirects (`redirect: "error"`) so the `api-key` header — which fetch does not strip on cross-origin redirects — can never leak to a redirect target. Qdrant's REST API never redirects, so no working setup is affected. Other providers' HTTP behavior is unchanged.
+`QdrantVectorStore` now refuses HTTP redirects (`redirect: "error"`): fetch does not strip the `api-key` header on cross-origin redirects, so following one could leak it. Qdrant itself never redirects; a setup behind a redirecting proxy now fails fast with a descriptive error instead of leaking. Other providers are unchanged.

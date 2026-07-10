@@ -23,6 +23,20 @@ export class TimeoutError extends Error {
   }
 }
 
+/**
+ * Thrown when a request configured with `redirect: "error"` is answered with
+ * a redirect. Kept distinct from a transient network error so the retry
+ * policy can fail fast — the endpoint will redirect again on every retry —
+ * and so the error carries the provider/URL context the raw fetch TypeError
+ * ("fetch failed") lacks.
+ */
+export class RedirectError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "RedirectError"
+  }
+}
+
 /** AbortError is a DOMException, not necessarily an Error subclass; match by name. */
 function isAbortError(err: unknown): boolean {
   return (
@@ -32,10 +46,30 @@ function isAbortError(err: unknown): boolean {
   )
 }
 
+/**
+ * A refused redirect surfaces as a status-less TypeError (in Node/undici:
+ * "fetch failed" with cause "unexpected redirect"), indistinguishable from a
+ * transient network error by status alone. Only consulted when the request
+ * opted into `redirect: "error"`; match by message on the error or its cause.
+ */
+function isRedirectRefusal(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false
+  const cause = (err as { cause?: unknown }).cause
+  const messages = [
+    (err as { message?: unknown }).message,
+    typeof cause === "object" && cause !== null
+      ? (cause as { message?: unknown }).message
+      : undefined
+  ]
+  return messages.some(m => typeof m === "string" && /redirect/i.test(m))
+}
+
 /** Default retry predicate: transient HTTP failures only (see isRetryableHttpStatus). */
 function defaultShouldRetry(error: unknown): boolean {
   // A self-induced timeout will only time out again on retry; fail fast.
   if (error instanceof TimeoutError) return false
+  // A refused redirect is deterministic; retrying refuses it again.
+  if (error instanceof RedirectError) return false
   return isRetryableHttpStatus(
     error instanceof HttpError ? error.status : undefined
   )
@@ -150,6 +184,14 @@ export async function requestJSON<T>(options: RequestJSONOptions): Promise<T> {
         if (timedOut && isAbortError(err)) {
           throw new TimeoutError(
             `${provider} request timed out after ${timeoutMs}ms`
+          )
+        }
+        // Same for a refused redirect: deterministic, so fail fast — and with
+        // context, since the raw TypeError names neither provider nor URL.
+        if (redirect === "error" && isRedirectRefusal(err)) {
+          throw new RedirectError(
+            `${provider} request to ${url} was answered with a redirect; ` +
+              `refusing to follow it (redirect policy "error")`
           )
         }
         throw err

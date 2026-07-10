@@ -122,33 +122,17 @@ describe("postJSON", () => {
     })
   })
 
-  describe("redirect policy", () => {
-    it("forwards the redirect policy to fetch", async () => {
-      fetchSpy.mockResolvedValueOnce(mockFetchResponse({ ok: true }))
+  it("leaves the redirect policy unset by default (platform follow)", async () => {
+    fetchSpy.mockResolvedValueOnce(mockFetchResponse({ ok: true }))
 
-      await requestJSON({
-        url: "https://api.example.com/v1/test",
-        provider: "Test",
-        body: {},
-        redirect: "error"
-      })
-
-      const [, init] = fetchSpy.mock.calls[0]
-      expect((init as RequestInit).redirect).toBe("error")
+    await postJSON({
+      url: "https://api.example.com/v1/test",
+      provider: "Test",
+      body: {}
     })
 
-    it("leaves the redirect policy unset by default (platform follow)", async () => {
-      fetchSpy.mockResolvedValueOnce(mockFetchResponse({ ok: true }))
-
-      await postJSON({
-        url: "https://api.example.com/v1/test",
-        provider: "Test",
-        body: {}
-      })
-
-      const [, init] = fetchSpy.mock.calls[0]
-      expect((init as RequestInit).redirect).toBeUndefined()
-    })
+    const [, init] = fetchSpy.mock.calls[0]
+    expect((init as RequestInit).redirect).toBeUndefined()
   })
 
   describe("retry behaviour", () => {
@@ -306,6 +290,92 @@ describe("postJSON", () => {
 
       const [, init] = fetchSpy.mock.calls[0]
       expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal)
+    })
+  })
+})
+
+describe("requestJSON", () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, "fetch")
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  // How Node/undici rejects when redirect: "error" meets a redirect response:
+  // a status-less TypeError with cause "unexpected redirect".
+  function redirectRefusal(): TypeError {
+    const err = new TypeError("fetch failed")
+    ;(err as Error & { cause?: unknown }).cause = new Error(
+      "unexpected redirect"
+    )
+    return err
+  }
+
+  describe("redirect policy", () => {
+    it("forwards the redirect policy to fetch", async () => {
+      fetchSpy.mockResolvedValueOnce(mockFetchResponse({ ok: true }))
+
+      await requestJSON({
+        url: "https://api.example.com/v1/test",
+        provider: "Test",
+        body: {},
+        redirect: "error"
+      })
+
+      const [, init] = fetchSpy.mock.calls[0]
+      expect((init as RequestInit).redirect).toBe("error")
+    })
+
+    it("fails fast on a refused redirect with a descriptive error (no retries)", async () => {
+      fetchSpy.mockRejectedValue(redirectRefusal())
+
+      await expect(
+        requestJSON({
+          url: "https://api.example.com/v1/test",
+          provider: "Qdrant",
+          body: {},
+          redirect: "error",
+          retry: { maxRetries: 3, backoffMs: 1 }
+        })
+      ).rejects.toThrow(
+        'Qdrant request to https://api.example.com/v1/test was answered with a redirect; refusing to follow it (redirect policy "error")'
+      )
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it("still retries genuine network errors when redirect is \"error\"", async () => {
+      fetchSpy
+        .mockRejectedValueOnce(new TypeError("fetch failed"))
+        .mockResolvedValueOnce(mockFetchResponse({ ok: true }))
+
+      const result = await requestJSON<{ ok: boolean }>({
+        url: "https://api.example.com/v1/test",
+        provider: "Test",
+        body: {},
+        redirect: "error",
+        retry: { maxRetries: 2, backoffMs: 1 }
+      })
+
+      expect(result).toEqual({ ok: true })
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+    })
+
+    it("does not reinterpret redirect-flavoured errors when redirects are followed", async () => {
+      fetchSpy.mockRejectedValue(redirectRefusal())
+
+      await expect(
+        requestJSON({
+          url: "https://api.example.com/v1/test",
+          provider: "Test",
+          body: {},
+          retry: { maxRetries: 0 }
+        })
+      ).rejects.toThrow("fetch failed")
     })
   })
 })

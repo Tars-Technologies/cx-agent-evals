@@ -72,6 +72,27 @@ describe("QdrantVectorStore", () => {
     expect((init as RequestInit).redirect).toBe("error")
   })
 
+  it("surfaces a refused redirect as an immediate descriptive error (no retries)", async () => {
+    // Node/undici rejection shape when redirect: "error" meets a redirect.
+    const refusal = new TypeError("fetch failed")
+    ;(refusal as Error & { cause?: unknown }).cause = new Error(
+      "unexpected redirect"
+    )
+    fetchMock.mockRejectedValue(refusal)
+
+    const retryingStore = new QdrantVectorStore({
+      url: "https://qdrant.example.com:6333",
+      apiKey: "test-key",
+      collection: "kb_x_abcdef",
+      dimension: 3,
+      retry: { maxRetries: 3, backoffMs: 1 }
+    })
+    await expect(
+      retryingStore.search([1, 0, 0], { k: 5, filter: { kbId: "kb1" } })
+    ).rejects.toThrow(/answered with a redirect/i)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it("derives a deterministic UUID-format point id from the scoped chunk identity", () => {
     const scope = {
       kbId: "kb1",
