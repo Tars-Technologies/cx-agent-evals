@@ -1,5 +1,12 @@
 # @tars-inc/eval-lib
 
+## 0.4.2
+
+### Patch Changes
+
+- 4922dd4: `QdrantVectorStore` now refuses HTTP redirects (`redirect: "error"`): fetch does not strip the `api-key` header on cross-origin redirects, so following one could leak it. Qdrant itself never redirects; a setup behind a redirecting proxy now fails fast with a descriptive error instead of leaking. Other providers are unchanged.
+- 786fde5: Type Qdrant wire bodies against the official `@qdrant/js-client-rest` OpenAPI schema. Type-only devDependency — the Qdrant client is never instantiated and the HTTP transport is unchanged; collection create bodies, filters, query requests, and response parsing are now schema-checked at compile time.
+
 ## 0.4.1
 
 ### Patch Changes
