@@ -407,9 +407,19 @@ describe("requestJSON", () => {
         body: {},
         redirect: "follow"
       })
+      await requestJSON({
+        url: "https://api.example.com/v1/test",
+        provider: "Test",
+        body: {},
+        redirect: "manual"
+      })
 
-      const [, init] = fetchSpy.mock.calls[0]
-      expect((init as RequestInit).redirect).toBe("follow")
+      expect((fetchSpy.mock.calls[0][1] as RequestInit).redirect).toBe(
+        "follow"
+      )
+      expect((fetchSpy.mock.calls[1][1] as RequestInit).redirect).toBe(
+        "manual"
+      )
     })
   })
 })
