@@ -27,8 +27,8 @@ export class TimeoutError extends Error {
  * Thrown when a request configured with `redirect: "error"` is answered with
  * a redirect. Kept distinct from a transient network error so the retry
  * policy can fail fast — the endpoint will redirect again on every retry —
- * and so the error carries the provider/URL context the raw fetch TypeError
- * ("fetch failed") lacks.
+ * and so the error carries the provider/URL/status context a raw fetch
+ * refusal ("fetch failed") lacks.
  */
 export class RedirectError extends Error {
   constructor(message: string) {
@@ -46,22 +46,12 @@ function isAbortError(err: unknown): boolean {
   )
 }
 
-/**
- * A refused redirect surfaces as a status-less TypeError (in Node/undici:
- * "fetch failed" with cause "unexpected redirect"), indistinguishable from a
- * transient network error by status alone. Only consulted when the request
- * opted into `redirect: "error"`; match by message on the error or its cause.
- */
-function isRedirectRefusal(err: unknown): boolean {
-  if (typeof err !== "object" || err === null) return false
-  const cause = (err as { cause?: unknown }).cause
-  const messages = [
-    (err as { message?: unknown }).message,
-    typeof cause === "object" && cause !== null
-      ? (cause as { message?: unknown }).message
-      : undefined
-  ]
-  return messages.some(m => typeof m === "string" && /redirect/i.test(m))
+/** Under redirect: "manual" a redirect arrives as a 3xx (Node) or an opaqueredirect (browsers). */
+function isRedirectResponse(response: Response): boolean {
+  return (
+    response.type === "opaqueredirect" ||
+    (response.status >= 300 && response.status < 400)
+  )
 }
 
 /** Default retry predicate: transient HTTP failures only (see isRetryableHttpStatus). */
@@ -105,10 +95,13 @@ export interface RequestJSONOptions {
   readonly timeoutMs?: number
 
   /**
-   * Redirect policy forwarded to fetch; defaults to the platform "follow".
-   * Pass "error" for endpoints that must never redirect: fetch strips
-   * `Authorization` on cross-origin redirects but preserves custom auth
-   * headers (e.g. `api-key`), which would otherwise follow the redirect.
+   * Redirect policy; defaults to the platform "follow". Pass "error" for
+   * endpoints that must never redirect: fetch strips `Authorization` on
+   * cross-origin redirects but preserves custom auth headers (e.g.
+   * `api-key`), which would otherwise follow the redirect. Enforced by
+   * issuing the request with `redirect: "manual"` and surfacing a redirect
+   * answer as a non-retryable {@link RedirectError} — deterministic, unlike
+   * the runtime's own refusal (a bare status-less TypeError).
    */
   readonly redirect?: "follow" | "error" | "manual"
 
@@ -169,8 +162,16 @@ export async function requestJSON<T>(options: RequestJSONOptions): Promise<T> {
           headers: { "Content-Type": "application/json", ...headers },
           body: body === undefined ? undefined : JSON.stringify(body),
           signal: controller?.signal,
-          redirect
+          redirect: redirect === "error" ? "manual" : redirect
         })
+
+        if (redirect === "error" && isRedirectResponse(response)) {
+          throw new RedirectError(
+            `${provider} request to ${url} was answered with a redirect` +
+              (response.status > 0 ? ` (HTTP ${response.status})` : "") +
+              "; refusing to follow it"
+          )
+        }
 
         if (!response.ok) {
           const text = await response.text()
@@ -184,14 +185,6 @@ export async function requestJSON<T>(options: RequestJSONOptions): Promise<T> {
         if (timedOut && isAbortError(err)) {
           throw new TimeoutError(
             `${provider} request timed out after ${timeoutMs}ms`
-          )
-        }
-        // Same for a refused redirect: deterministic, so fail fast — and with
-        // context, since the raw TypeError names neither provider nor URL.
-        if (redirect === "error" && isRedirectRefusal(err)) {
-          throw new RedirectError(
-            `${provider} request to ${url} was answered with a redirect; ` +
-              `refusing to follow it (redirect policy "error")`
           )
         }
         throw err

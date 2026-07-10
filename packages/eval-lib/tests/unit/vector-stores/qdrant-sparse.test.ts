@@ -133,6 +133,18 @@ describe("QdrantVectorStore (sparse / named hybrid)", () => {
     ).rejects.toThrow(/named "dense" vector size/i)
   })
 
+  it("rejects a primitive vectors shape with the designed refusal, not a TypeError", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        status: "ok",
+        result: { config: { params: { vectors: "corrupted" } } }
+      })
+    )
+    await expect(
+      store.add([chunk("c1")], [[1, 0, 0]], VALID_SCOPE)
+    ).rejects.toThrow(/named "dense" vector size/i)
+  })
+
   it("upserts dense + bm25 vectors atomically on one point", async () => {
     fetchMock
       .mockResolvedValueOnce(sparseCollectionInfo(3)) // GET collection

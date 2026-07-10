@@ -338,13 +338,16 @@ export class QdrantVectorStore implements VectorStore {
     // shape (size === undefined), so a store can never address a collection
     // built in the wrong shape.
     const size = this._sparse
-      ? vectors &&
+      ? typeof vectors === "object" &&
+        vectors !== null &&
         "dense" in vectors &&
         typeof vectors.dense === "object" &&
         vectors.dense !== null
         ? vectors.dense.size
         : undefined
-      : vectors && typeof vectors.size === "number"
+      : typeof vectors === "object" &&
+          vectors !== null &&
+          typeof vectors.size === "number"
         ? vectors.size
         : undefined
     if (size === undefined) {

@@ -69,16 +69,11 @@ describe("QdrantVectorStore", () => {
     await store.checkHealth()
 
     const [, init] = fetchMock.mock.calls[0]
-    expect((init as RequestInit).redirect).toBe("error")
+    expect((init as RequestInit).redirect).toBe("manual")
   })
 
-  it("surfaces a refused redirect as an immediate descriptive error (no retries)", async () => {
-    // Node/undici rejection shape when redirect: "error" meets a redirect.
-    const refusal = new TypeError("fetch failed")
-    ;(refusal as Error & { cause?: unknown }).cause = new Error(
-      "unexpected redirect"
-    )
-    fetchMock.mockRejectedValue(refusal)
+  it("surfaces a redirect answer as an immediate descriptive error (no retries)", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 308 }))
 
     const retryingStore = new QdrantVectorStore({
       url: "https://qdrant.example.com:6333",
@@ -89,7 +84,7 @@ describe("QdrantVectorStore", () => {
     })
     await expect(
       retryingStore.search([1, 0, 0], { k: 5, filter: { kbId: "kb1" } })
-    ).rejects.toThrow(/answered with a redirect/i)
+    ).rejects.toThrow(/answered with a redirect \(HTTP 308\)/i)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
