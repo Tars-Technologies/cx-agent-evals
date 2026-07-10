@@ -8,11 +8,12 @@ import {
 import { HttpError, requestJSON } from "../utils/fetch-json.js"
 import type { Bm25DocParams } from "./sparse/bm25-encoder.js"
 import { encodeDocument, encodeQuery } from "./sparse/bm25-encoder.js"
-import type {
-  VectorFilter,
-  VectorSearchOptions,
-  VectorSearchResult,
-  VectorStore
+import {
+  isRecord,
+  type VectorFilter,
+  type VectorSearchOptions,
+  type VectorSearchResult,
+  type VectorStore
 } from "./vector-store.interface.js"
 
 /**
@@ -337,18 +338,15 @@ export class QdrantVectorStore implements VectorStore {
     // unnamed dense store reads the top-level size. Each rejects the other's
     // shape (size === undefined), so a store can never address a collection
     // built in the wrong shape.
-    const size = this._sparse
-      ? typeof vectors === "object" &&
-        vectors !== null &&
-        "dense" in vectors &&
-        typeof vectors.dense === "object" &&
-        vectors.dense !== null
-        ? vectors.dense.size
+    const shape: unknown = vectors
+    const holder: unknown = this._sparse
+      ? isRecord(shape)
+        ? shape.dense
         : undefined
-      : typeof vectors === "object" &&
-          vectors !== null &&
-          typeof vectors.size === "number"
-        ? vectors.size
+      : shape
+    const size =
+      isRecord(holder) && typeof holder.size === "number"
+        ? holder.size
         : undefined
     if (size === undefined) {
       throw new Error(

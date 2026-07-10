@@ -46,11 +46,17 @@ function isAbortError(err: unknown): boolean {
   )
 }
 
-/** Under redirect: "manual" a redirect arrives as a 3xx (Node) or an opaqueredirect (browsers). */
+/**
+ * The statuses fetch treats as redirects — NOT the whole 3xx range: a 304
+ * Not Modified is a normal response and must reach the errorFactory path.
+ */
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
+
+/** Under redirect: "manual" a redirect arrives as its status (Node) or an opaqueredirect (browsers). */
 function isRedirectResponse(response: Response): boolean {
   return (
     response.type === "opaqueredirect" ||
-    (response.status >= 300 && response.status < 400)
+    REDIRECT_STATUSES.has(response.status)
   )
 }
 
@@ -101,9 +107,11 @@ export interface RequestJSONOptions {
    * `api-key`), which would otherwise follow the redirect. Enforced by
    * issuing the request with `redirect: "manual"` and surfacing a redirect
    * answer as a non-retryable {@link RedirectError} — deterministic, unlike
-   * the runtime's own refusal (a bare status-less TypeError).
+   * the runtime's own refusal (a bare status-less TypeError). Raw "manual"
+   * is not offered: requestJSON always consumes the response as JSON, so a
+   * caller could never handle the 3xx itself.
    */
-  readonly redirect?: "follow" | "error" | "manual"
+  readonly redirect?: "follow" | "error"
 
   /**
    * Build the error thrown on a non-2xx response. Defaults to an {@link HttpError}

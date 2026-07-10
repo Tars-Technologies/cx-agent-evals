@@ -398,7 +398,7 @@ describe("requestJSON", () => {
       expect(fetchSpy).toHaveBeenCalledTimes(2)
     })
 
-    it("passes explicit follow/manual policies through untouched", async () => {
+    it("passes an explicit follow policy through untouched", async () => {
       fetchSpy.mockResolvedValue(mockFetchResponse({ ok: true }))
 
       await requestJSON({
@@ -407,19 +407,23 @@ describe("requestJSON", () => {
         body: {},
         redirect: "follow"
       })
-      await requestJSON({
-        url: "https://api.example.com/v1/test",
-        provider: "Test",
-        body: {},
-        redirect: "manual"
-      })
 
-      expect((fetchSpy.mock.calls[0][1] as RequestInit).redirect).toBe(
-        "follow"
-      )
-      expect((fetchSpy.mock.calls[1][1] as RequestInit).redirect).toBe(
-        "manual"
-      )
+      const [, init] = fetchSpy.mock.calls[0]
+      expect((init as RequestInit).redirect).toBe("follow")
+    })
+
+    it("treats a 304 as an HTTP error, not a refused redirect", async () => {
+      fetchSpy.mockResolvedValue(mockFetchResponse("", 304, "Not Modified"))
+
+      await expect(
+        requestJSON({
+          url: "https://api.example.com/v1/test",
+          provider: "Test",
+          body: {},
+          redirect: "error",
+          retry: { maxRetries: 0 }
+        })
+      ).rejects.toThrow("Test API error: 304 Not Modified")
     })
   })
 })
