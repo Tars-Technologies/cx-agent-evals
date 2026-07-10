@@ -6,7 +6,7 @@ Next.js 16 app for visual question generation and result inspection. Dark theme,
 
 ```bash
 # From repo root
-pnpm install
+sfw pnpm install
 pnpm build          # Build the eval-lib first
 
 # Add OpenAI API key
