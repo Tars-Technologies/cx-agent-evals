@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { postJSON } from "../../../src/utils/fetch-json.js"
+import { postJSON, requestJSON } from "../../../src/utils/fetch-json.js"
 
 function mockFetchResponse(body: unknown, status = 200, statusText = "OK") {
   return {
@@ -119,6 +119,35 @@ describe("postJSON", () => {
     const [, init] = fetchSpy.mock.calls[0]
     expect((init as RequestInit).headers).toEqual({
       "Content-Type": "application/xml"
+    })
+  })
+
+  describe("redirect policy", () => {
+    it("forwards the redirect policy to fetch", async () => {
+      fetchSpy.mockResolvedValueOnce(mockFetchResponse({ ok: true }))
+
+      await requestJSON({
+        url: "https://api.example.com/v1/test",
+        provider: "Test",
+        body: {},
+        redirect: "error"
+      })
+
+      const [, init] = fetchSpy.mock.calls[0]
+      expect((init as RequestInit).redirect).toBe("error")
+    })
+
+    it("leaves the redirect policy unset by default (platform follow)", async () => {
+      fetchSpy.mockResolvedValueOnce(mockFetchResponse({ ok: true }))
+
+      await postJSON({
+        url: "https://api.example.com/v1/test",
+        provider: "Test",
+        body: {}
+      })
+
+      const [, init] = fetchSpy.mock.calls[0]
+      expect((init as RequestInit).redirect).toBeUndefined()
     })
   })
 

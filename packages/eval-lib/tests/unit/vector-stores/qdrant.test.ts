@@ -64,6 +64,14 @@ describe("QdrantVectorStore", () => {
     ).toThrow(/https/i)
   })
 
+  it("refuses to follow redirects so the api-key header cannot leak", async () => {
+    fetchMock.mockResolvedValueOnce(collectionInfo(3))
+    await store.checkHealth()
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect((init as RequestInit).redirect).toBe("error")
+  })
+
   it("derives a deterministic UUID-format point id from the scoped chunk identity", () => {
     const scope = {
       kbId: "kb1",

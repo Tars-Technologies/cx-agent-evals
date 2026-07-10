@@ -71,6 +71,14 @@ export interface RequestJSONOptions {
   readonly timeoutMs?: number
 
   /**
+   * Redirect policy forwarded to fetch; defaults to the platform "follow".
+   * Pass "error" for endpoints that must never redirect: fetch strips
+   * `Authorization` on cross-origin redirects but preserves custom auth
+   * headers (e.g. `api-key`), which would otherwise follow the redirect.
+   */
+  readonly redirect?: "follow" | "error" | "manual"
+
+  /**
    * Build the error thrown on a non-2xx response. Defaults to an {@link HttpError}
    * with a `${provider} API error: ...` message. Provide a custom factory to
    * throw a provider-specific subclass (e.g. for `instanceof` checks).
@@ -102,6 +110,7 @@ export async function requestJSON<T>(options: RequestJSONOptions): Promise<T> {
     provider,
     retry,
     timeoutMs,
+    redirect,
     errorFactory = (status, statusText, text) =>
       new HttpError(
         status,
@@ -125,7 +134,8 @@ export async function requestJSON<T>(options: RequestJSONOptions): Promise<T> {
           method,
           headers: { "Content-Type": "application/json", ...headers },
           body: body === undefined ? undefined : JSON.stringify(body),
-          signal: controller?.signal
+          signal: controller?.signal,
+          redirect
         })
 
         if (!response.ok) {

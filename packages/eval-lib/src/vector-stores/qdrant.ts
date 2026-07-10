@@ -170,6 +170,10 @@ export class QdrantVectorStore implements VectorStore {
       provider: "Qdrant",
       retry: retryOverride ?? this._cfg.retry,
       timeoutMs: this._cfg.timeoutMs ?? 30_000,
+      // Qdrant never redirects; refuse to follow one so the api-key header
+      // (which fetch does NOT strip on cross-origin redirects, unlike
+      // Authorization) cannot leak to a redirect target.
+      redirect: "error",
       errorFactory: (status, _statusText, text) =>
         new QdrantHttpError(status, text)
     })
