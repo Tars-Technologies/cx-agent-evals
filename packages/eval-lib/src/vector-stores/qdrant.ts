@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import type { Schemas } from "@qdrant/js-client-rest"
 import {
   DocumentId,
   type PositionAwareChunk,
@@ -108,9 +109,11 @@ interface QdrantPayload {
   documentId?: string
 }
 
-function buildQdrantFilter(filter?: VectorFilter): unknown {
+function buildQdrantFilter(
+  filter?: VectorFilter
+): Schemas["Filter"] | undefined {
   if (!filter) return undefined
-  const must: unknown[] = []
+  const must: Schemas["Condition"][] = []
   for (const key of ["kbId", "indexConfigHash", "documentId"] as const) {
     const value = filter[key]
     if (value !== undefined) must.push({ key, match: { value } })
@@ -177,7 +180,7 @@ export class QdrantVectorStore implements VectorStore {
    * defaults. Distance/size stay fixed (Cosine, configured dimension): both are
    * immutable in Qdrant, so they are not tunable knobs.
    */
-  private _createCollectionBody(): Record<string, unknown> {
+  private _createCollectionBody(): Schemas["CreateCollection"] {
     const tuning = this._cfg.tuning ?? {}
     const onDisk = tuning.onDisk ?? true
     const onDiskPayload = tuning.onDiskPayload ?? true
@@ -193,7 +196,7 @@ export class QdrantVectorStore implements VectorStore {
       })
     }
 
-    const body: Record<string, unknown> = {
+    const body: Schemas["CreateCollection"] = {
       vectors: {
         size: this._cfg.dimension,
         distance: "Cosine",
@@ -228,9 +231,9 @@ export class QdrantVectorStore implements VectorStore {
     onDiskPayload: boolean
     m: number
     payloadM: number
-  }): Record<string, unknown> {
+  }): Schemas["CreateCollection"] {
     const tuning = this._cfg.tuning ?? {}
-    const dense: Record<string, unknown> = {
+    const dense: Schemas["VectorParams"] = {
       size: this._cfg.dimension,
       distance: "Cosine",
       on_disk: opts.onDisk
@@ -321,13 +324,7 @@ export class QdrantVectorStore implements VectorStore {
     // No retry on this GET: withRetry retries every error, and a 404 here
     // is the expected "collection missing" signal, not a transient failure.
     const info = await this._request<{
-      result?: {
-        config?: {
-          params?: {
-            vectors?: { size?: number; dense?: { size?: number } }
-          }
-        }
-      }
+      result?: Schemas["CollectionInfo"]
     }>("GET", `/collections/${this._cfg.collection}`, undefined, {
       maxRetries: 0
     })
@@ -336,7 +333,13 @@ export class QdrantVectorStore implements VectorStore {
     // unnamed dense store reads the top-level size. Each rejects the other's
     // shape (size === undefined), so a store can never address a collection
     // built in the wrong shape.
-    const size = this._sparse ? vectors?.dense?.size : vectors?.size
+    const size = this._sparse
+      ? vectors && "dense" in vectors && typeof vectors.dense === "object"
+        ? vectors.dense.size
+        : undefined
+      : vectors && typeof vectors.size === "number"
+        ? vectors.size
+        : undefined
     if (size === undefined) {
       throw new Error(
         this._sparse
@@ -431,7 +434,7 @@ export class QdrantVectorStore implements VectorStore {
           "without a tenant scope; pass filter.kbId"
       )
     }
-    const body: Record<string, unknown> = {
+    const body: Schemas["QueryRequest"] = {
       query: [...queryEmbedding],
       limit: opts.k,
       with_payload: true
@@ -468,7 +471,7 @@ export class QdrantVectorStore implements VectorStore {
     // A query of only stopwords/punctuation has no terms; Qdrant rejects an
     // empty sparse query and there is nothing to match anyway.
     if (sparse.indices.length === 0) return []
-    const body: Record<string, unknown> = {
+    const body: Schemas["QueryRequest"] = {
       query: { indices: sparse.indices, values: sparse.values },
       using: "bm25",
       limit: opts.k,
@@ -481,10 +484,12 @@ export class QdrantVectorStore implements VectorStore {
 
   /** Issue a points/query, tolerating an unprovisioned collection (404 → []). */
   private async _queryPoints(
-    body: Record<string, unknown>
+    body: Schemas["QueryRequest"]
   ): Promise<VectorSearchResult[]> {
     let response: {
-      result?: { points?: Array<{ score: number; payload: QdrantPayload }> }
+      result?: {
+        points?: Array<Schemas["ScoredPoint"] & { payload: QdrantPayload }>
+      }
     }
     try {
       response = await this._request(
