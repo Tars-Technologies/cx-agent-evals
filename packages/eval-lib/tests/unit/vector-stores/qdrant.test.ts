@@ -64,6 +64,30 @@ describe("QdrantVectorStore", () => {
     ).toThrow(/https/i)
   })
 
+  it("refuses to follow redirects so the api-key header cannot leak", async () => {
+    fetchMock.mockResolvedValueOnce(collectionInfo(3))
+    await store.checkHealth()
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect((init as RequestInit).redirect).toBe("manual")
+  })
+
+  it("surfaces a redirect answer as an immediate descriptive error (no retries)", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 308 }))
+
+    const retryingStore = new QdrantVectorStore({
+      url: "https://qdrant.example.com:6333",
+      apiKey: "test-key",
+      collection: "kb_x_abcdef",
+      dimension: 3,
+      retry: { maxRetries: 3, backoffMs: 1 }
+    })
+    await expect(
+      retryingStore.search([1, 0, 0], { k: 5, filter: { kbId: "kb1" } })
+    ).rejects.toThrow(/answered with a redirect \(HTTP 308\)/i)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it("derives a deterministic UUID-format point id from the scoped chunk identity", () => {
     const scope = {
       kbId: "kb1",

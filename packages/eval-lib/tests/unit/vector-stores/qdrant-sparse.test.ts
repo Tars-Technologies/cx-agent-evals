@@ -121,6 +121,42 @@ describe("QdrantVectorStore (sparse / named hybrid)", () => {
     ).rejects.toThrow(/named "dense" vector size|refusing to use it/i)
   })
 
+  it("rejects a malformed dense: null shape with the designed refusal, not a TypeError", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        status: "ok",
+        result: { config: { params: { vectors: { dense: null } } } }
+      })
+    )
+    await expect(
+      store.add([chunk("c1")], [[1, 0, 0]], VALID_SCOPE)
+    ).rejects.toThrow(/named "dense" vector size/i)
+  })
+
+  it("rejects a primitive vectors shape with the designed refusal, not a TypeError", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        status: "ok",
+        result: { config: { params: { vectors: "corrupted" } } }
+      })
+    )
+    await expect(
+      store.add([chunk("c1")], [[1, 0, 0]], VALID_SCOPE)
+    ).rejects.toThrow(/named "dense" vector size/i)
+  })
+
+  it("rejects a non-numeric dense size with the designed refusal, not a false mismatch", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        status: "ok",
+        result: { config: { params: { vectors: { dense: { size: "3" } } } } }
+      })
+    )
+    await expect(
+      store.add([chunk("c1")], [[1, 0, 0]], VALID_SCOPE)
+    ).rejects.toThrow(/named "dense" vector size/i)
+  })
+
   it("upserts dense + bm25 vectors atomically on one point", async () => {
     fetchMock
       .mockResolvedValueOnce(sparseCollectionInfo(3)) // GET collection

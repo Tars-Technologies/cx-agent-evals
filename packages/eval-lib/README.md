@@ -15,18 +15,17 @@ Composable TypeScript building blocks for evaluating RAG retrieval pipelines and
 ## Install
 
 ```bash
-pnpm add @tars-inc/eval-lib@beta
+pnpm add @tars-inc/eval-lib
 ```
 
-Optional peer dependencies — install whichever providers you use:
+Optional dependencies — install whichever providers you use:
 
 ```bash
 pnpm add openai           # OpenAIEmbedder, OpenRouter embeddings, pipeline LLM client
 pnpm add @anthropic-ai/sdk  # Claude-based conversation classification
-pnpm add langsmith        # LangSmith dataset / experiment runner
 ```
 
-Cohere, Jina, and Voyage embedders/rerankers call the provider HTTP APIs directly, so they need no extra package, only the matching API key.
+LangSmith support ships with the library (`langsmith` is a regular dependency). Cohere, Jina, and Voyage embedders/rerankers call the provider HTTP APIs directly, so they need no extra package, only the matching API key.
 
 ## Quick start: span-based evaluation with a custom retriever
 
@@ -149,9 +148,11 @@ Provider-specific code lives in sub-paths so you only pay for what you import:
 | `@tars-inc/eval-lib/llm` | `createLLMClient`, `createEmbedder`, `getModel`, `DEFAULT_MODEL` (Node-only) |
 | `@tars-inc/eval-lib/langsmith` | `getLangSmithClient`, `uploadDataset`, `runLangSmithExperiment`, `createLangSmithEvaluator` (Node-only) |
 | `@tars-inc/eval-lib/utils` | Hashing, span helpers, retry, concurrency, cosine similarity |
+| `@tars-inc/eval-lib/utils/parent-swap` | `parentSwap` helper for child-to-parent chunk substitution, `ParentSwapOps` |
 | `@tars-inc/eval-lib/shared` | Constants and shared types (`JobStatus`, `SerializedSpan`, `ExperimentResult`) |
 | `@tars-inc/eval-lib/file-processing` | `processFile`, `htmlToMarkdown`, `pdfToMarkdown` |
 | `@tars-inc/eval-lib/scraper` | `makeScraper` / `makeParser` factories, `Scraper` / `Parser` interfaces, `ContentScraper`, `assertPublicHttpUrl`, callback signing helpers, `filterLinks`, `normalizeUrl` |
+| `@tars-inc/eval-lib/scraper/link-extractor` | `filterLinks`, `normalizeUrl` (standalone, without the scraper barrel) |
 | `@tars-inc/eval-lib/registry` | Component registries for embedders, rerankers, chunkers, strategies, presets |
 | `@tars-inc/eval-lib/data-analysis` | `parseTranscript`, `parseBotFlowInput`, `computeBasicStats`, `classifyMessageTypes`, `extractMicrotopics` |
 
