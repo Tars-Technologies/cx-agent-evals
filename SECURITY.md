@@ -34,3 +34,4 @@ Please report vulnerabilities against the latest code on the default branch unle
 ## Public Disclosure
 
 Please avoid public disclosure until the issue has been reviewed and a fix or mitigation plan has been prepared.
+

@@ -16,6 +16,10 @@ import {
   PositionAwareChunkId
 } from "../../../src/types/index.js"
 import { InMemoryVectorStore } from "../../../src/vector-stores/in-memory.js"
+import type {
+  VectorSearchResult,
+  VectorStore
+} from "../../../src/vector-stores/vector-store.interface.js"
 
 // ── Fixtures ──────────────────────────────────────────────────────────────
 
@@ -349,5 +353,113 @@ describe("StatelessQueryRetriever", () => {
     const out = await r.retrieve("alpha delta golf", 1)
     expect(out).toHaveLength(1)
     expect(out[0].content).toBeDefined()
+  })
+})
+
+// ── Sparse routing (stores that support searchSparse) ───────────────────────
+
+function result(c: PositionAwareChunk, score: number): VectorSearchResult {
+  return { chunk: c, score }
+}
+
+/** A store that advertises sparse support, with spied dense + sparse search. */
+function sparseStore(
+  denseResults: VectorSearchResult[],
+  sparseResults: VectorSearchResult[]
+) {
+  const search = vi.fn(async () => denseResults)
+  const searchSparse = vi.fn(async () => sparseResults)
+  const store = {
+    name: "fake-sparse",
+    supportsSparse: true,
+    search,
+    searchSparse,
+    add: vi.fn(async () => {}),
+    clear: vi.fn(async () => {})
+  } as unknown as VectorStore
+  return { store, search, searchSparse }
+}
+
+describe("StatelessQueryRetriever sparse routing", () => {
+  const FILTER = { kbId: "kb1", indexConfigHash: "h1" }
+
+  it("bm25: uses vectorStore.searchSparse and skips the MiniSearch corpus build", async () => {
+    const { store, searchSparse } = sparseStore(
+      [],
+      [result(CHUNKS[1], 0.8), result(CHUNKS[2], 0.5)]
+    )
+    const source = makeSource(CHUNKS)
+    const r = new StatelessQueryRetriever({
+      config: { name: "t", search: { strategy: "bm25" } },
+      vectorStore: store,
+      chunkSource: source,
+      embedder: fakeEmbedder,
+      filter: FILTER
+    })
+    const out = await r.retrieveScored("delta echo", 3)
+    expect(out.map((s) => String(s.chunk.id))).toEqual(["c2", "c3"])
+    expect(searchSparse).toHaveBeenCalledWith("delta echo", {
+      k: 3,
+      filter: FILTER
+    })
+    // The whole point of sparse: no per-query full-corpus pull.
+    expect(source.listChunks).not.toHaveBeenCalled()
+  })
+
+  it("bm25: falls back to MiniSearch when the store has no sparse support", async () => {
+    const source = makeSource(CHUNKS)
+    const r = new StatelessQueryRetriever({
+      config: { name: "t", search: { strategy: "bm25" } },
+      vectorStore: await seededStore(), // InMemory: supportsSparse === false
+      chunkSource: source,
+      embedder: fakeEmbedder,
+      filter: FILTER
+    })
+    const out = await r.retrieveScored("delta echo", 3)
+    expect(out.length).toBeGreaterThan(0)
+    // The fallback path builds the in-memory index from the corpus.
+    expect(source.listChunks).toHaveBeenCalledTimes(1)
+  })
+
+  it("bm25: ignores query-time k1/b (store owns BM25 weighting) instead of throwing", async () => {
+    const { store, searchSparse } = sparseStore([], [result(CHUNKS[1], 0.8)])
+    const source = makeSource(CHUNKS)
+    const r = new StatelessQueryRetriever({
+      config: { name: "t", search: { strategy: "bm25", k1: 1.5, b: 0.5 } },
+      vectorStore: store,
+      chunkSource: source,
+      embedder: fakeEmbedder,
+      filter: FILTER
+    })
+    const out = await r.retrieveScored("delta echo", 3)
+    expect(out.map((s) => String(s.chunk.id))).toEqual(["c2"])
+    expect(searchSparse).toHaveBeenCalledWith("delta echo", {
+      k: 3,
+      filter: FILTER
+    })
+    // Still no per-query corpus pull -- k1/b are simply dropped, not honored.
+    expect(source.listChunks).not.toHaveBeenCalled()
+  })
+
+  it("hybrid: fuses dense and searchSparse (both fed real scores)", async () => {
+    const { store, search, searchSparse } = sparseStore(
+      [result(CHUNKS[0], 0.9)],
+      [result(CHUNKS[1], 0.8)]
+    )
+    const source = makeSource(CHUNKS)
+    const r = new StatelessQueryRetriever({
+      config: { name: "t", search: { strategy: "hybrid" } },
+      vectorStore: store,
+      chunkSource: source,
+      embedder: fakeEmbedder,
+      filter: FILTER
+    })
+    const out = await r.retrieveScored("alpha bravo", 3)
+    const ids = out.map((s) => String(s.chunk.id))
+    expect(ids).toContain("c1")
+    expect(ids).toContain("c2")
+    expect(search).toHaveBeenCalledTimes(1)
+    expect(searchSparse).toHaveBeenCalledTimes(1)
+    expect(source.listChunks).not.toHaveBeenCalled()
   })
 })

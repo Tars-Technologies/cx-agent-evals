@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { postJSON } from "../../../src/utils/fetch-json.js"
+import { postJSON, requestJSON } from "../../../src/utils/fetch-json.js"
 
 function mockFetchResponse(body: unknown, status = 200, statusText = "OK") {
   return {
@@ -120,6 +120,19 @@ describe("postJSON", () => {
     expect((init as RequestInit).headers).toEqual({
       "Content-Type": "application/xml"
     })
+  })
+
+  it("leaves the redirect policy unset by default (platform follow)", async () => {
+    fetchSpy.mockResolvedValueOnce(mockFetchResponse({ ok: true }))
+
+    await postJSON({
+      url: "https://api.example.com/v1/test",
+      provider: "Test",
+      body: {}
+    })
+
+    const [, init] = fetchSpy.mock.calls[0]
+    expect((init as RequestInit).redirect).toBeUndefined()
   })
 
   describe("retry behaviour", () => {
@@ -277,6 +290,140 @@ describe("postJSON", () => {
 
       const [, init] = fetchSpy.mock.calls[0]
       expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal)
+    })
+  })
+})
+
+describe("requestJSON", () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, "fetch")
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  describe("redirect policy", () => {
+    it('issues redirect: "error" requests as manual so a redirect is surfaced, not followed', async () => {
+      fetchSpy.mockResolvedValueOnce(mockFetchResponse({ ok: true }))
+
+      await requestJSON({
+        url: "https://api.example.com/v1/test",
+        provider: "Test",
+        body: {},
+        redirect: "error"
+      })
+
+      const [, init] = fetchSpy.mock.calls[0]
+      expect((init as RequestInit).redirect).toBe("manual")
+    })
+
+    it("fails fast on a redirect answer with a descriptive error (no retries)", async () => {
+      fetchSpy.mockResolvedValue(
+        mockFetchResponse("", 308, "Permanent Redirect")
+      )
+
+      await expect(
+        requestJSON({
+          url: "https://api.example.com/v1/test",
+          provider: "Qdrant",
+          body: {},
+          redirect: "error",
+          retry: { maxRetries: 3, backoffMs: 1 }
+        })
+      ).rejects.toThrow(
+        "Qdrant request to https://api.example.com/v1/test was answered with a redirect (HTTP 308); refusing to follow it"
+      )
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('still retries genuine network errors when redirect is "error"', async () => {
+      fetchSpy
+        .mockRejectedValueOnce(new TypeError("fetch failed"))
+        .mockResolvedValueOnce(mockFetchResponse({ ok: true }))
+
+      const result = await requestJSON<{ ok: boolean }>({
+        url: "https://api.example.com/v1/test",
+        provider: "Test",
+        body: {},
+        redirect: "error",
+        retry: { maxRetries: 2, backoffMs: 1 }
+      })
+
+      expect(result).toEqual({ ok: true })
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+    })
+
+    it("does not misread network errors that merely mention a redirect", async () => {
+      // e.g. a DNS blip against a hostname containing "redirect"
+      const dnsBlip = new TypeError("fetch failed")
+      ;(dnsBlip as Error & { cause?: unknown }).cause = new Error(
+        "getaddrinfo ENOTFOUND qdrant-redirector.internal"
+      )
+      fetchSpy
+        .mockRejectedValueOnce(dnsBlip)
+        .mockResolvedValueOnce(mockFetchResponse({ ok: true }))
+
+      const result = await requestJSON<{ ok: boolean }>({
+        url: "https://qdrant-redirector.internal/v1/test",
+        provider: "Test",
+        body: {},
+        redirect: "error",
+        retry: { maxRetries: 2, backoffMs: 1 }
+      })
+
+      expect(result).toEqual({ ok: true })
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+    })
+
+    it('keeps retrying 5xx responses whose body mentions "redirect"', async () => {
+      fetchSpy
+        .mockResolvedValueOnce(
+          mockFetchResponse("too many redirects", 503, "Service Unavailable")
+        )
+        .mockResolvedValueOnce(mockFetchResponse({ ok: true }))
+
+      const result = await requestJSON<{ ok: boolean }>({
+        url: "https://api.example.com/v1/test",
+        provider: "Test",
+        body: {},
+        redirect: "error",
+        retry: { maxRetries: 2, backoffMs: 1 }
+      })
+
+      expect(result).toEqual({ ok: true })
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+    })
+
+    it("passes an explicit follow policy through untouched", async () => {
+      fetchSpy.mockResolvedValue(mockFetchResponse({ ok: true }))
+
+      await requestJSON({
+        url: "https://api.example.com/v1/test",
+        provider: "Test",
+        body: {},
+        redirect: "follow"
+      })
+
+      const [, init] = fetchSpy.mock.calls[0]
+      expect((init as RequestInit).redirect).toBe("follow")
+    })
+
+    it("treats a 304 as an HTTP error, not a refused redirect", async () => {
+      fetchSpy.mockResolvedValue(mockFetchResponse("", 304, "Not Modified"))
+
+      await expect(
+        requestJSON({
+          url: "https://api.example.com/v1/test",
+          provider: "Test",
+          body: {},
+          redirect: "error",
+          retry: { maxRetries: 0 }
+        })
+      ).rejects.toThrow("Test API error: 304 Not Modified")
     })
   })
 })

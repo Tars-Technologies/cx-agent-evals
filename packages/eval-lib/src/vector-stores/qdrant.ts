@@ -1,15 +1,19 @@
 import { createHash } from "node:crypto"
+import type { Schemas } from "@qdrant/js-client-rest"
 import {
   DocumentId,
   type PositionAwareChunk,
   PositionAwareChunkId
 } from "../types/index.js"
 import { HttpError, requestJSON } from "../utils/fetch-json.js"
-import type {
-  VectorFilter,
-  VectorSearchOptions,
-  VectorSearchResult,
-  VectorStore
+import type { Bm25DocParams } from "./sparse/bm25-encoder.js"
+import { encodeDocument, encodeQuery } from "./sparse/bm25-encoder.js"
+import {
+  isRecord,
+  type VectorFilter,
+  type VectorSearchOptions,
+  type VectorSearchResult,
+  type VectorStore
 } from "./vector-store.interface.js"
 
 /**
@@ -51,6 +55,22 @@ export interface QdrantVectorStoreConfig {
   readonly timeoutMs?: number
   /** Create-time collection tuning; defaults to a hardened multi-tenant config. */
   readonly tuning?: QdrantCollectionTuning
+  /**
+   * When true, the collection is a **named hybrid**: a `dense` vector plus a
+   * co-located `bm25` sparse vector (server-side IDF) on the same point, and
+   * `searchSparse` runs real keyword search. When false (default), the store
+   * keeps its historical **single unnamed dense** shape byte-for-byte and
+   * `searchSparse` no-ops to `[]`. The two collection shapes are incompatible,
+   * so this is fixed per collection at create time.
+   */
+  readonly sparse?: boolean
+  /**
+   * BM25 weighting baked into stored document sparse values (only consulted
+   * when `sparse` is true). Defaults match eval-lib's `BM25SearchIndex`
+   * (`k1 = 1.2`, `b = 0.75`), so a `k1`/`b` config means the same across the
+   * sparse vector and the in-memory MiniSearch fallback.
+   */
+  readonly bm25?: Bm25DocParams
 }
 
 export interface QdrantPointScope {
@@ -90,9 +110,11 @@ interface QdrantPayload {
   documentId?: string
 }
 
-function buildQdrantFilter(filter?: VectorFilter): unknown {
+function buildQdrantFilter(
+  filter?: VectorFilter
+): Schemas["Filter"] | undefined {
   if (!filter) return undefined
-  const must: unknown[] = []
+  const must: Schemas["Condition"][] = []
   for (const key of ["kbId", "indexConfigHash", "documentId"] as const) {
     const value = filter[key]
     if (value !== undefined) must.push({ key, match: { value } })
@@ -107,7 +129,11 @@ function buildQdrantFilter(filter?: VectorFilter): unknown {
  */
 export class QdrantVectorStore implements VectorStore {
   readonly name = "qdrant"
+  /** True only when built as a named hybrid (`sparse: true`). */
+  readonly supportsSparse: boolean
   private readonly _cfg: QdrantVectorStoreConfig
+  private readonly _sparse: boolean
+  private readonly _bm25: Bm25DocParams
   private _collectionEnsured = false
 
   constructor(config: QdrantVectorStoreConfig) {
@@ -121,6 +147,9 @@ export class QdrantVectorStore implements VectorStore {
       throw new Error("QdrantVectorStore: url must use HTTPS")
     }
     this._cfg = config
+    this._sparse = config.sparse ?? false
+    this.supportsSparse = this._sparse
+    this._bm25 = config.bm25 ?? {}
   }
 
   private async _request<T>(
@@ -142,6 +171,10 @@ export class QdrantVectorStore implements VectorStore {
       provider: "Qdrant",
       retry: retryOverride ?? this._cfg.retry,
       timeoutMs: this._cfg.timeoutMs ?? 30_000,
+      // Qdrant never redirects; refuse to follow one so the api-key header
+      // (which fetch does NOT strip on cross-origin redirects, unlike
+      // Authorization) cannot leak to a redirect target.
+      redirect: "error",
       errorFactory: (status, _statusText, text) =>
         new QdrantHttpError(status, text)
     })
@@ -152,14 +185,23 @@ export class QdrantVectorStore implements VectorStore {
    * defaults. Distance/size stay fixed (Cosine, configured dimension): both are
    * immutable in Qdrant, so they are not tunable knobs.
    */
-  private _createCollectionBody(): Record<string, unknown> {
+  private _createCollectionBody(): Schemas["CreateCollection"] {
     const tuning = this._cfg.tuning ?? {}
     const onDisk = tuning.onDisk ?? true
     const onDiskPayload = tuning.onDiskPayload ?? true
     const m = tuning.hnsw?.m ?? 0
     const payloadM = tuning.hnsw?.payloadM ?? 16
 
-    const body: Record<string, unknown> = {
+    if (this._sparse) {
+      return this._createSparseCollectionBody({
+        onDisk,
+        onDiskPayload,
+        m,
+        payloadM
+      })
+    }
+
+    const body: Schemas["CreateCollection"] = {
       vectors: {
         size: this._cfg.dimension,
         distance: "Cosine",
@@ -181,6 +223,44 @@ export class QdrantVectorStore implements VectorStore {
       }
     }
     return body
+  }
+
+  /**
+   * Named-hybrid create body: the dense vector moves under the `dense` key and
+   * a BM25 sparse vector is declared under `bm25` with server-side IDF. The
+   * dense vector keeps the same hardening (on-disk + scalar quantization) as the
+   * unnamed path; named vectors carry quantization per-vector.
+   */
+  private _createSparseCollectionBody(opts: {
+    onDisk: boolean
+    onDiskPayload: boolean
+    m: number
+    payloadM: number
+  }): Schemas["CreateCollection"] {
+    const tuning = this._cfg.tuning ?? {}
+    const dense: Schemas["VectorParams"] = {
+      size: this._cfg.dimension,
+      distance: "Cosine",
+      on_disk: opts.onDisk
+    }
+    if (tuning.quantization !== false) {
+      const quant = tuning.quantization ?? {}
+      dense.quantization_config = {
+        scalar: {
+          type: quant.type ?? "int8",
+          always_ram: quant.alwaysRam ?? true
+        }
+      }
+    }
+    return {
+      vectors: { dense },
+      // Keep the sparse index on disk too, matching the dense vector's hardening.
+      sparse_vectors: {
+        bm25: { modifier: "idf", index: { on_disk: opts.onDisk } }
+      },
+      on_disk_payload: opts.onDiskPayload,
+      hnsw_config: { m: opts.m, payload_m: opts.payloadM }
+    }
   }
 
   /** Create the collection if absent; throw on dimension mismatch. */
@@ -249,17 +329,30 @@ export class QdrantVectorStore implements VectorStore {
     // No retry on this GET: withRetry retries every error, and a 404 here
     // is the expected "collection missing" signal, not a transient failure.
     const info = await this._request<{
-      result?: { config?: { params?: { vectors?: { size?: number } } } }
+      result?: Schemas["CollectionInfo"]
     }>("GET", `/collections/${this._cfg.collection}`, undefined, {
       maxRetries: 0
     })
-    const size = info.result?.config?.params?.vectors?.size
+    const vectors = info.result?.config?.params?.vectors
+    // Sparse stores read the dimension from the named `dense` vector; the
+    // unnamed dense store reads the top-level size. Each rejects the other's
+    // shape (size === undefined), so a store can never address a collection
+    // built in the wrong shape.
+    const shape: unknown = vectors
+    const holder: unknown = this._sparse
+      ? isRecord(shape)
+        ? shape.dense
+        : undefined
+      : shape
+    const size =
+      isRecord(holder) && typeof holder.size === "number"
+        ? holder.size
+        : undefined
     if (size === undefined) {
-      // No top-level vector size means an incompatible shape (e.g. named
-      // vectors). This store only creates/uses single-vector collections, so
-      // fail closed rather than upserting into a collection we can't address.
       throw new Error(
-        `Qdrant collection "${this._cfg.collection}" reported no vector size (unexpected shape, e.g. named vectors); refusing to use it`
+        this._sparse
+          ? `Qdrant collection "${this._cfg.collection}" reported no named "dense" vector size (expected a sparse/named-hybrid collection); refusing to use it`
+          : `Qdrant collection "${this._cfg.collection}" reported no vector size (unexpected shape, e.g. named vectors); refusing to use it`
       )
     }
     if (size !== this._cfg.dimension) {
@@ -296,14 +389,13 @@ export class QdrantVectorStore implements VectorStore {
       )
     }
     await this.ensureCollection()
-    const points = chunks.map((chunk, i) => ({
-      id: qdrantPointId(String(chunk.id), {
+    const points = chunks.map((chunk, i) => {
+      const id = qdrantPointId(String(chunk.id), {
         kbId,
         indexConfigHash,
         documentId
-      }),
-      vector: embeddings[i],
-      payload: {
+      })
+      const payload = {
         chunkId: String(chunk.id),
         content: chunk.content,
         docId: String(chunk.docId),
@@ -314,7 +406,21 @@ export class QdrantVectorStore implements VectorStore {
         indexConfigHash,
         documentId
       } satisfies QdrantPayload
-    }))
+      if (this._sparse) {
+        // Named hybrid: dense + a BM25 sparse vector encoded from the chunk text
+        // are upserted on the same point, so they can never drift apart.
+        const sparse = encodeDocument(chunk.content, this._bm25)
+        return {
+          id,
+          vector: {
+            dense: embeddings[i],
+            bm25: { indices: sparse.indices, values: sparse.values }
+          },
+          payload
+        }
+      }
+      return { id, vector: embeddings[i], payload }
+    })
     await this._request(
       "PUT",
       `/collections/${this._cfg.collection}/points?wait=true`,
@@ -336,15 +442,62 @@ export class QdrantVectorStore implements VectorStore {
           "without a tenant scope; pass filter.kbId"
       )
     }
-    const body: Record<string, unknown> = {
+    const body: Schemas["QueryRequest"] = {
       query: [...queryEmbedding],
+      limit: opts.k,
+      with_payload: true
+    }
+    // Named-hybrid collections require the vector name; unnamed collections must
+    // not send `using` (there is no named vector to target).
+    if (this._sparse) body.using = "dense"
+    const filter = buildQdrantFilter(opts.filter)
+    if (filter) body.filter = filter
+    return this._queryPoints(body)
+  }
+
+  /**
+   * Keyword search over the co-located BM25 sparse vector. No-ops to `[]` on an
+   * unnamed-dense store (no sparse vector exists). Encodes the query with the
+   * same tokenizer/hash used at `add` time and runs Qdrant's sparse Query API
+   * (`using: "bm25"`), with IDF applied server-side via the collection's
+   * `modifier: "idf"`.
+   */
+  async searchSparse(
+    query: string,
+    opts: VectorSearchOptions
+  ): Promise<VectorSearchResult[]> {
+    if (!this._sparse) return []
+    // Symmetric with search()/add(): every read on the shared collection must be
+    // tenant-scoped, or it would query across co-tenants.
+    if (!opts.filter?.kbId) {
+      throw new Error(
+        "QdrantVectorStore.searchSparse: refusing to query the shared collection " +
+          "without a tenant scope; pass filter.kbId"
+      )
+    }
+    const sparse = encodeQuery(query)
+    // A query of only stopwords/punctuation has no terms; Qdrant rejects an
+    // empty sparse query and there is nothing to match anyway.
+    if (sparse.indices.length === 0) return []
+    const body: Schemas["QueryRequest"] = {
+      query: { indices: sparse.indices, values: sparse.values },
+      using: "bm25",
       limit: opts.k,
       with_payload: true
     }
     const filter = buildQdrantFilter(opts.filter)
     if (filter) body.filter = filter
+    return this._queryPoints(body)
+  }
+
+  /** Issue a points/query, tolerating an unprovisioned collection (404 → []). */
+  private async _queryPoints(
+    body: Schemas["QueryRequest"]
+  ): Promise<VectorSearchResult[]> {
     let response: {
-      result?: { points?: Array<{ score: number; payload: QdrantPayload }> }
+      result?: {
+        points?: Array<Schemas["ScoredPoint"] & { payload: QdrantPayload }>
+      }
     }
     try {
       response = await this._request(

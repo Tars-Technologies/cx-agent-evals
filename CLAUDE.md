@@ -148,7 +148,7 @@ Backend changes in `packages/backend/convex/` are automatically picked up by `pn
 
 First-time setup:
 ```bash
-pnpm install          # Run at repo root — links all workspace packages
+sfw pnpm install      # Run at repo root — links all workspace packages
 pnpm build            # Build the eval-lib so frontend and backend can resolve imports
 cp packages/frontend/.env.example packages/frontend/.env  # Then fill in values
 pnpm dev:backend      # First run: creates Convex project, deploys schema

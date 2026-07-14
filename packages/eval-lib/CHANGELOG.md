@@ -1,5 +1,26 @@
 # @tars-inc/eval-lib
 
+## 0.4.2
+
+### Patch Changes
+
+- 4922dd4: `QdrantVectorStore` now refuses HTTP redirects (`redirect: "error"`): fetch does not strip the `api-key` header on cross-origin redirects, so following one could leak it. Qdrant itself never redirects; a setup behind a redirecting proxy now fails fast with a descriptive error instead of leaking. Other providers are unchanged.
+- 786fde5: Type Qdrant wire bodies against the official `@qdrant/js-client-rest` OpenAPI schema. Type-only devDependency — the Qdrant client is never instantiated and the HTTP transport is unchanged; collection create bodies, filters, query requests, and response parsing are now schema-checked at compile time.
+
+## 0.4.1
+
+### Patch Changes
+
+- 42f7190: Bump optional dependency `@anthropic-ai/sdk` from `^0.82.0` to `^0.91.1`.
+
+## 0.4.0
+
+### Minor Changes
+
+- a74bb78: Add sparse (BM25) vector search to `VectorStore`. The interface gains a `supportsSparse` flag and a `searchSparse(query, opts)` method, backed by a new BM25 sparse encoder (hashed uint32 indices, doc-side `k1`/`b` values, server-side IDF). The Qdrant adapter gains a `sparse` option that builds a named-hybrid collection (`dense` + `bm25`) and serves keyword/hybrid search server-side; `sparse:false` (default) keeps the existing unnamed-dense behavior unchanged. The stateless retriever routes `bm25`/`hybrid` to `searchSparse` when the store supports it, otherwise falls back to the in-memory MiniSearch path.
+
+  Bump `langsmith` to `^0.6.0` to clear a vulnerability in `<0.6.0`.
+
 ## 0.3.0
 
 ### Minor Changes

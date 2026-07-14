@@ -23,6 +23,20 @@ export class TimeoutError extends Error {
   }
 }
 
+/**
+ * Thrown when a request configured with `redirect: "error"` is answered with
+ * a redirect. Kept distinct from a transient network error so the retry
+ * policy can fail fast — the endpoint will redirect again on every retry —
+ * and so the error carries the provider/URL/status context a raw fetch
+ * refusal ("fetch failed") lacks.
+ */
+export class RedirectError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "RedirectError"
+  }
+}
+
 /** AbortError is a DOMException, not necessarily an Error subclass; match by name. */
 function isAbortError(err: unknown): boolean {
   return (
@@ -32,10 +46,26 @@ function isAbortError(err: unknown): boolean {
   )
 }
 
+/**
+ * The statuses fetch treats as redirects — NOT the whole 3xx range: a 304
+ * Not Modified is a normal response and must reach the errorFactory path.
+ */
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
+
+/** Under redirect: "manual" a redirect arrives as its status (Node) or an opaqueredirect (browsers). */
+function isRedirectResponse(response: Response): boolean {
+  return (
+    response.type === "opaqueredirect" ||
+    REDIRECT_STATUSES.has(response.status)
+  )
+}
+
 /** Default retry predicate: transient HTTP failures only (see isRetryableHttpStatus). */
 function defaultShouldRetry(error: unknown): boolean {
   // A self-induced timeout will only time out again on retry; fail fast.
   if (error instanceof TimeoutError) return false
+  // A refused redirect is deterministic; retrying refuses it again.
+  if (error instanceof RedirectError) return false
   return isRetryableHttpStatus(
     error instanceof HttpError ? error.status : undefined
   )
@@ -71,6 +101,19 @@ export interface RequestJSONOptions {
   readonly timeoutMs?: number
 
   /**
+   * Redirect policy; defaults to the platform "follow". Pass "error" for
+   * endpoints that must never redirect: fetch strips `Authorization` on
+   * cross-origin redirects but preserves custom auth headers (e.g.
+   * `api-key`), which would otherwise follow the redirect. Enforced by
+   * issuing the request with `redirect: "manual"` and surfacing a redirect
+   * answer as a non-retryable {@link RedirectError} — deterministic, unlike
+   * the runtime's own refusal (a bare status-less TypeError). Raw "manual"
+   * is not offered: requestJSON always consumes the response as JSON, so a
+   * caller could never handle the 3xx itself.
+   */
+  readonly redirect?: "follow" | "error"
+
+  /**
    * Build the error thrown on a non-2xx response. Defaults to an {@link HttpError}
    * with a `${provider} API error: ...` message. Provide a custom factory to
    * throw a provider-specific subclass (e.g. for `instanceof` checks).
@@ -102,6 +145,7 @@ export async function requestJSON<T>(options: RequestJSONOptions): Promise<T> {
     provider,
     retry,
     timeoutMs,
+    redirect,
     errorFactory = (status, statusText, text) =>
       new HttpError(
         status,
@@ -125,8 +169,17 @@ export async function requestJSON<T>(options: RequestJSONOptions): Promise<T> {
           method,
           headers: { "Content-Type": "application/json", ...headers },
           body: body === undefined ? undefined : JSON.stringify(body),
-          signal: controller?.signal
+          signal: controller?.signal,
+          redirect: redirect === "error" ? "manual" : redirect
         })
+
+        if (redirect === "error" && isRedirectResponse(response)) {
+          throw new RedirectError(
+            `${provider} request to ${url} was answered with a redirect` +
+              (response.status > 0 ? ` (HTTP ${response.status})` : "") +
+              "; refusing to follow it"
+          )
+        }
 
         if (!response.ok) {
           const text = await response.text()

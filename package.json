@@ -1,8 +1,9 @@
 {
   "name": "cx-agent-evals",
   "private": true,
-  "packageManager": "pnpm@10.6.5",
+  "packageManager": "pnpm@11.10.0",
   "scripts": {
+    "install:secure": "sfw pnpm install",
     "build": "pnpm -C packages/eval-lib build",
     "dev": "pnpm -C packages/frontend dev",
     "dev:backend": "pnpm -C packages/backend dev",
@@ -12,12 +13,13 @@
     "typecheck": "pnpm -C packages/eval-lib typecheck",
     "typecheck:backend": "pnpm -C packages/backend typecheck",
     "kb:port-check": "bash scripts/kb-port-check.sh",
+    "deps:audit": "pnpm audit --audit-level high",
     "lint": "biome check .",
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@clerk/themes": "^2.4.52",
-    "next": "16.1.6"
+    "@clerk/themes": "^2.4.62",
+    "next": "16.2.6"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.10",

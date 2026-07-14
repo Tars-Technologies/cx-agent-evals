@@ -42,6 +42,58 @@ describe("CallbackVectorStore", () => {
     expect(await withHealth.checkHealth()).toBe(false)
   })
 
+  it("is dense-only by default: supportsSparse false, searchSparse no-ops", async () => {
+    const store = new CallbackVectorStore({ name: "t", search: async () => [] })
+    expect(store.supportsSparse).toBe(false)
+    expect(
+      await store.searchSparse("q", { k: 5, filter: { kbId: "kb1" } })
+    ).toEqual([])
+  })
+
+  it("advertises sparse support and delegates searchSparse when supplied", async () => {
+    const searchSparse = vi
+      .fn()
+      .mockResolvedValue([{ chunk: { id: "c1" }, score: 1 }])
+    const store = new CallbackVectorStore({
+      name: "t",
+      search: async () => [],
+      searchSparse
+    })
+    expect(store.supportsSparse).toBe(true)
+    const out = await store.searchSparse("q", { k: 3, filter: { kbId: "kb1" } })
+    expect(searchSparse).toHaveBeenCalledWith("q", {
+      k: 3,
+      filter: { kbId: "kb1" }
+    })
+    expect(out).toHaveLength(1)
+  })
+
+  it("supportsSparse forced false: searchSparse no-ops even with a callback", async () => {
+    const searchSparse = vi.fn().mockResolvedValue([])
+    const store = new CallbackVectorStore({
+      name: "t",
+      search: async () => [],
+      searchSparse,
+      supportsSparse: false
+    })
+    expect(store.supportsSparse).toBe(false)
+    expect(
+      await store.searchSparse("q", { k: 3, filter: { kbId: "kb1" } })
+    ).toEqual([])
+    expect(searchSparse).not.toHaveBeenCalled()
+  })
+
+  it("throws when supportsSparse is forced true without a searchSparse callback", () => {
+    expect(
+      () =>
+        new CallbackVectorStore({
+          name: "t",
+          search: async () => [],
+          supportsSparse: true
+        })
+    ).toThrow(/supportsSparse=true without a searchSparse callback/)
+  })
+
   it("delegates delete callbacks", async () => {
     const deleteByDocument = vi.fn().mockResolvedValue(undefined)
     const store = new CallbackVectorStore({
