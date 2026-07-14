@@ -35,17 +35,61 @@ export const runEvaluation = internalAction({
       (m: any) => m.role === "user" || m.role === "assistant"
     )
     const toolCallMsgs = messages.filter((m: any) => m.role === "tool_call")
+    const toolResultMsgs = messages.filter((m: any) => m.role === "tool_result")
+
+    // Image menu = union of every image retrieval offered, recovered from the
+    // persisted tool_result rows (result is JSON.stringify({ chunks, images })).
+    // Parse defensively: a malformed/renamed payload yields no menu, never throws.
+    const menuMap = new Map<
+      string,
+      { imageId: string; alt: string; type?: string }
+    >()
+    for (const m of toolResultMsgs) {
+      const raw = m.toolResult?.result
+      if (!raw) continue
+      try {
+        const parsed = JSON.parse(raw)
+        const imgs = Array.isArray(parsed?.images) ? parsed.images : []
+        for (const im of imgs) {
+          if (im && typeof im.imageId === "string" && !menuMap.has(im.imageId)) {
+            menuMap.set(im.imageId, {
+              imageId: im.imageId,
+              alt: String(im.alt ?? ""),
+              type: im.type
+            })
+          }
+        }
+      } catch {
+        // malformed tool result — skip, contributes nothing to the menu
+      }
+    }
+    const imageMenu = [...menuMap.values()]
+
+    // Images the agent actually rendered, unioned across assistant turns.
+    const shownMap = new Map<
+      string,
+      { imageId: string; url: string; alt: string }
+    >()
+    for (const m of userAssistantMsgs) {
+      if (m.role !== "assistant" || !Array.isArray(m.shownImages)) continue
+      for (const s of m.shownImages) {
+        if (!shownMap.has(s.imageId)) shownMap.set(s.imageId, s)
+      }
+    }
+    const shownImagesAll = [...shownMap.values()]
 
     const evalInput: EvalInput = {
       messages: userAssistantMsgs.map((m: any) => ({
         role: m.role,
-        content: m.content
+        content: m.content,
+        shownImages: m.shownImages
       })),
       toolCalls: toolCallMsgs.map((m: any) => ({
         toolName: m.toolCall?.toolName ?? "",
         args: JSON.parse(m.toolCall?.toolArgs ?? "{}"),
         result: ""
-      }))
+      })),
+      imageMenu
     }
 
     const transcript = userAssistantMsgs
@@ -62,7 +106,6 @@ export const runEvaluation = internalAction({
             .join("\n")
         : undefined
 
-    const toolResultMsgs = messages.filter((m: any) => m.role === "tool_result")
     const kbDocs =
       toolResultMsgs.map((m: any) => m.content).join("\n===\n") || undefined
 
@@ -103,9 +146,24 @@ export const runEvaluation = internalAction({
         const judgeContext: JudgeContext = {
           transcript,
           toolCalls: toolCallsStr,
-          kbDocuments: kbDocs
+          kbDocuments: kbDocs,
+          shownImages: shownImagesAll,
+          imageMenu
         }
-        result = await runLLMJudge(judgeConfig, judgeContext)
+        // A vision judge over a run that surfaced no images has nothing to
+        // grade — neutral pass without spending an LLM call.
+        if (
+          judgeConfig.inputContext.includes("shown_images") &&
+          shownImagesAll.length === 0 &&
+          imageMenu.length === 0
+        ) {
+          result = {
+            passed: true,
+            justification: "No images surfaced in this run"
+          }
+        } else {
+          result = await runLLMJudge(judgeConfig, judgeContext)
+        }
       } else {
         result = {
           passed: false,

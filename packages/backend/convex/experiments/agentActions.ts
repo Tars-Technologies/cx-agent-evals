@@ -22,7 +22,7 @@ import {
   isVisionCapable,
   MENU_IMAGE_CAP,
   whitelistImageMarkdown
-} from "../lib/visionShared"
+} from "@tars-inc/eval-lib/multimodal"
 
 // ─── Helpers ───
 

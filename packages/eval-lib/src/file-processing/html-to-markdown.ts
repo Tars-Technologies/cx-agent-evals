@@ -47,6 +47,42 @@ function hostOf(u: string): string {
   }
 }
 
+// Render size below which an <img> is treated as a non-content icon/spacer.
+const MIN_CONTENT_IMG_PX = 100
+// class/id tokens that conventionally name decorative chrome images.
+const DECORATIVE_CLASS_RE =
+  /\b(icons?|logos?|avatars?|emojis?|badges?|sprites?|pictograms?|favicons?)\b/i
+
+// Read a pixel dimension attribute ("120", "120px") → number, or null if absent
+// or non-numeric (e.g. width="100%", which is not a decorative signal).
+function pxAttr(el: any, name: string): number | null {
+  const raw = el.getAttribute?.(name)
+  if (!raw) return null
+  const n = Number(String(raw).replace(/px$/i, "").trim())
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * Decisive HTML-layer decorative test for an <img>. Fires only on strong
+ * signals so genuine content images (which carry none of these) survive:
+ * author-declared presentation, decorative class/id naming, an explicitly small
+ * render size, or a 1x1 tracking pixel.
+ */
+function isDecorativeImgElement(img: any): boolean {
+  if ((img.getAttribute?.("aria-hidden") || "").toLowerCase() === "true")
+    return true
+  if ((img.getAttribute?.("role") || "").toLowerCase() === "presentation")
+    return true
+  const naming = `${img.getAttribute?.("class") || ""} ${img.getAttribute?.("id") || ""}`
+  if (DECORATIVE_CLASS_RE.test(naming)) return true
+  const w = pxAttr(img, "width")
+  const h = pxAttr(img, "height")
+  if (w === 1 && h === 1) return true // tracking pixel
+  if (w !== null && w > 0 && w < MIN_CONTENT_IMG_PX) return true
+  if (h !== null && h > 0 && h < MIN_CONTENT_IMG_PX) return true
+  return false
+}
+
 export async function htmlToMarkdown(
   html: string,
   options?: HtmlToMarkdownOptions
@@ -73,6 +109,13 @@ export async function htmlToMarkdown(
       for (const el of elements) {
         el.remove()
       }
+    }
+    // Drop decorative <img> chrome (icons/logos/spacers/tracking pixels) before
+    // conversion, using DOM signals turndown would otherwise discard (class,
+    // role, aria-hidden, width/height attrs). Only decisive signals fire, so
+    // real content images — which carry none of these — are left untouched.
+    for (const img of doc.querySelectorAll("img")) {
+      if (isDecorativeImgElement(img)) img.remove()
     }
   }
 

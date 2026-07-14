@@ -10,7 +10,7 @@ import { v } from "convex/values"
 import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
 import { imageIdFor, isLikelyDecorativeImage } from "../lib/vision"
-import { buildImageEmbeddingInput } from "../lib/visionShared"
+import { buildImageEmbeddingInput } from "@tars-inc/eval-lib/multimodal"
 
 /**
  * Document-level media processing (E1–E9). Reads the finalized document content

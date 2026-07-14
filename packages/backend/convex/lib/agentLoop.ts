@@ -9,7 +9,11 @@ import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
 import { vectorSearchWithFilter } from "./vectorSearch"
 import { buildGetImagesTool, resolveAnswerImageMarkers } from "./vision"
-import { MENU_IMAGE_CAP, whitelistImageMarkdown } from "./visionShared"
+import {
+  MENU_IMAGE_CAP,
+  parseRenderedMediaIds,
+  whitelistImageMarkdown
+} from "@tars-inc/eval-lib/multimodal"
 
 // === Shared types ===
 
@@ -169,13 +173,6 @@ export async function runAgentLoop(
     )
   }
 
-  const shownImages = () =>
-    Array.from(resolvedImages.entries()).map(([imageId, v]) => ({
-      imageId,
-      url: v.url,
-      alt: v.alt
-    }))
-
   try {
     const hasTools = Object.keys(tools).length > 0
     const result = await generateText({
@@ -233,6 +230,15 @@ export async function runAgentLoop(
             resolvedImages
           )
         : new Map<string, { url: string; alt: string }>()
+
+    // shownImages = media the model actually rendered (marker present in the
+    // answer AND resolving to a real target) — captured BEFORE whitelisting
+    // rewrites markers to URLs. This includes images cited inline from chunk
+    // text, not just get_images fetches, so evaluation sees what the user sees.
+    const shown = parseRenderedMediaIds(finalText)
+      .filter((id) => resolved.has(id))
+      .map((id) => ({ imageId: id, ...resolved.get(id)! }))
+
     finalText = whitelistImageMarkdown(finalText, resolved)
 
     return {
@@ -243,7 +249,7 @@ export async function runAgentLoop(
       // failed). A normal "agent finished its turn with text" must NOT mark
       // the conversation as done — the user-sim drives termination.
       done: !finalText || finalText.trim().length === 0,
-      shownImages: shownImages()
+      shownImages: shown
     }
   } catch (err: any) {
     return {
@@ -252,7 +258,7 @@ export async function runAgentLoop(
       usage: { promptTokens: 0, completionTokens: 0 },
       done: false,
       error: err.message ?? String(err),
-      shownImages: shownImages()
+      shownImages: []
     }
   }
 }

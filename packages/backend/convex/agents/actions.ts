@@ -14,7 +14,7 @@ import {
   isVisionCapable,
   resolveAnswerImageMarkers
 } from "../lib/vision"
-import { MENU_IMAGE_CAP, whitelistImageMarkdown } from "../lib/visionShared"
+import { MENU_IMAGE_CAP, whitelistImageMarkdown } from "@tars-inc/eval-lib/multimodal"
 import { composeSystemPrompt } from "./promptTemplate"
 
 // Helper: convert stored messages to AI SDK format

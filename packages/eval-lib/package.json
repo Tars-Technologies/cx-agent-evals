@@ -111,6 +111,10 @@
     "./data-analysis": {
       "types": "./dist/data-analysis/index.d.ts",
       "import": "./dist/data-analysis/index.js"
+    },
+    "./multimodal": {
+      "types": "./dist/multimodal/index.d.ts",
+      "import": "./dist/multimodal/index.js"
     }
   },
   "files": [

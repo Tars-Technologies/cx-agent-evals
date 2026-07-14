@@ -1,13 +1,14 @@
 /**
- * Pure vision helpers — no Node-only deps, importable from mutations, queries,
- * the pure promptTemplate, and tests. The node-only pieces (imageIdFor,
- * buildGetImagesTool) live in `vision.ts`, which re-exports everything here.
+ * Pure multimodal media-retrieval helpers — no Node-only deps, safe to import
+ * from anywhere (backend mutations/queries, prompt templates, tests). The
+ * node-only / Convex-coupled pieces (imageIdFor, buildGetImagesTool, etc.) live
+ * in the consuming backend, not here.
  */
 
 import {
   rewriteMarkdownImages,
   type MarkdownImage
-} from "@tars-inc/eval-lib/file-processing/markdown-images"
+} from "../file-processing/markdown-images.js"
 
 export const MAX_IMAGES_PER_TURN = 4
 export const MENU_IMAGE_CAP = 6
@@ -334,6 +335,30 @@ export function rankDocImagesForQuery(
     out.push({ imageId: c.imageId, alt: c.alt, type: c.type ?? "image" })
   }
   return out
+}
+
+// Matches media markers referencing a KB media id, in either image form
+// `![alt](img_..)` or plain-link form `[text](doc_..)` (the leading `!` is
+// optional). Kept in sync with the backend vision.ts's private IMG_MARKER_RE —
+// this pure copy lets non-node callers (evaluation, agentLoop) parse markers too.
+const MEDIA_MARKER_RE = /!?\[[^\]]*\]\(((?:img|vid|doc)_[0-9a-f]+)\)/g
+
+/**
+ * Return the KB media ids referenced by markers actually written in `text`
+ * (before finalize rewrites them to real URLs). Order-preserving, de-duplicated.
+ * "Rendered" = the model wrote the marker, i.e. the user will see this media —
+ * as opposed to media it merely fetched via get_images but chose not to embed.
+ */
+export function parseRenderedMediaIds(text: string): string[] {
+  const ids: string[] = []
+  const seen = new Set<string>()
+  for (const m of text.matchAll(MEDIA_MARKER_RE)) {
+    if (!seen.has(m[1])) {
+      seen.add(m[1])
+      ids.push(m[1])
+    }
+  }
+  return ids
 }
 
 // Matches a markdown link `[text](target)` that is NOT an image (`![...]`).

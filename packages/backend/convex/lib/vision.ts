@@ -8,10 +8,12 @@ import { z } from "zod"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import type { ActionCtx } from "../_generated/server"
-import { MAX_IMAGES_PER_TURN } from "./visionShared"
+import { MAX_IMAGES_PER_TURN } from "@tars-inc/eval-lib/multimodal"
 
-// Re-export pure helpers so action files can import everything from one module.
-export * from "./visionShared"
+// Re-export the pure helpers so action files can import everything from one
+// module. They now live in @tars-inc/eval-lib/multimodal (moved out of the old
+// local visionShared.ts); the node-only pieces below stay here.
+export * from "@tars-inc/eval-lib/multimodal"
 
 /**
  * Deterministic image ID: stable across re-index so saved answers keep
@@ -41,19 +43,46 @@ const MIN_IMAGE_WIDTH_PX = 100
 // Common decorative/chrome image filenames (MediaWiki + general web). Matched
 // case-insensitively against the URL; these are never answer-relevant content.
 const DECORATIVE_NAME_RE =
-  /(_pog\.|red_pog|green_pog|blue_pog|location_dot|disambig|commons-logo|wiktionary|wikidata|wikisource|wikiquote|wikinews|ooui_|oojs_|ambox|question_book|edit-icon|magnify-clip|cscr-featured|featured_article|sound-icon|speakerlink|symbol_|wiki_letter|increase2|decrease2|steady2|padlock|spoken_)/i
+  /(_pog\.|red_pog|green_pog|blue_pog|location_dot|disambig|commons-logo|wiktionary|wikidata|wikisource|wikiquote|wikinews|ooui_|oojs_|ambox|question_book|edit-icon|magnify-clip|cscr-featured|featured_article|sound-icon|speakerlink|symbol_|wiki_letter|increase2|decrease2|steady2|padlock|spoken_|favicon|sprite|spacer|placeholder|1x1|pixel\.)/i
+
+// Path segments that conventionally hold non-content chrome (icons/logos/etc).
+// Deliberately EXCLUDES "thumb" — MediaWiki serves real content images from
+// "/thumb/" paths, so matching it would drop legitimate photos.
+const DECORATIVE_PATH_RE =
+  /\/(icons?|logos?|sprites?|emojis?|avatars?|badges?|favicons?|pictograms?)\//i
+
+// True when a width/height query param is present and below the content floor
+// (many CDNs honor ?w= / ?h= / &width= / &height=). Only fires on a clearly
+// small explicit value, so it never guesses about params that aren't there.
+function tooSmallByQuery(url: string): boolean {
+  try {
+    const u = new URL(url)
+    for (const key of ["w", "width", "h", "height"]) {
+      const raw = u.searchParams.get(key)
+      if (raw === null) continue
+      const val = Number(raw)
+      if (Number.isFinite(val) && val > 0 && val < MIN_IMAGE_WIDTH_PX) return true
+    }
+  } catch {
+    /* non-absolute or malformed url — the other signals still apply */
+  }
+  return false
+}
 
 /**
  * Heuristic: is this image decorative chrome (icon/flag/pin/logo) rather than
  * answer-relevant content? Keeps such images out of the agent's image menu so
- * it can't surface a stray location dot. URL is the only signal available at
- * the markdown layer (turndown drops width/height attrs).
+ * it can't surface a stray location dot. This is the markdown/URL layer of a
+ * two-layer filter — the HTML layer (html-to-markdown) drops chrome by
+ * class/role/size before conversion; this layer catches what the URL reveals.
  */
 export function isLikelyDecorativeImage(url: string): boolean {
   // MediaWiki/most CDNs encode the rendered width as "<N>px-" in thumb paths.
   const m = url.match(/\/(\d+)px-/)
   if (m && Number(m[1]) < MIN_IMAGE_WIDTH_PX) return true
+  if (DECORATIVE_PATH_RE.test(url)) return true
   if (DECORATIVE_NAME_RE.test(url)) return true
+  if (tooSmallByQuery(url)) return true
   return false
 }
 
@@ -132,7 +161,7 @@ function clampImageDimensions(rawUrl: string): string {
   }
 }
 
-async function fetchImageAsBase64(
+export async function fetchImageAsBase64(
   rawUrl: string
 ): Promise<{ data: string; mimeType: string } | null> {
   try {

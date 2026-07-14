@@ -24,7 +24,8 @@ export default defineConfig({
     "src/scraper/index.ts",
     "src/scraper/link-extractor.ts",
     "src/registry/index.ts",
-    "src/data-analysis/index.ts"
+    "src/data-analysis/index.ts",
+    "src/multimodal/index.ts"
   ],
   format: ["esm", "cjs"],
   dts: true,

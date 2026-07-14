@@ -57,6 +57,36 @@ describe("htmlToMarkdown", () => {
     expect(result.content).not.toContain("Copyright 2024")
   })
 
+  it("drops decorative <img> chrome (class/role/aria-hidden/size) but keeps content images", async () => {
+    const html = `<html><body><main>
+      <img src="https://x.com/logo.png" class="site-logo" alt="Acme logo">
+      <img src="https://x.com/decor.png" role="presentation" alt="">
+      <img src="https://x.com/hidden.png" aria-hidden="true" alt="deco">
+      <img src="https://x.com/tiny.png" width="16" height="16" alt="tiny icon">
+      <img src="https://x.com/pixel.gif" width="1" height="1" alt="">
+      <img src="https://x.com/photo.jpg" alt="Product photo">
+      <img src="https://x.com/chart.png" width="640" height="480" alt="Revenue chart">
+    </main></body></html>`
+    const result = await htmlToMarkdown(html, { onlyMainContent: true })
+    // Decorative dropped
+    expect(result.content).not.toContain("logo.png")
+    expect(result.content).not.toContain("decor.png")
+    expect(result.content).not.toContain("hidden.png")
+    expect(result.content).not.toContain("tiny.png")
+    expect(result.content).not.toContain("pixel.gif")
+    // Content kept
+    expect(result.content).toContain("photo.jpg")
+    expect(result.content).toContain("chart.png")
+  })
+
+  it("keeps decorative <img> when onlyMainContent is false", async () => {
+    const html = `<html><body><main>
+      <img src="https://x.com/logo.png" class="site-logo" alt="logo">
+    </main></body></html>`
+    const result = await htmlToMarkdown(html, { onlyMainContent: false })
+    expect(result.content).toContain("logo.png")
+  })
+
   it("preserves content with overflow-hidden class (Tailwind regression)", async () => {
     const html = `<html><body>
     <div class="card-group">

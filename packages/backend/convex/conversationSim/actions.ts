@@ -7,7 +7,7 @@ import { internalAction } from "../_generated/server"
 import { composeSystemPrompt } from "../agents/promptTemplate"
 import type { AgentLoopConfig, RetrieverInfo } from "../lib/agentLoop"
 import { resolveModel, runAgentLoop } from "../lib/agentLoop"
-import { isVisionCapable } from "../lib/visionShared"
+import { isVisionCapable } from "@tars-inc/eval-lib/multimodal"
 import { buildUserSimPrompt } from "./prompt"
 
 export const runConversationSim = internalAction({
@@ -258,7 +258,11 @@ export const runConversationSim = internalAction({
           content: agentResult.text,
           agentId: run.agentId,
           status: "complete",
-          usage: agentResult.usage
+          usage: agentResult.usage,
+          shownImages:
+            agentResult.shownImages.length > 0
+              ? agentResult.shownImages
+              : undefined
         })
         messages.push({ role: "assistant", content: agentResult.text })
       }

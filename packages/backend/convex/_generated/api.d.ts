@@ -90,7 +90,6 @@ import type * as lib_labels from "../lib/labels.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as lib_vectorSearch from "../lib/vectorSearch.js";
 import type * as lib_vision from "../lib/vision.js";
-import type * as lib_visionShared from "../lib/visionShared.js";
 import type * as lib_workpool from "../lib/workpool.js";
 import type * as livechat_actions from "../livechat/actions.js";
 import type * as livechat_orchestration from "../livechat/orchestration.js";
@@ -184,7 +183,6 @@ declare const fullApi: ApiFromModules<{
   "lib/validators": typeof lib_validators;
   "lib/vectorSearch": typeof lib_vectorSearch;
   "lib/vision": typeof lib_vision;
-  "lib/visionShared": typeof lib_visionShared;
   "lib/workpool": typeof lib_workpool;
   "livechat/actions": typeof livechat_actions;
   "livechat/orchestration": typeof livechat_orchestration;

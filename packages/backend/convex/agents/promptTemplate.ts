@@ -3,7 +3,7 @@
  * No "use node" dependencies — importable from actions, mutations, and tests.
  */
 
-import { IMAGE_INSTRUCTIONS } from "../lib/visionShared"
+import { IMAGE_INSTRUCTIONS } from "@tars-inc/eval-lib/multimodal"
 
 interface AgentPromptConfig {
   identity: {

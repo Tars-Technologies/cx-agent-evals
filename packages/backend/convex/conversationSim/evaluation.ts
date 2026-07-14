@@ -1,13 +1,28 @@
 // Pure code evaluator functions — no Convex registrations, no Node.js deps.
 // Imported by the simulation action (Task 7) which runs in a "use node" file.
 
+import { MENU_IMAGE_CAP, parseRenderedMediaIds } from "@tars-inc/eval-lib/multimodal"
+
+export interface ShownImage {
+  imageId: string
+  url: string
+  alt: string
+}
+
 export interface EvalInput {
-  messages: Array<{ role: string; content: string }>
+  messages: Array<{
+    role: string
+    content: string
+    /** Images this assistant turn actually rendered (post-whitelist). */
+    shownImages?: ShownImage[]
+  }>
   toolCalls: Array<{
     toolName: string
     args: Record<string, unknown>
     result: string
   }>
+  /** Union of every image the retrieval menu offered across the run. */
+  imageMenu?: Array<{ imageId: string; alt: string; type?: string }>
 }
 
 export interface EvalResult {
@@ -193,6 +208,60 @@ export function runResponseFormat(
   return { passed: true, justification: "Response format checks passed" }
 }
 
+// ─── image_hygiene ───
+
+/**
+ * Deterministic regression guard on the multimodal finalize path. After
+ * whitelisting, an assistant turn's content must contain ONLY resolved image
+ * URLs — never a raw `img_`/`vid_`/`doc_` id marker (a leaked marker means
+ * whitelisting failed) — and must not render more than `maxImages` images
+ * (overuse guard). Runs over every assistant turn; neutral pass when the run
+ * surfaced no images at all.
+ *
+ * params.maxImages – per-turn cap on rendered images (default MENU_IMAGE_CAP)
+ */
+export function runImageHygiene(
+  params: { maxImages?: number },
+  input: EvalInput
+): EvalResult {
+  const maxImages = params.maxImages ?? MENU_IMAGE_CAP
+  const assistantTurns = input.messages.filter((m) => m.role === "assistant")
+
+  const hadAnyImages =
+    (input.imageMenu?.length ?? 0) > 0 ||
+    assistantTurns.some((m) => (m.shownImages?.length ?? 0) > 0)
+  if (!hadAnyImages) {
+    return { passed: true, justification: "No images surfaced in this run" }
+  }
+
+  const problems: string[] = []
+  assistantTurns.forEach((m, i) => {
+    // 1. No unresolved KB media id markers survived finalize.
+    const leaked = parseRenderedMediaIds(m.content)
+    if (leaked.length > 0) {
+      problems.push(
+        `Turn ${i + 1}: unresolved media marker(s) leaked into output: ${leaked.join(", ")}`
+      )
+    }
+    // 2. Overuse — count what the turn actually rendered.
+    const shownCount =
+      m.shownImages?.length ?? (m.content.match(/!\[[^\]]*\]\(/g)?.length ?? 0)
+    if (shownCount > maxImages) {
+      problems.push(
+        `Turn ${i + 1}: rendered ${shownCount} images, exceeds cap of ${maxImages}`
+      )
+    }
+  })
+
+  if (problems.length > 0) {
+    return { passed: false, justification: problems.join("; ") }
+  }
+  return {
+    passed: true,
+    justification: "All rendered images are whitelisted and within the cap"
+  }
+}
+
 // ─── Dispatcher ───
 
 /**
@@ -219,6 +288,11 @@ export function runCodeEvaluator(
     case "response_format":
       return runResponseFormat(
         params as Parameters<typeof runResponseFormat>[0],
+        input
+      )
+    case "image_hygiene":
+      return runImageHygiene(
+        params as Parameters<typeof runImageHygiene>[0],
         input
       )
     default:

@@ -386,6 +386,17 @@ export const agentTables = {
         completionTokens: v.number()
       })
     ),
+    // Images the agent actually rendered in this assistant turn (post-whitelist),
+    // recorded so multimodal evaluators can score image precision/recall.
+    shownImages: v.optional(
+      v.array(
+        v.object({
+          imageId: v.string(),
+          url: v.string(),
+          alt: v.string()
+        })
+      )
+    ),
     createdAt: v.number()
   }).index("by_conversation", ["conversationId", "order"]),
 
@@ -491,7 +502,8 @@ export const agentTables = {
           v.literal("tool_call_match"),
           v.literal("string_contains"),
           v.literal("regex_match"),
-          v.literal("response_format")
+          v.literal("response_format"),
+          v.literal("image_hygiene")
         ),
         params: v.any()
       })
@@ -506,7 +518,8 @@ export const agentTables = {
           v.union(
             v.literal("transcript"),
             v.literal("tool_calls"),
-            v.literal("kb_documents")
+            v.literal("kb_documents"),
+            v.literal("shown_images")
           )
         )
       })

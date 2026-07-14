@@ -8,7 +8,7 @@ import {
   type MutationCtx
 } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
-import { type DocImage, rankDocImagesForQuery } from "../lib/visionShared"
+import { type DocImage, rankDocImagesForQuery } from "@tars-inc/eval-lib/multimodal"
 
 // Bounded-concurrency pool so a crawl finalizing many docs at once does not
 // slam OpenAI; transient embed failures retry (E7).

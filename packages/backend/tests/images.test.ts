@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { internal } from "../convex/_generated/api"
-import { rankDocImagesForQuery } from "../convex/lib/visionShared"
+import { rankDocImagesForQuery } from "@tars-inc/eval-lib/multimodal"
 
 // Deterministic embeddings so processDocImages ranking/storage is assertable.
 // `calls` counts how many times embed() ran, to prove unchanged images skip it.
