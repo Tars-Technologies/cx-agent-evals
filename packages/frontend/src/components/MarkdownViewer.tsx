@@ -114,6 +114,69 @@ function VideoEmbed({ url, alt }: { url: string; alt?: string }) {
 }
 
 /**
+ * A direct-file video that degrades to an "open video" link if the source fails
+ * to load. Error handling is done through React state (not imperative DOM
+ * mutation) so it can't fight React's reconciliation during streaming re-renders.
+ */
+function VideoFile({ url, label }: { url: string; label?: string }): ReactElement {
+  const [failed, setFailed] = useState(false)
+  if (failed) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-accent hover:text-accent-bright underline text-sm"
+      >
+        {label ? `▶ ${label}` : "▶ Open video"}
+      </a>
+    )
+  }
+  return (
+    <video
+      src={url}
+      controls
+      className="max-w-full h-auto rounded-md border border-border my-3"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
+/**
+ * An image that degrades to alt text if the source fails to load (URL rot in
+ * stored conversations). Error handling is React state, never imperative DOM
+ * mutation — the previous `el.replaceWith` approach crashed React with
+ * "removeChild ... not a child of this node" when a streaming re-render tried to
+ * reconcile the node it had already replaced.
+ */
+function LoadableImage({
+  url,
+  alt,
+  ...props
+}: { url: string; alt?: string } & Omit<
+  ComponentPropsWithoutRef<"img">,
+  "src" | "alt" | "onError"
+>): ReactElement {
+  const [failed, setFailed] = useState(false)
+  if (failed) {
+    return (
+      <span className="text-xs text-text-dim italic">
+        🖼️ {alt ? alt : "image unavailable"}
+      </span>
+    )
+  }
+  return (
+    <img
+      alt={alt}
+      src={url}
+      className="max-w-full h-auto rounded-md border border-border my-3"
+      onError={() => setFailed(true)}
+      {...props}
+    />
+  )
+}
+
+/**
  * If `url` points at a video (direct mp4/webm/ogg file, or an allowlisted embed
  * host), return the video element; otherwise null. Shared by the image and link
  * renderers so a video renders whether the model wrote `![alt](url)` or the plain
@@ -121,24 +184,7 @@ function VideoEmbed({ url, alt }: { url: string; alt?: string }) {
  */
 function videoElementFor(url: string, label?: string): ReactElement | null {
   if (/\.(mp4|webm|ogg)(\?|#|$)/i.test(url)) {
-    return (
-      <video
-        src={url}
-        controls
-        className="max-w-full h-auto rounded-md border border-border my-3"
-        onError={(e) => {
-          const el = e.currentTarget
-          const link = document.createElement("a")
-          link.href = url
-          link.target = "_blank"
-          link.rel = "noopener noreferrer"
-          link.textContent = label ? `▶ ${label}` : "▶ Open video"
-          link.className =
-            "text-accent hover:text-accent-bright underline text-sm"
-          el.replaceWith(link)
-        }}
-      />
-    )
+    return <VideoFile url={url} label={label} />
   }
   if (VIDEO_EMBED_HOSTS.test(hostOf(url))) {
     return <VideoEmbed url={url} alt={label} />
@@ -259,29 +305,24 @@ export const markdownComponents: Components = {
   ),
 
   img: ({ alt, src, ...props }: ComponentPropsWithoutRef<"img">) => {
-    // A media marker resolves to a URL whose kind we detect: video embed / mp4 →
-    // player; otherwise an ordinary image.
     const url = typeof src === "string" ? src : ""
+    // Only http(s) URLs are loadable. During streaming the marker's src is still
+    // a raw media id (`img_`/`vid_`/`doc_`) — resolution to a real URL happens at
+    // finalize — so rendering an <img>/<video> here would 404 and fire onError on
+    // every per-token re-render. Render a lightweight placeholder instead; the
+    // real media appears once the finalized message arrives with a resolved URL.
+    if (!/^https?:\/\//i.test(url)) {
+      return (
+        <span className="text-xs text-text-dim italic">
+          🖼️ {alt ? alt : "image"}
+        </span>
+      )
+    }
+    // A resolved URL whose kind we detect: video embed / mp4 → player; otherwise
+    // an ordinary image. `key={url}` gives each distinct URL a fresh error state.
     const asVideo = videoElementFor(url, alt)
     if (asVideo) return asVideo
-    return (
-      <img
-        alt={alt}
-        src={src}
-        className="max-w-full h-auto rounded-md border border-border my-3"
-        onError={(e) => {
-          // Graceful degrade: a dead source URL shows alt text instead of a
-          // broken-image icon (handles URL rot in stored conversations).
-          const el = e.currentTarget
-          el.style.display = "none"
-          const note = document.createElement("span")
-          note.textContent = alt ? `🖼️ ${alt}` : "🖼️ image unavailable"
-          note.className = "text-xs text-text-dim italic"
-          el.replaceWith(note)
-        }}
-        {...props}
-      />
-    )
+    return <LoadableImage key={url} url={url} alt={alt} {...props} />
   },
 
   table: ({ children, ...props }: ComponentPropsWithoutRef<"table">) => (

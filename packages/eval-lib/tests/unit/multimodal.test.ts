@@ -6,6 +6,8 @@ import {
   MAX_IMAGES_PER_TURN,
   MENU_IMAGE_CAP,
   rankDocImagesForQuery,
+  rankScoredImages,
+  mediaSystemPromptRules,
   VISION_CAPABLE_MODELS,
   whitelistImageMarkdown
 } from "../../src/multimodal/index.js"
@@ -209,31 +211,91 @@ describe("isVisionCapable", () => {
   })
 })
 
+describe("mediaSystemPromptRules", () => {
+  it("returns empty string if menuPresent is false", () => {
+    expect(mediaSystemPromptRules({ menuPresent: false, visionCapable: true })).toBe("")
+  })
+
+  it("includes rules when menuPresent is true", () => {
+    const rules = mediaSystemPromptRules({ menuPresent: true, visionCapable: false })
+    expect(rules).toContain("## Media")
+    expect(rules).toContain("Video items embed a real, playable video")
+    expect(rules).not.toContain("get_images(imageIds)")
+  })
+
+  it("includes get_images rule if visionCapable is true", () => {
+    const rules = mediaSystemPromptRules({ menuPresent: true, visionCapable: true })
+    expect(rules).toContain("get_images(imageIds)")
+  })
+})
+
+describe("rankScoredImages", () => {
+  it("filters out below MIN_IMAGE_SIMILARITY and sorts", () => {
+    const cands = [
+      { imageId: "img_1", alt: "a", docIdx: 0, order: 0, score: 0.5 },
+      { imageId: "img_2", alt: "b", docIdx: 1, order: 1, score: 0.1 }, // below 0.2 threshold
+      { imageId: "img_3", alt: "c", docIdx: 1, order: 2, score: 0.8 }
+    ]
+    const menu = rankScoredImages(cands, 6)
+    expect(menu.map(m => m.imageId)).toEqual(["img_3", "img_1"])
+  })
+})
+
 describe("whitelistImageMarkdown", () => {
-  const resolved = new Map([
-    ["img_a", { url: "https://x.com/a.png", alt: "a" }]
+  const resolved = new Map<string, { url: string; alt: string; type?: "image" | "video" | "doc_link" }>([
+    ["img_a", { url: "https://x.com/a.png", alt: "a", type: "image" }]
   ])
 
   it("rewrites known imageId markers to real urls", () => {
-    expect(whitelistImageMarkdown("see ![a](img_a)", resolved)).toBe(
-      "see ![a](https://x.com/a.png)"
-    )
+    expect(whitelistImageMarkdown("see ![a](img_a)", resolved)).toEqual({
+      text: "see ![a](https://x.com/a.png)",
+      strippedIds: []
+    })
   })
   it("drops unknown imageIds", () => {
-    expect(whitelistImageMarkdown("x ![h](img_hallucinated) y", resolved)).toBe(
-      "x  y"
-    )
+    expect(whitelistImageMarkdown("x ![h](img_hallucinated) y", resolved)).toEqual({
+      text: "x  y",
+      strippedIds: []
+    })
   })
   it("drops raw external image urls (injection guard)", () => {
     expect(
       whitelistImageMarkdown("a ![e](https://evil.com/x.png) b", resolved)
-    ).toBe("a  b")
+    ).toEqual({
+      text: "a  b",
+      strippedIds: []
+    })
   })
   it("resolves a known doc-id link but leaves real hyperlinks untouched", () => {
-    const map = new Map([["img_d", { url: "https://x.com/s.pdf", alt: "Spec" }]])
+    const map = new Map<string, { url: string; alt: string; type?: "image" | "video" | "doc_link" }>([
+      ["img_d", { url: "https://x.com/s.pdf", alt: "Spec", type: "image" }]
+    ])
     const text = "see [Spec](img_d) and [our blog](https://blog.com/post)"
-    expect(whitelistImageMarkdown(text, map)).toBe(
-      "see [Spec](https://x.com/s.pdf) and [our blog](https://blog.com/post)"
-    )
+    expect(whitelistImageMarkdown(text, map)).toEqual({
+      text: "see [Spec](https://x.com/s.pdf) and [our blog](https://blog.com/post)",
+      strippedIds: []
+    })
+  })
+  it("strips video and doc_link markers and returns them in strippedIds when stripNonImages is set", () => {
+    const map = new Map<string, { url: string; alt: string; type?: "image" | "video" | "doc_link" }>([
+      ["vid_v", { url: "https://x.com/v.mp4", alt: "Video", type: "video" }],
+      ["doc_d", { url: "https://x.com/d.pdf", alt: "Doc", type: "doc_link" }]
+    ])
+    const text = "watch ![v](vid_v) and read [d](doc_d)"
+    expect(whitelistImageMarkdown(text, map, { stripNonImages: true })).toEqual({
+      text: "watch  and read ",
+      strippedIds: ["vid_v", "doc_d"]
+    })
+  })
+  it("by default (no stripNonImages) rewrites video/doc markers to inline urls, strips nothing", () => {
+    const map = new Map<string, { url: string; alt: string; type?: "image" | "video" | "doc_link" }>([
+      ["vid_v", { url: "https://x.com/v.mp4", alt: "Video", type: "video" }],
+      ["doc_d", { url: "https://x.com/d.pdf", alt: "Doc", type: "doc_link" }]
+    ])
+    const text = "watch ![v](vid_v) and read [d](doc_d)"
+    expect(whitelistImageMarkdown(text, map)).toEqual({
+      text: "watch ![v](https://x.com/v.mp4) and read [d](https://x.com/d.pdf)",
+      strippedIds: []
+    })
   })
 })

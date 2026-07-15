@@ -239,7 +239,7 @@ export async function runAgentLoop(
       .filter((id) => resolved.has(id))
       .map((id) => ({ imageId: id, ...resolved.get(id)! }))
 
-    finalText = whitelistImageMarkdown(finalText, resolved)
+    finalText = whitelistImageMarkdown(finalText, resolved).text
 
     return {
       text: finalText,

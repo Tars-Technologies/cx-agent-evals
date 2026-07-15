@@ -366,7 +366,7 @@ export const evaluateAgentQuestion = internalAction({
             resolvedImages
           )
         : new Map<string, { url: string; alt: string }>()
-      const answerText = whitelistImageMarkdown(result.text, resolvedForFinalize)
+      const { text: answerText } = whitelistImageMarkdown(result.text, resolvedForFinalize)
 
       // 7. Extract tool calls + chunks
       const toolCalls = [...allToolCallResults]

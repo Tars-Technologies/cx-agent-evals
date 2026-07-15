@@ -21,10 +21,10 @@ export const PER_DOC_IMAGE_CAP = 2
 // once image-retrieval metrics exist.
 export const MIN_IMAGE_SIMILARITY = 0.2
 
-// Explicit allowlist — resolveModel routes by id but has no vision check.
-// Must track the model menu in AgentConfigPanel.tsx: every selectable model
-// here is vision-capable, so the toggle works regardless of which one is
-// picked. Add new model ids here when the dropdown gains them.
+/**
+ * Hardcoded allowlist of vision-capable models.
+ * @deprecated Fallback for consumers without a capability catalog.
+ */
 export const VISION_CAPABLE_MODELS = [
   // Claude (Anthropic) — all 4.x are multimodal
   "claude-opus-4-8",
@@ -44,40 +44,55 @@ export const VISION_CAPABLE_MODELS = [
   "o4-mini"
 ]
 
+/**
+ * Check if a model is vision capable using the hardcoded allowlist.
+ * @deprecated Fallback for consumers without a capability catalog. Primary gate should check catalog capabilities instead.
+ */
 export function isVisionCapable(modelId: string): boolean {
   return VISION_CAPABLE_MODELS.includes(modelId)
 }
 
-/** Appended to the system prompt only when hasVision (V6). */
-export const IMAGE_INSTRUCTIONS = `# Images & media
-The search results include a ranked list of media from the relevant documents — each entry has an \`imageId\` (begins with \`img_\` for images, \`vid_\` for videos, or \`doc_\` for documents, e.g. \`vid_3f9a2c1b4d5e6f70\`), an \`alt\`/label, and a \`type\` (\`image\` or \`video\`).
+/**
+ * Appended to the agent system prompt when the retrieval menu carries media.
+ */
+export function mediaSystemPromptRules(opts: {
+  menuPresent: boolean
+  visionCapable: boolean
+}): string {
+  if (!opts.menuPresent) return ""
+  const lines = [
+    "## Media",
+    "- Before you refuse or decline a request to see/show/view an image, map, photo, video, or document — or say you are a text-only model — you MUST first search the knowledge base. It may contain a real one you can actually display. Only fall back to a text refusal if that search finds nothing relevant.",
+    "The knowledge tool result may include an `images` menu of {imageId, alt, type}.",
+    "- Copy an `imageId` VERBATIM from the menu — never invent, guess, abbreviate, or reformat one.",
+    "- To display media, write `![alt](imageId)` inline — the id, never a raw URL. Prose alone shows nothing; only the marker renders it.",
+    "- Only ever use an `imageId` from the menu as the target. Never copy a URL you see written in retrieved passages/chunk/article/source text (e.g. an image link inside the retrieved content) and use that as an image source — such a URL is not guaranteed real or safe to display and will be removed.",
+    "- NEVER construct or guess a URL from general/training knowledge (e.g. a plausible-looking Wikipedia/Wikimedia file URL) — even if it looks real, it is not one you retrieved and it WILL be silently removed from your answer. The imageId is the only valid target, always.",
+    "  WRONG: `![dancer](https://upload.wikimedia.org/wikipedia/commons/thumb/...)`  (a real-looking but non-menu URL — always stripped)",
+    "  RIGHT: `![dancer](img_4e0bd074cbe4876a)`  (the exact imageId string from the menu)",
+    "- Video items embed a real, playable video via the marker — never say you cannot show a video or send the user elsewhere.",
+    "- Doc links found in retrieved chunk text (`[title](doc_id)`) may be cited verbatim.",
+    "- If there is no menu, do not fabricate media."
+  ]
+  if (opts.visionCapable) {
+    lines.push(
+      "- You can call `get_images(imageIds)` to actually see an image before showing it; if it returns nothing for an id, that id did not exist — do not retry with a guessed id."
+    )
+  }
+  return lines.join("\n")
+}
 
-## Showing an IMAGE (type: "image")
-1. Call the \`get_images\` tool with imageIds copied EXACTLY from the menu (up to ${MAX_IMAGES_PER_TURN}).
-2. After it returns, write \`![alt](imageId)\` where you want each image to appear, using only imageIds the tool returned.
-- Default to including a clearly relevant image (screenshot, diagram, photo, UI, map, chart). After \`get_images\`, look at what each image depicts and skip decorative icons/logos/pins or anything off-topic.
-
-## Showing a VIDEO (type: "video")
-- You CANNOT watch or preview a video — you never see its frames. Judge whether it belongs in your answer from its title/label and the surrounding result text only (that is the same signal used to rank it), NOT from its visual contents.
-- Do NOT call \`get_images\` for a video — it has no pixels and the call will look empty. That does NOT mean the video is unavailable.
-- To show it, write the marker \`![alt](imageId)\` inline exactly where it belongs, copying the imageId verbatim. **This renders a real, playable video embed for the user.** Showing a video works the SAME way as an image: the marker is all you need.
-- NEVER say you "cannot display the video", and NEVER tell the user to search for it, open YouTube, or visit another site. Writing the marker IS how you display it. You do not have — and do not need — the raw URL.
-- If the title/context shows a video is clearly relevant to the question, include it.
-
-## Document links
-Some retrieved chunk text contains inline document links written as \`[title](img_...)\`. You may include such a link verbatim when it helps. Do not call \`get_images\` for it.
-
-## Rules (all media)
-- ONLY use imageIds that literally appear in the retrieved results (they start with \`img_\`). Copy them character-for-character. NEVER invent, guess, abbreviate, or reformat an imageId or URL.
-- If the retrieved results contain NO media menu, do not call \`get_images\` and do not include any media — just answer in text. An empty \`get_images\` result means the id did not exist; never retry with a made-up id.
-- To actually show any media you MUST write the marker \`![alt](imageId)\` inline. Never just say "here is a video/image" without the marker — a sentence alone shows nothing.
-- Do not write raw external image or video URLs; use the imageId form only.`
+/** @deprecated Use mediaSystemPromptRules instead */
+export const IMAGE_INSTRUCTIONS = mediaSystemPromptRules({
+  menuPresent: true,
+  visionCapable: true
+})
 
 export interface ImageMenuEntry {
   imageId: string
   alt: string
-  /** "image" | "video" — tells the agent whether to fetch pixels or emit a link. */
-  type?: "image" | "video"
+  /** "image" | "video" | "doc_link" — tells the agent whether to fetch pixels, emit a link, or cite a doc. */
+  type?: "image" | "video" | "doc_link"
 }
 
 // ─── Context-aware embedding input (D10) ───
@@ -248,7 +263,7 @@ export interface DocImage {
   imageId: string
   alt: string
   embedding?: number[]
-  type?: "image" | "video"
+  type?: "image" | "video" | "doc_link"
 }
 
 function cosine(a: number[], b: number[]): number {
@@ -280,42 +295,23 @@ function cosine(a: number[], b: number[]): number {
  * more than one document; a single-document pool is exempt (option b) so one
  * relevant document may fill the whole menu.
  */
-export function rankDocImagesForQuery(
-  queryEmbedding: number[],
-  docGroups: DocImage[][],
-  cap: number
-): ImageMenuEntry[] {
-  interface Candidate {
+export function rankScoredImages(
+  cands: {
     imageId: string
     alt: string
-    type?: "image" | "video"
+    type?: "image" | "video" | "doc_link"
     docIdx: number
     order: number
     score: number | null
-  }
-  const candidates: Candidate[] = []
-  let order = 0
-  docGroups.forEach((group, docIdx) => {
-    for (const img of group) {
-      const usable =
-        !!img.embedding && img.embedding.length === queryEmbedding.length
-      candidates.push({
-        imageId: img.imageId,
-        alt: img.alt,
-        type: img.type,
-        docIdx,
-        order: order++,
-        score: usable ? cosine(queryEmbedding, img.embedding!) : null
-      })
-    }
-  })
-
-  const anyUsable = candidates.some((c) => c.score !== null)
+  }[],
+  cap: number
+): ImageMenuEntry[] {
+  const anyUsable = cands.some((c) => c.score !== null)
   const pool = anyUsable
-    ? candidates
-        .filter((c) => c.score !== null && c.score >= MIN_IMAGE_SIMILARITY)
+    ? cands
+        .filter((c) => c.score !== null && c.score! >= MIN_IMAGE_SIMILARITY)
         .sort((a, b) => b.score! - a.score! || a.order - b.order)
-    : candidates.slice().sort((a, b) => a.order - b.order)
+    : cands.slice().sort((a, b) => a.order - b.order)
 
   // Per-doc cap only guards cross-document domination, so it is skipped when the
   // eligible pool comes from a single document (option b).
@@ -335,6 +331,37 @@ export function rankDocImagesForQuery(
     out.push({ imageId: c.imageId, alt: c.alt, type: c.type ?? "image" })
   }
   return out
+}
+
+export function rankDocImagesForQuery(
+  queryEmbedding: number[],
+  docGroups: DocImage[][],
+  cap: number
+): ImageMenuEntry[] {
+  const candidates: {
+    imageId: string
+    alt: string
+    type?: "image" | "video" | "doc_link"
+    docIdx: number
+    order: number
+    score: number | null
+  }[] = []
+  let order = 0
+  docGroups.forEach((group, docIdx) => {
+    for (const img of group) {
+      const usable =
+        !!img.embedding && img.embedding.length === queryEmbedding.length
+      candidates.push({
+        imageId: img.imageId,
+        alt: img.alt,
+        type: img.type,
+        docIdx,
+        order: order++,
+        score: usable ? cosine(queryEmbedding, img.embedding!) : null
+      })
+    }
+  })
+  return rankScoredImages(candidates, cap)
 }
 
 // Matches media markers referencing a KB media id, in either image form
@@ -370,25 +397,58 @@ const LINK_MARKER_RE = /(?<!!)\[([^\]]*)\]\(([^)\s]+)\)/g
  * urls) is removed. THEN, additively, rewrite plain link markers `[text](id)`
  * whose target is a known media id (doc pointers) to the real URL.
  *
- * The two passes are intentionally asymmetric: the image pass DROPS unknown
- * targets (injection guard); the link pass is resolve-known-only and leaves every
- * other link untouched — the model writes legitimate hyperlinks to real URLs all
- * the time, so we must never drop or mangle them.
+ * Video/doc handling is consumer-dependent, so it is opt-in via
+ * `opts.stripNonImages` (default `false`) — the lib does not hardcode one
+ * consumer's render policy:
+ *   - `false` (default): a resolved video/doc marker is rewritten to its inline
+ *     URL, same as an image. Correct for consumers that render media directly
+ *     from markdown (e.g. an `![alt](url)` → `<video>`/link renderer).
+ *   - `true`: a resolved video/doc marker is stripped from the text and its id
+ *     collected in `strippedIds`, so the caller can emit a structured render
+ *     part (e.g. a ContentPart player/chip) in its place. The caller owns that
+ *     emission; the lib stays render-agnostic.
+ *
+ * `strippedIds` is always returned (empty when nothing was stripped).
  */
 export function whitelistImageMarkdown(
   text: string,
-  resolved: Map<string, { url: string; alt: string }>
-): string {
+  resolved: Map<string, { url: string; alt: string; type?: "image" | "video" | "doc_link" }>,
+  opts: { stripNonImages?: boolean } = {}
+): { text: string; strippedIds: string[] } {
+  const stripNonImages = opts.stripNonImages ?? false
+  const stripped = new Set<string>()
+  const isNonImage = (type?: string) => type === "video" || type === "doc_link"
+
   const imagesRewritten = rewriteMarkdownImages(text, ({ url }) => {
     // `url` here is whatever the model wrote in (...) — an imageId or a real url.
     const hit = resolved.get(url)
-    return hit ? hit.url : null
+    if (hit) {
+      if (stripNonImages && isNonImage(hit.type)) {
+        stripped.add(url)
+        return null // strips the image marker; caller renders it as a part
+      }
+      return hit.url
+    }
+    return null // strips unknown/hallucinated targets
   })
-  return imagesRewritten.replace(
+
+  const textRewritten = imagesRewritten.replace(
     LINK_MARKER_RE,
     (raw, linkText: string, target: string) => {
       const hit = resolved.get(target)
-      return hit ? `[${linkText}](${hit.url})` : raw // resolve-known-only
+      if (hit) {
+        if (stripNonImages && isNonImage(hit.type)) {
+          stripped.add(target)
+          return "" // strips the link marker; caller renders it as a part
+        }
+        return `[${linkText}](${hit.url})` // resolve-known-only
+      }
+      return raw // leave other links untouched
     }
   )
+
+  return {
+    text: textRewritten,
+    strippedIds: Array.from(stripped)
+  }
 }
