@@ -34,6 +34,20 @@ describe("parseMarkdownImages", () => {
     // relative is non-http → unsupported, excluded from the parsed menu
     expect(parseMarkdownImages(md)).toEqual([])
   })
+
+  // Accepted simplifications of IMAGE_RE (documented so a future change is caught).
+  it("does not parse an image whose alt text contains a closing bracket", () => {
+    // The alt group is [^\]]*, so a `]` inside the alt ends the match early and
+    // the whole image fails to parse rather than mis-parsing.
+    expect(parseMarkdownImages("![a [b] c](https://x.com/p.png)")).toEqual([])
+  })
+
+  it("truncates a url at the first close paren (parenthesized filenames)", () => {
+    // The url group is [^)\s]+, so a `)` inside the url ends it early — e.g. a
+    // Wikipedia-style parenthesized filename is captured only up to the paren.
+    const imgs = parseMarkdownImages("![x](https://x.com/a(b).png)")
+    expect(imgs.map((i) => i.url)).toEqual(["https://x.com/a(b"])
+  })
 })
 
 describe("rewriteMarkdownImages", () => {

@@ -178,6 +178,17 @@ describe("QdrantMediaStore", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it("propagates a non-404 error on fetchByIds (an outage is not a silent [])", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: { error: "internal" } }), {
+        status: 500
+      })
+    )
+    await expect(
+      store.fetchByIds(["img_a"], { kbId: "kb1" })
+    ).rejects.toThrow()
+  })
+
   it("deletes a source doc's points via a kbId+sourceDocId filter", async () => {
     fetchMock.mockResolvedValueOnce(
       okJson({ result: { status: "completed" } })
