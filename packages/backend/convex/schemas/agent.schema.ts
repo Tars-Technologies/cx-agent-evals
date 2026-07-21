@@ -138,8 +138,12 @@ export const agentTables = {
       })
     ),
     scores: v.optional(v.record(v.string(), v.number())),
+    // Images the model actually rendered this turn (post-whitelist), recorded for
+    // multimodal evaluators. Matches the messages.shownImages shape ({..alt}).
     shownImages: v.optional(
-      v.array(v.object({ imageId: v.string(), url: v.string() }))
+      v.array(
+        v.object({ imageId: v.string(), url: v.string(), alt: v.string() })
+      )
     ),
     usage: v.optional(
       v.object({

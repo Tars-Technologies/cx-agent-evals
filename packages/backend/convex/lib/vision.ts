@@ -91,6 +91,12 @@ export function isLikelyDecorativeImage(url: string): boolean {
 // link form `[text](img_..)` (doc pointers). The leading `!` is optional.
 const IMG_MARKER_RE = /!?\[[^\]]*\]\(((?:img|vid|doc)_[0-9a-f]+)\)/g
 
+// Defensive bound on distinct markers we resolve from a single answer. Each miss
+// is one indexed DB lookup; a legit answer renders a handful, so this only caps
+// pathological/adversarial output (a model spraying hundreds of fake ids), never
+// real usage. Well above MENU_IMAGE_CAP so it can't clip a normal reply.
+const MAX_RESOLVED_MARKERS = 24
+
 /**
  * Build the resolved-image map for finalize whitelisting. Seeds with images the
  * model fetched via get_images (pixels seen), then resolves any remaining
@@ -109,6 +115,7 @@ export async function resolveAnswerImageMarkers(
   const missing = new Set<string>()
   for (const m of text.matchAll(IMG_MARKER_RE)) {
     if (!merged.has(m[1])) missing.add(m[1])
+    if (missing.size >= MAX_RESOLVED_MARKERS) break
   }
   if (missing.size > 0 && scope.kbIds.length > 0) {
     const rows: Array<{ imageId: string; url: string; alt: string }> =

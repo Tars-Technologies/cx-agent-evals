@@ -358,7 +358,9 @@ describe("agentExperimentResults.insert with images", () => {
           images: [{ imageId: "img_aaaa", alt: "dash" }]
         }
       ],
-      shownImages: [{ imageId: "img_aaaa", url: "https://x.com/a.png" }],
+      shownImages: [
+        { imageId: "img_aaaa", url: "https://x.com/a.png", alt: "dash" }
+      ],
       latencyMs: 5,
       status: "complete"
     })
@@ -371,7 +373,7 @@ describe("agentExperimentResults.insert with images", () => {
     )
     expect(rows.length).toBe(1)
     expect(rows[0].shownImages).toEqual([
-      { imageId: "img_aaaa", url: "https://x.com/a.png" }
+      { imageId: "img_aaaa", url: "https://x.com/a.png", alt: "dash" }
     ])
     expect(rows[0].retrievedChunks[0].images).toEqual([
       { imageId: "img_aaaa", alt: "dash" }
@@ -430,7 +432,7 @@ describe("kb.images_actions.processDocImages", () => {
     return { kbId, orgId, docId }
   }
 
-  it("stores vectors in Qdrant, annotates content, skips decorative (E4)", async () => {
+  it("stores vectors in Qdrant, leaves image markdown unmarked, skips decorative (E4)", async () => {
     const t = setupTest()
     const { kbId, docId } = await seedDoc(t, sampleContent)
 
@@ -446,21 +448,43 @@ describe("kb.images_actions.processDocImages", () => {
     expect(storedVector(rows[0].imageId)).toEqual([1, 0])
 
     const doc = await t.run((ctx) => ctx.db.get(docId))
+    // Image markdown is left untouched — no <!--media:id--> marker injected, so
+    // character offsets stay aligned with the original content.
     expect(doc!.content).toContain(
-      `![Quarterly revenue chart](https://x/rev.png)<!--media:${rows[0].imageId}-->`
+      "![Quarterly revenue chart](https://x/rev.png)"
     )
-    // decorative image kept visible, but not annotated (E4)
+    expect(doc!.content).not.toContain("<!--media:")
+    // decorative image kept visible, and also unmarked (E4)
     expect(doc!.content).toContain("![](https://x/12px-Red_pog.svg.png)")
-    expect(doc!.content).not.toContain("Red_pog.svg.png)<!--media")
+    // Successful processing records an observable status (no error).
+    expect(doc!.mediaStatus).toBe("done")
+    expect(doc!.mediaError).toBeUndefined()
   })
 
-  it("is idempotent (E5): re-run does not duplicate annotations", async () => {
+  it("surfaces a Qdrant/embed outage as mediaStatus=failed (E3 observability)", async () => {
+    const t = setupTest()
+    const { docId } = await seedDoc(t, sampleContent)
+
+    // A soft embed/upsert outage must not vanish into a misleading "done": the
+    // rows are still written (retry next reprocess) but the doc is flagged failed.
+    fake.failRequests = true
+    await t.action(internal.kb.images_actions.processDocImages, { docId })
+    fake.failRequests = false
+
+    const doc = await t.run((ctx) => ctx.db.get(docId))
+    expect(doc!.mediaStatus).toBe("failed")
+    expect(doc!.mediaError).toBeTruthy()
+  })
+
+  it("is idempotent (E5): re-run yields byte-identical content", async () => {
     const t = setupTest()
     const { docId } = await seedDoc(t, sampleContent)
     await t.action(internal.kb.images_actions.processDocImages, { docId })
+    const first = (await t.run((ctx) => ctx.db.get(docId)))!.content
     await t.action(internal.kb.images_actions.processDocImages, { docId })
-    const doc = await t.run((ctx) => ctx.db.get(docId))
-    expect((doc!.content.match(/<!--media:/g) ?? []).length).toBe(1)
+    const second = (await t.run((ctx) => ctx.db.get(docId)))!.content
+    expect(second).toBe(first)
+    expect(second).not.toContain("<!--media:")
   })
 
   it("embeds video and rewrites doc embed to an inline [title](id) pointer", async () => {
@@ -484,9 +508,12 @@ describe("kb.images_actions.processDocImages", () => {
 
     const doc = await t.run((ctx) => ctx.db.get(docId))
     expect(doc!.content).toContain(`[Full spec](${docLink.imageId})`) // inline pointer
+    // Video embed token stays verbatim (stripped from chunk text at index time via
+    // VIDEO_EMBED_RE); no <!--media:id--> marker is injected.
     expect(doc!.content).toContain(
-      `[embed:video](https://youtube.com/embed/ID "Setup demo")<!--media:${video.imageId}-->`
+      `[embed:video](https://youtube.com/embed/ID "Setup demo")`
     )
+    expect(doc!.content).not.toContain("<!--media:")
     expect(doc!.content).not.toContain("[embed:doc]") // doc token rewritten away
   })
 
@@ -630,6 +657,37 @@ describe("finalize triggers processDocImages", () => {
       })
       expect(rows.map((r) => r.imageId).length).toBe(1)
     } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("does NOT schedule image processing when QDRANT_URL is unset (opt-out)", async () => {
+    vi.useFakeTimers()
+    const savedUrl = process.env.QDRANT_URL
+    delete process.env.QDRANT_URL // deployment without a media vector store
+    try {
+      const t = setupTest()
+      const userId = await seedUser(t)
+      const kbId = await seedKB(t, userId)
+      const orgId = TEST_ORG_ID
+      const docId = await t.mutation(internal.kb.documents.createFromScrape, {
+        orgId,
+        kbId,
+        title: "t",
+        content: "## H\n![A revenue chart](https://x/r.png)\n",
+        sourceUrl: "https://example.com/page"
+      })
+      await t.finishAllScheduledFunctions(vi.runAllTimers)
+      // Scheduling was skipped → no media rows, no doomed retried action.
+      const rows = await t.query(internal.kb.images.imagesForDocs, {
+        kbId,
+        documentIds: [docId]
+      })
+      expect(rows.length).toBe(0)
+      const doc = await t.run((ctx) => ctx.db.get(docId))
+      expect(doc!.mediaStatus).toBeUndefined()
+    } finally {
+      process.env.QDRANT_URL = savedUrl
       vi.useRealTimers()
     }
   })

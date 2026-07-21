@@ -14,11 +14,16 @@ interface StoredPoint {
 
 export class FakeQdrant {
   private collections = new Map<string, Map<string, StoredPoint>>()
+  /** When true, every request throws — simulates a Qdrant outage. */
+  failRequests = false
 
   fetch = async (
     url: string | URL | Request,
     init?: RequestInit
   ): Promise<Response> => {
+    if (this.failRequests) {
+      throw new Error("FakeQdrant: simulated outage")
+    }
     const u = new URL(typeof url === "string" ? url : url.toString())
     const method = (init?.method ?? "GET").toUpperCase()
     const body = init?.body ? JSON.parse(init.body as string) : undefined

@@ -172,6 +172,15 @@ export const updateMessage = internalMutation({
         promptTokens: v.number(),
         completionTokens: v.number()
       })
+    ),
+    shownImages: v.optional(
+      v.array(
+        v.object({
+          imageId: v.string(),
+          url: v.string(),
+          alt: v.string()
+        })
+      )
     )
   },
   handler: async (ctx, { messageId, ...patch }) => {

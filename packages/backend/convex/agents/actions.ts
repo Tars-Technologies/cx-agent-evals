@@ -7,14 +7,10 @@ import { z } from "zod"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { internalAction } from "../_generated/server"
-import { resolveModel, slugify } from "../lib/agentLoop"
+import { finalizeMediaAnswer, resolveModel, slugify } from "../lib/agentLoop"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
-import {
-  buildGetImagesTool,
-  isVisionCapable,
-  resolveAnswerImageMarkers
-} from "../lib/vision"
-import { MENU_IMAGE_CAP, whitelistImageMarkdown } from "@tars-inc/eval-lib/multimodal"
+import { buildGetImagesTool, isVisionCapable } from "../lib/vision"
+import { MENU_IMAGE_CAP } from "@tars-inc/eval-lib/multimodal"
 import { rankMediaForDocs } from "../kb/media_runtime"
 import { composeSystemPrompt } from "./promptTemplate"
 
@@ -359,72 +355,28 @@ export const runAgent = internalAction({
         }
       }
 
-      // Corrective retry (image reliability): a model occasionally fabricates a
-      // plausible-looking URL (e.g. a Wikipedia-style path) from its own general
-      // knowledge instead of copying the real imageId it was given — the
-      // whitelist below correctly strips that (it's not a real, retrieved
-      // target), but the user is left with a promised-then-missing image. If the
-      // model attempted to show media (wrote an `![alt](...)` marker) but none of
-      // it references a real menu id, despite a real menu being available this
-      // turn, give it exactly one chance to rewrite using only the ids that
-      // actually exist before we finalize.
-      //
-      // A model can also comply with the letter but not the spirit: instead of
-      // fixing the marker it may downgrade the SAME fabricated URL to a plain
-      // hyperlink (`[text](url)`), which the whitelist deliberately leaves alone
-      // (it must not mangle the legitimate citation links a model writes all the
-      // time). So beyond re-prompting, we track the exact fabricated targets from
-      // the ORIGINAL attempt and, as a backstop that doesn't depend on model
-      // cooperation, strip any later reference — image or link — to those exact
-      // same targets. Real, unrelated citations are untouched since we only ever
-      // match strings the model itself already produced this turn.
-      const MEDIA_ID_RE = /^(?:img|vid|doc)_[0-9a-f]+$/
-      const firstPassInvalidTargets = new Set(
-        [...rawFinalText.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)]
-          .map((m) => m[1])
-          .filter((t) => !MEDIA_ID_RE.test(t))
-      )
-      const attemptedMedia = firstPassInvalidTargets.size > 0
-      if (attemptedMedia && lastImageMenu.size > 0) {
-        const validIds = [...lastImageMenu.keys()].join(", ")
-        const correction = await generateText({
-          model: resolveModel(agent.model),
-          system:
-            systemPrompt +
-            `\n\nYour previous reply referenced media using a URL or id that does not exist — it will not display. The ONLY valid media ids right now are: ${validIds}. Rewrite your ENTIRE reply: use the exact marker ![alt](imageId) with one of those ids wherever you meant to show media. Do not cite the broken reference as a plain link either — if none of the valid ids fit, drop the reference completely and say in one short sentence that the image isn't available, without a URL of any kind.`,
-          messages: [...aiMessages, { role: "assistant", content: rawFinalText }]
-        })
-        if (correction.text) {
-          rawFinalText = correction.text
-          buffer += rawFinalText
+      // Shared finalize (corrective retry for fabricated URLs + fabricated-target
+      // backstop + inline-marker resolution + whitelist + shownImages), identical
+      // to the simulation path (lib/agentLoop.ts) so both evaluate and produce the
+      // same image behavior. onCorrectionText streams the rewritten reply as a
+      // delta; the final stored content is the post-whitelist text below.
+      const { finalText, shownImages } = await finalizeMediaAnswer(ctx, {
+        rawText: rawFinalText,
+        aiMessages,
+        systemPrompt,
+        modelId: agent.model,
+        hasVision: hasVision && imageKbIds.length > 0,
+        imageScope:
+          hasVision && imageKbIds.length > 0
+            ? { kbIds: imageKbIds, orgId: agent.orgId }
+            : undefined,
+        resolvedImages,
+        lastImageMenu,
+        onCorrectionText: async (text) => {
+          buffer += text
           await flushBuffer()
         }
-      }
-      // Backstop: neutralize any remaining image OR link reference to a target
-      // we already proved fabricated this turn, regardless of what the
-      // corrective retry produced (or whether it ran at all).
-      for (const target of firstPassInvalidTargets) {
-        const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-        rawFinalText = rawFinalText
-          .replace(new RegExp(`!\\[([^\\]]*)\\]\\(${escaped}\\)`, "g"), "$1")
-          .replace(new RegExp(`(?<!!)\\[([^\\]]*)\\]\\(${escaped}\\)`, "g"), "$1")
-      }
-
-      // Whitelist rewrites known image markers → urls and drops
-      // hallucinated/external ones (V4/V9). Resolve markers the model wrote
-      // inline (even without a get_images call) against the KB registry so a
-      // relevant image still renders. Always run it so stray img_ markers from
-      // retrieved chunk text can't leak as broken images on text-only agents.
-      const resolvedForFinalize =
-        hasVision && imageKbIds.length > 0
-          ? await resolveAnswerImageMarkers(
-              ctx,
-              { kbIds: imageKbIds, orgId: agent.orgId },
-              rawFinalText,
-              resolvedImages
-            )
-          : new Map<string, { url: string; alt: string }>()
-      const { text: finalText } = whitelistImageMarkdown(rawFinalText, resolvedForFinalize)
+      })
       await ctx.runMutation(internal.crud.conversations.updateMessage, {
         messageId: assistantMessageId,
         content: finalText,
@@ -434,7 +386,8 @@ export const runAgent = internalAction({
               promptTokens: usage.promptTokens,
               completionTokens: usage.completionTokens
             }
-          : undefined
+          : undefined,
+        shownImages: shownImages.length > 0 ? shownImages : undefined
       })
 
       // Schedule delta cleanup

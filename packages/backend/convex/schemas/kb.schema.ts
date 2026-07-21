@@ -45,6 +45,18 @@ export const documentValidator = v.object({
   // Heartbeat for poll-based (asimov) parses: bumped each poll so the stale-parse
   // reaper measures inactivity, not total age. Absent for tarser (callback-based).
   parseLastActivityAt: v.optional(v.number()),
+  // Document-level media (image/video) processing outcome. Absent when media is
+  // disabled (no QDRANT_URL) or the doc was created before this field existed.
+  // "failed" + mediaError surfaces a Qdrant/embed outage that would otherwise be
+  // swallowed by Workpool retry-exhaustion.
+  mediaStatus: v.optional(
+    v.union(
+      v.literal("processing"),
+      v.literal("done"),
+      v.literal("failed")
+    )
+  ),
+  mediaError: v.optional(v.string()),
   createdAt: v.number()
 })
 export type Document = Infer<typeof documentValidator>

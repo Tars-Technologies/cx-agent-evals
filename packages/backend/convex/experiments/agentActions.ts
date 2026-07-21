@@ -15,14 +15,10 @@ import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { internalAction } from "../_generated/server"
 import { composeSystemPrompt } from "../agents/promptTemplate"
-import { resolveModel } from "../lib/agentLoop"
+import { finalizeMediaAnswer, resolveModel } from "../lib/agentLoop"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
-import { buildGetImagesTool, resolveAnswerImageMarkers } from "../lib/vision"
-import {
-  isVisionCapable,
-  MENU_IMAGE_CAP,
-  whitelistImageMarkdown
-} from "@tars-inc/eval-lib/multimodal"
+import { buildGetImagesTool } from "../lib/vision"
+import { isVisionCapable, MENU_IMAGE_CAP } from "@tars-inc/eval-lib/multimodal"
 import { rankMediaForDocs } from "../kb/media_runtime"
 
 // ─── Helpers ───
@@ -244,6 +240,12 @@ export const evaluateAgentQuestion = internalAction({
     )
     // Images the model fetched via get_images, for whitelist + shownImages.
     const resolvedImages = new Map<string, { url: string; alt: string }>()
+    // Every imageId offered this turn, so the shared finalize's corrective retry
+    // can list the ids that actually exist.
+    const lastImageMenu = new Map<
+      string,
+      { imageId: string; alt: string; type?: string }
+    >()
 
     // 4. Build AI SDK tools — one per retriever
     const allToolCallResults: Array<{
@@ -308,6 +310,7 @@ export const evaluateAgentQuestion = internalAction({
             start: c.start,
             end: c.end
           }))
+          for (const img of images) lastImageMenu.set(img.imageId, img)
 
           allToolCallResults.push({
             toolName,
@@ -354,17 +357,26 @@ export const evaluateAgentQuestion = internalAction({
 
       const latencyMs = Date.now() - startTime
 
-      // Resolve inline markers (even without a get_images call) against the KB
-      // registry, then whitelist → urls; drop hallucinated/external (V4/V9).
-      const resolvedForFinalize = hasVision
-        ? await resolveAnswerImageMarkers(
-            ctx,
-            { kbIds: imageKbIds, orgId: agent.orgId },
-            result.text,
-            resolvedImages
-          )
-        : new Map<string, { url: string; alt: string }>()
-      const { text: answerText } = whitelistImageMarkdown(result.text, resolvedForFinalize)
+      // Shared finalize (corrective retry + backstop + whitelist + shownImages),
+      // identical to live chat and the simulation loop so the experiment scores
+      // the same image behavior. shownImages = what the model actually rendered
+      // (D8: recorded, not scored).
+      const { finalText: answerText, shownImages } = await finalizeMediaAnswer(
+        ctx,
+        {
+          rawText: result.text,
+          aiMessages: [{ role: "user", content: question.queryText }],
+          systemPrompt,
+          modelId: agent.model,
+          hasVision: hasVision && imageKbIds.length > 0,
+          imageScope:
+            hasVision && imageKbIds.length > 0
+              ? { kbIds: imageKbIds, orgId: agent.orgId }
+              : undefined,
+          resolvedImages,
+          lastImageMenu
+        }
+      )
 
       // 7. Extract tool calls + chunks
       const toolCalls = [...allToolCallResults]
@@ -374,11 +386,6 @@ export const evaluateAgentQuestion = internalAction({
       const scores = computePerQuestionScores(
         retrievedChunks,
         question.relevantSpans
-      )
-
-      // Record (only) which images the model fetched this turn (D8: no scoring).
-      const shownImages = Array.from(resolvedImages.entries()).map(
-        ([imageId, vimg]) => ({ imageId, url: vimg.url })
       )
 
       // 9. Insert result

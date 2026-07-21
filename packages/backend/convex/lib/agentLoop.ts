@@ -77,6 +77,95 @@ export function slugify(name: string): string {
     .slice(0, 64)
 }
 
+// A marker target that is a real KB media id (vs. a fabricated/external URL).
+const MEDIA_ID_RE = /^(?:img|vid|doc)_[0-9a-f]+$/
+
+/**
+ * Shared image-answer finalize used by BOTH the live-chat loop (agents/actions.ts)
+ * and the simulation loop (runAgentLoop) so they can't drift. Steps:
+ *
+ * 1. Corrective retry — if the model wrote an `![alt](target)` whose target isn't
+ *    a real media id (it fabricated a URL) yet a real menu existed this turn, give
+ *    it one chance to rewrite using only valid ids.
+ * 2. Backstop — strip any remaining image OR link reference to a target we already
+ *    proved fabricated this turn, regardless of whether the retry cooperated.
+ * 3. Resolve inline markers against the KB registry, compute `shownImages` (what
+ *    the model actually rendered, pre-whitelist), then whitelist markers → urls
+ *    and drop hallucinated/external ones (V4/V9).
+ *
+ * `onCorrectionText` lets the streaming caller flush the rewritten text as a
+ * delta; the non-streaming caller omits it.
+ */
+export async function finalizeMediaAnswer(
+  ctx: ActionCtx,
+  opts: {
+    rawText: string
+    aiMessages: any[]
+    systemPrompt: string
+    modelId: string
+    hasVision: boolean
+    imageScope?: { kbIds: string[]; orgId: string }
+    resolvedImages: Map<string, { url: string; alt: string }>
+    lastImageMenu: Map<string, { imageId: string; alt: string; type?: string }>
+    onCorrectionText?: (text: string) => Promise<void>
+  }
+): Promise<{
+  finalText: string
+  shownImages: Array<{ imageId: string; url: string; alt: string }>
+}> {
+  let rawText = opts.rawText
+
+  // (1) Fabricated-target detection + one corrective retry.
+  const firstPassInvalidTargets = new Set(
+    [...rawText.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)]
+      .map((m) => m[1])
+      .filter((t) => !MEDIA_ID_RE.test(t))
+  )
+  if (firstPassInvalidTargets.size > 0 && opts.lastImageMenu.size > 0) {
+    const validIds = [...opts.lastImageMenu.keys()].join(", ")
+    const correction = await generateText({
+      model: resolveModel(opts.modelId),
+      system:
+        opts.systemPrompt +
+        `\n\nYour previous reply referenced media using a URL or id that does not exist — it will not display. The ONLY valid media ids right now are: ${validIds}. Rewrite your ENTIRE reply: use the exact marker ![alt](imageId) with one of those ids wherever you meant to show media. Do not cite the broken reference as a plain link either — if none of the valid ids fit, drop the reference completely and say in one short sentence that the image isn't available, without a URL of any kind.`,
+      messages: [...opts.aiMessages, { role: "assistant", content: rawText }]
+    })
+    if (correction.text) {
+      rawText = correction.text
+      if (opts.onCorrectionText) await opts.onCorrectionText(correction.text)
+    }
+  }
+
+  // (2) Backstop: neutralize any image OR link reference to a proven-fabricated
+  // target, whatever the retry produced (or if it never ran). Only ever matches
+  // strings the model itself already emitted this turn, so real citations survive.
+  for (const target of firstPassInvalidTargets) {
+    const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    rawText = rawText
+      .replace(new RegExp(`!\\[([^\\]]*)\\]\\(${escaped}\\)`, "g"), "$1")
+      .replace(new RegExp(`(?<!!)\\[([^\\]]*)\\]\\(${escaped}\\)`, "g"), "$1")
+  }
+
+  // (3) Resolve → shownImages (pre-whitelist) → whitelist.
+  const resolved =
+    opts.hasVision && opts.imageScope
+      ? await resolveAnswerImageMarkers(
+          ctx,
+          {
+            kbIds: opts.imageScope.kbIds as Id<"knowledgeBases">[],
+            orgId: opts.imageScope.orgId
+          },
+          rawText,
+          opts.resolvedImages
+        )
+      : new Map<string, { url: string; alt: string }>()
+  const shownImages = parseRenderedMediaIds(rawText)
+    .filter((id) => resolved.has(id))
+    .map((id) => ({ imageId: id, ...resolved.get(id)! }))
+  const finalText = whitelistImageMarkdown(rawText, resolved).text
+  return { finalText, shownImages }
+}
+
 // === Agent loop ===
 
 export async function runAgentLoop(
@@ -87,6 +176,12 @@ export async function runAgentLoop(
   const collectedToolCalls: ToolCallRecord[] = []
   // Images the model fetched via get_images this turn (whitelist + record).
   const resolvedImages = new Map<string, { url: string; alt: string }>()
+  // Every imageId offered across this turn's retrieval calls, so the shared
+  // finalize can tell the model which ids are real on a corrective retry.
+  const lastImageMenu = new Map<
+    string,
+    { imageId: string; alt: string; type?: string }
+  >()
 
   // Build tools from retriever infos (same pattern as agents/actions.ts)
   const tools: Record<string, any> = {}
@@ -143,6 +238,9 @@ export async function runAgentLoop(
           start: c.start,
           end: c.end
         }))
+        // Track the media menu offered this turn so the shared finalize's
+        // corrective retry can list the ids that actually exist.
+        for (const img of images) lastImageMenu.set(img.imageId, img)
         const result = { chunks: cleanChunks, images }
 
         collectedToolCalls.push({
@@ -178,7 +276,7 @@ export async function runAgentLoop(
       system: config.systemPrompt,
       messages,
       tools: hasTools ? tools : undefined,
-      maxSteps: 12
+      maxSteps: 8
     })
 
     let finalText = result.text
@@ -213,41 +311,28 @@ export async function runAgentLoop(
       completionTokens += recovery.usage?.completionTokens ?? 0
     }
 
-    // Resolve inline image markers (even without a get_images call) against the
-    // KB registry, then whitelist → urls; drop hallucinated/external (V4/V9).
-    // Always whitelist so stray img_ markers can't leak as broken images.
-    const resolved =
-      config.hasVision && config.imageScope
-        ? await resolveAnswerImageMarkers(
-            ctx,
-            {
-              kbIds: config.imageScope.kbIds as Id<"knowledgeBases">[],
-              orgId: config.imageScope.orgId
-            },
-            finalText,
-            resolvedImages
-          )
-        : new Map<string, { url: string; alt: string }>()
-
-    // shownImages = media the model actually rendered (marker present in the
-    // answer AND resolving to a real target) — captured BEFORE whitelisting
-    // rewrites markers to URLs. This includes images cited inline from chunk
-    // text, not just get_images fetches, so evaluation sees what the user sees.
-    const shown = parseRenderedMediaIds(finalText)
-      .filter((id) => resolved.has(id))
-      .map((id) => ({ imageId: id, ...resolved.get(id)! }))
-
-    finalText = whitelistImageMarkdown(finalText, resolved).text
+    // Shared finalize (corrective retry + backstop + whitelist + shownImages),
+    // identical to the live-chat path so simulations evaluate production behavior.
+    const { finalText: outText, shownImages } = await finalizeMediaAnswer(ctx, {
+      rawText: finalText,
+      aiMessages: messages,
+      systemPrompt: config.systemPrompt,
+      modelId: config.modelId,
+      hasVision: !!(config.hasVision && config.imageScope),
+      imageScope: config.imageScope,
+      resolvedImages,
+      lastImageMenu
+    })
 
     return {
-      text: finalText,
+      text: outText,
       toolCalls: collectedToolCalls,
       usage: { promptTokens, completionTokens },
       // Only flag done when we genuinely have nothing to say (recovery also
       // failed). A normal "agent finished its turn with text" must NOT mark
       // the conversation as done — the user-sim drives termination.
-      done: !finalText || finalText.trim().length === 0,
-      shownImages: shown
+      done: !outText || outText.trim().length === 0,
+      shownImages
     }
   } catch (err: any) {
     return {

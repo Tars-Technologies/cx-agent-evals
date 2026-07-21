@@ -3,7 +3,7 @@
  * No "use node" dependencies — importable from actions, mutations, and tests.
  */
 
-import { IMAGE_INSTRUCTIONS } from "@tars-inc/eval-lib/multimodal"
+import { mediaSystemPromptRules } from "@tars-inc/eval-lib/multimodal"
 
 interface AgentPromptConfig {
   identity: {
@@ -111,7 +111,9 @@ export function composeSystemPrompt(
 
   // Images (only when the runtime model is vision-capable AND multimodal is on)
   if (opts?.hasVision) {
-    sections.push(IMAGE_INSTRUCTIONS)
+    sections.push(
+      mediaSystemPromptRules({ menuPresent: true, visionCapable: true })
+    )
   }
 
   // Additional Instructions

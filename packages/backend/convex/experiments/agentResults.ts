@@ -59,7 +59,9 @@ export const insert = internalMutation({
     retrievedChunks: v.array(chunkValidator),
     scores: v.optional(v.record(v.string(), v.number())),
     shownImages: v.optional(
-      v.array(v.object({ imageId: v.string(), url: v.string() }))
+      v.array(
+        v.object({ imageId: v.string(), url: v.string(), alt: v.string() })
+      )
     ),
     usage: v.optional(
       v.object({

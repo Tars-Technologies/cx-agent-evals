@@ -22,6 +22,13 @@ export async function scheduleDocImageProcessing(
   ctx: MutationCtx,
   docId: Id<"documents">
 ): Promise<void> {
+  // No media vector store configured → skip entirely. Without this, every doc
+  // create/parse in a deployment lacking QDRANT_URL would enqueue an action that
+  // buildQdrantMediaStore makes throw, burning 3 retries per document for
+  // nothing. Such deployments simply run text-only; after setting QDRANT_URL,
+  // backfill with reprocessKbImages. Read process.env directly (not backendConfig)
+  // to avoid pulling eager env validation onto the document-create path.
+  if (!process.env.QDRANT_URL || process.env.QDRANT_URL.trim() === "") return
   await imagePool.enqueueAction(
     ctx,
     internal.kb.images_actions.processDocImages,
@@ -124,6 +131,32 @@ export const setDocImageAnnotations = internalMutation({
     await ctx.db.patch(args.docId, {
       content: args.content,
       contentLength: args.content.length
+    })
+  }
+})
+
+/**
+ * Record the outcome of document media processing so a Qdrant/embed outage is
+ * observable instead of vanishing into Workpool retry-exhaustion. "processing"
+ * at start, "done" on success (clears any prior error), "failed" + error on a
+ * thrown attempt (the action rethrows so Workpool still retries).
+ */
+export const setMediaStatus = internalMutation({
+  args: {
+    docId: v.id("documents"),
+    status: v.union(
+      v.literal("processing"),
+      v.literal("done"),
+      v.literal("failed")
+    ),
+    error: v.optional(v.string())
+  },
+  handler: async (ctx, args) => {
+    const doc = await ctx.db.get(args.docId)
+    if (!doc) return
+    await ctx.db.patch(args.docId, {
+      mediaStatus: args.status,
+      mediaError: args.status === "failed" ? args.error : undefined
     })
   }
 })
