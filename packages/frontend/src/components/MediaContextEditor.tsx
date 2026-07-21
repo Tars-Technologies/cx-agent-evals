@@ -21,6 +21,8 @@ export function MediaContextEditor({
   const setContext = useMutation(api.kb.images.setMediaContext)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [savedId, setSavedId] = useState<string | null>(null)
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [errorId, setErrorId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [docFilter, setDocFilter] = useState<string>("all")
 
@@ -115,7 +117,11 @@ export function MediaContextEditor({
                     <img
                       src={m.url}
                       alt={m.alt}
-                      className="w-20 h-20 object-cover rounded border border-border shrink-0"
+                      className="w-20 h-20 object-cover rounded border border-border shrink-0 bg-bg-surface"
+                      onError={(e) => {
+                        // Dead URL → hide the broken-image icon rather than show it.
+                        e.currentTarget.style.visibility = "hidden"
+                      }}
                     />
                   )}
                   <div className="flex-1 min-w-0">
@@ -152,25 +158,39 @@ export function MediaContextEditor({
                 <div className="flex items-center gap-2 mt-1">
                   <button
                     type="button"
+                    disabled={savingId === m.imageId}
                     onClick={async () => {
-                      await setContext({
-                        kbId,
-                        imageId: m.imageId,
-                        manualContext: draft
-                      })
-                      setSavedId(m.imageId)
-                      setTimeout(
-                        () => setSavedId((s) => (s === m.imageId ? null : s)),
-                        2500
-                      )
+                      setErrorId(null)
+                      setSavingId(m.imageId)
+                      try {
+                        await setContext({
+                          kbId,
+                          imageId: m.imageId,
+                          manualContext: draft
+                        })
+                        setSavedId(m.imageId)
+                        setTimeout(
+                          () => setSavedId((s) => (s === m.imageId ? null : s)),
+                          2500
+                        )
+                      } catch {
+                        setErrorId(m.imageId)
+                      } finally {
+                        setSavingId((s) => (s === m.imageId ? null : s))
+                      }
                     }}
-                    className="px-2 py-1 text-[11px] bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors"
+                    className="px-2 py-1 text-[11px] bg-accent text-bg-elevated rounded hover:bg-accent/90 transition-colors disabled:opacity-50"
                   >
-                    Save &amp; re-embed
+                    {savingId === m.imageId ? "Saving…" : "Save & re-embed"}
                   </button>
                   {savedId === m.imageId && (
                     <span className="text-[11px] text-accent">
                       Saved — re-embedding…
+                    </span>
+                  )}
+                  {errorId === m.imageId && (
+                    <span className="text-[11px] text-red-400">
+                      Save failed — try again.
                     </span>
                   )}
                 </div>
