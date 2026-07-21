@@ -297,12 +297,16 @@ export const evaluateAgentQuestion = internalAction({
               docOrder.push(id)
             }
           }
-          const images = await rankMediaForDocs(ctx, {
-            kbId: info.kbId as Id<"knowledgeBases">,
-            documentIds: docOrder,
-            queryEmbedding,
-            cap: MENU_IMAGE_CAP
-          })
+          // Skip the Qdrant round-trip entirely for non-vision runs — they get no
+          // media instructions or get_images tool, so the menu would be dead weight.
+          const images = hasVision
+            ? await rankMediaForDocs(ctx, {
+                kbId: info.kbId as Id<"knowledgeBases">,
+                documentIds: docOrder,
+                queryEmbedding,
+                cap: MENU_IMAGE_CAP
+              })
+            : []
 
           const mappedChunks = chunks.map((c: any) => ({
             content: c.content,

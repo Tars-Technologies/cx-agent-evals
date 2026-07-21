@@ -215,6 +215,10 @@ export function buildGetImagesTool(
   // Transient pixel cache for this tool instance; consumed by
   // experimental_toToolResultContent, then discarded when the action ends.
   const fetchedBytes = new Map<string, { data: string; mimeType?: string }>()
+  // Shared quota across every get_images call THIS turn (the model can call the
+  // tool multiple times within one generateText run) — without this, slicing to
+  // MAX_IMAGES_PER_TURN inside execute() re-grants a fresh allowance per call.
+  let remainingQuota = MAX_IMAGES_PER_TURN
   return tool({
     description:
       "Fetch knowledge-base images by their imageIds so you can see them and decide whether to include them in your answer. Returns the images plus the imageIds you may reference as ![alt](imageId).",
@@ -224,7 +228,8 @@ export function buildGetImagesTool(
         .describe("imageIds from the retrieved image menu (max 4 used)")
     }),
     execute: async ({ imageIds }): Promise<ResolvedImageRef[]> => {
-      const capped = imageIds.slice(0, MAX_IMAGES_PER_TURN)
+      const capped = imageIds.slice(0, Math.max(0, remainingQuota))
+      remainingQuota -= capped.length
       const resolved: ResolvedImageRef[] = await ctx.runQuery(
         internal.kb.images.getImagesByIds,
         { kbIds: scope.kbIds, orgId: scope.orgId, imageIds: capped }

@@ -307,10 +307,19 @@ export const countForKb = tenantQuery({
   }
 })
 
+// One page of the reprocess fan-out per mutation invocation. A KB with many
+// thousands of documents would otherwise blow a single transaction's write
+// budget if every doc were enqueued synchronously in one mutation — this pages
+// through documents and self-schedules the next batch (Convex guideline: batch
+// with .paginate()/.take() then ctx.scheduler.runAfter to continue).
+const REPROCESS_BATCH_SIZE = 100
+
 /**
  * Tenant-triggered reprocess: run document-level image processing over every
  * finalized document in a KB (replaces the old chunk-rewrite backfill). Each
- * doc is enqueued through the bounded image pool (E7).
+ * doc is enqueued through the bounded image pool (E7). Kicks off the first
+ * batch and returns immediately — the full KB may take several scheduler
+ * ticks to fully enqueue for very large KBs.
  */
 export const reprocessKbImages = tenantMutation({
   args: { kbId: v.id("knowledgeBases") },
@@ -318,17 +327,41 @@ export const reprocessKbImages = tenantMutation({
     const { orgId } = ctx
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) throw new Error("Knowledge base not found")
-    const docs = await ctx.db
+    await ctx.scheduler.runAfter(0, internal.kb.images.reprocessKbImagesBatch, {
+      kbId: args.kbId,
+      orgId,
+      cursor: null
+    })
+    return { started: true }
+  }
+})
+
+/** Internal, self-continuing worker for reprocessKbImages (see REPROCESS_BATCH_SIZE). */
+export const reprocessKbImagesBatch = internalMutation({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    orgId: v.string(),
+    cursor: v.union(v.string(), v.null())
+  },
+  handler: async (ctx, args) => {
+    const page = await ctx.db
       .query("documents")
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
-      .collect()
-    let scheduled = 0
-    for (const d of docs) {
+      .paginate({ numItems: REPROCESS_BATCH_SIZE, cursor: args.cursor })
+
+    for (const d of page.page) {
+      if (d.orgId !== args.orgId) continue // defense-in-depth; by_kb is already tenant-safe
       if (d.parseStatus && d.parseStatus !== "done") continue // skip placeholders
       await scheduleDocImageProcessing(ctx, d._id)
-      scheduled++
     }
-    return { scheduled }
+
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.images.reprocessKbImagesBatch,
+        { kbId: args.kbId, orgId: args.orgId, cursor: page.continueCursor }
+      )
+    }
   }
 })
 

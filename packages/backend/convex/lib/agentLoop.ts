@@ -51,7 +51,8 @@ export interface AgentLoopResult {
   usage: { promptTokens: number; completionTokens: number }
   done: boolean
   error?: string
-  /** Images the model fetched via get_images this turn (record-only). */
+  /** Media actually rendered in the final answer (marker present and resolved),
+   *  including images cited inline from chunk text — not just get_images fetches. */
   shownImages: Array<{ imageId: string; url: string; alt: string }>
 }
 
@@ -225,12 +226,17 @@ export async function runAgentLoop(
             docOrder.push(id)
           }
         }
-        const images = await rankMediaForDocs(ctx, {
-          kbId: info.kbId as Id<"knowledgeBases">,
-          documentIds: docOrder,
-          queryEmbedding,
-          cap: MENU_IMAGE_CAP
-        })
+        // Skip the Qdrant round-trip entirely for non-vision runs — they get no
+        // media instructions or get_images tool, so the menu would be dead weight.
+        const images =
+          config.hasVision && config.imageScope
+            ? await rankMediaForDocs(ctx, {
+                kbId: info.kbId as Id<"knowledgeBases">,
+                documentIds: docOrder,
+                queryEmbedding,
+                cap: MENU_IMAGE_CAP
+              })
+            : []
 
         const cleanChunks = chunks.map((c: any) => ({
           content: c.content,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  buildGetImagesTool,
   imageIdFor,
   isLikelyDecorativeImage,
   resolveAnswerImageMarkers
@@ -141,5 +142,74 @@ describe("resolveAnswerImageMarkers", () => {
       seed
     )
     expect(called).toBe(false)
+  })
+})
+
+describe("buildGetImagesTool", () => {
+  // mediaType "video" is used throughout so execute() skips the pixel-fetch
+  // branch (only images are fetched) — these tests are about the id quota, not
+  // image fetching.
+  it("shares one MAX_IMAGES_PER_TURN quota across multiple calls in the same turn", async () => {
+    const requestedBatches: string[][] = []
+    const ctx = {
+      runQuery: async (_ref: unknown, args: { imageIds: string[] }) => {
+        requestedBatches.push(args.imageIds)
+        return args.imageIds.map((id) => ({
+          imageId: id,
+          url: `https://x.com/${id}.mp4`,
+          alt: id,
+          mediaType: "video" as const
+        }))
+      }
+    } as any
+    const resolved: Array<{ imageId: string; url: string; alt: string }> = []
+    const tool = buildGetImagesTool(ctx, { kbIds: ["kb1"] as any, orgId: "o1" }, (r) =>
+      resolved.push(...r)
+    )
+
+    // First call asks for 4 (the full quota) — all granted.
+    const first = await (tool as any).execute({
+      imageIds: ["vid_1", "vid_2", "vid_3", "vid_4"]
+    })
+    expect(first.length).toBe(4)
+
+    // Second call in the SAME turn (same tool instance) asks for 4 more — before
+    // the fix, execute() re-capped independently and would grant all 4 again
+    // (8 total). With a shared quota, none remain.
+    const second = await (tool as any).execute({
+      imageIds: ["vid_5", "vid_6", "vid_7", "vid_8"]
+    })
+    expect(second.length).toBe(0)
+
+    expect(requestedBatches).toEqual([
+      ["vid_1", "vid_2", "vid_3", "vid_4"],
+      [] // capped to remaining quota (0) before the query is even sent
+    ])
+    expect(resolved.length).toBe(4)
+  })
+
+  it("partially grants a call that would exceed the remaining quota", async () => {
+    const ctx = {
+      runQuery: async (_ref: unknown, args: { imageIds: string[] }) =>
+        args.imageIds.map((id) => ({
+          imageId: id,
+          url: `https://x.com/${id}.mp4`,
+          alt: id,
+          mediaType: "video" as const
+        }))
+    } as any
+    const tool = buildGetImagesTool(
+      ctx,
+      { kbIds: ["kb1"] as any, orgId: "o1" },
+      () => {}
+    )
+
+    const first = await (tool as any).execute({ imageIds: ["vid_1", "vid_2"] })
+    expect(first.length).toBe(2) // 2 of 4 quota used
+
+    const second = await (tool as any).execute({
+      imageIds: ["vid_3", "vid_4", "vid_5"] // asks for 3, only 2 remain
+    })
+    expect(second.map((r: any) => r.imageId)).toEqual(["vid_3", "vid_4"])
   })
 })

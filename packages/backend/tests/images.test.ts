@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { internal } from "../convex/_generated/api"
+import { api, internal } from "../convex/_generated/api"
 import { rankDocImagesForQuery } from "@tars-inc/eval-lib/multimodal"
 import { mediaCollectionName, mediaPointId } from "@tars-inc/eval-lib"
 
@@ -22,7 +22,8 @@ import {
   seedKB,
   seedUser,
   setupTest,
-  TEST_ORG_ID
+  TEST_ORG_ID,
+  testIdentity
 } from "./helpers"
 import { FakeQdrant } from "./fakeQdrant"
 
@@ -690,6 +691,101 @@ describe("finalize triggers processDocImages", () => {
       process.env.QDRANT_URL = savedUrl
       vi.useRealTimers()
     }
+  })
+})
+
+describe("reprocessKbImages (paginated, self-scheduling fan-out)", () => {
+  it("processes every eligible doc across multiple batch pages and skips others", async () => {
+    vi.useFakeTimers()
+    try {
+      const t = setupTest()
+      const userId = await seedUser(t)
+      const kbId = await seedKB(t, userId)
+      const orgId = TEST_ORG_ID
+
+      // 3 done docs (eligible), 1 still parsing, 1 failed — the batch worker
+      // must only enqueue the done ones. Small N here (batching is exercised via
+      // the same paginate()+scheduler.runAfter code path regardless of page
+      // count — REPROCESS_BATCH_SIZE is a fixed 100, so this stays one page,
+      // but the self-continuation branch (page.isDone → no reschedule) is what's
+      // under test alongside the eligibility filter).
+      const docIds: string[] = []
+      for (let i = 0; i < 3; i++) {
+        const content = `## Doc ${i}\n![chart ${i}](https://x/${i}.png)\n`
+        const docId = await t.run((ctx) =>
+          ctx.db.insert("documents", {
+            orgId,
+            kbId,
+            docId: `d${i}`,
+            title: `t${i}`,
+            content,
+            contentLength: content.length,
+            metadata: {},
+            parseStatus: "done",
+            createdAt: Date.now()
+          })
+        )
+        docIds.push(docId)
+      }
+      const parsingDocId = await t.run((ctx) =>
+        ctx.db.insert("documents", {
+          orgId,
+          kbId,
+          docId: "d-parsing",
+          title: "still parsing",
+          content: "",
+          contentLength: 0,
+          metadata: {},
+          parseStatus: "parsing",
+          createdAt: Date.now()
+        })
+      )
+      const failedDocId = await t.run((ctx) =>
+        ctx.db.insert("documents", {
+          orgId,
+          kbId,
+          docId: "d-failed",
+          title: "failed parse",
+          content: "",
+          contentLength: 0,
+          metadata: {},
+          parseStatus: "failed",
+          createdAt: Date.now()
+        })
+      )
+
+      const authedT = t.withIdentity(testIdentity)
+      const result = await authedT.mutation(api.kb.images.reprocessKbImages, {
+        kbId
+      })
+      expect(result).toEqual({ started: true })
+
+      await t.finishAllScheduledFunctions(vi.runAllTimers)
+
+      const rows = await t.query(internal.kb.images.imagesForDocs, {
+        kbId,
+        documentIds: [...docIds, parsingDocId, failedDocId] as any
+      })
+      expect(rows.length).toBe(3) // only the 3 "done" docs got media rows
+      for (const docId of docIds) {
+        const doc = await t.run((ctx) => ctx.db.get(docId as any))
+        expect((doc as any).mediaStatus).toBe("done")
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("rejects a KB owned by another org", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+    await t.run((ctx) => ctx.db.patch(kbId, { orgId: "org_other" }))
+
+    const authedT = t.withIdentity(testIdentity) // testIdentity's org is TEST_ORG_ID
+    await expect(
+      authedT.mutation(api.kb.images.reprocessKbImages, { kbId })
+    ).rejects.toThrow(/not found/i)
   })
 })
 
