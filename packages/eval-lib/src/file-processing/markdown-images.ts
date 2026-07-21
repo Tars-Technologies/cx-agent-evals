@@ -9,9 +9,10 @@ export interface MarkdownImage {
 }
 
 // Complete, non-greedy markdown image. Alt may be empty; url stops at the first
-// closing paren. Partial syntax (no closing paren) simply won't match — which is
-// exactly the chunk-boundary-split tolerance we want.
-const IMAGE_RE = /!\[([^\]]*)\]\(([^)\s]+)\)/g
+// space or closing paren; an optional `"title"` may follow. Partial syntax (no
+// closing paren) simply won't match — which is exactly the chunk-boundary-split
+// tolerance we want.
+const IMAGE_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g
 
 /** True for targets a vision model cannot consume or that aren't fetchable URLs. */
 export function isUnsupportedImageUrl(url: string): boolean {
@@ -51,11 +52,16 @@ export function rewriteMarkdownImages(
   content: string,
   map: (img: { alt: string; url: string }) => string | null
 ): string {
-  return content.replace(IMAGE_RE, (_raw, alt: string, url: string) => {
-    const next = map({ alt, url })
-    if (next === null) return ""
-    return `![${alt}](${next})`
-  })
+  return content.replace(
+    IMAGE_RE,
+    (_raw, alt: string, url: string, title?: string) => {
+      const next = map({ alt, url })
+      if (next === null) return ""
+      return title !== undefined
+        ? `![${alt}](${next} "${title}")`
+        : `![${alt}](${next})`
+    }
+  )
 }
 
 /** Matches the non-rendering media-id annotation `<!--media:img_xxxx-->`

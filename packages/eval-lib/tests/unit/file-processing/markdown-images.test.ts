@@ -48,6 +48,15 @@ describe("parseMarkdownImages", () => {
     const imgs = parseMarkdownImages("![x](https://x.com/a(b).png)")
     expect(imgs.map((i) => i.url)).toEqual(["https://x.com/a(b"])
   })
+
+  it("parses a standard markdown image with an optional title", () => {
+    // Before title support, `![alt](url "title")` failed to match at all — the
+    // whole image was invisible to the agent AND never stripped from chunk text.
+    const imgs = parseMarkdownImages('![a cat](https://x.com/c.png "A cat")')
+    expect(imgs.map((i) => ({ alt: i.alt, url: i.url }))).toEqual([
+      { alt: "a cat", url: "https://x.com/c.png" }
+    ])
+  })
 })
 
 describe("rewriteMarkdownImages", () => {
@@ -62,6 +71,14 @@ describe("rewriteMarkdownImages", () => {
   it("drops images whose map returns null", () => {
     const md = "a ![evil](https://evil.com/x.png) b"
     expect(rewriteMarkdownImages(md, () => null)).toBe("a  b")
+  })
+
+  it("preserves the title when rewriting a titled image", () => {
+    const md = 'see ![cat](https://x.com/c.png "A cat")!'
+    const out = rewriteMarkdownImages(md, (i) =>
+      i.url === "https://x.com/c.png" ? "img_abc" : null
+    )
+    expect(out).toBe('see ![cat](img_abc "A cat")!')
   })
 })
 

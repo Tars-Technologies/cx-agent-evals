@@ -208,6 +208,26 @@ describe("htmlToMarkdown media capture", () => {
     })
     expect(content).toContain('[embed:video](https://player.vimeo.com/embed/v "T")')
   })
+
+  it("escapes a double-quote in the title so it can't close the token early", async () => {
+    const html = `<body><main><iframe src="https://www.youtube.com/embed/abc123" title='Demo "Live" Q&A'></iframe></main></body>`
+    const { content } = await htmlToMarkdown(html)
+    expect(content).not.toContain('"Demo "Live" Q&A"')
+    expect(content).toContain(
+      '[embed:video](https://www.youtube.com/embed/abc123 "Demo \'Live\' Q&A")'
+    )
+  })
+
+  it("escapes a close-paren in the url so it can't truncate the link target", async () => {
+    const html = `<body><main><iframe src="https://x.com/files/spec(final).pdf" title="Spec"></iframe></main></body>`
+    const { content } = await htmlToMarkdown(html)
+    // Old bug: the url group stopped at the first raw ")" inside the path,
+    // leaving `.pdf "Spec")` as stray trailing text outside the token structure.
+    expect(content).not.toMatch(/spec\(final\)\.pdf "Spec"\)/)
+    expect(content).toContain(
+      '[embed:doc](https://x.com/files/spec(final%29.pdf "Spec")'
+    )
+  })
 })
 
 describe("htmlToMarkdown image src resolution", () => {

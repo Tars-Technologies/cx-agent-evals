@@ -155,6 +155,11 @@ export async function htmlToMarkdown(
   }
   const titleOf = (node: any): string =>
     (node.getAttribute?.("title") || node.getAttribute?.("aria-label") || "").trim()
+  // Both interpolated verbatim into `[embed:x](url "title")` — a `"` in the title
+  // would close the quote early and a `)` in the url would close the link target
+  // early, letting page content corrupt the token structure of ingested markdown.
+  const escapeTitle = (s: string): string => s.replace(/"/g, "'")
+  const safeUrl = (u: string): string => u.replace(/\)/g, "%29")
 
   turndown.addRule("mediaEmbed", {
     filter: (node: any) =>
@@ -166,11 +171,11 @@ export async function htmlToMarkdown(
         const abs = absolutize(raw)
         const host = hostOf(abs)
         const path = abs.split(/[?#]/)[0].toLowerCase()
-        const title = titleOf(node)
+        const title = escapeTitle(titleOf(node))
         if (VIDEO_EMBED_HOSTS.test(host))
-          return `\n\n[embed:video](${abs} "${title}")\n\n`
+          return `\n\n[embed:video](${safeUrl(abs)} "${title}")\n\n`
         if (DOC_VIEWER_HOSTS.test(host) || path.endsWith(".pdf"))
-          return `\n\n[embed:doc](${abs} "${title}")\n\n`
+          return `\n\n[embed:doc](${safeUrl(abs)} "${title}")\n\n`
         return "" // non-allowlisted iframe — dropped
       }
       // <video>: use src or the first <source src>, direct mp4/webm only.
@@ -181,7 +186,7 @@ export async function htmlToMarkdown(
       if (!src) return ""
       const abs = absolutize(src)
       if (/\.(mp4|webm)(\?|#|$)/i.test(abs))
-        return `\n\n[embed:video](${abs} "${titleOf(node)}")\n\n`
+        return `\n\n[embed:video](${safeUrl(abs)} "${escapeTitle(titleOf(node))}")\n\n`
       return ""
     }
   })
