@@ -8,7 +8,6 @@ import {
   type MutationCtx
 } from "../_generated/server"
 import { tenantMutation, tenantQuery } from "../lib/auth/tenant"
-import { type DocImage, rankDocImagesForQuery } from "@tars-inc/eval-lib/multimodal"
 
 // Bounded-concurrency pool so a crawl finalizing many docs at once does not
 // slam OpenAI; transient embed failures retry (E7).
@@ -37,7 +36,9 @@ const docImageInputValidator = v.object({
   mediaType: v.optional(
     v.union(v.literal("image"), v.literal("video"), v.literal("doc_link"))
   ),
-  embedding: v.optional(v.array(v.float64())),
+  // Vectors live in Qdrant (see kb/media_runtime.ts); kbMedia keeps only the
+  // skip-reembed hash. The hash is present iff a vector was successfully
+  // upserted for this input+model.
   embeddingInputHash: v.optional(v.string()),
   manualContext: v.optional(v.string())
 })
@@ -91,7 +92,8 @@ export const upsertDocImages = internalMutation({
           url: img.url,
           alt: img.alt,
           mediaType: img.mediaType ?? "image",
-          embedding: img.embedding,
+          // Shed any legacy inline vector — vectors live in Qdrant now.
+          embedding: undefined,
           embeddingInputHash: img.embeddingInputHash,
           manualContext: img.manualContext
         })
@@ -103,7 +105,6 @@ export const upsertDocImages = internalMutation({
           url: img.url,
           alt: img.alt,
           mediaType: img.mediaType ?? "image",
-          embedding: img.embedding,
           embeddingInputHash: img.embeddingInputHash,
           manualContext: img.manualContext,
           sourceDocId: args.sourceDocId,
@@ -128,11 +129,12 @@ export const setDocImageAnnotations = internalMutation({
 })
 
 /**
- * Existing embeddings + their input hashes for a document's images, so
- * processDocImages can reuse an unchanged image's vector instead of re-calling
- * the embedding API on every re-scrape/reprocess.
+ * Prior media metadata (input hashes + manual context) for a document's images,
+ * so processDocImages can skip re-embedding an unchanged image (hash match) and
+ * preserve user-authored context across re-scrapes. Vectors are NOT returned —
+ * they live in Qdrant; a matching hash means the vector is already upserted.
  */
-export const docImageEmbeddings = internalQuery({
+export const docMediaPriorMeta = internalQuery({
   args: { sourceDocId: v.id("documents") },
   handler: async (ctx, args) => {
     const rows = await ctx.db
@@ -141,7 +143,6 @@ export const docImageEmbeddings = internalQuery({
       .collect()
     return rows.map((r) => ({
       imageId: r.imageId,
-      embedding: r.embedding,
       embeddingInputHash: r.embeddingInputHash,
       manualContext: r.manualContext
     }))
@@ -163,7 +164,6 @@ export const imagesForDocs = internalQuery({
       documentId: Id<"documents">
       imageId: string
       alt: string
-      embedding?: number[]
     }> = []
     for (const documentId of args.documentIds) {
       const rows = await ctx.db
@@ -176,8 +176,7 @@ export const imagesForDocs = internalQuery({
         out.push({
           documentId,
           imageId: r.imageId,
-          alt: r.alt,
-          embedding: r.embedding
+          alt: r.alt
         })
       }
     }
@@ -186,43 +185,39 @@ export const imagesForDocs = internalQuery({
 })
 
 /**
- * Doc-gated image menu, ranked DB-side (efficiency: avoids shipping every
- * matched doc's 1536-d embeddings back to the retrieval action). `documentIds`
- * are in retrieved-chunk-rank order; within each doc images are ranked by cosine
- * to `queryEmbedding`, round-robined across docs, deduped, capped (E9). Returns
- * only `[{imageId, alt}]` — url/embedding never leave the query.
+ * Doc-gated media metadata for ranking (E9). Returns each menu-eligible image's
+ * `{documentId, imageId, alt, mediaType}` in doc order — NO vectors. The caller
+ * (media_runtime.rankMediaForDocs) fetches vectors from Qdrant and ranks in the
+ * action. Excludes doc_link rows (never menu items) and url-less rows.
  */
-export const rankedImagesForDocs = internalQuery({
+export const mediaMetaForDocs = internalQuery({
   args: {
     kbId: v.id("knowledgeBases"),
-    documentIds: v.array(v.id("documents")),
-    queryEmbedding: v.array(v.float64()),
-    cap: v.number()
+    documentIds: v.array(v.id("documents"))
   },
   handler: async (ctx, args) => {
-    const groups: DocImage[][] = []
+    const out: Array<{
+      documentId: Id<"documents">
+      imageId: string
+      alt: string
+      mediaType: "image" | "video"
+    }> = []
     for (const documentId of args.documentIds) {
       const rows = await ctx.db
         .query("kbMedia")
         .withIndex("by_source_doc", (q) => q.eq("sourceDocId", documentId))
         .collect()
-      groups.push(
-        rows
-          .filter(
-            (r) =>
-              r.kbId === args.kbId &&
-              r.url &&
-              (r.mediaType ?? "image") !== "doc_link"
-          )
-          .map((r) => ({
-            imageId: r.imageId,
-            alt: r.alt,
-            embedding: r.embedding,
-            type: (r.mediaType ?? "image") as "image" | "video"
-          }))
-      )
+      for (const r of rows) {
+        if (r.kbId !== args.kbId || !r.url) continue
+        const mediaType = (r.mediaType ?? "image") as
+          | "image"
+          | "video"
+          | "doc_link"
+        if (mediaType === "doc_link") continue
+        out.push({ documentId, imageId: r.imageId, alt: r.alt, mediaType })
+      }
     }
-    return rankDocImagesForQuery(args.queryEmbedding, groups, args.cap)
+    return out
   }
 })
 

@@ -344,12 +344,15 @@ export const kbMediaValidator = v.object({
   url: v.optional(v.string()),
   storageId: v.optional(v.id("_storage")),
   alt: v.string(),
-  // Context-aware embedding (text-embedding-3-small, 1536). Input is
-  // caption+alt+heading, or +surrounding when all signals are weak (D10).
-  // Absent for doc_link rows (never ranked).
+  // Context-aware embedding vectors live in Qdrant (see kb/media_runtime.ts),
+  // keyed by imageId. This field is DEPRECATED and no longer written — it is
+  // retained (optional) only to tolerate legacy rows that still carry an inline
+  // vector from before the Qdrant migration. processDocImages clears it on the
+  // next re-scrape of a row; nothing reads it.
   embedding: v.optional(v.array(v.float64())),
   // sha256("<model>:<embedding input>") — lets processDocMedia skip re-embedding
-  // media whose context-aware input (and model) is unchanged on re-scrape.
+  // media whose context-aware input (and model) is unchanged on re-scrape. Set
+  // iff a vector was successfully upserted to Qdrant for this input+model.
   embeddingInputHash: v.optional(v.string()),
   // User-authored context. When set it DOMINATES the embedding (highest-priority
   // signal, over alt/caption/heading/surrounding) and survives re-scrapes.

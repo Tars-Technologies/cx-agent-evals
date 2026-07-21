@@ -23,6 +23,7 @@ import {
   MENU_IMAGE_CAP,
   whitelistImageMarkdown
 } from "@tars-inc/eval-lib/multimodal"
+import { rankMediaForDocs } from "../kb/media_runtime"
 
 // ─── Helpers ───
 
@@ -294,15 +295,12 @@ export const evaluateAgentQuestion = internalAction({
               docOrder.push(id)
             }
           }
-          const images = await ctx.runQuery(
-            internal.kb.images.rankedImagesForDocs,
-            {
-              kbId: info.kbId as Id<"knowledgeBases">,
-              documentIds: docOrder,
-              queryEmbedding,
-              cap: MENU_IMAGE_CAP
-            }
-          )
+          const images = await rankMediaForDocs(ctx, {
+            kbId: info.kbId as Id<"knowledgeBases">,
+            documentIds: docOrder,
+            queryEmbedding,
+            cap: MENU_IMAGE_CAP
+          })
 
           const mappedChunks = chunks.map((c: any) => ({
             content: c.content,

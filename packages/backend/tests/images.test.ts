@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { internal } from "../convex/_generated/api"
 import { rankDocImagesForQuery } from "@tars-inc/eval-lib/multimodal"
+import { mediaCollectionName, mediaPointId } from "@tars-inc/eval-lib"
 
 // Deterministic embeddings so processDocImages ranking/storage is assertable.
 // `calls` counts how many times embed() ran, to prove unchanged images skip it.
@@ -23,6 +24,27 @@ import {
   setupTest,
   TEST_ORG_ID
 } from "./helpers"
+import { FakeQdrant } from "./fakeQdrant"
+
+// Media vectors now live in Qdrant. Point every store call at an in-memory fake
+// and mark the deployment as Qdrant-configured. Env is read lazily (config.ts),
+// so setting it before the first action runs is sufficient. SKIP_ENV_VALIDATION
+// lets config load without the required API keys in the test environment.
+process.env.SKIP_ENV_VALIDATION = "1"
+process.env.QDRANT_URL = "https://fake-qdrant.test:6333"
+const MEDIA_COLLECTION = mediaCollectionName("openai", "text-embedding-3-small")
+
+let fake: FakeQdrant
+beforeEach(() => {
+  fake = new FakeQdrant()
+  vi.stubGlobal("fetch", fake.fetch)
+})
+afterEach(() => vi.unstubAllGlobals())
+
+/** Vector stored in the fake Qdrant for an imageId, or undefined if absent. */
+function storedVector(imageId: string): number[] | undefined {
+  return fake.pointsIn(MEDIA_COLLECTION).get(mediaPointId(imageId))?.vector
+}
 
 describe("kb.images.upsertDocImages (delete-and-replace)", () => {
   it("inserts, then reconciles removed images on re-run", async () => {
@@ -48,7 +70,7 @@ describe("kb.images.upsertDocImages (delete-and-replace)", () => {
       orgId,
       sourceDocId: docId,
       images: [
-        { imageId: "img_a", url: "https://x/a.png", alt: "a", embedding: [1, 0] },
+        { imageId: "img_a", url: "https://x/a.png", alt: "a" },
         { imageId: "img_b", url: "https://x/b.png", alt: "b" }
       ]
     })
@@ -58,14 +80,12 @@ describe("kb.images.upsertDocImages (delete-and-replace)", () => {
     })
     expect(rows.map((r) => r.imageId).sort()).toEqual(["img_a", "img_b"])
 
-    // Re-run without img_b → it must be deleted (E2); img_a alt/embedding updated.
+    // Re-run without img_b → it must be deleted (E2); img_a alt updated.
     await t.mutation(internal.kb.images.upsertDocImages, {
       kbId,
       orgId,
       sourceDocId: docId,
-      images: [
-        { imageId: "img_a", url: "https://x/a.png", alt: "a2", embedding: [0, 1] }
-      ]
+      images: [{ imageId: "img_a", url: "https://x/a.png", alt: "a2" }]
     })
     rows = await t.query(internal.kb.images.imagesForDocs, {
       kbId,
@@ -73,7 +93,6 @@ describe("kb.images.upsertDocImages (delete-and-replace)", () => {
     })
     expect(rows.map((r) => r.imageId)).toEqual(["img_a"])
     expect(rows[0].alt).toBe("a2")
-    expect(rows[0].embedding).toEqual([0, 1])
   })
 
   it("collapses pre-existing duplicate rows for the same (doc, imageId)", async () => {
@@ -213,8 +232,9 @@ describe("manual context", () => {
         .first()
     )
     // manual context is preserved across reprocess and the item re-embedded
+    // (its vector is upserted to Qdrant, its hash recorded on the row).
     expect(after!.manualContext).toBe("the quarterly revenue keynote")
-    expect(after!.embedding).toBeDefined()
+    expect(storedVector(row.imageId)).toBeDefined()
     // hash reflects the manual-context blend (differs from the no-context hash)
     const { createHash } = await import("node:crypto")
     const noContextHash = createHash("sha256")
@@ -224,8 +244,8 @@ describe("manual context", () => {
   })
 })
 
-describe("mediaType: doc_link excluded from ranking", () => {
-  it("rankedImagesForDocs skips doc_link rows", async () => {
+describe("mediaMetaForDocs (doc-gated ranking metadata)", () => {
+  it("excludes doc_link rows and carries media type in doc order", async () => {
     const t = setupTest()
     const userId = await seedUser(t)
     const kbId = await seedKB(t, userId)
@@ -252,7 +272,6 @@ describe("mediaType: doc_link excluded from ranking", () => {
           imageId: "img_i",
           url: "https://x/i.png",
           alt: "i",
-          embedding: [1, 0],
           mediaType: "image"
         },
         {
@@ -263,14 +282,12 @@ describe("mediaType: doc_link excluded from ranking", () => {
         }
       ]
     })
-    const menu = await t.query(internal.kb.images.rankedImagesForDocs, {
+    const meta = await t.query(internal.kb.images.mediaMetaForDocs, {
       kbId,
-      documentIds: [docId],
-      queryEmbedding: [1, 0],
-      cap: 6
+      documentIds: [docId]
     })
-    expect(menu.map((m) => m.imageId)).toEqual(["img_i"]) // doc_link excluded
-    expect(menu[0].type).toBe("image") // menu entries carry media type
+    expect(meta.map((m) => m.imageId)).toEqual(["img_i"]) // doc_link excluded
+    expect(meta[0].mediaType).toBe("image")
     // imagesForDocs also excludes it
     const rows = await t.query(internal.kb.images.imagesForDocs, {
       kbId,
@@ -413,7 +430,7 @@ describe("kb.images_actions.processDocImages", () => {
     return { kbId, orgId, docId }
   }
 
-  it("writes rows with embeddings, annotates content, skips decorative (E4)", async () => {
+  it("stores vectors in Qdrant, annotates content, skips decorative (E4)", async () => {
     const t = setupTest()
     const { kbId, docId } = await seedDoc(t, sampleContent)
 
@@ -425,7 +442,8 @@ describe("kb.images_actions.processDocImages", () => {
     })
     expect(rows.length).toBe(1)
     expect(rows[0].alt).toBe("Quarterly revenue chart")
-    expect(rows[0].embedding).toEqual([1, 0])
+    // The vector lives in Qdrant, not on the row.
+    expect(storedVector(rows[0].imageId)).toEqual([1, 0])
 
     const doc = await t.run((ctx) => ctx.db.get(docId))
     expect(doc!.content).toContain(
@@ -450,7 +468,7 @@ describe("kb.images_actions.processDocImages", () => {
     const content =
       `## Guides\n[embed:video](https://youtube.com/embed/ID "Setup demo")\n` +
       `[embed:doc](https://x/spec.pdf "Full spec")\n`
-    const { kbId, docId } = await seedDoc(t, content)
+    const { docId } = await seedDoc(t, content)
     await t.action(internal.kb.images_actions.processDocImages, { docId })
 
     const rows = await t.run((ctx) =>
@@ -461,8 +479,8 @@ describe("kb.images_actions.processDocImages", () => {
     )
     const video = rows.find((r) => r.mediaType === "video")!
     const docLink = rows.find((r) => r.mediaType === "doc_link")!
-    expect(video.embedding).toEqual([1, 0]) // video embedded
-    expect(docLink.embedding).toBeUndefined() // doc_link not embedded
+    expect(storedVector(video.imageId)).toEqual([1, 0]) // video embedded
+    expect(storedVector(docLink.imageId)).toBeUndefined() // doc_link not embedded
 
     const doc = await t.run((ctx) => ctx.db.get(docId))
     expect(doc!.content).toContain(`[Full spec](${docLink.imageId})`) // inline pointer
@@ -481,24 +499,50 @@ describe("kb.images_actions.processDocImages", () => {
     const afterFirst = embedState.calls
     expect(afterFirst).toBe(before + 1) // first run embeds
 
-    const rows1 = await t.query(internal.kb.images.imagesForDocs, {
+    const [row1] = await t.query(internal.kb.images.imagesForDocs, {
       kbId,
       documentIds: [docId]
     })
 
-    // Re-run on identical content: no new embed call, embedding preserved.
+    // Re-run on identical content: no new embed call, vector preserved in Qdrant.
     await t.action(internal.kb.images_actions.processDocImages, { docId })
     expect(embedState.calls).toBe(afterFirst)
+    expect(storedVector(row1.imageId)).toEqual([1, 0])
+  })
 
-    const rows2 = await t.query(internal.kb.images.imagesForDocs, {
+  it("removes a media point from Qdrant when a re-scrape drops the image", async () => {
+    const t = setupTest()
+    const twoImages =
+      `## Two\n![First](https://x/first.png)\n![Second](https://x/second.png)\n`
+    const { kbId, docId } = await seedDoc(t, twoImages)
+    await t.action(internal.kb.images_actions.processDocImages, { docId })
+
+    const before = await t.query(internal.kb.images.imagesForDocs, {
       kbId,
       documentIds: [docId]
     })
-    expect(rows2[0].embedding).toEqual(rows1[0].embedding)
+    expect(before.length).toBe(2)
+    for (const r of before) expect(storedVector(r.imageId)).toBeDefined()
+    const dropped = before.find((r) => r.alt === "Second")!
+
+    // Re-scrape with only the first image → the second's vector must be deleted.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(docId, {
+        content: `## Two\n![First](https://x/first.png)\n`
+      })
+    })
+    await t.action(internal.kb.images_actions.processDocImages, { docId })
+
+    const after = await t.query(internal.kb.images.imagesForDocs, {
+      kbId,
+      documentIds: [docId]
+    })
+    expect(after.map((r) => r.alt)).toEqual(["First"])
+    expect(storedVector(dropped.imageId)).toBeUndefined() // orphan removed
   })
 })
 
-describe("doc-gated menu (imagesForDocs + rankDocImagesForQuery)", () => {
+describe("doc-gated menu ranking (rankDocImagesForQuery over metadata)", () => {
   it("ranks within docs and round-robins across docs in doc order", async () => {
     const t = setupTest()
     const userId = await seedUser(t)
@@ -525,45 +569,42 @@ describe("doc-gated menu (imagesForDocs + rankDocImagesForQuery)", () => {
       orgId,
       sourceDocId: docA,
       images: [
-        { imageId: "img_a1", url: "https://x/a1.png", alt: "a1", embedding: [1, 0] },
-        { imageId: "img_a2", url: "https://x/a2.png", alt: "a2", embedding: [0.5, 0.5] }
+        { imageId: "img_a1", url: "https://x/a1.png", alt: "a1" },
+        { imageId: "img_a2", url: "https://x/a2.png", alt: "a2" }
       ]
     })
     await t.mutation(internal.kb.images.upsertDocImages, {
       kbId,
       orgId,
       sourceDocId: docB,
-      images: [
-        { imageId: "img_b1", url: "https://x/b1.png", alt: "b1", embedding: [0.9, 0.1] }
-      ]
+      images: [{ imageId: "img_b1", url: "https://x/b1.png", alt: "b1" }]
     })
 
     const docOrder = [docA, docB]
-    const rows = await t.query(internal.kb.images.imagesForDocs, {
+    // Metadata query returns menu-eligible images in doc order (no vectors).
+    const meta = await t.query(internal.kb.images.mediaMetaForDocs, {
       kbId,
       documentIds: docOrder
     })
+    // rankMediaForDocs attaches Qdrant vectors then ranks; simulate that here.
+    const vecById: Record<string, number[]> = {
+      img_a1: [1, 0],
+      img_a2: [0.5, 0.5],
+      img_b1: [0.9, 0.1]
+    }
     const groups = docOrder.map((d) =>
-      rows
-        .filter((r) => r.documentId === d)
-        .map((r) => ({ imageId: r.imageId, alt: r.alt, embedding: r.embedding }))
+      meta
+        .filter((m) => m.documentId === d)
+        .map((m) => ({
+          imageId: m.imageId,
+          alt: m.alt,
+          embedding: vecById[m.imageId],
+          type: m.mediaType
+        }))
     )
     const menu = rankDocImagesForQuery([1, 0], groups, 6)
     // round-robin: docA #1, docB #1, docA #2
     expect(menu.map((m) => m.imageId)).toEqual(["img_a1", "img_b1", "img_a2"])
-
-    // DB-side ranking (rankedImagesForDocs) returns the same menu, only [{imageId, alt}].
-    const dbMenu = await t.query(internal.kb.images.rankedImagesForDocs, {
-      kbId,
-      documentIds: docOrder,
-      queryEmbedding: [1, 0],
-      cap: 6
-    })
-    expect(dbMenu).toEqual([
-      { imageId: "img_a1", alt: "a1", type: "image" },
-      { imageId: "img_b1", alt: "b1", type: "image" },
-      { imageId: "img_a2", alt: "a2", type: "image" }
-    ])
   })
 })
 

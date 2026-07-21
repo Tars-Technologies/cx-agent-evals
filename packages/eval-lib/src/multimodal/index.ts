@@ -69,7 +69,8 @@ export function mediaSystemPromptRules(opts: {
     "- Only ever use an `imageId` from the menu as the target. Never copy a URL you see written in retrieved passages/chunk/article/source text (e.g. an image link inside the retrieved content) and use that as an image source — such a URL is not guaranteed real or safe to display and will be removed.",
     "- NEVER construct or guess a URL from general/training knowledge (e.g. a plausible-looking Wikipedia/Wikimedia file URL) — even if it looks real, it is not one you retrieved and it WILL be silently removed from your answer. The imageId is the only valid target, always.",
     "  WRONG: `![dancer](https://upload.wikimedia.org/wikipedia/commons/thumb/...)`  (a real-looking but non-menu URL — always stripped)",
-    "  RIGHT: `![dancer](img_4e0bd074cbe4876a)`  (the exact imageId string from the menu)",
+    "  WRONG: `![dancer](img_4e0bd074cbe4876a)`  (this exact id is only a FORMAT example — it is not real and does not exist; using it verbatim will fail)",
+    "  RIGHT: `![dancer](<imageId>)` — replace <imageId> with the REAL id string copied from THIS turn's menu, not from this instruction text.",
     "- Video items embed a real, playable video via the marker — never say you cannot show a video or send the user elsewhere.",
     "- Doc links found in retrieved chunk text (`[title](doc_id)`) may be cited verbatim.",
     "- If there is no menu, do not fabricate media."
@@ -226,11 +227,16 @@ export function buildImageEmbeddingInput(
 
   const altOk = wordCount(alt) >= 2 && !ALT_DENYLIST.has(alt.toLowerCase())
   const captionOk = caption.strong
-  const headingOk = wordCount(heading) >= 3 && !HEADING_DENYLIST.has(heading)
+  const headingOk = wordCount(heading) >= 2 && !HEADING_DENYLIST.has(heading)
 
   // A weak caption is only used when alt is also weak (per D10).
   const captionText = captionOk || !altOk ? caption.text : ""
-  const parts = [captionText, alt, heading].filter(Boolean)
+  // Gate alt/heading through their denylist checks so generic tokens ("image",
+  // "Overview", …) never leak into the embedding support signal (D10) — only
+  // strong signals contribute; the surrounding-text fallback covers the rest.
+  const parts = [captionText, altOk ? alt : "", headingOk ? heading : ""].filter(
+    Boolean
+  )
 
   let scraped: string
   let usedSurrounding: boolean

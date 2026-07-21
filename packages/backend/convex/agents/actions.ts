@@ -15,6 +15,7 @@ import {
   resolveAnswerImageMarkers
 } from "../lib/vision"
 import { MENU_IMAGE_CAP, whitelistImageMarkdown } from "@tars-inc/eval-lib/multimodal"
+import { rankMediaForDocs } from "../kb/media_runtime"
 import { composeSystemPrompt } from "./promptTemplate"
 
 // Helper: convert stored messages to AI SDK format
@@ -196,15 +197,12 @@ export const runAgent = internalAction({
                 docOrder.push(id)
               }
             }
-            const images = await ctx.runQuery(
-              internal.kb.images.rankedImagesForDocs,
-              {
-                kbId: info.kbId as Id<"knowledgeBases">,
-                documentIds: docOrder,
-                queryEmbedding,
-                cap: MENU_IMAGE_CAP
-              }
-            )
+            const images = await rankMediaForDocs(ctx, {
+              kbId: info.kbId as Id<"knowledgeBases">,
+              documentIds: docOrder,
+              queryEmbedding,
+              cap: MENU_IMAGE_CAP
+            })
 
             const cleanChunks = chunks.map((c: any) => ({
               content: c.content,

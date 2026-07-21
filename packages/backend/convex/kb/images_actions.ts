@@ -11,6 +11,7 @@ import { internal } from "../_generated/api"
 import { internalAction } from "../_generated/server"
 import { imageIdFor, isLikelyDecorativeImage } from "../lib/vision"
 import { buildImageEmbeddingInput } from "@tars-inc/eval-lib/multimodal"
+import { buildQdrantMediaStore } from "./media_runtime"
 
 /**
  * Document-level media processing (E1–E9). Reads the finalized document content
@@ -33,8 +34,9 @@ export const processDocImages = internalAction({
     const media = parseMarkdownMedia(base)
 
     // Existing rows carry user-authored manualContext (must survive re-scrape,
-    // and dominates the embedding) + prior embeddings for the skip-reembed check.
-    const prior = await ctx.runQuery(internal.kb.images.docImageEmbeddings, {
+    // and dominates the embedding) + prior input hashes for the skip-reembed
+    // check (a matching hash means the vector is already in Qdrant).
+    const prior = await ctx.runQuery(internal.kb.images.docMediaPriorMeta, {
       sourceDocId: args.docId
     })
     const priorById = new Map(prior.map((p) => [p.imageId, p]))
@@ -80,29 +82,56 @@ export const processDocImages = internalAction({
       })
     }
 
-    // Reuse stored embeddings whose input+model hash is unchanged (skip the
-    // OpenAI call); only embed new/changed items in one batch (E7). On embed
-    // failure those rows are upserted without an embedding (E3).
-    const embeddings: Array<number[] | undefined> = new Array(embedItems.length)
+    // Skip items whose input+model hash is unchanged — a matching hash means the
+    // vector is already in Qdrant (skip both the OpenAI call and the re-upsert).
+    // Only new/changed items are (re)embedded in one batch (E7). On embed failure
+    // the item's hash is left undefined so the next run recomputes (E3).
     const toCompute: number[] = []
+    const succeededHash = new Array<string | undefined>(embedItems.length)
     embedItems.forEach((e, i) => {
       const prev = priorById.get(e.imageId)
-      if (prev?.embeddingInputHash === e.hash && prev.embedding) {
-        embeddings[i] = prev.embedding // unchanged → reuse
+      if (prev?.embeddingInputHash === e.hash) {
+        succeededHash[i] = e.hash // unchanged → vector already upserted
       } else {
         toCompute.push(i)
       }
     })
+
+    // Vectors live in Qdrant. Delete only the media this doc no longer
+    // references (leaving unchanged points intact), then upsert (re)embedded
+    // media. Point ids are derived from imageId, so upsert is idempotent. The
+    // collection is created at the embedder's dimension so vectors always fit.
+    const store = buildQdrantMediaStore(embedder.dimension)
+    const currentIds = new Set(embedItems.map((e) => e.imageId))
+    const removedIds = prior
+      .map((p) => p.imageId)
+      .filter((id) => !currentIds.has(id))
+    if (removedIds.length > 0) {
+      await store.deleteByIds(removedIds)
+    }
+
     if (toCompute.length > 0) {
       try {
         const fresh = await embedder.embed(
           toCompute.map((i) => embedItems[i].input)
         )
-        toCompute.forEach((idx, j) => {
-          embeddings[idx] = fresh[j]
-        })
+        await store.upsert(
+          toCompute.map((idx, j) => ({
+            imageId: embedItems[idx].imageId,
+            embedding: fresh[j],
+            alt: embedItems[idx].alt,
+            mediaType: embedItems[idx].mediaType
+          })),
+          {
+            kbId: String(doc.kbId),
+            orgId: String(doc.orgId),
+            sourceDocId: String(args.docId)
+          }
+        )
+        // Mark these as successfully vectorized so the row records the hash.
+        for (const idx of toCompute) succeededHash[idx] = embedItems[idx].hash
       } catch {
-        // leave the changed entries' embeddings undefined; retried next run
+        // leave the changed entries' hashes undefined; retried next run
       }
     }
 
@@ -116,8 +145,7 @@ export const processDocImages = internalAction({
           url: e.url,
           alt: e.alt,
           mediaType: e.mediaType,
-          embedding: embeddings[i],
-          embeddingInputHash: e.hash,
+          embeddingInputHash: succeededHash[i],
           manualContext: e.manualContext
         })),
         ...docItems.map((e) => ({
