@@ -133,17 +133,22 @@ async function processDoc(
   // references (leaving unchanged points intact), then upsert (re)embedded
   // media. Point ids are derived from imageId, so upsert is idempotent. The
   // collection is created at the embedder's dimension so vectors always fit.
-  const store = buildQdrantMediaStore(embedder.dimension)
+  // Only build the store when there's actually something to delete/upsert — a
+  // text-only doc (the common case) has nothing for Qdrant to do at all.
   const currentIds = new Set(embedItems.map((e) => e.imageId))
   const removedIds = prior
     .map((p) => p.imageId)
     .filter((id) => !currentIds.has(id))
-  if (removedIds.length > 0) {
+  const store =
+    removedIds.length > 0 || toCompute.length > 0
+      ? buildQdrantMediaStore(embedder.dimension)
+      : null
+  if (store && removedIds.length > 0) {
     await store.deleteByIds(removedIds)
   }
 
   let embedError: string | undefined
-  if (toCompute.length > 0) {
+  if (store && toCompute.length > 0) {
     try {
       const fresh = await embedder.embed(
         toCompute.map((i) => embedItems[i].input)

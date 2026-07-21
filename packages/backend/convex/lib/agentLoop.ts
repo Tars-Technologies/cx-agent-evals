@@ -124,12 +124,21 @@ export async function finalizeMediaAnswer(
   )
   if (firstPassInvalidTargets.size > 0 && opts.lastImageMenu.size > 0) {
     const validIds = [...opts.lastImageMenu.keys()].join(", ")
+    // The instruction must land as a trailing `user` message, not appended to
+    // `system` with the reply left as the last `assistant` message — a message
+    // array ending in `assistant` is treated as a prefill by the AI SDK, so the
+    // model would just CONTINUE rawText's text instead of rewriting it.
     const correction = await generateText({
       model: resolveModel(opts.modelId),
-      system:
-        opts.systemPrompt +
-        `\n\nYour previous reply referenced media using a URL or id that does not exist — it will not display. The ONLY valid media ids right now are: ${validIds}. Rewrite your ENTIRE reply: use the exact marker ![alt](imageId) with one of those ids wherever you meant to show media. Do not cite the broken reference as a plain link either — if none of the valid ids fit, drop the reference completely and say in one short sentence that the image isn't available, without a URL of any kind.`,
-      messages: [...opts.aiMessages, { role: "assistant", content: rawText }]
+      system: opts.systemPrompt,
+      messages: [
+        ...opts.aiMessages,
+        { role: "assistant", content: rawText },
+        {
+          role: "user",
+          content: `Your previous reply referenced media using a URL or id that does not exist — it will not display. The ONLY valid media ids right now are: ${validIds}. Rewrite your ENTIRE reply: use the exact marker ![alt](imageId) with one of those ids wherever you meant to show media. Do not cite the broken reference as a plain link either — if none of the valid ids fit, drop the reference completely and say in one short sentence that the image isn't available, without a URL of any kind.`
+        }
+      ]
     })
     if (correction.text) {
       rawText = correction.text
