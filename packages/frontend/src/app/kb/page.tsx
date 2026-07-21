@@ -88,6 +88,7 @@ function KBPageContent() {
   const cancelCrawl = useMutation(api.kb.crawl.cancelCrawl)
   const reindexImages = useMutation(api.kb.images.reprocessKbImages)
   const [imageReindexMsg, setImageReindexMsg] = useState<string | null>(null)
+  const [isReindexingImages, setIsReindexingImages] = useState(false)
   const [showMediaEditor, setShowMediaEditor] = useState(false)
   const imageCount = useQuery(
     api.kb.images.countForKb,
@@ -265,7 +266,8 @@ function KBPageContent() {
                     </button>
                     <button
                       onClick={async () => {
-                        if (!selectedKbId) return
+                        if (!selectedKbId || isReindexingImages) return
+                        setIsReindexingImages(true)
                         setImageReindexMsg("Reprocessing images…")
                         try {
                           await reindexImages({ kbId: selectedKbId })
@@ -274,12 +276,15 @@ function KBPageContent() {
                           )
                         } catch {
                           setImageReindexMsg("Failed to start image reprocess.")
+                        } finally {
+                          setIsReindexingImages(false)
                         }
                       }}
+                      disabled={isReindexingImages}
                       title="Reprocess this KB's documents for images (rebuilds the document-level image registry and embeddings)."
-                      className="px-3 py-1.5 text-xs border border-border text-text rounded hover:border-accent transition-colors whitespace-nowrap"
+                      className="px-3 py-1.5 text-xs border border-border text-text rounded hover:border-accent transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Reprocess images
+                      {isReindexingImages ? "Reprocessing…" : "Reprocess images"}
                     </button>
                     <button
                       onClick={() => setShowMediaEditor(true)}

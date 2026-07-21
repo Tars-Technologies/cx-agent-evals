@@ -184,10 +184,10 @@ function LoadableImage({
  */
 function videoElementFor(url: string, label?: string): ReactElement | null {
   if (/\.(mp4|webm|ogg)(\?|#|$)/i.test(url)) {
-    return <VideoFile url={url} label={label} />
+    return <VideoFile key={url} url={url} label={label} />
   }
   if (VIDEO_EMBED_HOSTS.test(hostOf(url))) {
-    return <VideoEmbed url={url} alt={label} />
+    return <VideoEmbed key={url} url={url} alt={label} />
   }
   return null
 }
@@ -420,6 +420,26 @@ export const markdownComponents: Components = {
   }
 }
 
+/**
+ * The canonical "rendered agent/document markdown" pipeline: annotation
+ * stripping + embed-token conversion (prepareRendered), GFM, raw-HTML support
+ * (rehypeRaw) sanitized against XSS (rehypeSanitize), and the shared component
+ * set (images/videos/links/etc). Any surface that renders agent or document
+ * markdown should use this rather than a bare `<ReactMarkdown>`, so `[embed:*]`
+ * tokens and media annotations render consistently everywhere.
+ */
+export function RenderedMarkdown({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
+      components={markdownComponents}
+    >
+      {prepareRendered(content)}
+    </ReactMarkdown>
+  )
+}
+
 function TogglePill({
   mode,
   onToggle
@@ -477,13 +497,7 @@ export function MarkdownViewer({
         </pre>
       ) : (
         <div className="p-4 pr-24">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
-            components={markdownComponents}
-          >
-            {prepareRendered(content)}
-          </ReactMarkdown>
+          <RenderedMarkdown content={content} />
         </div>
       )}
     </div>
