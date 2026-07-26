@@ -243,6 +243,70 @@ describe("manual context", () => {
       .digest("hex")
     expect(after!.embeddingInputHash).not.toBe(noContextHash)
   })
+
+  it("setMediaContext mutation pages its patch/reschedule fan-out via self-scheduling", async () => {
+    vi.useFakeTimers()
+    try {
+      const t = setupTest()
+      const userId = await seedUser(t)
+      const kbId = await seedKB(t, userId)
+      const orgId = TEST_ORG_ID
+      const content = `## Heading\n![A chart](https://x/c.png)\n`
+      const docId = await t.run((ctx) =>
+        ctx.db.insert("documents", {
+          orgId,
+          kbId,
+          docId: "d1",
+          title: "t",
+          content,
+          contentLength: content.length,
+          metadata: {},
+          parseStatus: "done",
+          createdAt: Date.now()
+        })
+      )
+      await t.action(internal.kb.images_actions.processDocImages, { docId })
+      const [row] = await t.query(internal.kb.images.imagesForDocs, {
+        kbId,
+        documentIds: [docId]
+      })
+
+      const authedT = t.withIdentity(testIdentity)
+      const result = await authedT.mutation(api.kb.images.setMediaContext, {
+        kbId,
+        imageId: row.imageId,
+        manualContext: "the quarterly revenue keynote"
+      })
+      expect(result).toEqual({ started: true })
+
+      await t.finishAllScheduledFunctions(vi.runAllTimers)
+
+      const after = await t.run((ctx) =>
+        ctx.db
+          .query("kbMedia")
+          .withIndex("by_image_id", (q) => q.eq("imageId", row.imageId))
+          .first()
+      )
+      expect(after!.manualContext).toBe("the quarterly revenue keynote")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("setMediaContext rejects an imageId with no row in this KB", async () => {
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kbId = await seedKB(t, userId)
+
+    const authedT = t.withIdentity(testIdentity)
+    await expect(
+      authedT.mutation(api.kb.images.setMediaContext, {
+        kbId,
+        imageId: "img_does_not_exist",
+        manualContext: "x"
+      })
+    ).rejects.toThrow(/not found/i)
+  })
 })
 
 describe("mediaMetaForDocs (doc-gated ranking metadata)", () => {
@@ -727,14 +791,19 @@ describe("reprocessKbImages (paginated, self-scheduling fan-out)", () => {
         )
         docIds.push(docId)
       }
+      // Both placeholders carry real image content (not content:"") — otherwise
+      // they'd produce zero media rows regardless of the parseStatus skip
+      // below, and removing that skip entirely would still pass this test's
+      // `rows.length === 3` assertion (false confidence). With real content,
+      // a broken/removed skip surfaces as rows.length === 5.
       const parsingDocId = await t.run((ctx) =>
         ctx.db.insert("documents", {
           orgId,
           kbId,
           docId: "d-parsing",
           title: "still parsing",
-          content: "",
-          contentLength: 0,
+          content: "![still parsing](https://x/parsing.png)",
+          contentLength: 40,
           metadata: {},
           parseStatus: "parsing",
           createdAt: Date.now()
@@ -746,8 +815,8 @@ describe("reprocessKbImages (paginated, self-scheduling fan-out)", () => {
           kbId,
           docId: "d-failed",
           title: "failed parse",
-          content: "",
-          contentLength: 0,
+          content: "![failed parse](https://x/failed.png)",
+          contentLength: 38,
           metadata: {},
           parseStatus: "failed",
           createdAt: Date.now()
@@ -844,5 +913,45 @@ describe("getImagesByIds multi-KB scoping", () => {
       imageIds: ["img_one", "img_two"]
     })
     expect(onlyKb1.map((r) => r.imageId)).toEqual(["img_one"])
+  })
+
+  it("excludes a row whose kbId is in scope but whose orgId is not", async () => {
+    // kb1 is in the requested kbIds (passes the allowedKbs check), so this
+    // isolates the row.orgId !== args.orgId clause specifically — every other
+    // row in this file shares one org, so that clause otherwise has no coverage.
+    const t = setupTest()
+    const userId = await seedUser(t)
+    const kb1 = await seedKB(t, userId)
+    const orgId = TEST_ORG_ID
+    const docId = await t.run((ctx) =>
+      ctx.db.insert("documents", {
+        orgId,
+        kbId: kb1,
+        docId: "d1",
+        title: "t",
+        content: "c",
+        contentLength: 1,
+        metadata: {},
+        createdAt: Date.now()
+      })
+    )
+    await t.run((ctx) =>
+      ctx.db.insert("kbMedia", {
+        imageId: "img_foreign_org",
+        kbId: kb1,
+        orgId: "org_other",
+        url: "https://x.com/foreign.png",
+        alt: "foreign",
+        sourceDocId: docId,
+        createdAt: Date.now()
+      })
+    )
+
+    const result = await t.query(internal.kb.images.getImagesByIds, {
+      kbIds: [kb1],
+      orgId,
+      imageIds: ["img_foreign_org"]
+    })
+    expect(result).toEqual([])
   })
 })

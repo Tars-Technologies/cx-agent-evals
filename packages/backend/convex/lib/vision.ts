@@ -1,7 +1,9 @@
 "use node"
 
 import { createHash } from "node:crypto"
-import { assertPublicHttpUrl } from "@tars-inc/eval-lib/scraper"
+import { isIP } from "node:net"
+import { lookup as dnsLookup } from "node:dns/promises"
+import { assertPublicHttpUrl, isBlockedHost } from "@tars-inc/eval-lib/scraper"
 import { normalizeUrl } from "@tars-inc/eval-lib/scraper/link-extractor"
 import { tool } from "ai"
 import { z } from "zod"
@@ -88,8 +90,11 @@ export function isLikelyDecorativeImage(url: string): boolean {
 
 // Matches image markers the model writes referencing a KB image id.
 // Matches media markers the model writes: image form `![alt](img_..)` AND plain
-// link form `[text](img_..)` (doc pointers). The leading `!` is optional.
-const IMG_MARKER_RE = /!?\[[^\]]*\]\(((?:img|vid|doc)_[0-9a-f]+)\)/g
+// link form `[text](img_..)` (doc pointers). The leading `!` is optional. An
+// optional `"title"` may follow the id (whitelistImageMarkdown's IMAGE_RE
+// tolerates one; kept in sync here).
+const IMG_MARKER_RE =
+  /!?\[[^\]]*\]\(((?:img|vid|doc)_[0-9a-f]+)(?:\s+"[^"]*")?\)/g
 
 // Defensive bound on distinct markers we resolve from a single answer. Each miss
 // is one indexed DB lookup; a legit answer renders a handful, so this only caps
@@ -136,6 +141,14 @@ const MAX_IMAGE_BYTES = 1_500_000
 // Clamp width/height query params many CDNs honor (NASA, WordPress, etc.) so we
 // fetch a sane-sized variant instead of a 4800px original.
 const MAX_IMAGE_DIMENSION = 1280
+// Formats OpenAI and Claude vision both accept as pixel input. "image/*" alone
+// also matches bmp/tiff/heic/animated-gif, which the model call rejects.
+const SUPPORTED_IMAGE_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif"
+])
 
 /** Lightweight tool result — NO pixel bytes (this value gets persisted). */
 interface ResolvedImageRef {
@@ -168,22 +181,58 @@ function clampImageDimensions(rawUrl: string): string {
   }
 }
 
+// assertPublicHttpUrl only checks the literal hostname string; fetch() then
+// re-resolves DNS itself, so a hostname that resolves to a public IP at check
+// time but a private/loopback/metadata IP at connect time (DNS rebinding)
+// bypasses it. Resolve here and re-validate every returned address immediately
+// before the fetch call to close that window.
+async function assertResolvesPublic(url: URL): Promise<void> {
+  if (isIP(url.hostname)) return // already validated as a literal IP above
+  const addresses = await dnsLookup(url.hostname, { all: true, verbatim: true })
+  for (const { address } of addresses) {
+    if (isBlockedHost(address)) {
+      throw new Error(
+        `Blocked host (resolves to private/loopback/metadata): ${url.hostname} -> ${address}`
+      )
+    }
+  }
+}
+
 export async function fetchImageAsBase64(
   rawUrl: string
 ): Promise<{ data: string; mimeType: string } | null> {
   try {
     const url = assertPublicHttpUrl(clampImageDimensions(rawUrl))
+    await assertResolvesPublic(url)
     const res = await fetch(url, { redirect: "error" })
     if (!res.ok) return null
     const mimeType = res.headers.get("content-type")?.split(";")[0]?.trim()
-    if (!mimeType || !mimeType.startsWith("image/")) return null
+    // Gate to the formats vision models (OpenAI, Claude) actually accept —
+    // "image/*" also matches bmp/tiff/heic/animated-gif, which get sent as
+    // pixels and 400 at the model call.
+    if (!mimeType || !SUPPORTED_IMAGE_MIME_TYPES.has(mimeType)) return null
     // Skip oversized files up front (before buffering the body) when the server
     // advertises the size. Chunked responses omit Content-Length, so the
-    // post-download byte check below stays as the backstop.
+    // streamed byte count below stays as the backstop — bailing mid-stream
+    // instead of buffering the whole body before checking.
     const declared = Number(res.headers.get("content-length"))
     if (Number.isFinite(declared) && declared > MAX_IMAGE_BYTES) return null
-    const buf = Buffer.from(await res.arrayBuffer())
-    if (buf.byteLength === 0 || buf.byteLength > MAX_IMAGE_BYTES) return null
+    if (!res.body) return null
+    const reader = res.body.getReader()
+    const chunks: Uint8Array[] = []
+    let total = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > MAX_IMAGE_BYTES) {
+        await reader.cancel()
+        return null
+      }
+      chunks.push(value)
+    }
+    if (total === 0) return null
+    const buf = Buffer.concat(chunks)
     return { data: buf.toString("base64"), mimeType }
   } catch {
     return null

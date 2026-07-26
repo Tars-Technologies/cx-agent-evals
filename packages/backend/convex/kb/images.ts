@@ -47,7 +47,8 @@ const docImageInputValidator = v.object({
   // skip-reembed hash. The hash is present iff a vector was successfully
   // upserted for this input+model.
   embeddingInputHash: v.optional(v.string()),
-  manualContext: v.optional(v.string())
+  manualContext: v.optional(v.string()),
+  sourceDocTitle: v.optional(v.string())
 })
 
 /**
@@ -95,6 +96,14 @@ export const upsertDocImages = internalMutation({
     for (const [imageId, img] of inputById) {
       const survivor = survivorById.get(imageId)
       if (survivor) {
+        // Deliberately omit manualContext here: processDoc only ever carries
+        // it forward unchanged (to survive re-scrape), it never intends to set
+        // a new value — setMediaContext owns that. processDoc snapshots
+        // manualContext at the start of a run that can take seconds (the embed
+        // call); patching the survivor's current value back to that stale
+        // snapshot would silently clobber a setMediaContext write that landed
+        // in between. Leaving the field out of the patch preserves whatever is
+        // in the row right now.
         await ctx.db.patch(survivor._id, {
           url: img.url,
           alt: img.alt,
@@ -102,7 +111,7 @@ export const upsertDocImages = internalMutation({
           // Shed any legacy inline vector — vectors live in Qdrant now.
           embedding: undefined,
           embeddingInputHash: img.embeddingInputHash,
-          manualContext: img.manualContext
+          sourceDocTitle: img.sourceDocTitle
         })
       } else {
         await ctx.db.insert("kbMedia", {
@@ -115,6 +124,7 @@ export const upsertDocImages = internalMutation({
           embeddingInputHash: img.embeddingInputHash,
           manualContext: img.manualContext,
           sourceDocId: args.sourceDocId,
+          sourceDocTitle: img.sourceDocTitle,
           createdAt: Date.now()
         })
       }
@@ -292,18 +302,26 @@ export const getImagesByIds = internalQuery({
   }
 })
 
-/** How many images are indexed for a KB (diagnostic for the multimodal path). */
+// Bound for countForKb/listMediaForKb's unindexed-count scans — an unbounded
+// .collect() over by_kb can exceed Convex's per-query read limit on a
+// media-rich KB (many rows share one imageId across docs, so a real count
+// requires scanning every row; there's no cheaper index for it).
+const MEDIA_SCAN_CAP = 8000
+
+/** How many images are indexed for a KB (diagnostic for the multimodal path).
+ *  Capped: a KB with more than MEDIA_SCAN_CAP rows reports `capped: true` and
+ *  a count of MEDIA_SCAN_CAP rather than throwing past the read limit. */
 export const countForKb = tenantQuery({
   args: { kbId: v.id("knowledgeBases") },
   handler: async (ctx, args) => {
     const { orgId } = ctx
     const kb = await ctx.db.get(args.kbId)
-    if (!kb || kb.orgId !== orgId) return 0
+    if (!kb || kb.orgId !== orgId) return { count: 0, capped: false }
     const rows = await ctx.db
       .query("kbMedia")
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
-      .collect()
-    return rows.length
+      .take(MEDIA_SCAN_CAP)
+    return { count: rows.length, capped: rows.length === MEDIA_SCAN_CAP }
   }
 })
 
@@ -312,7 +330,10 @@ export const countForKb = tenantQuery({
 // budget if every doc were enqueued synchronously in one mutation — this pages
 // through documents and self-schedules the next batch (Convex guideline: batch
 // with .paginate()/.take() then ctx.scheduler.runAfter to continue).
-const REPROCESS_BATCH_SIZE = 100
+// Kept small because .paginate() has no field projection — each page reads full
+// document rows (content capped at MAX_CONTENT_BYTES = 1MB each), so a larger
+// batch risks exceeding the per-transaction read budget on KBs with large docs.
+const REPROCESS_BATCH_SIZE = 16
 
 /**
  * Tenant-triggered reprocess: run document-level image processing over every
@@ -344,10 +365,23 @@ export const reprocessKbImagesBatch = internalMutation({
     cursor: v.union(v.string(), v.null())
   },
   handler: async (ctx, args) => {
-    const page = await ctx.db
-      .query("documents")
-      .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
-      .paginate({ numItems: REPROCESS_BATCH_SIZE, cursor: args.cursor })
+    let page
+    try {
+      page = await ctx.db
+        .query("documents")
+        .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
+        .paginate({ numItems: REPROCESS_BATCH_SIZE, cursor: args.cursor })
+    } catch (err) {
+      // Do not let the self-scheduling chain die silently — a read-budget
+      // failure here otherwise leaves the rest of the KB unprocessed with no
+      // observable trace, even though reprocessKbImages already returned
+      // {started: true} to the caller.
+      console.error(
+        `reprocessKbImagesBatch: failed to page documents for kb ${args.kbId} at cursor ${args.cursor}`,
+        err
+      )
+      throw err
+    }
 
     for (const d of page.page) {
       if (d.orgId !== args.orgId) continue // defense-in-depth; by_kb is already tenant-safe
@@ -373,10 +407,14 @@ export const listMediaForKb = tenantQuery({
     const { orgId } = ctx
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) return []
+    // Bounded (MEDIA_SCAN_CAP), not .collect(): an unpaginated scan over every
+    // row in a media-rich KB can exceed Convex's per-query read limit and throw,
+    // breaking the manual-context editor entirely. The editor isn't built for
+    // pagination, so past the cap this truncates rather than failing outright.
     const rows = await ctx.db
       .query("kbMedia")
       .withIndex("by_kb", (q) => q.eq("kbId", args.kbId))
-      .collect()
+      .take(MEDIA_SCAN_CAP)
     // Same media (url) can appear in several docs → one entry per imageId,
     // collecting all its source docs and preferring a manual-context row.
     const byId = new Map<
@@ -390,6 +428,10 @@ export const listMediaForKb = tenantQuery({
         docIds: Set<string>
       }
     >()
+    // Title comes straight off the row (denormalized at upsert — see
+    // sourceDocTitle) so resolving titles below needs no per-doc ctx.db.get in
+    // the common case; only rows written before that field existed fall back.
+    const titleById = new Map<string, string>()
     for (const r of rows) {
       const prev = byId.get(r.imageId)
       if (!prev) {
@@ -406,12 +448,14 @@ export const listMediaForKb = tenantQuery({
         if (!prev.manualContext && r.manualContext)
           prev.manualContext = r.manualContext
       }
+      if (r.sourceDocTitle) titleById.set(r.sourceDocId, r.sourceDocTitle)
     }
-    // Resolve document titles for the docs referenced by any media.
+    // Legacy rows (pre-denormalization) have no sourceDocTitle — resolve only
+    // those docs individually rather than every referenced doc.
     const allDocIds = new Set<string>()
     for (const e of byId.values()) for (const d of e.docIds) allDocIds.add(d)
-    const titleById = new Map<string, string>()
     for (const docId of allDocIds) {
+      if (titleById.has(docId)) continue
       const doc = await ctx.db.get(docId as Id<"documents">)
       if (doc) titleById.set(docId, doc.title || doc.docId || docId)
     }
@@ -429,11 +473,19 @@ export const listMediaForKb = tenantQuery({
   }
 })
 
+// Batch size for setMediaContext's fan-out (see setMediaContextBatch). An
+// image shared across many thousands of docs would otherwise patch every row
+// and enqueue every doc's reprocessing synchronously in one mutation, past
+// Convex's per-mutation write/scheduler cap.
+const MEDIA_CONTEXT_BATCH_SIZE = 25
+
 /**
  * Set (or clear) user-authored context for a media item, then re-embed. Applies
  * to every row sharing the imageId in this KB (same media across docs), and
  * reschedules processing for each affected document so the new context takes
- * effect in ranking (highest-priority signal).
+ * effect in ranking (highest-priority signal). Paginated fan-out (see
+ * setMediaContextBatch) so an image shared across many docs doesn't blow a
+ * single mutation's write budget.
  */
 export const setMediaContext = tenantMutation({
   args: {
@@ -445,21 +497,51 @@ export const setMediaContext = tenantMutation({
     const { orgId } = ctx
     const kb = await ctx.db.get(args.kbId)
     if (!kb || kb.orgId !== orgId) throw new Error("Knowledge base not found")
-    const rows = await ctx.db
+    const first = await ctx.db
       .query("kbMedia")
       .withIndex("by_image_id", (q) => q.eq("imageId", args.imageId))
-      .collect()
-    const mine = rows.filter((r) => r.kbId === args.kbId && r.orgId === orgId)
-    if (mine.length === 0) throw new Error("Media not found")
+      .filter((q) => q.eq(q.field("kbId"), args.kbId))
+      .first()
+    if (!first) throw new Error("Media not found")
+    await ctx.scheduler.runAfter(0, internal.kb.images.setMediaContextBatch, {
+      kbId: args.kbId,
+      orgId,
+      imageId: args.imageId,
+      manualContext: args.manualContext,
+      cursor: null
+    })
+    return { started: true }
+  }
+})
+
+/** Internal, self-continuing worker for setMediaContext (see MEDIA_CONTEXT_BATCH_SIZE). */
+export const setMediaContextBatch = internalMutation({
+  args: {
+    kbId: v.id("knowledgeBases"),
+    orgId: v.string(),
+    imageId: v.string(),
+    manualContext: v.string(),
+    cursor: v.union(v.string(), v.null())
+  },
+  handler: async (ctx, args) => {
+    const page = await ctx.db
+      .query("kbMedia")
+      .withIndex("by_image_id", (q) => q.eq("imageId", args.imageId))
+      .paginate({ numItems: MEDIA_CONTEXT_BATCH_SIZE, cursor: args.cursor })
+
     const trimmed = args.manualContext.trim()
-    const docs = new Set<string>()
-    for (const r of mine) {
+    for (const r of page.page) {
+      if (r.kbId !== args.kbId || r.orgId !== args.orgId) continue
       await ctx.db.patch(r._id, { manualContext: trimmed || undefined })
-      docs.add(r.sourceDocId)
+      await scheduleDocImageProcessing(ctx, r.sourceDocId)
     }
-    for (const docId of docs) {
-      await scheduleDocImageProcessing(ctx, docId as Id<"documents">)
+
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.kb.images.setMediaContextBatch,
+        { ...args, cursor: page.continueCursor }
+      )
     }
-    return { updated: mine.length }
   }
 })

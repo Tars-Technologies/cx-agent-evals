@@ -187,13 +187,15 @@ async function processDoc(
         alt: e.alt,
         mediaType: e.mediaType,
         embeddingInputHash: succeededHash[i],
-        manualContext: e.manualContext
+        manualContext: e.manualContext,
+        sourceDocTitle: doc.title || doc.docId
       })),
       ...docItems.map((e) => ({
         imageId: e.imageId,
         url: e.url,
         alt: e.alt,
-        mediaType: "doc_link" as const
+        mediaType: "doc_link" as const,
+        sourceDocTitle: doc.title || doc.docId
       }))
     ]
   })

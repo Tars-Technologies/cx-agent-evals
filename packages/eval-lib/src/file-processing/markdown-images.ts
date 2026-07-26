@@ -11,8 +11,10 @@ export interface MarkdownImage {
 // Complete, non-greedy markdown image. Alt may be empty; url stops at the first
 // space or closing paren; an optional `"title"` may follow. Partial syntax (no
 // closing paren) simply won't match — which is exactly the chunk-boundary-split
-// tolerance we want.
-const IMAGE_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g
+// tolerance we want. The alt group is bounded (no real alt text runs anywhere
+// near 2000 chars) so a crafted/crawled doc with many unclosed `![` sequences
+// can't force O(n²) backtracking scanning for a `]` that never appears.
+const IMAGE_RE = /!\[([^\]]{0,2000})\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g
 
 /** True for targets a vision model cannot consume or that aren't fetchable URLs. */
 export function isUnsupportedImageUrl(url: string): boolean {

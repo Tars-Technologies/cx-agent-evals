@@ -295,7 +295,8 @@ function KBPageContent() {
                     </button>
                     {imageCount !== undefined && (
                       <p className="text-[11px] text-text-dim">
-                        {imageCount} image{imageCount === 1 ? "" : "s"} indexed
+                        {imageCount.capped ? `${imageCount.count}+` : imageCount.count}{" "}
+                        image{imageCount.count === 1 && !imageCount.capped ? "" : "s"} indexed
                       </p>
                     )}
                     {imageReindexMsg && (

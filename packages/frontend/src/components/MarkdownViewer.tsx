@@ -102,9 +102,13 @@ function VideoEmbed({ url, alt }: { url: string; alt?: string }) {
     )
   }
 
+  // YouTube refuses to frame watch/short URLs (X-Frame-Options: SAMEORIGIN) —
+  // only the /embed/ form is frameable.
+  const src = ytId ? `https://www.youtube-nocookie.com/embed/${ytId}` : url
+
   return (
     <iframe
-      src={url}
+      src={src}
       title={alt || "Embedded video"}
       className="w-full aspect-video max-w-full my-3 rounded-md border border-border"
       sandbox="allow-scripts allow-same-origin allow-presentation"
@@ -177,16 +181,45 @@ function LoadableImage({
 }
 
 /**
+ * True when `url` on an allowlisted video host actually points at a specific
+ * video (not a channel/profile/homepage). Host-only matching would iframe
+ * things like youtube.com/@brand or bare vimeo.com/user123, which the
+ * provider refuses to frame and renders as a broken embed.
+ */
+function hasResolvableVideoPath(url: string): boolean {
+  const host = hostOf(url).toLowerCase()
+  if (/(^|\.)(youtube(-nocookie)?\.com|youtu\.be)$/i.test(host)) {
+    return youTubeId(url) !== ""
+  }
+  let pathname = ""
+  try {
+    pathname = new URL(url).pathname
+  } catch {
+    return false
+  }
+  if (/(^|\.)vimeo\.com$/i.test(host)) {
+    return /^\/(video\/)?\d+/.test(pathname)
+  }
+  if (/(^|\.)loom\.com$/i.test(host)) {
+    return /^\/(share|embed)\/[\w-]+/.test(pathname)
+  }
+  if (/(^|\.)(wistia\.com|wistia\.net)$/i.test(host)) {
+    return /(embed\/iframe|medias)\/[\w-]+/.test(pathname)
+  }
+  return false
+}
+
+/**
  * If `url` points at a video (direct mp4/webm/ogg file, or an allowlisted embed
- * host), return the video element; otherwise null. Shared by the image and link
- * renderers so a video renders whether the model wrote `![alt](url)` or the plain
- * link form `[alt](url)`.
+ * host with a resolvable video path), return the video element; otherwise null.
+ * Shared by the image and link renderers so a video renders whether the model
+ * wrote `![alt](url)` or the plain link form `[alt](url)`.
  */
 function videoElementFor(url: string, label?: string): ReactElement | null {
   if (/\.(mp4|webm|ogg)(\?|#|$)/i.test(url)) {
     return <VideoFile key={url} url={url} label={label} />
   }
-  if (VIDEO_EMBED_HOSTS.test(hostOf(url))) {
+  if (VIDEO_EMBED_HOSTS.test(hostOf(url)) && hasResolvableVideoPath(url)) {
     return <VideoEmbed key={url} url={url} alt={label} />
   }
   return null
@@ -496,7 +529,7 @@ export function MarkdownViewer({
           {content}
         </pre>
       ) : (
-        <div className="p-4 pr-24">
+        <div className={`p-4 ${showToggle ? "pr-24" : ""}`}>
           <RenderedMarkdown content={content} />
         </div>
       )}

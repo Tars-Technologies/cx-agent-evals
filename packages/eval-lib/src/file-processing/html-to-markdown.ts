@@ -178,11 +178,15 @@ export async function htmlToMarkdown(
           return `\n\n[embed:doc](${safeUrl(abs)} "${title}")\n\n`
         return "" // non-allowlisted iframe — dropped
       }
-      // <video>: use src or the first <source src>, direct mp4/webm only.
-      const src =
-        node.getAttribute("src") ||
-        node.querySelector?.("source")?.getAttribute("src") ||
-        ""
+      // <video>: use src, or the first <source> whose src is mp4/webm — not
+      // just the first <source> regardless of type, which drops the video
+      // entirely when an unsupported format (e.g. ogv) is listed first.
+      const directSrc = node.getAttribute("src")
+      const sources: any[] = Array.from(node.querySelectorAll?.("source") ?? [])
+      const sourceSrc = sources
+        .map((s) => s.getAttribute("src"))
+        .find((s: string | null) => s && /\.(mp4|webm)(\?|#|$)/i.test(s))
+      const src = directSrc || sourceSrc || ""
       if (!src) return ""
       const abs = absolutize(src)
       if (/\.(mp4|webm)(\?|#|$)/i.test(abs))

@@ -132,8 +132,14 @@ const HEADING_RE = /^(#{2,3})\s+(.+)$/gm
 const wordCount = (s: string) => s.trim().split(/\s+/).filter(Boolean).length
 
 // Lightweight local strip so surrounding text never carries image syntax.
+// Must tolerate an optional `"title"` tail like stripImageMarkdown's IMAGE_RE
+// does — otherwise a titled image adjacent to the one being processed fails to
+// match and its raw `![alt](url "title")` leaks into the surrounding-text
+// fallback signal.
 function stripImageMarkdownInline(s: string): string {
-  return s.replace(/<!--img:[^>]*-->/g, "").replace(/!\[[^\]]*\]\([^)\s]+\)/g, "")
+  return s
+    .replace(/<!--img:[^>]*-->/g, "")
+    .replace(/!\[[^\]]{0,2000}\]\([^)\s]+(?:\s+"[^"]*")?\)/g, "")
 }
 
 /** Nearest `##`/`###` heading text above `pos`, or "". */
@@ -256,7 +262,13 @@ export function buildImageEmbeddingInput(
   //      manual context MANUAL_CONTEXT_WEIGHT×. So manual is always ≥ ~W/(W+1) of
   //      the input by volume (≈75% at W=3), even if the raw scraped text was huge.
   const manual = manualContext?.trim()
-  if (!manual) return { alt, input: scraped, usedSurrounding }
+  if (!manual) {
+    // scraped can be "" (no strong signals, no surrounding text — e.g. a bare
+    // image with no alt/caption/heading next to other stripped images). Never
+    // hand OpenAI's embeddings endpoint an empty string: it 400s the whole
+    // batch, which poisons every sibling media item in this doc.
+    return { alt, input: scraped || alt || img.url, usedSurrounding }
+  }
   const support = parts.join(". ").slice(0, manual.length)
   const weighted = Array(MANUAL_CONTEXT_WEIGHT).fill(manual).join(". ")
   const input = [weighted, support].filter(Boolean).join(". ")
@@ -372,9 +384,13 @@ export function rankDocImagesForQuery(
 
 // Matches media markers referencing a KB media id, in either image form
 // `![alt](img_..)` or plain-link form `[text](doc_..)` (the leading `!` is
-// optional). Kept in sync with the backend vision.ts's private IMG_MARKER_RE —
-// this pure copy lets non-node callers (evaluation, agentLoop) parse markers too.
-const MEDIA_MARKER_RE = /!?\[[^\]]*\]\(((?:img|vid|doc)_[0-9a-f]+)\)/g
+// optional). An optional `"title"` may follow the id — whitelistImageMarkdown's
+// underlying IMAGE_RE tolerates one, so this must too, or a titled marker the
+// model wrote still renders but silently drops out of parseRenderedMediaIds.
+// Kept in sync with the backend vision.ts's private IMG_MARKER_RE — this pure
+// copy lets non-node callers (evaluation, agentLoop) parse markers too.
+const MEDIA_MARKER_RE =
+  /!?\[[^\]]*\]\(((?:img|vid|doc)_[0-9a-f]+)(?:\s+"[^"]*")?\)/g
 
 /**
  * Return the KB media ids referenced by markers actually written in `text`

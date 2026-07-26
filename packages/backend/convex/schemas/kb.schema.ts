@@ -372,6 +372,11 @@ export const kbMediaValidator = v.object({
   // Reserved for the future media-description pipeline; null for now.
   description: v.optional(v.string()),
   sourceDocId: v.id("documents"),
+  // Denormalized from documents.title at upsert time so listMediaForKb can
+  // resolve display titles without an N+1 ctx.db.get per referenced doc.
+  // Optional to tolerate rows written before this field existed — those fall
+  // back to the doc id until their next reprocess.
+  sourceDocTitle: v.optional(v.string()),
   createdAt: v.number()
 })
 export type KbMedia = Infer<typeof kbMediaValidator>

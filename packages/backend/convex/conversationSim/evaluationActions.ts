@@ -162,7 +162,17 @@ export const runEvaluation = internalAction({
             justification: "No images surfaced in this run"
           }
         } else {
-          result = await runLLMJudge(judgeConfig, judgeContext)
+          try {
+            result = await runLLMJudge(judgeConfig, judgeContext)
+          } catch (err) {
+            // Don't let one evaluator's failure (e.g. a rejected image format
+            // reaching the model call) discard every other evaluator's verdict
+            // for this run — updateRun only writes after the whole loop.
+            result = {
+              passed: false,
+              justification: `Judge error: ${String((err as Error)?.message ?? err).slice(0, 200)}`
+            }
+          }
         }
       } else {
         result = {
