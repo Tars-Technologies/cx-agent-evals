@@ -362,15 +362,6 @@ export const onGroundTruthAssigned = internalMutation({
         status,
         completedAt: Date.now()
       })
-
-      // Fire-and-forget LangSmith sync
-      await ctx.scheduler.runAfter(
-        0,
-        internal.kb.langsmith_actions.syncDataset,
-        {
-          datasetId: job.datasetId
-        }
-      )
     } else {
       await ctx.db.patch(context.jobId, counterPatch(counters))
     }
@@ -615,15 +606,6 @@ export const onDocGenerated = internalMutation({
         pass2Enriched: newPass2Enriched,
         pass2Unchanged: newPass2Unchanged
       })
-
-      // Fire-and-forget LangSmith sync
-      await ctx.scheduler.runAfter(
-        0,
-        internal.kb.langsmith_actions.syncDataset,
-        {
-          datasetId: job.datasetId
-        }
-      )
     } else {
       await ctx.db.patch(context.jobId, {
         ...counterPatch(counters),

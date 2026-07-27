@@ -26,7 +26,6 @@ export const byDataset = tenantQuery({
 
 /**
  * Public mutation: update a question's text and/or spans.
- * Clears langsmithExampleId to force re-sync on next experiment.
  */
 export const updateQuestion = tenantMutation({
   args: {
@@ -47,7 +46,6 @@ export const updateQuestion = tenantMutation({
     }
 
     await ctx.db.patch(args.questionId, {
-      langsmithExampleId: undefined,
       ...(args.queryText !== undefined && { queryText: args.queryText }),
       ...(args.relevantSpans !== undefined && {
         relevantSpans: args.relevantSpans
@@ -124,25 +122,6 @@ export const getInternal = internalQuery({
     const question = await ctx.db.get(args.id)
     if (!question) throw new Error("Question not found")
     return question
-  }
-})
-
-/**
- * Batch-update langsmithExampleId on questions after dataset sync.
- */
-export const updateLangsmithExampleIds = internalMutation({
-  args: {
-    updates: v.array(
-      v.object({
-        questionId: v.id("questions"),
-        langsmithExampleId: v.string()
-      })
-    )
-  },
-  handler: async (ctx, args) => {
-    for (const { questionId, langsmithExampleId } of args.updates) {
-      await ctx.db.patch(questionId, { langsmithExampleId })
-    }
   }
 })
 
