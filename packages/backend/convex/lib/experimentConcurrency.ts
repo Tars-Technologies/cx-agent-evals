@@ -1,5 +1,5 @@
 /**
- * Resolve the LangSmith evaluate() concurrency for an experiment run.
+ * Resolve the retriever-evaluation concurrency for an experiment run.
  *
  * Reads an optional override (env var) and clamps it into a safe range.
  * Pure and side-effect-free so it can be unit-tested without the action.

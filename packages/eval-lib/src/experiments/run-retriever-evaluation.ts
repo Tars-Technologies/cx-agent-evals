@@ -31,11 +31,12 @@ export async function runRetrieverEvaluation(
   const concurrency = Math.max(1, config.maxConcurrency ?? 1)
 
   await retriever.init(corpus)
-  try {
-    let next = 0
-    const worker = async () => {
-      while (next < dataset.length) {
-        const ex = dataset[next++]
+  let next = 0
+  let aborted = false
+  const worker = async () => {
+    while (!aborted && next < dataset.length) {
+      const ex = dataset[next++]
+      try {
         const chunks = await retriever.retrieve(ex.query, k)
         const retrieved: CharacterSpan[] = []
         for (const chunk of chunks) {
@@ -63,12 +64,20 @@ export async function runRetrieverEvaluation(
           })),
           scores
         })
+      } catch (err) {
+        aborted = true
+        throw err
       }
     }
-    await Promise.all(
-      Array.from({ length: Math.min(concurrency, dataset.length) }, worker)
-    )
+  }
+  const workers = Array.from(
+    { length: Math.min(concurrency, dataset.length) },
+    worker
+  )
+  try {
+    await Promise.all(workers)
   } finally {
+    await Promise.allSettled(workers)
     await retriever.cleanup()
   }
 }
