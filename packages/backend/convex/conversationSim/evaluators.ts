@@ -1,4 +1,5 @@
 import { v } from "convex/values"
+import type { Id } from "../_generated/dataModel"
 import { internalQuery, mutation, query } from "../_generated/server"
 import { getAuthContext } from "../lib/auth"
 
@@ -9,7 +10,8 @@ const codeConfigValidator = v.object({
     v.literal("tool_call_match"),
     v.literal("string_contains"),
     v.literal("regex_match"),
-    v.literal("response_format")
+    v.literal("response_format"),
+    v.literal("image_hygiene")
   ),
   params: v.any()
 })
@@ -23,7 +25,8 @@ const judgeConfigValidator = v.object({
     v.union(
       v.literal("transcript"),
       v.literal("tool_calls"),
-      v.literal("kb_documents")
+      v.literal("kb_documents"),
+      v.literal("shown_images")
     )
   )
 })
@@ -132,15 +135,16 @@ export const seedTemplates = mutation({
   handler: async (ctx) => {
     const { orgId } = await getAuthContext(ctx)
 
-    // Check if templates already exist for this org
+    // Idempotent seed: add only templates this org doesn't already have (by
+    // name), so re-running picks up newly-shipped templates (e.g. the image
+    // evaluators) without duplicating the originals.
     const existing = await ctx.db
       .query("evaluators")
       .withIndex("by_org", (q) => q.eq("orgId", orgId))
       .collect()
-
-    if (existing.some((e) => e.createdFrom === "template")) {
-      return { seeded: false }
-    }
+    const existingTemplateNames = new Set(
+      existing.filter((e) => e.createdFrom === "template").map((e) => e.name)
+    )
 
     const templates = [
       {
@@ -249,29 +253,89 @@ export const seedTemplates = mutation({
         },
         createdFrom: "template" as const,
         tags: ["format", "template"]
+      },
+      {
+        name: "Image Hygiene",
+        description:
+          "Checks the agent only rendered whitelisted knowledge-base images and stayed within the per-turn image cap (no hallucinated/leaked image markers, no overuse)",
+        type: "code" as const,
+        scope: "turn" as const,
+        codeConfig: {
+          checkType: "image_hygiene" as const,
+          params: {}
+        },
+        createdFrom: "template" as const,
+        tags: ["multimodal", "template"]
+      },
+      {
+        name: "Image Relevance",
+        description:
+          "Vision judge: assesses whether the images the agent showed were relevant to the user's question, and whether an obviously-relevant available image was skipped",
+        type: "llm_judge" as const,
+        scope: "session" as const,
+        judgeConfig: {
+          rubric:
+            "Judge the agent's use of images. PRECISION: every image the agent showed should be clearly relevant to what the user asked — penalise decorative, off-topic, or padding images. RECALL: if the retrieval menu offered an image that clearly would have answered the user's question and the agent did not show it, that is a miss. A run with no relevant images available should pass as long as the agent did not force an irrelevant one.",
+          passExamples: [
+            "User asked what the dashboard looks like; agent showed the dashboard screenshot from the menu",
+            "No relevant image was available and the agent answered in text without forcing one"
+          ],
+          failExamples: [
+            "Agent showed a product logo that had nothing to do with the question",
+            "The menu contained a wiring diagram that directly answered the question but the agent never showed it"
+          ],
+          // GPT-family so the vision judge can bill image parts at detail:"low".
+          model: "gpt-4o",
+          inputContext: ["transcript" as const, "shown_images" as const]
+        },
+        createdFrom: "template" as const,
+        tags: ["multimodal", "template"]
       }
     ]
 
-    const evaluatorIds = []
-    const requiredIds = []
-
+    // These three define a passing run; image evaluators are non-required.
+    const requiredNames = new Set([
+      "Tool Usage",
+      "No Hallucination",
+      "Helpful Resolution"
+    ])
+    const newIds: Array<Id<"evaluators">> = []
+    const newRequiredIds: Array<Id<"evaluators">> = []
     for (const tmpl of templates) {
+      if (existingTemplateNames.has(tmpl.name)) continue
       const id = await ctx.db.insert("evaluators", { orgId, ...tmpl })
-      evaluatorIds.push(id)
-      // First 3 are required (Tool Usage, No Hallucination, Helpful Resolution)
-      if (evaluatorIds.length <= 3) requiredIds.push(id)
+      newIds.push(id)
+      if (requiredNames.has(tmpl.name)) newRequiredIds.push(id)
     }
 
-    // Create default evaluator set
-    await ctx.db.insert("evaluatorSets", {
-      orgId,
-      name: "Default",
-      description: "Default evaluator set with template evaluators",
-      evaluatorIds,
-      requiredEvaluatorIds: requiredIds,
-      passThreshold: 0.8
-    })
+    if (newIds.length === 0) return { seeded: false, added: 0 }
 
-    return { seeded: true }
+    // Add the new templates to the Default set (create it if it doesn't exist).
+    const sets = await ctx.db
+      .query("evaluatorSets")
+      .withIndex("by_org", (q) => q.eq("orgId", orgId))
+      .collect()
+    const defaultSet = sets.find((s) => s.name === "Default")
+
+    if (defaultSet) {
+      await ctx.db.patch(defaultSet._id, {
+        evaluatorIds: [...defaultSet.evaluatorIds, ...newIds],
+        requiredEvaluatorIds: [
+          ...defaultSet.requiredEvaluatorIds,
+          ...newRequiredIds
+        ]
+      })
+    } else {
+      await ctx.db.insert("evaluatorSets", {
+        orgId,
+        name: "Default",
+        description: "Default evaluator set with template evaluators",
+        evaluatorIds: newIds,
+        requiredEvaluatorIds: newRequiredIds,
+        passThreshold: 0.8
+      })
+    }
+
+    return { seeded: true, added: newIds.length }
   }
 })

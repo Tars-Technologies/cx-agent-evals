@@ -118,7 +118,10 @@ export const agentTables = {
             content: v.string(),
             docId: v.string(),
             start: v.number(),
-            end: v.number()
+            end: v.number(),
+            images: v.optional(
+              v.array(v.object({ imageId: v.string(), alt: v.string() }))
+            )
           })
         )
       })
@@ -128,10 +131,20 @@ export const agentTables = {
         content: v.string(),
         docId: v.string(),
         start: v.number(),
-        end: v.number()
+        end: v.number(),
+        images: v.optional(
+          v.array(v.object({ imageId: v.string(), alt: v.string() }))
+        )
       })
     ),
     scores: v.optional(v.record(v.string(), v.number())),
+    // Images the model actually rendered this turn (post-whitelist), recorded for
+    // multimodal evaluators. Matches the messages.shownImages shape ({..alt}).
+    shownImages: v.optional(
+      v.array(
+        v.object({ imageId: v.string(), url: v.string(), alt: v.string() })
+      )
+    ),
     usage: v.optional(
       v.object({
         promptTokens: v.number(),
@@ -315,6 +328,7 @@ export const agentTables = {
 
     model: v.string(),
     enableReflection: v.boolean(),
+    enableMultimodal: v.optional(v.boolean()),
     retrieverIds: v.array(v.id("retrievers")),
 
     status: v.union(v.literal("draft"), v.literal("ready"), v.literal("error")),
@@ -375,6 +389,17 @@ export const agentTables = {
         promptTokens: v.number(),
         completionTokens: v.number()
       })
+    ),
+    // Images the agent actually rendered in this assistant turn (post-whitelist),
+    // recorded so multimodal evaluators can score image precision/recall.
+    shownImages: v.optional(
+      v.array(
+        v.object({
+          imageId: v.string(),
+          url: v.string(),
+          alt: v.string()
+        })
+      )
     ),
     createdAt: v.number()
   }).index("by_conversation", ["conversationId", "order"]),
@@ -481,7 +506,8 @@ export const agentTables = {
           v.literal("tool_call_match"),
           v.literal("string_contains"),
           v.literal("regex_match"),
-          v.literal("response_format")
+          v.literal("response_format"),
+          v.literal("image_hygiene")
         ),
         params: v.any()
       })
@@ -496,7 +522,8 @@ export const agentTables = {
           v.union(
             v.literal("transcript"),
             v.literal("tool_calls"),
-            v.literal("kb_documents")
+            v.literal("kb_documents"),
+            v.literal("shown_images")
           )
         )
       })

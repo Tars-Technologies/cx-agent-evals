@@ -7,6 +7,7 @@ import { internalAction } from "../_generated/server"
 import { composeSystemPrompt } from "../agents/promptTemplate"
 import type { AgentLoopConfig, RetrieverInfo } from "../lib/agentLoop"
 import { resolveModel, runAgentLoop } from "../lib/agentLoop"
+import { isVisionCapable } from "@tars-inc/eval-lib/multimodal"
 import { buildUserSimPrompt } from "./prompt"
 
 export const runConversationSim = internalAction({
@@ -82,19 +83,33 @@ export const runConversationSim = internalAction({
     // Build user-sim system prompt
     const userSimSystemPrompt = buildUserSimPrompt(scenario, run.seed)
 
-    // Build agent config for agentLoop
+    // Build agent config for agentLoop. Vision degrades to text on a
+    // non-vision model; it never re-routes the user-chosen model.
+    const hasVision =
+      (agent.enableMultimodal ?? false) &&
+      isVisionCapable(agent.model) &&
+      retrieverInfos.length > 0
     const systemPrompt = composeSystemPrompt(
       agent,
       retrieverInfos.map((r) => ({
         name: r.name,
         kbName: r.kbName
-      }))
+      })),
+      { hasVision }
     )
 
     const agentConfig: AgentLoopConfig = {
       modelId: agent.model,
       systemPrompt,
-      retrieverInfos
+      retrieverInfos,
+      hasVision,
+      imageScope:
+        hasVision && retrieverInfos.length > 0
+          ? {
+              kbIds: [...new Set(retrieverInfos.map((r) => r.kbId))],
+              orgId: simulation.orgId
+            }
+          : undefined
     }
 
     // 2. CONVERSATION LOOP
@@ -243,7 +258,11 @@ export const runConversationSim = internalAction({
           content: agentResult.text,
           agentId: run.agentId,
           status: "complete",
-          usage: agentResult.usage
+          usage: agentResult.usage,
+          shownImages:
+            agentResult.shownImages.length > 0
+              ? agentResult.shownImages
+              : undefined
         })
         messages.push({ role: "assistant", content: agentResult.text })
       }

@@ -169,6 +169,7 @@ mark[data-highlight] {
   padding: 0.15em 0.35em;
   border-radius: 4px;
   color: var(--color-accent-bright);
+  overflow-wrap: anywhere;
 }
 .prose-agent pre {
   background: var(--color-bg-surface);
@@ -194,6 +195,7 @@ mark[data-highlight] {
   color: var(--color-accent);
   text-decoration: underline;
   text-underline-offset: 2px;
+  overflow-wrap: anywhere;
 }
 .prose-agent hr {
   border-color: var(--color-border);
@@ -214,4 +216,12 @@ mark[data-highlight] {
 .prose-agent th {
   background: var(--color-bg-surface);
   font-weight: 600;
+}
+/* Cap images so a full-size KB image can't blow out the chat bubble/screen. */
+.prose-agent img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  margin: 0.5em 0;
 }

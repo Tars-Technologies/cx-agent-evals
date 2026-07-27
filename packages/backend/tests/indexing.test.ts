@@ -1,9 +1,18 @@
+import { stripMediaMarkdown } from "@tars-inc/eval-lib/file-processing/markdown-images"
 import type { convexTest } from "convex-test"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { internal } from "../convex/_generated/api"
 import type { Id } from "../convex/_generated/dataModel"
 import { qdrantCollectionName } from "../convex/kb/vector_backend"
 import { seedKB, seedUser, setupTest, TEST_ORG_ID } from "./helpers"
+
+describe("chunk media stripping", () => {
+  it("removes image + video markdown + annotations, keeps doc pointer", () => {
+    const input =
+      'intro ![cat](https://x/c.png)<!--media:img_abc--> v [embed:video](https://y/e "T") d [Spec](img_d) body'
+    expect(stripMediaMarkdown(input)).toBe("intro  v  d [Spec](img_d) body")
+  })
+})
 
 // ─── Domain-Specific Seeders ───
 

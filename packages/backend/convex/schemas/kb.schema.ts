@@ -45,6 +45,18 @@ export const documentValidator = v.object({
   // Heartbeat for poll-based (asimov) parses: bumped each poll so the stale-parse
   // reaper measures inactivity, not total age. Absent for tarser (callback-based).
   parseLastActivityAt: v.optional(v.number()),
+  // Document-level media (image/video) processing outcome. Absent when media is
+  // disabled (no QDRANT_URL) or the doc was created before this field existed.
+  // "failed" + mediaError surfaces a Qdrant/embed outage that would otherwise be
+  // swallowed by Workpool retry-exhaustion.
+  mediaStatus: v.optional(
+    v.union(
+      v.literal("processing"),
+      v.literal("done"),
+      v.literal("failed")
+    )
+  ),
+  mediaError: v.optional(v.string()),
   createdAt: v.number()
 })
 export type Document = Infer<typeof documentValidator>
@@ -326,6 +338,49 @@ export const storageObjectValidator = v.object({
 })
 export type StorageObject = Infer<typeof storageObjectValidator>
 
+// ─── KB Media (queryable media registry: images, videos, doc-link pointers) ───
+// imageId is deterministic: "img_" + sha256(kbId + url).slice(0,16). Stable
+// across re-scrape so saved answers referencing media keep resolving. The id field
+// keeps the `img_`/imageId name (media-agnostic, opaque) so the answer marker,
+// whitelist, and get_images resolution are unchanged.
+// url-only for the POC; storageId is reserved for the future re-host path.
+export const kbMediaValidator = v.object({
+  imageId: v.string(),
+  kbId: v.id("knowledgeBases"),
+  orgId: v.string(),
+  // "image" | "video" | "doc_link"; optional to tolerate pre-rename rows (treated
+  // as "image"). Videos store the embed-form url; doc_links carry no embedding.
+  mediaType: v.optional(
+    v.union(v.literal("image"), v.literal("video"), v.literal("doc_link"))
+  ),
+  url: v.optional(v.string()),
+  storageId: v.optional(v.id("_storage")),
+  alt: v.string(),
+  // Context-aware embedding vectors live in Qdrant (see kb/media_runtime.ts),
+  // keyed by imageId. This field is DEPRECATED and no longer written — it is
+  // retained (optional) only to tolerate legacy rows that still carry an inline
+  // vector from before the Qdrant migration. processDocImages clears it on the
+  // next re-scrape of a row; nothing reads it.
+  embedding: v.optional(v.array(v.float64())),
+  // sha256("<model>:<embedding input>") — lets processDocMedia skip re-embedding
+  // media whose context-aware input (and model) is unchanged on re-scrape. Set
+  // iff a vector was successfully upserted to Qdrant for this input+model.
+  embeddingInputHash: v.optional(v.string()),
+  // User-authored context. When set it DOMINATES the embedding (highest-priority
+  // signal, over alt/caption/heading/surrounding) and survives re-scrapes.
+  manualContext: v.optional(v.string()),
+  // Reserved for the future media-description pipeline; null for now.
+  description: v.optional(v.string()),
+  sourceDocId: v.id("documents"),
+  // Denormalized from documents.title at upsert time so listMediaForKb can
+  // resolve display titles without an N+1 ctx.db.get per referenced doc.
+  // Optional to tolerate rows written before this field existed — those fall
+  // back to the doc id until their next reprocess.
+  sourceDocTitle: v.optional(v.string()),
+  createdAt: v.number()
+})
+export type KbMedia = Infer<typeof kbMediaValidator>
+
 export const kbTables = {
   // ─── Knowledge Bases (org-scoped, replaces "corpora") ───
   knowledgeBases: defineTable(knowledgeBaseValidator)
@@ -411,6 +466,12 @@ export const kbTables = {
       dimensions: 1536,
       filterFields: ["kbId", "indexConfigHash"]
     }),
+
+  // ─── KB Images (deterministic-id image registry; FK target for get_images) ───
+  kbMedia: defineTable(kbMediaValidator)
+    .index("by_image_id", ["imageId"])
+    .index("by_kb", ["kbId"])
+    .index("by_source_doc", ["sourceDocId"]),
 
   // ─── Indexing Jobs (WorkPool-based KB indexing tracking) ───
   indexingJobs: defineTable(indexingJobValidator)

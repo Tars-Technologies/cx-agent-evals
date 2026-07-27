@@ -3,9 +3,8 @@
 import type { Id } from "@convex/_generated/dataModel"
 import { useMutation, useQuery } from "convex/react"
 import { useEffect, useRef, useState } from "react"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
 import { ToolCallGroup } from "@/components/conversation-sim/ToolCallGroup"
+import { RenderedMarkdown } from "@/components/MarkdownViewer"
 import { api } from "@/lib/convex"
 import { groupMessagesWithToolCalls } from "@/lib/messageDisplay"
 
@@ -211,9 +210,7 @@ export default function AgentPlayground({ agentId }: AgentPlaygroundProps) {
                       </p>
                     ) : (
                       <div className="text-sm text-text prose-agent">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {displayContent || ""}
-                        </ReactMarkdown>
+                        <RenderedMarkdown content={displayContent || ""} />
                         {isStreaming && !isStuck && (
                           <span className="inline-block w-1.5 h-3 bg-accent animate-pulse rounded-sm ml-0.5 align-middle" />
                         )}

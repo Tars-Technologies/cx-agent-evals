@@ -1,6 +1,7 @@
 "use client"
 
 import type { MessageRole } from "@tars-inc/eval-lib/data-analysis"
+import { MarkdownViewer } from "../MarkdownViewer"
 
 export function ChatBubble({
   id,
@@ -30,7 +31,7 @@ export function ChatBubble({
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-1.5`}>
       <div
-        className={`max-w-[70%] px-2.5 py-1.5 text-xs whitespace-pre-wrap ${
+        className={`max-w-[70%] px-2.5 py-1.5 text-xs ${
           isUser
             ? "bg-accent-dim text-accent-bright rounded-lg rounded-br-sm"
             : "bg-bg-surface text-text border border-border rounded-lg rounded-bl-sm"
@@ -43,7 +44,11 @@ export function ChatBubble({
         >
           {isUser ? "User" : (agentName ?? "Agent")} · #{id}
         </div>
-        {text}
+        {isUser ? (
+          <span className="whitespace-pre-wrap">{text}</span>
+        ) : (
+          <MarkdownViewer content={text} showToggle={false} className="-mx-2" />
+        )}
         {translatedText && (
           <>
             <div className="border-t border-dashed border-current/20 my-1" />

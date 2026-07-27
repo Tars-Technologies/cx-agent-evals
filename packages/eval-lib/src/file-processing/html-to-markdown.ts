@@ -26,9 +26,62 @@ const BOILERPLATE_SELECTORS = [
   "#gdpr",
   "script",
   "style",
-  "noscript",
-  "iframe"
+  "noscript"
+  // NOTE: <iframe> is intentionally NOT blanket-removed here — the media-capture
+  // pass below converts allowlisted video/doc embeds to markdown tokens and
+  // removes everything else. Removing it here would drop videos/docs before capture.
 ]
+
+// Video players we can safely iframe-embed downstream; others are dropped.
+const VIDEO_EMBED_HOSTS =
+  /(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be|vimeo\.com|player\.vimeo\.com|loom\.com|wistia\.com|wistia\.net)$/i
+// Doc viewers captured as pointer links (never ingested).
+const DOC_VIEWER_HOSTS =
+  /(^|\.)(docs\.google\.com|view\.officeapps\.live\.com|onedrive\.live\.com)$/i
+
+function hostOf(u: string): string {
+  try {
+    return new URL(u).hostname
+  } catch {
+    return ""
+  }
+}
+
+// Render size below which an <img> is treated as a non-content icon/spacer.
+const MIN_CONTENT_IMG_PX = 100
+// class/id tokens that conventionally name decorative chrome images.
+const DECORATIVE_CLASS_RE =
+  /\b(icons?|logos?|avatars?|emojis?|badges?|sprites?|pictograms?|favicons?)\b/i
+
+// Read a pixel dimension attribute ("120", "120px") → number, or null if absent
+// or non-numeric (e.g. width="100%", which is not a decorative signal).
+function pxAttr(el: any, name: string): number | null {
+  const raw = el.getAttribute?.(name)
+  if (!raw) return null
+  const n = Number(String(raw).replace(/px$/i, "").trim())
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * Decisive HTML-layer decorative test for an <img>. Fires only on strong
+ * signals so genuine content images (which carry none of these) survive:
+ * author-declared presentation, decorative class/id naming, an explicitly small
+ * render size, or a 1x1 tracking pixel.
+ */
+function isDecorativeImgElement(img: any): boolean {
+  if ((img.getAttribute?.("aria-hidden") || "").toLowerCase() === "true")
+    return true
+  if ((img.getAttribute?.("role") || "").toLowerCase() === "presentation")
+    return true
+  const naming = `${img.getAttribute?.("class") || ""} ${img.getAttribute?.("id") || ""}`
+  if (DECORATIVE_CLASS_RE.test(naming)) return true
+  const w = pxAttr(img, "width")
+  const h = pxAttr(img, "height")
+  if (w === 1 && h === 1) return true // tracking pixel
+  if (w !== null && w > 0 && w < MIN_CONTENT_IMG_PX) return true
+  if (h !== null && h > 0 && h < MIN_CONTENT_IMG_PX) return true
+  return false
+}
 
 export async function htmlToMarkdown(
   html: string,
@@ -57,15 +110,91 @@ export async function htmlToMarkdown(
         el.remove()
       }
     }
-    htmlForConversion = doc.body?.innerHTML || html
-  } else {
-    htmlForConversion = doc.body?.innerHTML || html
+    // Drop decorative <img> chrome (icons/logos/spacers/tracking pixels) before
+    // conversion, using DOM signals turndown would otherwise discard (class,
+    // role, aria-hidden, width/height attrs). Only decisive signals fire, so
+    // real content images — which carry none of these — are left untouched.
+    for (const img of doc.querySelectorAll("img")) {
+      if (isDecorativeImgElement(img)) img.remove()
+    }
   }
+
+  // Resolve relative <img src> against the page base URL so stored markdown
+  // carries absolute, fetchable image URLs (turndown does NOT resolve img src;
+  // it only resolved anchor hrefs via extractLinks). This is the single change
+  // that makes crawled images usable by the multimodal agent path.
+  if (baseUrl) {
+    for (const img of doc.querySelectorAll("img")) {
+      const src = img.getAttribute("src")
+      if (!src) continue
+      try {
+        img.setAttribute("src", new URL(src, baseUrl).href)
+      } catch {
+        /* leave malformed src untouched */
+      }
+    }
+  }
+
+  htmlForConversion = doc.body?.innerHTML || html
 
   const turndown = new TurndownService({
     headingStyle: "atx",
     codeBlockStyle: "fenced"
   })
+
+  // Media capture (via a turndown rule, not a DOM pass): rule outputs are inserted
+  // verbatim — no markdown escaping of the token brackets — and the rule can read
+  // attributes turndown otherwise discards. Allowlisted video/doc embeds become
+  // normalized tokens; everything else (ads/maps/trackers) is dropped.
+  const absolutize = (u: string): string => {
+    try {
+      return baseUrl ? new URL(u, baseUrl).href : u
+    } catch {
+      return u
+    }
+  }
+  const titleOf = (node: any): string =>
+    (node.getAttribute?.("title") || node.getAttribute?.("aria-label") || "").trim()
+  // Both interpolated verbatim into `[embed:x](url "title")` — a `"` in the title
+  // would close the quote early and a `)` in the url would close the link target
+  // early, letting page content corrupt the token structure of ingested markdown.
+  const escapeTitle = (s: string): string => s.replace(/"/g, "'")
+  const safeUrl = (u: string): string => u.replace(/\)/g, "%29")
+
+  turndown.addRule("mediaEmbed", {
+    filter: (node: any) =>
+      node.nodeName === "IFRAME" || node.nodeName === "VIDEO",
+    replacement: (_content: string, node: any): string => {
+      if (node.nodeName === "IFRAME") {
+        const raw = node.getAttribute("src")
+        if (!raw) return ""
+        const abs = absolutize(raw)
+        const host = hostOf(abs)
+        const path = abs.split(/[?#]/)[0].toLowerCase()
+        const title = escapeTitle(titleOf(node))
+        if (VIDEO_EMBED_HOSTS.test(host))
+          return `\n\n[embed:video](${safeUrl(abs)} "${title}")\n\n`
+        if (DOC_VIEWER_HOSTS.test(host) || path.endsWith(".pdf"))
+          return `\n\n[embed:doc](${safeUrl(abs)} "${title}")\n\n`
+        return "" // non-allowlisted iframe — dropped
+      }
+      // <video>: use src, or the first <source> whose src is mp4/webm — not
+      // just the first <source> regardless of type, which drops the video
+      // entirely when an unsupported format (e.g. ogv) is listed first.
+      const directSrc = node.getAttribute("src")
+      const sources: any[] = Array.from(node.querySelectorAll?.("source") ?? [])
+      const sourceSrc = sources
+        .map((s) => s.getAttribute("src"))
+        .find((s: string | null) => s && /\.(mp4|webm)(\?|#|$)/i.test(s))
+      const src = directSrc || sourceSrc || ""
+      if (!src) return ""
+      const abs = absolutize(src)
+      if (/\.(mp4|webm)(\?|#|$)/i.test(abs))
+        return `\n\n[embed:video](${safeUrl(abs)} "${escapeTitle(titleOf(node))}")\n\n`
+      return ""
+    }
+  })
+
   let markdown = turndown.turndown(htmlForConversion)
   markdown = cleanupMarkdown(markdown)
 

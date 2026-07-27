@@ -19,6 +19,16 @@ export type {
 } from "./qdrant.js"
 export { QdrantVectorStore, qdrantPointId } from "./qdrant.js"
 export type {
+  MediaScope,
+  MediaUpsertItem,
+  QdrantMediaStoreConfig
+} from "./qdrant-media.js"
+export {
+  mediaCollectionName,
+  mediaPointId,
+  QdrantMediaStore
+} from "./qdrant-media.js"
+export type {
   VectorFilter,
   VectorSearchOptions,
   VectorSearchResult,

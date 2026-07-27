@@ -43,6 +43,7 @@ export default function AgentConfigPanel({ agentId }: AgentConfigPanelProps) {
   const [compliance, setCompliance] = useState("")
   const [model, setModel] = useState("claude-sonnet-4-20250514")
   const [enableReflection, setEnableReflection] = useState(false)
+  const [enableMultimodal, setEnableMultimodal] = useState(false)
   const [retrieverIds, setRetrieverIds] = useState<Id<"retrievers">[]>([])
   const [additionalInstructions, setAdditionalInstructions] = useState("")
 
@@ -70,6 +71,7 @@ export default function AgentConfigPanel({ agentId }: AgentConfigPanelProps) {
     setCompliance(agent.guardrails.compliance ?? "")
     setModel(agent.model)
     setEnableReflection(agent.enableReflection)
+    setEnableMultimodal(agent.enableMultimodal ?? false)
     setRetrieverIds(agent.retrieverIds)
     setAdditionalInstructions(agent.additionalInstructions ?? "")
   }, [agent])
@@ -92,6 +94,7 @@ export default function AgentConfigPanel({ agentId }: AgentConfigPanelProps) {
       (compliance || "") !== (agent.guardrails.compliance ?? "") ||
       model !== agent.model ||
       enableReflection !== agent.enableReflection ||
+      enableMultimodal !== (agent.enableMultimodal ?? false) ||
       JSON.stringify(retrieverIds) !== JSON.stringify(agent.retrieverIds) ||
       (additionalInstructions || "") !== (agent.additionalInstructions ?? "")
     : false
@@ -123,6 +126,7 @@ export default function AgentConfigPanel({ agentId }: AgentConfigPanelProps) {
         },
         model,
         enableReflection,
+        enableMultimodal,
         retrieverIds,
         additionalInstructions: additionalInstructions || undefined,
         status: "ready"
@@ -400,6 +404,18 @@ export default function AgentConfigPanel({ agentId }: AgentConfigPanelProps) {
                 className="accent-accent"
               />
               <span className="text-[10px] text-text">Enable Reflection</span>
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={enableMultimodal}
+                onChange={(e) => setEnableMultimodal(e.target.checked)}
+                className="accent-accent"
+              />
+              <span className="text-[10px] text-text">
+                Enable Images (multimodal)
+              </span>
             </label>
           </div>
         </div>

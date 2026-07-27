@@ -1,6 +1,10 @@
 "use client"
 
-import { type ComponentPropsWithoutRef, useState } from "react"
+import {
+  type ComponentPropsWithoutRef,
+  type ReactElement,
+  useState
+} from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import rehypeRaw from "rehype-raw"
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize"
@@ -24,7 +28,204 @@ interface MarkdownViewerProps {
 
 type Mode = "raw" | "rendered"
 
-const markdownComponents: Components = {
+/** Non-rendering media-id annotations added at scrape time (Component 5):
+ *  invisible in rendered output, shown verbatim in raw mode. */
+const IMG_COMMENT_RE = /<!--(?:img|media):[^>]*-->/g
+
+// Video providers we can safely iframe-embed (embed-form URLs only).
+const VIDEO_EMBED_HOSTS =
+  /(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be|vimeo\.com|player\.vimeo\.com|loom\.com|wistia\.com|wistia\.net)$/i
+
+function hostOf(u: string): string {
+  try {
+    return new URL(u).hostname
+  } catch {
+    return ""
+  }
+}
+
+/**
+ * Prepare document content for rendered display: strip media annotations, and
+ * convert the scrape-time embed tokens into renderable markdown so the preview
+ * actually embeds them instead of showing the raw `[embed:video](...)` token.
+ * `[embed:video]` → `![title](url)` (the img renderer's video branch handles it);
+ * `[embed:doc]` → a plain `[title](url)` link.
+ */
+function prepareRendered(content: string): string {
+  return content
+    .replace(IMG_COMMENT_RE, "")
+    .replace(
+      /\[embed:video\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,
+      (_r, url: string, title?: string) => `![${title ?? ""}](${url})`
+    )
+    .replace(
+      /\[embed:doc\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,
+      (_r, url: string, title?: string) => `[${title || "document"}](${url})`
+    )
+}
+
+/** Extract a YouTube video id from an embed/watch/short URL, or "". */
+function youTubeId(u: string): string {
+  const m = u.match(
+    /(?:youtube(?:-nocookie)?\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([\w-]{6,})/
+  )
+  return m ? m[1] : ""
+}
+
+/**
+ * Video renderer. For YouTube we show a derived poster thumbnail with a play
+ * overlay and load the (sandboxed) iframe only on click — faster and avoids
+ * auto-loading the tracking player (V6). Other allowlisted providers iframe
+ * directly.
+ */
+function VideoEmbed({ url, alt }: { url: string; alt?: string }) {
+  const [playing, setPlaying] = useState(false)
+  const ytId = youTubeId(url)
+
+  if (ytId && !playing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setPlaying(true)}
+        className="relative block w-full max-w-full my-3 rounded-md overflow-hidden border border-border group"
+        aria-label={alt ? `Play video: ${alt}` : "Play video"}
+      >
+        <img
+          src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
+          alt={alt ?? "video thumbnail"}
+          className="w-full h-auto block"
+        />
+        <span className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40 transition-colors">
+          <span className="text-4xl">▶️</span>
+        </span>
+      </button>
+    )
+  }
+
+  // YouTube refuses to frame watch/short URLs (X-Frame-Options: SAMEORIGIN) —
+  // only the /embed/ form is frameable.
+  const src = ytId ? `https://www.youtube-nocookie.com/embed/${ytId}` : url
+
+  return (
+    <iframe
+      src={src}
+      title={alt || "Embedded video"}
+      className="w-full aspect-video max-w-full my-3 rounded-md border border-border"
+      sandbox="allow-scripts allow-same-origin allow-presentation"
+      allowFullScreen
+    />
+  )
+}
+
+/**
+ * A direct-file video that degrades to an "open video" link if the source fails
+ * to load. Error handling is done through React state (not imperative DOM
+ * mutation) so it can't fight React's reconciliation during streaming re-renders.
+ */
+function VideoFile({ url, label }: { url: string; label?: string }): ReactElement {
+  const [failed, setFailed] = useState(false)
+  if (failed) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-accent hover:text-accent-bright underline text-sm"
+      >
+        {label ? `▶ ${label}` : "▶ Open video"}
+      </a>
+    )
+  }
+  return (
+    <video
+      src={url}
+      controls
+      className="max-w-full h-auto rounded-md border border-border my-3"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
+/**
+ * An image that degrades to alt text if the source fails to load (URL rot in
+ * stored conversations). Error handling is React state, never imperative DOM
+ * mutation — the previous `el.replaceWith` approach crashed React with
+ * "removeChild ... not a child of this node" when a streaming re-render tried to
+ * reconcile the node it had already replaced.
+ */
+function LoadableImage({
+  url,
+  alt,
+  ...props
+}: { url: string; alt?: string } & Omit<
+  ComponentPropsWithoutRef<"img">,
+  "src" | "alt" | "onError"
+>): ReactElement {
+  const [failed, setFailed] = useState(false)
+  if (failed) {
+    return (
+      <span className="text-xs text-text-dim italic">
+        🖼️ {alt ? alt : "image unavailable"}
+      </span>
+    )
+  }
+  return (
+    <img
+      alt={alt}
+      src={url}
+      className="max-w-full h-auto rounded-md border border-border my-3"
+      onError={() => setFailed(true)}
+      {...props}
+    />
+  )
+}
+
+/**
+ * True when `url` on an allowlisted video host actually points at a specific
+ * video (not a channel/profile/homepage). Host-only matching would iframe
+ * things like youtube.com/@brand or bare vimeo.com/user123, which the
+ * provider refuses to frame and renders as a broken embed.
+ */
+function hasResolvableVideoPath(url: string): boolean {
+  const host = hostOf(url).toLowerCase()
+  if (/(^|\.)(youtube(-nocookie)?\.com|youtu\.be)$/i.test(host)) {
+    return youTubeId(url) !== ""
+  }
+  let pathname = ""
+  try {
+    pathname = new URL(url).pathname
+  } catch {
+    return false
+  }
+  if (/(^|\.)vimeo\.com$/i.test(host)) {
+    return /^\/(video\/)?\d+/.test(pathname)
+  }
+  if (/(^|\.)loom\.com$/i.test(host)) {
+    return /^\/(share|embed)\/[\w-]+/.test(pathname)
+  }
+  if (/(^|\.)(wistia\.com|wistia\.net)$/i.test(host)) {
+    return /(embed\/iframe|medias)\/[\w-]+/.test(pathname)
+  }
+  return false
+}
+
+/**
+ * If `url` points at a video (direct mp4/webm/ogg file, or an allowlisted embed
+ * host with a resolvable video path), return the video element; otherwise null.
+ * Shared by the image and link renderers so a video renders whether the model
+ * wrote `![alt](url)` or the plain link form `[alt](url)`.
+ */
+function videoElementFor(url: string, label?: string): ReactElement | null {
+  if (/\.(mp4|webm|ogg)(\?|#|$)/i.test(url)) {
+    return <VideoFile key={url} url={url} label={label} />
+  }
+  if (VIDEO_EMBED_HOSTS.test(hostOf(url)) && hasResolvableVideoPath(url)) {
+    return <VideoEmbed key={url} url={url} alt={label} />
+  }
+  return null
+}
+
+export const markdownComponents: Components = {
   h1: ({ children, ...props }: ComponentPropsWithoutRef<"h1">) => (
     <h1
       className="text-xl font-semibold text-text mt-6 mb-3 pb-2 border-b border-border"
@@ -68,17 +269,25 @@ const markdownComponents: Components = {
     </p>
   ),
 
-  a: ({ children, href, ...props }: ComponentPropsWithoutRef<"a">) => (
-    <a
-      href={href}
-      className="text-accent hover:text-accent-bright underline underline-offset-2 transition-colors"
-      target="_blank"
-      rel="noopener noreferrer"
-      {...props}
-    >
-      {children}
-    </a>
-  ),
+  a: ({ children, href, ...props }: ComponentPropsWithoutRef<"a">) => {
+    // The model sometimes writes a video as a plain link `[title](url)` instead
+    // of the image marker — embed it as a player rather than a bare link.
+    const url = typeof href === "string" ? href : ""
+    const label = typeof children === "string" ? children : undefined
+    const asVideo = videoElementFor(url, label)
+    if (asVideo) return asVideo
+    return (
+      <a
+        href={href}
+        className="text-accent hover:text-accent-bright underline underline-offset-2 transition-colors"
+        target="_blank"
+        rel="noopener noreferrer"
+        {...props}
+      >
+        {children}
+      </a>
+    )
+  },
 
   strong: ({ children, ...props }: ComponentPropsWithoutRef<"strong">) => (
     <strong className="font-semibold text-text" {...props}>
@@ -128,13 +337,26 @@ const markdownComponents: Components = {
     <hr className="border-border my-6" {...props} />
   ),
 
-  img: ({ alt, ...props }: ComponentPropsWithoutRef<"img">) => (
-    <img
-      alt={alt}
-      className="max-w-full h-auto rounded-md border border-border my-3"
-      {...props}
-    />
-  ),
+  img: ({ alt, src, ...props }: ComponentPropsWithoutRef<"img">) => {
+    const url = typeof src === "string" ? src : ""
+    // Only http(s) URLs are loadable. During streaming the marker's src is still
+    // a raw media id (`img_`/`vid_`/`doc_`) — resolution to a real URL happens at
+    // finalize — so rendering an <img>/<video> here would 404 and fire onError on
+    // every per-token re-render. Render a lightweight placeholder instead; the
+    // real media appears once the finalized message arrives with a resolved URL.
+    if (!/^https?:\/\//i.test(url)) {
+      return (
+        <span className="text-xs text-text-dim italic">
+          🖼️ {alt ? alt : "image"}
+        </span>
+      )
+    }
+    // A resolved URL whose kind we detect: video embed / mp4 → player; otherwise
+    // an ordinary image. `key={url}` gives each distinct URL a fresh error state.
+    const asVideo = videoElementFor(url, alt)
+    if (asVideo) return asVideo
+    return <LoadableImage key={url} url={url} alt={alt} {...props} />
+  },
 
   table: ({ children, ...props }: ComponentPropsWithoutRef<"table">) => (
     <div className="overflow-x-auto my-3">
@@ -231,6 +453,26 @@ const markdownComponents: Components = {
   }
 }
 
+/**
+ * The canonical "rendered agent/document markdown" pipeline: annotation
+ * stripping + embed-token conversion (prepareRendered), GFM, raw-HTML support
+ * (rehypeRaw) sanitized against XSS (rehypeSanitize), and the shared component
+ * set (images/videos/links/etc). Any surface that renders agent or document
+ * markdown should use this rather than a bare `<ReactMarkdown>`, so `[embed:*]`
+ * tokens and media annotations render consistently everywhere.
+ */
+export function RenderedMarkdown({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
+      components={markdownComponents}
+    >
+      {prepareRendered(content)}
+    </ReactMarkdown>
+  )
+}
+
 function TogglePill({
   mode,
   onToggle
@@ -287,14 +529,8 @@ export function MarkdownViewer({
           {content}
         </pre>
       ) : (
-        <div className="p-4 pr-24">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
-            components={markdownComponents}
-          >
-            {content}
-          </ReactMarkdown>
+        <div className={`p-4 ${showToggle ? "pr-24" : ""}`}>
+          <RenderedMarkdown content={content} />
         </div>
       )}
     </div>

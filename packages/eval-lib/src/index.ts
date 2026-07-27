@@ -59,7 +59,10 @@ export {
 } from "./types/index.js"
 export type {
   CallbackVectorStoreConfig,
+  MediaScope,
+  MediaUpsertItem,
   QdrantCollectionTuning,
+  QdrantMediaStoreConfig,
   QdrantVectorStoreConfig,
   VectorFilter,
   VectorSearchOptions,
@@ -72,6 +75,9 @@ export type {
 export {
   CallbackVectorStore,
   makeVectorStore,
+  mediaCollectionName,
+  mediaPointId,
+  QdrantMediaStore,
   QdrantVectorStore,
   qdrantPointId
 } from "./vector-stores/index.js"

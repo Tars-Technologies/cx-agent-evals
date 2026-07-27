@@ -57,6 +57,36 @@ describe("htmlToMarkdown", () => {
     expect(result.content).not.toContain("Copyright 2024")
   })
 
+  it("drops decorative <img> chrome (class/role/aria-hidden/size) but keeps content images", async () => {
+    const html = `<html><body><main>
+      <img src="https://x.com/logo.png" class="site-logo" alt="Acme logo">
+      <img src="https://x.com/decor.png" role="presentation" alt="">
+      <img src="https://x.com/hidden.png" aria-hidden="true" alt="deco">
+      <img src="https://x.com/tiny.png" width="16" height="16" alt="tiny icon">
+      <img src="https://x.com/pixel.gif" width="1" height="1" alt="">
+      <img src="https://x.com/photo.jpg" alt="Product photo">
+      <img src="https://x.com/chart.png" width="640" height="480" alt="Revenue chart">
+    </main></body></html>`
+    const result = await htmlToMarkdown(html, { onlyMainContent: true })
+    // Decorative dropped
+    expect(result.content).not.toContain("logo.png")
+    expect(result.content).not.toContain("decor.png")
+    expect(result.content).not.toContain("hidden.png")
+    expect(result.content).not.toContain("tiny.png")
+    expect(result.content).not.toContain("pixel.gif")
+    // Content kept
+    expect(result.content).toContain("photo.jpg")
+    expect(result.content).toContain("chart.png")
+  })
+
+  it("keeps decorative <img> when onlyMainContent is false", async () => {
+    const html = `<html><body><main>
+      <img src="https://x.com/logo.png" class="site-logo" alt="logo">
+    </main></body></html>`
+    const result = await htmlToMarkdown(html, { onlyMainContent: false })
+    expect(result.content).toContain("logo.png")
+  })
+
   it("preserves content with overflow-hidden class (Tailwind regression)", async () => {
     const html = `<html><body>
     <div class="card-group">
@@ -132,5 +162,88 @@ describe("htmlToMarkdown", () => {
     expect(result.content).toContain("Navigation")
     expect(result.content).toContain("Main")
     expect(result.content).toContain("Footer")
+  })
+})
+
+describe("htmlToMarkdown media capture", () => {
+  it("captures a YouTube iframe as a video token (embed form)", async () => {
+    const html = `<body><main><iframe src="https://www.youtube.com/embed/abc123" title="Demo"></iframe></main></body>`
+    const { content } = await htmlToMarkdown(html)
+    expect(content).toContain(
+      '[embed:video](https://www.youtube.com/embed/abc123 "Demo")'
+    )
+  })
+
+  it("captures <video> with an mp4 source as a video token", async () => {
+    const html = `<body><main><video title="Clip"><source src="https://x.com/v.mp4"></video></main></body>`
+    const { content } = await htmlToMarkdown(html)
+    expect(content).toContain('[embed:video](https://x.com/v.mp4 "Clip")')
+  })
+
+  it("captures a docs.google.com iframe as a doc token", async () => {
+    const html = `<body><main><iframe src="https://docs.google.com/document/d/XYZ/preview" title="Policy"></iframe></main></body>`
+    const { content } = await htmlToMarkdown(html)
+    expect(content).toContain(
+      '[embed:doc](https://docs.google.com/document/d/XYZ/preview "Policy")'
+    )
+  })
+
+  it("captures a .pdf iframe as a doc token", async () => {
+    const html = `<body><main><iframe src="https://x.com/files/spec.pdf" title="Spec"></iframe></main></body>`
+    const { content } = await htmlToMarkdown(html)
+    expect(content).toContain('[embed:doc](https://x.com/files/spec.pdf "Spec")')
+  })
+
+  it("still removes a non-allowlisted iframe", async () => {
+    const html = `<body><main><iframe src="https://ads.example.com/x"></iframe><p>hi</p></main></body>`
+    const { content } = await htmlToMarkdown(html)
+    expect(content).not.toContain("ads.example.com")
+    expect(content).toContain("hi")
+  })
+
+  it("resolves a relative video iframe src against baseUrl", async () => {
+    const html = `<body><main><iframe src="/embed/v" title="T"></iframe></main></body>`
+    const { content } = await htmlToMarkdown(html, {
+      baseUrl: "https://player.vimeo.com/x"
+    })
+    expect(content).toContain('[embed:video](https://player.vimeo.com/embed/v "T")')
+  })
+
+  it("escapes a double-quote in the title so it can't close the token early", async () => {
+    const html = `<body><main><iframe src="https://www.youtube.com/embed/abc123" title='Demo "Live" Q&A'></iframe></main></body>`
+    const { content } = await htmlToMarkdown(html)
+    expect(content).not.toContain('"Demo "Live" Q&A"')
+    expect(content).toContain(
+      '[embed:video](https://www.youtube.com/embed/abc123 "Demo \'Live\' Q&A")'
+    )
+  })
+
+  it("escapes a close-paren in the url so it can't truncate the link target", async () => {
+    const html = `<body><main><iframe src="https://x.com/files/spec(final).pdf" title="Spec"></iframe></main></body>`
+    const { content } = await htmlToMarkdown(html)
+    // Old bug: the url group stopped at the first raw ")" inside the path,
+    // leaving `.pdf "Spec")` as stray trailing text outside the token structure.
+    expect(content).not.toMatch(/spec\(final\)\.pdf "Spec"\)/)
+    expect(content).toContain(
+      '[embed:doc](https://x.com/files/spec(final%29.pdf "Spec")'
+    )
+  })
+})
+
+describe("htmlToMarkdown image src resolution", () => {
+  it("resolves relative <img src> against baseUrl", async () => {
+    const html = `<html><body><main><p>hi</p><img src="/images/x.png" alt="diagram"></main></body></html>`
+    const { content } = await htmlToMarkdown(html, {
+      baseUrl: "https://example.com/docs/page"
+    })
+    expect(content).toContain("![diagram](https://example.com/images/x.png)")
+  })
+
+  it("leaves absolute <img src> unchanged", async () => {
+    const html = `<html><body><main><img src="https://cdn.example.com/y.png" alt="y"></main></body></html>`
+    const { content } = await htmlToMarkdown(html, {
+      baseUrl: "https://example.com/"
+    })
+    expect(content).toContain("![y](https://cdn.example.com/y.png)")
   })
 })

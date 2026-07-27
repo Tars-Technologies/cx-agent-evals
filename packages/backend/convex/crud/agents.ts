@@ -56,6 +56,7 @@ export const create = mutation({
     additionalInstructions: v.optional(v.string()),
     model: v.string(),
     enableReflection: v.boolean(),
+    enableMultimodal: v.optional(v.boolean()),
     retrieverIds: v.array(v.id("retrievers"))
   },
   handler: async (ctx, args) => {
@@ -101,6 +102,7 @@ export const update = mutation({
     additionalInstructions: v.optional(v.string()),
     model: v.optional(v.string()),
     enableReflection: v.optional(v.boolean()),
+    enableMultimodal: v.optional(v.boolean()),
     retrieverIds: v.optional(v.array(v.id("retrievers"))),
     status: v.optional(
       v.union(v.literal("draft"), v.literal("ready"), v.literal("error"))

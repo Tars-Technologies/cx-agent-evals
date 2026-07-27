@@ -1,7 +1,5 @@
 "use node"
 
-import { anthropic } from "@ai-sdk/anthropic"
-import { openai } from "@ai-sdk/openai"
 import {
   type CharacterSpan,
   DocumentId,
@@ -10,28 +8,20 @@ import {
   precision,
   recall
 } from "@tars-inc/eval-lib"
-import { generateText, type LanguageModel, tool } from "ai"
+import { generateText, tool } from "ai"
 import { v } from "convex/values"
 import { z } from "zod"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { internalAction } from "../_generated/server"
 import { composeSystemPrompt } from "../agents/promptTemplate"
+import { finalizeMediaAnswer, resolveModel } from "../lib/agentLoop"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
+import { buildGetImagesTool } from "../lib/vision"
+import { isVisionCapable, MENU_IMAGE_CAP } from "@tars-inc/eval-lib/multimodal"
+import { rankMediaForDocs } from "../kb/media_runtime"
 
 // ─── Helpers ───
-
-function resolveModel(modelId: string): LanguageModel {
-  if (
-    modelId.startsWith("gpt-") ||
-    modelId.startsWith("o1") ||
-    modelId.startsWith("o3") ||
-    modelId.startsWith("o4")
-  ) {
-    return openai(modelId)
-  }
-  return anthropic(modelId)
-}
 
 function slugify(name: string): string {
   return name
@@ -240,11 +230,22 @@ export const evaluateAgentQuestion = internalAction({
       throw new Error("Agent has no ready retrievers")
     }
 
-    // 3. Build system prompt
+    // 3. Build system prompt. Vision degrades to text on a non-vision model.
+    const hasVision =
+      (agent.enableMultimodal ?? false) && isVisionCapable(agent.model)
     const systemPrompt = composeSystemPrompt(
       agent,
-      retrieverInfos.map((r) => ({ name: r.name, kbName: r.kbName }))
+      retrieverInfos.map((r) => ({ name: r.name, kbName: r.kbName })),
+      { hasVision }
     )
+    // Images the model fetched via get_images, for whitelist + shownImages.
+    const resolvedImages = new Map<string, { url: string; alt: string }>()
+    // Every imageId offered this turn, so the shared finalize's corrective retry
+    // can list the ids that actually exist.
+    const lastImageMenu = new Map<
+      string,
+      { imageId: string; alt: string; type?: string }
+    >()
 
     // 4. Build AI SDK tools — one per retriever
     const allToolCallResults: Array<{
@@ -256,6 +257,7 @@ export const evaluateAgentQuestion = internalAction({
         docId: string
         start: number
         end: number
+        images?: Array<{ imageId: string; alt: string }>
       }>
     }> = []
 
@@ -284,12 +286,35 @@ export const evaluateAgentQuestion = internalAction({
             indexStrategy: info.indexStrategy
           })
 
+          // Doc-gated image menu (E9): docs ordered by best chunk rank.
+          // Ranking happens DB-side so embeddings never ship to the action.
+          const docOrder: Id<"documents">[] = []
+          const seenDoc = new Set<string>()
+          for (const c of chunks) {
+            const id = c.documentId as Id<"documents">
+            if (!seenDoc.has(id)) {
+              seenDoc.add(id)
+              docOrder.push(id)
+            }
+          }
+          // Skip the Qdrant round-trip entirely for non-vision runs — they get no
+          // media instructions or get_images tool, so the menu would be dead weight.
+          const images = hasVision
+            ? await rankMediaForDocs(ctx, {
+                kbId: info.kbId as Id<"knowledgeBases">,
+                documentIds: docOrder,
+                queryEmbedding,
+                cap: MENU_IMAGE_CAP
+              })
+            : []
+
           const mappedChunks = chunks.map((c: any) => ({
             content: c.content,
             docId: c.docId,
             start: c.start,
             end: c.end
           }))
+          for (const img of images) lastImageMenu.set(img.imageId, img)
 
           allToolCallResults.push({
             toolName,
@@ -298,9 +323,24 @@ export const evaluateAgentQuestion = internalAction({
             chunks: mappedChunks
           })
 
-          return mappedChunks
+          return { chunks: mappedChunks, images }
         }
       })
+    }
+
+    // Scope images to every KB this agent can search (not just the first).
+    const imageKbIds = [
+      ...new Set(retrieverInfos.map((r) => r.kbId))
+    ] as Id<"knowledgeBases">[]
+    if (hasVision && imageKbIds.length > 0) {
+      tools.get_images = buildGetImagesTool(
+        ctx,
+        { kbIds: imageKbIds, orgId: agent.orgId },
+        (resolved) => {
+          for (const r of resolved)
+            resolvedImages.set(r.imageId, { url: r.url, alt: r.alt })
+        }
+      )
     }
 
     // 5. Load question
@@ -316,10 +356,31 @@ export const evaluateAgentQuestion = internalAction({
         system: systemPrompt,
         messages: [{ role: "user", content: question.queryText }],
         tools: Object.keys(tools).length > 0 ? tools : undefined,
-        maxSteps: 5
+        maxSteps: 8
       })
 
       const latencyMs = Date.now() - startTime
+
+      // Shared finalize (corrective retry + backstop + whitelist + shownImages),
+      // identical to live chat and the simulation loop so the experiment scores
+      // the same image behavior. shownImages = what the model actually rendered
+      // (D8: recorded, not scored).
+      const { finalText: answerText, shownImages } = await finalizeMediaAnswer(
+        ctx,
+        {
+          rawText: result.text,
+          aiMessages: [{ role: "user", content: question.queryText }],
+          systemPrompt,
+          modelId: agent.model,
+          hasVision: hasVision && imageKbIds.length > 0,
+          imageScope:
+            hasVision && imageKbIds.length > 0
+              ? { kbIds: imageKbIds, orgId: agent.orgId }
+              : undefined,
+          resolvedImages,
+          lastImageMenu
+        }
+      )
 
       // 7. Extract tool calls + chunks
       const toolCalls = [...allToolCallResults]
@@ -335,7 +396,7 @@ export const evaluateAgentQuestion = internalAction({
       await ctx.runMutation(internal.experiments.agentResults.insert, {
         experimentId: args.experimentId,
         questionId: args.questionId,
-        answerText: result.text,
+        answerText,
         toolCalls: toolCalls.map((tc) => ({
           toolName: tc.toolName,
           query: tc.query,
@@ -344,6 +405,7 @@ export const evaluateAgentQuestion = internalAction({
         })),
         retrievedChunks,
         scores,
+        shownImages: shownImages.length > 0 ? shownImages : undefined,
         usage: result.usage
           ? {
               promptTokens: result.usage.promptTokens,

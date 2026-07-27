@@ -7,6 +7,7 @@ import { ScenarioSummaryBand } from "@/components/conversation-sim/ScenarioSumma
 import { ToolCallGroup } from "@/components/conversation-sim/ToolCallGroup"
 import { ChatBubble } from "@/components/livechat/ChatBubble"
 import { SourceTranscriptPanel } from "@/components/livechat/SourceTranscriptPanel"
+import { MarkdownViewer } from "@/components/MarkdownViewer"
 import { api } from "@/lib/convex"
 import { groupMessagesWithToolCalls } from "@/lib/messageDisplay"
 
@@ -137,7 +138,7 @@ export function SimRunDetail({ runId }: { runId: Id<"conversationSimRuns"> }) {
                   className={`flex ${isUser ? "justify-end" : "justify-start"} mb-1.5`}
                 >
                   <div
-                    className={`max-w-[70%] px-2.5 py-1.5 text-xs whitespace-pre-wrap text-white ${
+                    className={`max-w-[70%] px-2.5 py-1.5 text-xs text-white ${
                       isUser
                         ? "bg-accent-dim rounded-lg rounded-br-sm"
                         : "bg-bg-surface border border-border rounded-lg rounded-bl-sm"
@@ -148,7 +149,15 @@ export function SimRunDetail({ runId }: { runId: Id<"conversationSimRuns"> }) {
                     >
                       {isUser ? "User" : "Agent"}
                     </div>
-                    {msg.content}
+                    {isUser ? (
+                      <span className="whitespace-pre-wrap">{msg.content}</span>
+                    ) : (
+                      <MarkdownViewer
+                        content={msg.content}
+                        showToggle={false}
+                        className="-mx-2"
+                      />
+                    )}
                   </div>
                 </div>
               )

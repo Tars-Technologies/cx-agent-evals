@@ -1,13 +1,17 @@
 "use node"
 
 import { anthropic } from "@ai-sdk/anthropic"
-import { streamText, tool } from "ai"
+import { generateText, streamText, tool } from "ai"
 import { v } from "convex/values"
 import { z } from "zod"
 import { internal } from "../_generated/api"
+import type { Id } from "../_generated/dataModel"
 import { internalAction } from "../_generated/server"
-import { resolveModel, slugify } from "../lib/agentLoop"
+import { finalizeMediaAnswer, resolveModel, slugify } from "../lib/agentLoop"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
+import { buildGetImagesTool, isVisionCapable } from "../lib/vision"
+import { MENU_IMAGE_CAP } from "@tars-inc/eval-lib/multimodal"
+import { rankMediaForDocs } from "../kb/media_runtime"
 import { composeSystemPrompt } from "./promptTemplate"
 
 // Helper: convert stored messages to AI SDK format
@@ -125,13 +129,19 @@ export const runAgent = internalAction({
         })
       }
 
-      // 3. Build system prompt
+      // 3. Build system prompt. Vision degrades to text-only on a non-vision
+      // model — it never re-routes the user-chosen model.
+      const hasVision =
+        (agent.enableMultimodal ?? false) &&
+        isVisionCapable(agent.model) &&
+        retrieverInfos.length > 0
       const systemPrompt = composeSystemPrompt(
         agent,
         retrieverInfos.map((r) => ({
           name: r.name,
           kbName: r.kbName
-        }))
+        })),
+        { hasVision }
       )
 
       // 4. Build AI SDK tools — one per retriever
@@ -139,6 +149,15 @@ export const runAgent = internalAction({
       const retrieverMap = new Map(
         retrieverInfos.map((r) => [slugify(r.name), r])
       )
+      // Image ids the model fetched via get_images, for finalize whitelist (V4).
+      const resolvedImages = new Map<string, { url: string; alt: string }>()
+      // Every imageId offered across this turn's retrieval calls, for the
+      // corrective-retry prompt below (a model sometimes fabricates a
+      // plausible-looking URL instead of copying a real menu id).
+      const lastImageMenu = new Map<
+        string,
+        { imageId: string; alt: string; type?: string }
+      >()
 
       for (const info of retrieverInfos) {
         const toolName = slugify(info.name)
@@ -163,14 +182,56 @@ export const runAgent = internalAction({
               indexStrategy: info.indexStrategy
             })
 
-            return chunks.map((c: any) => ({
+            // Doc-gated image menu (E9): docs ordered by best chunk rank.
+            // Ranking happens DB-side so embeddings never ship to the action.
+            const docOrder: Id<"documents">[] = []
+            const seenDoc = new Set<string>()
+            for (const c of chunks) {
+              const id = c.documentId as Id<"documents">
+              if (!seenDoc.has(id)) {
+                seenDoc.add(id)
+                docOrder.push(id)
+              }
+            }
+            // Skip the Qdrant round-trip entirely for non-vision runs — they get no
+            // media instructions or get_images tool, so the menu would be dead weight.
+            const images = hasVision
+              ? await rankMediaForDocs(ctx, {
+                  kbId: info.kbId as Id<"knowledgeBases">,
+                  documentIds: docOrder,
+                  queryEmbedding,
+                  cap: MENU_IMAGE_CAP
+                })
+              : []
+
+            const cleanChunks = chunks.map((c: any) => ({
               content: c.content,
               documentId: c.documentId,
               start: c.start,
               end: c.end
             }))
+            // Track the media menu offered this turn so a corrective retry (below)
+            // can tell the model exactly which imageIds are actually valid.
+            for (const img of images) lastImageMenu.set(img.imageId, img)
+            return { chunks: cleanChunks, images }
           }
         })
+      }
+
+      // Images are scoped to every KB this agent can search (one agent may link
+      // retrievers across several KBs; getImagesByIds validates kb+org).
+      const imageKbIds = [
+        ...new Set(retrieverInfos.map((r) => r.kbId))
+      ] as Id<"knowledgeBases">[]
+      if (hasVision && imageKbIds.length > 0) {
+        tools.get_images = buildGetImagesTool(
+          ctx,
+          { kbIds: imageKbIds, orgId: agent.orgId },
+          (resolved) => {
+            for (const r of resolved)
+              resolvedImages.set(r.imageId, { url: r.url, alt: r.alt })
+          }
+        )
       }
 
       // 5. Load conversation history
@@ -192,6 +253,7 @@ export const runAgent = internalAction({
 
       // 7. Stream the response using fullStream (handles multi-step tool use properly)
       let streamCursor = 0
+      let toolCallCount = 0
       let buffer = ""
       const FLUSH_INTERVAL_MS = 200
       const FLUSH_CHAR_THRESHOLD = 50
@@ -218,7 +280,7 @@ export const runAgent = internalAction({
         system: systemPrompt,
         messages: aiMessages,
         tools: Object.keys(tools).length > 0 ? tools : undefined,
-        maxSteps: 5
+        maxSteps: 8
       })
 
       for await (const part of result.fullStream) {
@@ -232,6 +294,7 @@ export const runAgent = internalAction({
             await flushBuffer()
           }
         } else if (part.type === "tool-call") {
+          toolCallCount++
           const retrieverInfo = retrieverMap.get(part.toolName)
           await ctx.runMutation(internal.crud.conversations.insertMessage, {
             conversationId,
@@ -267,8 +330,57 @@ export const runAgent = internalAction({
       }
       await flushBuffer()
 
-      // 8. Finalize the assistant message
-      const [finalText, usage] = await Promise.all([result.text, result.usage])
+      // 8. Finalize the assistant message.
+      let rawFinalText = (await result.text) ?? ""
+      const usage = await result.usage
+
+      // Recovery: if the step budget was spent on tool calls (e.g. retrieve +
+      // get_images) without producing text, force one text-only pass so live
+      // chat never silently truncates to empty. Mirrors lib/agentLoop.ts.
+      if (
+        (!rawFinalText || rawFinalText.trim().length === 0) &&
+        toolCallCount > 0
+      ) {
+        const responseMessages = (await result.response)?.messages
+        const recovery = await generateText({
+          model: resolveModel(agent.model),
+          system:
+            systemPrompt +
+            "\n\nYou have already gathered information using tools. Provide your best response to the user based on what you found. Do not call any more tools.",
+          messages: responseMessages
+            ? [...aiMessages, ...(responseMessages as any)]
+            : aiMessages
+        })
+        rawFinalText = recovery.text ?? ""
+        // Streaming already finished; flush the recovered text as one delta.
+        if (rawFinalText) {
+          buffer += rawFinalText
+          await flushBuffer()
+        }
+      }
+
+      // Shared finalize (corrective retry for fabricated URLs + fabricated-target
+      // backstop + inline-marker resolution + whitelist + shownImages), identical
+      // to the simulation path (lib/agentLoop.ts) so both evaluate and produce the
+      // same image behavior. onCorrectionText streams the rewritten reply as a
+      // delta; the final stored content is the post-whitelist text below.
+      const { finalText, shownImages } = await finalizeMediaAnswer(ctx, {
+        rawText: rawFinalText,
+        aiMessages,
+        systemPrompt,
+        modelId: agent.model,
+        hasVision: hasVision && imageKbIds.length > 0,
+        imageScope:
+          hasVision && imageKbIds.length > 0
+            ? { kbIds: imageKbIds, orgId: agent.orgId }
+            : undefined,
+        resolvedImages,
+        lastImageMenu,
+        onCorrectionText: async (text) => {
+          buffer += text
+          await flushBuffer()
+        }
+      })
       await ctx.runMutation(internal.crud.conversations.updateMessage, {
         messageId: assistantMessageId,
         content: finalText,
@@ -278,7 +390,8 @@ export const runAgent = internalAction({
               promptTokens: usage.promptTokens,
               completionTokens: usage.completionTokens
             }
-          : undefined
+          : undefined,
+        shownImages: shownImages.length > 0 ? shownImages : undefined
       })
 
       // Schedule delta cleanup

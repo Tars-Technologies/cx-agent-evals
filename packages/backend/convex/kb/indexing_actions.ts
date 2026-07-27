@@ -13,6 +13,7 @@ import {
   PositionAwareChunkId,
   RecursiveCharacterChunker
 } from "@tars-inc/eval-lib"
+import { stripMediaMarkdown } from "@tars-inc/eval-lib/file-processing/markdown-images"
 import { createEmbedder } from "@tars-inc/eval-lib/llm"
 import { CLEANUP_BATCH_SIZE, EMBED_BATCH_SIZE } from "@tars-inc/eval-lib/shared"
 import { v } from "convex/values"
@@ -115,20 +116,24 @@ export const indexDocument = internalAction({
           return { skipped: false, chunksInserted: 0, chunksEmbedded: 0 }
         }
 
-        // Insert parent chunks (no embedding — level: "parent")
+        // Insert parent chunks (no embedding — level: "parent"). Only parents
+        // carry the returned text; image markdown is stripped so chunks are
+        // clean text (images live at the document level now). Child content is
+        // left untouched.
+        const parentMapped = parentChunks.map((c) => ({
+          documentId: args.documentId,
+          kbId: args.kbId,
+          indexConfigHash: args.indexConfigHash,
+          chunkId: c.id,
+          content: stripMediaMarkdown(c.content),
+          start: c.start,
+          end: c.end,
+          metadata: { level: "parent" as const }
+        }))
         const parentResult = await ctx.runMutation(
           internal.kb.chunks.insertChunkBatch,
           {
-            chunks: parentChunks.map((c) => ({
-              documentId: args.documentId,
-              kbId: args.kbId,
-              indexConfigHash: args.indexConfigHash,
-              chunkId: c.id,
-              content: c.content,
-              start: c.start,
-              end: c.end,
-              metadata: { level: "parent" }
-            }))
+            chunks: parentMapped
           }
         )
 
@@ -186,18 +191,22 @@ export const indexDocument = internalAction({
           return { skipped: false, chunksInserted: 0, chunksEmbedded: 0 }
         }
 
+        // Strip image markdown so chunks are clean text (images are processed
+        // at the document level, decoupled from chunk boundaries).
+        const mapped = chunks.map((c) => ({
+          documentId: args.documentId,
+          kbId: args.kbId,
+          indexConfigHash: args.indexConfigHash,
+          chunkId: c.id,
+          content: stripMediaMarkdown(c.content),
+          start: c.start,
+          end: c.end,
+          metadata: { ...(c.metadata ?? {}) }
+        }))
+
         // Insert ALL chunks WITHOUT embeddings in one atomic mutation
         await ctx.runMutation(internal.kb.chunks.insertChunkBatch, {
-          chunks: chunks.map((c) => ({
-            documentId: args.documentId,
-            kbId: args.kbId,
-            indexConfigHash: args.indexConfigHash,
-            chunkId: c.id,
-            content: c.content,
-            start: c.start,
-            end: c.end,
-            metadata: c.metadata ?? {}
-          }))
+          chunks: mapped
         })
       }
     }
