@@ -13,7 +13,6 @@ export function QuestionList({
   generating,
   totalDone,
   phaseStatus,
-  onUpload,
   realWorldCount
 }: {
   questions: GeneratedQuestion[]
@@ -23,7 +22,6 @@ export function QuestionList({
   generating: boolean
   totalDone: number | null
   phaseStatus?: string | null
-  onUpload?: () => void
   realWorldCount?: number
 }) {
   const [searchQuery, setSearchQuery] = useState("")
@@ -231,18 +229,6 @@ export function QuestionList({
           )
         })}
       </div>
-
-      {/* Upload footer */}
-      {questions.length > 0 && !generating && onUpload && (
-        <div className="flex-shrink-0 px-3 py-2.5 border-t border-border bg-bg-elevated/50">
-          <button
-            onClick={onUpload}
-            className="w-full px-3 py-1.5 text-xs font-medium text-accent border border-accent/30 rounded hover:bg-accent/10 transition-colors cursor-pointer"
-          >
-            Upload to LangSmith
-          </button>
-        </div>
-      )}
     </div>
   )
 }

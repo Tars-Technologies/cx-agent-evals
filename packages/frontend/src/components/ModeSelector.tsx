@@ -200,8 +200,8 @@ export function ModeSelector() {
                 </h2>
               </div>
               <p className="text-text-muted text-sm leading-relaxed">
-                Run retrieval experiments on LangSmith datasets and compare
-                results across configurations
+                Run retrieval experiments on datasets and compare results
+                across configurations
               </p>
               <div className="mt-6 text-xs text-text-dim flex items-center gap-2 flex-wrap">
                 <span>Select retriever</span>

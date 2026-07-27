@@ -79,8 +79,6 @@ function LandingPage() {
             <span>Question Generation</span>
             <span className="text-border">&middot;</span>
             <span>Retrieval Experiments</span>
-            <span className="text-border">&middot;</span>
-            <span>LangSmith Sync</span>
           </div>
         </div>
       </div>
