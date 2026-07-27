@@ -1,19 +1,19 @@
 "use node"
 
 /**
- * Single-action experiment runner via LangSmith `evaluate()`.
+ * Single-action experiment runner via eval-lib's native retriever evaluation.
  *
- * Actions live here ("use node") because they import langsmith and
- * eval-lib/langsmith, which depend on Node.js built-ins unavailable in
- * the Convex edge runtime.
+ * Actions live here ("use node") because they import eval-lib, which
+ * depends on Node.js built-ins unavailable in the Convex edge runtime.
  */
 import {
   CallbackRetriever,
   computeIndexConfigHash,
   createCorpusFromDocuments,
-  createDocument
+  createDocument,
+  DocumentId,
+  runRetrieverEvaluation
 } from "@tars-inc/eval-lib"
-import { runLangSmithExperiment } from "@tars-inc/eval-lib/langsmith"
 import type { ExperimentResult } from "@tars-inc/eval-lib/shared"
 import { v } from "convex/values"
 import { internal } from "../_generated/api"
@@ -180,42 +180,6 @@ export const runExperiment = internalAction({
         (q: any) => Array.isArray(q.relevantSpans) && q.relevantSpans.length > 0
       )
 
-      // ── Step 3: Ensure dataset is synced to LangSmith ──
-      let dataset = await ctx.runQuery(internal.kb.datasets.getInternal, {
-        id: args.datasetId
-      })
-
-      // Detect stale LangSmith dataset: if the dataset's total question
-      // count differs from the filtered count (questions with ground truth),
-      // the LangSmith dataset was synced before the ground-truth filter was
-      // added and contains extra examples that waste evaluation time.
-      const needsResync =
-        !dataset.langsmithDatasetId ||
-        (dataset.questionCount != null &&
-          dataset.questionCount !== questions.length)
-
-      if (needsResync) {
-        if (dataset.langsmithDatasetId) {
-          await ctx.runMutation(internal.kb.datasets.clearLangsmithSync, {
-            datasetId: args.datasetId
-          })
-        }
-
-        await ctx.runMutation(internal.kb.experiments.updateStatus, {
-          experimentId: args.experimentId,
-          status: "running",
-          phase: "syncing"
-        })
-
-        await ctx.runAction(internal.kb.langsmith_actions.syncDataset, {
-          datasetId: args.datasetId
-        })
-
-        dataset = await ctx.runQuery(internal.kb.datasets.getInternal, {
-          id: args.datasetId
-        })
-      }
-
       if (questions.length === 0) {
         await ctx.runMutation(internal.kb.experiments.updateStatus, {
           experimentId: args.experimentId,
@@ -240,8 +204,7 @@ export const runExperiment = internalAction({
         kbId: args.kbId,
         indexConfigHash,
         embeddingModel,
-        k: experimentK,
-        datasetName: dataset.langsmithDatasetId ?? dataset.name
+        k: experimentK
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -254,13 +217,11 @@ export const runExperiment = internalAction({
   }
 })
 
-// ─── Single Evaluation Action (wraps LangSmith evaluate()) ───
+// ─── Single Evaluation Action ───
 
 /**
- * Run the full evaluation via LangSmith's evaluate() function.
+ * Run the full evaluation via eval-lib's runRetrieverEvaluation().
  * This is enqueued as a single WorkPool item (no retry).
- * evaluate() handles: creating the experiment, running the target per example,
- * computing metrics, and creating properly linked runs in LangSmith.
  */
 export const runEvaluation = internalAction({
   args: {
@@ -269,8 +230,7 @@ export const runEvaluation = internalAction({
     kbId: v.id("knowledgeBases"),
     indexConfigHash: v.string(),
     embeddingModel: v.string(),
-    k: v.number(),
-    datasetName: v.string()
+    k: v.number()
   },
   handler: async (ctx, args) => {
     const experiment = await ctx.runQuery(internal.kb.experiments.getInternal, {
@@ -336,7 +296,7 @@ export const runEvaluation = internalAction({
       cleanupFn: async () => unified.cleanup()
     })
 
-    // Run evaluation via LangSmith evaluate()
+    // Run evaluation via eval-lib's native retriever evaluation
     const total = questions.length
     const maxConcurrency = resolveMaxConcurrency(env.EXPERIMENT_MAX_CONCURRENCY)
     // Coalesce progress writes so concurrent onResult callbacks don't contend
@@ -345,18 +305,27 @@ export const runEvaluation = internalAction({
     let resultsCount = 0
     const evalStartedAt = Date.now()
 
-    await runLangSmithExperiment({
+    const dataset = questions.map((q: any) => ({
+      query: q.queryText,
+      groundTruth: (q.relevantSpans as Array<{
+        docId: string
+        start: number
+        end: number
+        text: string
+      }>).map((s) => ({
+        docId: DocumentId(s.docId),
+        start: s.start,
+        end: s.end,
+        text: s.text
+      }))
+    }))
+
+    await runRetrieverEvaluation({
       corpus,
       retriever,
       k: args.k,
-      datasetName: args.datasetName,
-      experimentPrefix: experiment.name,
+      dataset,
       maxConcurrency,
-      metadata: {
-        experimentId: args.experimentId,
-        retrieverConfig: experiment.retrieverConfig,
-        retrieverId: experiment.retrieverId
-      },
       onResult: async (result: ExperimentResult) => {
         const questionId = queryToQuestionId.get(result.query)
         if (questionId) {
@@ -386,7 +355,7 @@ export const runEvaluation = internalAction({
       `[Experiment ${args.experimentId}] evaluated ${resultsCount}/${total} questions in ${(elapsedMs / 1000).toFixed(1)}s (${perQ.toFixed(0)}ms/q, maxConcurrency=${maxConcurrency})`
     )
 
-    // Aggregate scores after evaluate() completes
+    // Aggregate scores after the evaluation completes
     const results = await ctx.runQuery(
       internal.kb.results.byExperimentInternal,
       { experimentId: args.experimentId }
