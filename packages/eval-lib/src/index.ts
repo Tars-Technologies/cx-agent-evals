@@ -112,7 +112,12 @@ export {
   createHybridRetriever,
   createPresetRetriever,
   HYBRID_CONFIG,
-  HYBRID_RERANKED_CONFIG
+  HYBRID_RERANKED_CONFIG,
+  runRetrieverEvaluation
+} from "./experiments/index.js"
+export type {
+  RetrieverEvaluationExample,
+  RunRetrieverEvaluationConfig
 } from "./experiments/index.js"
 export type {
   BM25SearchConfig,

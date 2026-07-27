@@ -33,6 +33,14 @@ describe("normalizedFind", () => {
   it("returns null when absent", () => {
     expect(normalizedFind(doc, "not in the document")).toBeNull()
   })
+
+  it("matches excerpts differing from the source only by smart quotes / em-dashes", () => {
+    const source = 'The plan - code-named "Alpha" - shipped on time.'
+    const excerpt = "code-named “Alpha”"
+    const found = normalizedFind(source, excerpt)
+    expect(found).not.toBeNull()
+    expect(source.slice(found!.start, found!.end)).toBe('code-named "Alpha"')
+  })
 })
 
 describe("spanOverlaps", () => {

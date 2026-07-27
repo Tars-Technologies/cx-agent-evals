@@ -25,3 +25,11 @@ export {
   HYBRID_CONFIG,
   HYBRID_RERANKED_CONFIG
 } from "./presets.js"
+export {
+  DEFAULT_METRICS,
+  runRetrieverEvaluation
+} from "./run-retriever-evaluation.js"
+export type {
+  RetrieverEvaluationExample,
+  RunRetrieverEvaluationConfig
+} from "./run-retriever-evaluation.js"
