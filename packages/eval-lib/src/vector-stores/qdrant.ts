@@ -123,6 +123,23 @@ function buildQdrantFilter(
 }
 
 /**
+ * True for Qdrant's "Index required but not found for ..." 400 on a filtered
+ * request. This can only happen while a collection is mid-bootstrap:
+ * ensureCollection() PUT-creates the collection, then PUTs its three payload
+ * indexes (kbId/indexConfigHash/documentId) as separate sequential requests,
+ * so a concurrent caller can observe the collection as existing before all
+ * three indexes have landed. Once a collection's indexes are created they are
+ * never removed, so this error is a bootstrap-race signal, not a real fault.
+ */
+function isMissingIndexError(err: unknown): boolean {
+  return (
+    err instanceof QdrantHttpError &&
+    err.status === 400 &&
+    /index required but not found/i.test(err.message)
+  )
+}
+
+/**
  * Qdrant-backed VectorStore over the REST API. Payloads are self-contained
  * (chunk text + offsets) so search results need no further hydration.
  * Upserts are idempotent via deterministic point ids.
@@ -529,11 +546,26 @@ export class QdrantVectorStore implements VectorStore {
     documentId: string,
     filter?: VectorFilter
   ): Promise<void> {
-    await this._request(
-      "POST",
-      `/collections/${this._cfg.collection}/points/delete?wait=true`,
-      { filter: buildQdrantFilter({ ...filter, documentId }) }
-    )
+    try {
+      await this._request(
+        "POST",
+        `/collections/${this._cfg.collection}/points/delete?wait=true`,
+        { filter: buildQdrantFilter({ ...filter, documentId }) }
+      )
+    } catch (err) {
+      // A missing collection (404) is the desired end-state; cleanup may be
+      // replayed against a collection that was never created. A "missing
+      // index" 400 means a sibling call's ensureCollection() is mid-bootstrap
+      // on this same (brand-new) collection — the index gap can only exist
+      // before the collection has ever finished being created, which means
+      // there is provably nothing here yet to delete either.
+      if (
+        !(err instanceof QdrantHttpError && err.status === 404) &&
+        !isMissingIndexError(err)
+      ) {
+        throw err
+      }
+    }
   }
 
   async deleteByKnowledgeBase(
@@ -550,8 +582,15 @@ export class QdrantVectorStore implements VectorStore {
       )
     } catch (err) {
       // A missing collection is the desired end-state; cleanup may be replayed
-      // against a collection that was never created.
-      if (!(err instanceof QdrantHttpError && err.status === 404)) throw err
+      // against a collection that was never created. Same reasoning covers a
+      // "missing index" 400 from a concurrent ensureCollection() bootstrap —
+      // see deleteByDocument.
+      if (
+        !(err instanceof QdrantHttpError && err.status === 404) &&
+        !isMissingIndexError(err)
+      ) {
+        throw err
+      }
     }
   }
 

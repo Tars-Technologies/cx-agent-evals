@@ -435,6 +435,44 @@ describe("QdrantVectorStore", () => {
     })
   })
 
+  it("deleteByDocument(): treats a missing collection (404) as already dropped", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("not found", { status: 404 }))
+    await expect(store.deleteByDocument("cvx1")).resolves.toBeUndefined()
+  })
+
+  it("deleteByDocument(): tolerates a sibling's ensureCollection() index bootstrap racing this delete", async () => {
+    // add() PUT-creates a brand-new collection, then PUTs its three payload
+    // indexes as separate sequential requests. A concurrent deleteByDocument
+    // (from a sibling document in the same KB) can land after the collection
+    // exists but before all three indexes do — Qdrant then 400s instead of
+    // 404ing, and that must not be treated as a real failure either.
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          status: {
+            error:
+              'Bad request: Index required but not found for "indexConfigHash" of one of the following types: [keyword]. Help: Create an index for this key or use a different filter.'
+          },
+          time: 0.000020151
+        }),
+        { status: 400 }
+      )
+    )
+    await expect(store.deleteByDocument("cvx1")).resolves.toBeUndefined()
+  })
+
+  it("deleteByDocument(): still throws a genuine 400 unrelated to a missing index", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ status: { error: "Bad request: malformed filter" } }),
+        { status: 400 }
+      )
+    )
+    await expect(store.deleteByDocument("cvx1")).rejects.toThrow(
+      /Qdrant API error: 400/
+    )
+  })
+
   it("deleteByKnowledgeBase(): issues a filtered point-delete, not a collection drop", async () => {
     fetchMock.mockResolvedValueOnce(okJson({ status: "ok", result: {} }))
     await store.deleteByKnowledgeBase("kb1")
@@ -490,6 +528,24 @@ describe("QdrantVectorStore", () => {
     // The 404 now surfaces from the filtered POST delete against a
     // never-created collection; cleanup stays idempotent.
     fetchMock.mockResolvedValueOnce(new Response("not found", { status: 404 }))
+    await expect(store.deleteByKnowledgeBase("kb1")).resolves.toBeUndefined()
+  })
+
+  it("deleteByKnowledgeBase(): tolerates a sibling's ensureCollection() index bootstrap racing this delete", async () => {
+    // Same bootstrap-race window as deleteByDocument, against the kbId-scoped
+    // delete path instead.
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          status: {
+            error:
+              'Bad request: Index required but not found for "kbId" of one of the following types: [keyword]. Help: Create an index for this key or use a different filter.'
+          },
+          time: 0.000018
+        }),
+        { status: 400 }
+      )
+    )
     await expect(store.deleteByKnowledgeBase("kb1")).resolves.toBeUndefined()
   })
 
