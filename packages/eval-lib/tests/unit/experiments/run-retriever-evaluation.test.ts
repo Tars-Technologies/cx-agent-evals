@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { runRetrieverEvaluation } from "../../../src/experiments/run-retriever-evaluation.js"
+import { DEFAULT_METRICS as ROOT_DEFAULT_METRICS } from "../../../src/index.js"
 import type { ExperimentResult } from "../../../src/shared/types.js"
 import type { Corpus, PositionAwareChunk } from "../../../src/types/index.js"
 import {
@@ -22,6 +23,15 @@ const chunk = (start: number, end: number, content: string): PositionAwareChunk 
 })
 
 describe("runRetrieverEvaluation", () => {
+  it("exposes the native default metrics from the package root", () => {
+    expect(ROOT_DEFAULT_METRICS.map((metric) => metric.name)).toEqual([
+      "recall",
+      "precision",
+      "iou",
+      "f1"
+    ])
+  })
+
   it("scores each example and fires onResult, calling init/cleanup once", async () => {
     const retriever = {
       name: "test",
@@ -72,6 +82,79 @@ describe("runRetrieverEvaluation", () => {
     expect(retriever.cleanup).toHaveBeenCalledOnce()
   })
 
+  it("runs cleanup and preserves the initialization error when init throws", async () => {
+    const initError = new Error("init failed")
+    const retriever = {
+      name: "init-failure",
+      init: vi.fn(async () => {
+        throw initError
+      }),
+      retrieve: vi.fn(async () => []),
+      cleanup: vi.fn(async () => {})
+    }
+
+    await expect(
+      runRetrieverEvaluation({
+        corpus,
+        retriever,
+        k: 5,
+        dataset: [{ query: "q", groundTruth: [] }]
+      })
+    ).rejects.toBe(initError)
+    expect(retriever.cleanup).toHaveBeenCalledOnce()
+    expect(retriever.retrieve).not.toHaveBeenCalled()
+  })
+
+  it("preserves primary and cleanup failures in an AggregateError", async () => {
+    const retrieveError = new Error("retrieve failed")
+    const cleanupError = new Error("cleanup failed")
+    const retriever = {
+      name: "dual-failure",
+      init: vi.fn(async () => {}),
+      retrieve: vi.fn(async () => {
+        throw retrieveError
+      }),
+      cleanup: vi.fn(async () => {
+        throw cleanupError
+      })
+    }
+
+    const failure = runRetrieverEvaluation({
+      corpus,
+      retriever,
+      k: 5,
+      dataset: [{ query: "q", groundTruth: [] }]
+    }).catch((error: unknown) => error)
+
+    await expect(failure).resolves.toMatchObject({
+      name: "AggregateError",
+      message: "Retriever evaluation and cleanup both failed",
+      errors: [retrieveError, cleanupError]
+    })
+    expect(retriever.cleanup).toHaveBeenCalledOnce()
+  })
+
+  it("propagates a cleanup-only failure unchanged", async () => {
+    const cleanupError = new Error("cleanup failed")
+    const retriever = {
+      name: "cleanup-failure",
+      init: vi.fn(async () => {}),
+      retrieve: vi.fn(async () => []),
+      cleanup: vi.fn(async () => {
+        throw cleanupError
+      })
+    }
+
+    await expect(
+      runRetrieverEvaluation({
+        corpus,
+        retriever,
+        k: 5,
+        dataset: [{ query: "q", groundTruth: [] }]
+      })
+    ).rejects.toBe(cleanupError)
+  })
+
   it("processes every example exactly once under concurrency > 1", async () => {
     const retriever = {
       name: "concurrent",
@@ -97,6 +180,64 @@ describe("runRetrieverEvaluation", () => {
     expect(retriever.init).toHaveBeenCalledOnce()
     expect(retriever.cleanup).toHaveBeenCalledOnce()
     expect(seen.sort()).toEqual(dataset.map((d) => d.query).sort())
+  })
+
+  it("preserves stable example IDs when query text is duplicated", async () => {
+    const retriever = {
+      name: "duplicate-queries",
+      init: vi.fn(async () => {}),
+      retrieve: vi.fn(async () => []),
+      cleanup: vi.fn(async () => {})
+    }
+    const results: ExperimentResult[] = []
+
+    await runRetrieverEvaluation({
+      corpus,
+      retriever,
+      k: 5,
+      dataset: [
+        { exampleId: "question-1", query: "same query", groundTruth: [] },
+        { exampleId: "question-2", query: "same query", groundTruth: [] }
+      ],
+      onResult: async (result) => {
+        results.push(result)
+      }
+    })
+
+    expect(results.map((result) => result.exampleId)).toEqual([
+      "question-1",
+      "question-2"
+    ])
+  })
+
+  it.each([
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.MAX_SAFE_INTEGER + 1,
+    0,
+    -1,
+    1.5
+  ])("rejects invalid maxConcurrency %s before initializing the retriever", async (maxConcurrency) => {
+    const retriever = {
+      name: "invalid-concurrency",
+      init: vi.fn(async () => {}),
+      retrieve: vi.fn(async () => []),
+      cleanup: vi.fn(async () => {})
+    }
+
+    await expect(
+      runRetrieverEvaluation({
+        corpus,
+        retriever,
+        k: 5,
+        dataset: [{ query: "q", groundTruth: [] }],
+        maxConcurrency
+      })
+    ).rejects.toThrow(
+      new RangeError("maxConcurrency must be a safe positive integer")
+    )
+    expect(retriever.init).not.toHaveBeenCalled()
+    expect(retriever.cleanup).not.toHaveBeenCalled()
   })
 
   it("waits for sibling workers to settle before cleanup when one throws", async () => {

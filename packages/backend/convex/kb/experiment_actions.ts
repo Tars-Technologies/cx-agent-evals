@@ -245,9 +245,9 @@ export const runEvaluation = internalAction({
       docs.map((d: any) => createDocument({ id: d.docId, content: d.content }))
     )
 
-    // Build query → questionId lookup for onResult callback.
-    // Only include questions with ground truth spans so retriever
-    // metrics are not distorted by unanswerable questions.
+    // Only include questions with ground truth spans so retriever metrics are
+    // not distorted by unanswerable questions. Each dataset entry carries its
+    // stable Convex ID so duplicate query text cannot misfile results.
     const allQuestions = await ctx.runQuery(
       internal.kb.questions.byDatasetInternal,
       { datasetId: args.datasetId }
@@ -255,11 +255,6 @@ export const runEvaluation = internalAction({
     const questions = allQuestions.filter(
       (q: any) => Array.isArray(q.relevantSpans) && q.relevantSpans.length > 0
     )
-    const queryToQuestionId = new Map<string, Id<"questions">>()
-    for (const q of questions) {
-      queryToQuestionId.set(q.queryText, q._id)
-    }
-
     // Resolve retriever/experiment config for the unified retriever.
     // The legacy path (no retriever record) carries no stored collection
     // name; buildStatelessRetriever falls back to the computed one.
@@ -306,6 +301,7 @@ export const runEvaluation = internalAction({
     const evalStartedAt = Date.now()
 
     const dataset = questions.map((q: any) => ({
+      exampleId: String(q._id),
       query: q.queryText,
       groundTruth: (q.relevantSpans as Array<{
         docId: string
@@ -327,16 +323,16 @@ export const runEvaluation = internalAction({
       dataset,
       maxConcurrency,
       onResult: async (result: ExperimentResult) => {
-        const questionId = queryToQuestionId.get(result.query)
-        if (questionId) {
-          await ctx.runMutation(internal.kb.results.insert, {
-            experimentId: args.experimentId,
-            questionId,
-            retrievedSpans: result.retrievedSpans,
-            scores: result.scores,
-            metadata: {}
-          })
+        if (!result.exampleId) {
+          throw new Error("Evaluation result is missing its stable example ID")
         }
+        await ctx.runMutation(internal.kb.results.insert, {
+          experimentId: args.experimentId,
+          questionId: result.exampleId as Id<"questions">,
+          retrievedSpans: result.retrievedSpans,
+          scores: result.scores,
+          metadata: {}
+        })
         const n = ++resultsCount
         if (n % progressStep === 0 || n === total) {
           await ctx.runMutation(internal.kb.experiments.updateStatus, {

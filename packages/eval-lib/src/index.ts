@@ -111,6 +111,7 @@ export {
   createHybridRerankedRetriever,
   createHybridRetriever,
   createPresetRetriever,
+  DEFAULT_METRICS,
   HYBRID_CONFIG,
   HYBRID_RERANKED_CONFIG,
   runRetrieverEvaluation
