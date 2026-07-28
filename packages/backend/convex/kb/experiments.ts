@@ -2,7 +2,7 @@
  * KB experiment queries + mutations: start, status/list, cancel.
  *
  * Owns the KB experiment WorkPool and its onComplete callback; actual
- * LangSmith evaluate() execution is delegated to experiment_actions.ts.
+ * evaluation execution is delegated to experiment_actions.ts.
  */
 import {
   type RunResult,
@@ -230,8 +230,7 @@ export const enqueueExperiment = internalMutation({
     kbId: v.id("knowledgeBases"),
     indexConfigHash: v.string(),
     embeddingModel: v.string(),
-    k: v.number(),
-    datasetName: v.string()
+    k: v.number()
   },
   handler: async (ctx, args) => {
     const wId = await pool.enqueueAction(
@@ -243,8 +242,7 @@ export const enqueueExperiment = internalMutation({
         kbId: args.kbId,
         indexConfigHash: args.indexConfigHash,
         embeddingModel: args.embeddingModel,
-        k: args.k,
-        datasetName: args.datasetName
+        k: args.k
       },
       {
         context: {

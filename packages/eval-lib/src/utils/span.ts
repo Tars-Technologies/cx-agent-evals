@@ -115,7 +115,14 @@ export function normalizedFind(
   text: string,
   excerpt: string
 ): { start: number; end: number } | null {
-  const normalize = (s: string) => s.replace(/\s+/g, " ").toLowerCase().trim()
+  const normalize = (s: string) =>
+    s
+      .replace(/[‘’‛]/g, "'")
+      .replace(/[“”‟]/g, '"')
+      .replace(/[–—]/g, "-")
+      .replace(/\s+/g, " ")
+      .toLowerCase()
+      .trim()
   const normText = normalize(text)
   const normExcerpt = normalize(excerpt)
   const idx = normText.indexOf(normExcerpt)

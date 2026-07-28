@@ -50,28 +50,6 @@ export const get = tenantQuery({
 })
 
 /**
- * Update dataset with LangSmith sync info.
- */
-export const updateSyncStatus = internalMutation({
-  args: {
-    datasetId: v.id("datasets"),
-    langsmithDatasetId: v.optional(v.string()),
-    langsmithUrl: v.optional(v.string()),
-    langsmithSyncStatus: v.string()
-  },
-  handler: async (ctx, args) => {
-    const patch: Record<string, unknown> = {
-      langsmithSyncStatus: args.langsmithSyncStatus
-    }
-    if (args.langsmithDatasetId !== undefined)
-      patch.langsmithDatasetId = args.langsmithDatasetId
-    if (args.langsmithUrl !== undefined) patch.langsmithUrl = args.langsmithUrl
-
-    await ctx.db.patch(args.datasetId, patch)
-  }
-})
-
-/**
  * Internal query: get a dataset by ID (no auth check).
  */
 export const getInternal = internalQuery({
@@ -80,34 +58,6 @@ export const getInternal = internalQuery({
     const dataset = await ctx.db.get(args.id)
     if (!dataset) throw new Error("Dataset not found")
     return dataset
-  }
-})
-
-/**
- * Clear LangSmith sync state so the next experiment triggers a fresh sync.
- * Used when the existing LangSmith dataset is stale (e.g. has examples
- * without ground-truth spans from before the filter was added).
- */
-export const clearLangsmithSync = internalMutation({
-  args: { datasetId: v.id("datasets") },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.datasetId, {
-      langsmithDatasetId: undefined,
-      langsmithUrl: undefined,
-      langsmithSyncStatus: "pending"
-    })
-
-    // Clear langsmithExampleId on all questions so the next sync re-links them
-    const questions = await ctx.db
-      .query("questions")
-      .withIndex("by_dataset", (q) => q.eq("datasetId", args.datasetId))
-      .collect()
-
-    for (const q of questions) {
-      if (q.langsmithExampleId) {
-        await ctx.db.patch(q._id, { langsmithExampleId: undefined })
-      }
-    }
   }
 })
 
@@ -143,18 +93,6 @@ export const updateScenarioCount = internalMutation({
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.datasetId, { scenarioCount: args.scenarioCount })
-  }
-})
-
-export const updateQuestionCount = internalMutation({
-  args: {
-    datasetId: v.id("datasets"),
-    questionCount: v.number()
-  },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.datasetId, {
-      questionCount: args.questionCount
-    })
   }
 })
 

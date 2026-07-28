@@ -4,16 +4,6 @@ import { internal } from "./_generated/api"
 const crons = cronJobs()
 
 /**
- * Retry failed LangSmith dataset syncs every hour.
- * Finds datasets with "failed:*" sync status and re-enqueues the sync.
- */
-crons.interval(
-  "retry failed langsmith syncs",
-  { hours: 1 },
-  internal.kb.langsmith_sync_retry.retryFailed
-)
-
-/**
  * Reap orphaned Tarser parse jobs: documents stuck in parseStatus:"parsing" with
  * no callback activity. They depend on a remote callback that may never arrive
  * (lost callback, HMAC reject, abandoned job).

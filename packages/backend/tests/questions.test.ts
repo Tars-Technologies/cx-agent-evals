@@ -10,13 +10,12 @@ import {
 } from "./helpers"
 
 describe("updateQuestion", () => {
-  test("updates queryText and clears langsmithExampleId", async () => {
+  test("updates queryText", async () => {
     const t = setupTest()
     const userId = await seedUser(t)
     const kbId = await seedKB(t, userId)
     const datasetId = await seedDataset(t, userId, kbId)
 
-    // Seed a question with a langsmithExampleId
     const questionId = await t.run(async (ctx) => {
       return await ctx.db.insert("questions", {
         datasetId,
@@ -26,7 +25,6 @@ describe("updateQuestion", () => {
         relevantSpans: [
           { docId: "doc1", start: 0, end: 10, text: "some text." }
         ],
-        langsmithExampleId: "ls-123",
         metadata: {}
       })
     })
@@ -41,7 +39,6 @@ describe("updateQuestion", () => {
     // Verify
     const updated = await t.run(async (ctx) => ctx.db.get(questionId))
     expect(updated!.queryText).toBe("Updated question?")
-    expect(updated!.langsmithExampleId).toBeUndefined()
     // Spans unchanged
     expect(updated!.relevantSpans).toHaveLength(1)
   })
@@ -77,7 +74,6 @@ describe("updateQuestion", () => {
     const updated = await t.run(async (ctx) => ctx.db.get(questionId))
     expect(updated!.relevantSpans).toHaveLength(2)
     expect(updated!.relevantSpans[1].docId).toBe("doc2")
-    expect(updated!.langsmithExampleId).toBeUndefined()
   })
 
   test("rejects update for question in different org", async () => {

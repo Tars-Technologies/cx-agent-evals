@@ -270,11 +270,6 @@ function ExperimentsPageContent() {
                           <div className="text-text-dim">
                             Questions: {selectedDataset.questionCount}
                           </div>
-                          {selectedDataset.langsmithSyncStatus && (
-                            <div className="text-text-dim">
-                              LangSmith: {selectedDataset.langsmithSyncStatus}
-                            </div>
-                          )}
                         </div>
                       )}
                     </>
@@ -610,17 +605,6 @@ function ExperimentRow({ experiment: exp }: { experiment: any }) {
               <ArrowRightIcon />
             </Link>
           )}
-        {exp.langsmithUrl && (
-          <a
-            href={exp.langsmithUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-text-dim hover:text-accent transition-colors"
-          >
-            View in LangSmith
-            <ExternalLinkIcon />
-          </a>
-        )}
       </div>
       <div className="text-[10px] text-text-dim mt-1">
         {new Date(exp.createdAt).toLocaleDateString()}
@@ -632,24 +616,6 @@ function ExperimentRow({ experiment: exp }: { experiment: any }) {
 // ---------------------------------------------------------------------------
 // Icons
 // ---------------------------------------------------------------------------
-
-function ExternalLinkIcon() {
-  return (
-    <svg
-      className="w-3 h-3"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-      />
-    </svg>
-  )
-}
 
 function ArrowRightIcon() {
   return (

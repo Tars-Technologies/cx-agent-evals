@@ -60,7 +60,12 @@ export class GroundTruthAssigner
         )
       }
 
-      if (spans.length === 0) continue
+      if (spans.length === 0) {
+        console.warn(
+          `GroundTruthAssigner: dropping question "${query.query.substring(0, 40)}..." — 0 spans located from ${excerpts.length} excerpt(s)`
+        )
+        continue
+      }
 
       results.push({
         query: {

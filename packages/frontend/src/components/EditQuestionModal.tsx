@@ -338,9 +338,6 @@ export function EditQuestionModal({
             </kbd>{" "}
             to close
           </span>
-          <span className="text-[10px] text-text-dim">
-            Saving will clear LangSmith sync for re-upload
-          </span>
         </div>
       </div>
     </div>

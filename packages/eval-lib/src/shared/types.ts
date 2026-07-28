@@ -25,6 +25,7 @@ export interface SerializedSpan {
  * Result of evaluating a single query in an experiment.
  */
 export interface ExperimentResult {
+  exampleId?: string
   query: string
   retrievedSpans: SerializedSpan[]
   scores: Record<string, number>
