@@ -68,6 +68,10 @@ export async function rankMediaForDocs(
     documentIds: Id<"documents">[]
     queryEmbedding: number[]
     cap: number
+    /** Cosine similarity floor. Defaults to MIN_IMAGE_SIMILARITY (0.2). Use a
+     *  lower value (e.g. 0.1) for offline ground-truth labeling to reduce the
+     *  risk of missing relevant images with poor alt text. */
+    minSimilarity?: number
   }
 ): Promise<ImageMenuEntry[]> {
   const meta = await ctx.runQuery(internal.kb.images.mediaMetaForDocs, {
@@ -97,5 +101,5 @@ export async function rankMediaForDocs(
         type: m.mediaType as "image" | "video"
       }))
   )
-  return rankDocImagesForQuery(args.queryEmbedding, groups, args.cap)
+  return rankDocImagesForQuery(args.queryEmbedding, groups, args.cap, args.minSimilarity)
 }

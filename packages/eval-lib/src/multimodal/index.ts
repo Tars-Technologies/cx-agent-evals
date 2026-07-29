@@ -322,12 +322,13 @@ export function rankScoredImages(
     order: number
     score: number | null
   }[],
-  cap: number
+  cap: number,
+  minSimilarity: number = MIN_IMAGE_SIMILARITY
 ): ImageMenuEntry[] {
   const anyUsable = cands.some((c) => c.score !== null)
   const pool = anyUsable
     ? cands
-        .filter((c) => c.score !== null && c.score! >= MIN_IMAGE_SIMILARITY)
+        .filter((c) => c.score !== null && c.score! >= minSimilarity)
         .sort((a, b) => b.score! - a.score! || a.order - b.order)
     : cands.slice().sort((a, b) => a.order - b.order)
 
@@ -354,7 +355,8 @@ export function rankScoredImages(
 export function rankDocImagesForQuery(
   queryEmbedding: number[],
   docGroups: DocImage[][],
-  cap: number
+  cap: number,
+  minSimilarity?: number
 ): ImageMenuEntry[] {
   const candidates: {
     imageId: string
@@ -379,7 +381,7 @@ export function rankDocImagesForQuery(
       })
     }
   })
-  return rankScoredImages(candidates, cap)
+  return rankScoredImages(candidates, cap, minSimilarity)
 }
 
 // Matches media markers referencing a KB media id, in either image form

@@ -2,6 +2,7 @@
 
 import {
   type CharacterSpan,
+  computeImageSetMetrics,
   DocumentId,
   f1,
   iou,
@@ -246,6 +247,9 @@ export const evaluateAgentQuestion = internalAction({
       string,
       { imageId: string; alt: string; type?: string }
     >()
+    // Union of all imageIds offered across every retrieval tool call — used for
+    // image metric computation (menu vs ground truth).
+    const allOfferedImageIds = new Set<string>()
 
     // 4. Build AI SDK tools — one per retriever
     const allToolCallResults: Array<{
@@ -314,7 +318,10 @@ export const evaluateAgentQuestion = internalAction({
             start: c.start,
             end: c.end
           }))
-          for (const img of images) lastImageMenu.set(img.imageId, img)
+          for (const img of images) {
+            lastImageMenu.set(img.imageId, img)
+            allOfferedImageIds.add(img.imageId)
+          }
 
           allToolCallResults.push({
             toolName,
@@ -392,6 +399,23 @@ export const evaluateAgentQuestion = internalAction({
         question.relevantSpans
       )
 
+      // Image metrics: only when the question has image ground truth
+      const relevantImageIds = (question as any).relevantImageIds as
+        | string[]
+        | undefined
+      const offeredImageIds = [...allOfferedImageIds]
+      if (
+        hasVision &&
+        Array.isArray(relevantImageIds) &&
+        relevantImageIds.length > 0
+      ) {
+        const imageMetrics = computeImageSetMetrics(
+          offeredImageIds,
+          relevantImageIds
+        )
+        Object.assign(scores, imageMetrics)
+      }
+
       // 9. Insert result
       await ctx.runMutation(internal.experiments.agentResults.insert, {
         experimentId: args.experimentId,
@@ -405,6 +429,9 @@ export const evaluateAgentQuestion = internalAction({
         })),
         retrievedChunks,
         scores,
+        offeredImageIds: hasVision && offeredImageIds.length > 0
+          ? offeredImageIds
+          : undefined,
         shownImages: shownImages.length > 0 ? shownImages : undefined,
         usage: result.usage
           ? {

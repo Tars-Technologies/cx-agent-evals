@@ -19,7 +19,13 @@ import {
   RealWorldGroundedStrategy,
   SimpleStrategy
 } from "@tars-inc/eval-lib"
-import { createLLMClient, getModel } from "@tars-inc/eval-lib/llm"
+import {
+  createEmbedder,
+  createLLMClient,
+  getModel,
+  judgeImageRelevance,
+  type OpenAIVisionClient
+} from "@tars-inc/eval-lib/llm"
 import { discoverDimensions as discoverDimensionsFn } from "@tars-inc/eval-lib/pipeline/internals"
 import {
   assertHostResolvesPublic,
@@ -31,6 +37,20 @@ import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { internalAction } from "../_generated/server"
 import { tenantAction } from "../lib/auth/tenant"
+import { fetchImageAsBase64 } from "../lib/vision"
+import {
+  MEDIA_EMBEDDING_MODEL,
+  rankMediaForDocs
+} from "./media_runtime"
+
+// Similarity threshold for GT labeling — lower than the live agent threshold
+// (MIN_IMAGE_SIMILARITY = 0.2) to reduce the risk of missing a relevant image
+// that has poor alt text. The vision LLM does the final relevance judgment.
+const GT_IMAGE_SIMILARITY_THRESHOLD = 0.1
+// Max candidates to send to the vision LLM per question.
+const GT_IMAGE_CANDIDATE_CAP = 10
+// Vision model used for image ground truth labeling. Fixed, not user-configurable.
+const IMAGE_JUDGE_MODEL = "gpt-4o-mini"
 
 async function loadCorpusFromKb(
   ctx: { runQuery: (ref: any, args: any) => Promise<any> },
@@ -356,6 +376,7 @@ export const generateForDoc = internalAction({
         end: number
         text: string
       }>
+      relevantImageIds?: string[]
       metadata: Record<string, unknown>
       source: string | undefined
     }> = []
@@ -459,6 +480,96 @@ export const generateForDoc = internalAction({
         }
       } catch {
         pass2Unchanged++
+      }
+    }
+
+    // Pass 3: Image ground truth assignment
+    // Runs for any KB with media on this doc. Non-fatal — a failure sets
+    // relevantImageIds to [] so the question still inserts and contributes to
+    // text metrics; it just won't appear in image metric averages.
+    if (job && allValidated.length > 0) {
+      const kbId = job.kbId as Id<"knowledgeBases">
+      const orgId = job.orgId as string
+
+      // Check cheaply whether this doc has any media before embedding every query.
+      const docMediaMeta = await ctx.runQuery(
+        internal.kb.images.mediaMetaForDocs,
+        { kbId, documentIds: [args.docConvexId] }
+      )
+
+      if (docMediaMeta.length > 0) {
+        const mediaEmbedder = createEmbedder(MEDIA_EMBEDDING_MODEL)
+        const { default: OpenAI } = await import("openai")
+        const openai = new OpenAI() as unknown as OpenAIVisionClient
+
+        for (const question of allValidated) {
+          try {
+            const queryEmbedding = await mediaEmbedder.embedQuery(
+              question.queryText
+            )
+            const ranked = await rankMediaForDocs(ctx, {
+              kbId,
+              documentIds: [args.docConvexId],
+              queryEmbedding,
+              cap: GT_IMAGE_CANDIDATE_CAP,
+              minSimilarity: GT_IMAGE_SIMILARITY_THRESHOLD
+            })
+
+            if (ranked.length === 0) {
+              question.relevantImageIds = []
+              continue
+            }
+
+            // Resolve imageIds → URLs (needed for pixel fetching)
+            const mediaWithUrls = await ctx.runQuery(
+              internal.kb.images.getImagesByIds,
+              {
+                kbIds: [kbId],
+                orgId,
+                imageIds: ranked.map((r) => r.imageId)
+              }
+            )
+            const urlMap = new Map(mediaWithUrls.map((m: any) => [m.imageId, m]))
+
+            // Fetch pixels; skip candidates where fetch fails
+            const pixelCandidates = (
+              await Promise.all(
+                ranked.map(async (entry) => {
+                  const media = urlMap.get(entry.imageId) as
+                    | { url?: string }
+                    | undefined
+                  if (!media?.url) return null
+                  const pixels = await fetchImageAsBase64(media.url)
+                  if (!pixels) return null
+                  return {
+                    imageId: entry.imageId,
+                    base64: pixels.data,
+                    mimeType: pixels.mimeType,
+                    alt: entry.alt
+                  }
+                })
+              )
+            ).filter((c): c is NonNullable<typeof c> => c !== null)
+
+            if (pixelCandidates.length === 0) {
+              question.relevantImageIds = []
+              continue
+            }
+
+            question.relevantImageIds = await judgeImageRelevance(
+              question.queryText,
+              pixelCandidates,
+              openai,
+              IMAGE_JUDGE_MODEL
+            )
+          } catch (err) {
+            console.warn(
+              `[imageGT] Failed for "${question.queryText.slice(0, 50)}":`,
+              err instanceof Error ? err.message : String(err)
+            )
+            question.relevantImageIds = []
+          }
+        }
       }
     }
 
