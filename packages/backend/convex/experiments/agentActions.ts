@@ -19,7 +19,12 @@ import { composeSystemPrompt } from "../agents/promptTemplate"
 import { finalizeMediaAnswer, resolveModel } from "../lib/agentLoop"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
 import { buildGetImagesTool } from "../lib/vision"
-import { isVisionCapable, MENU_IMAGE_CAP } from "@tars-inc/eval-lib/multimodal"
+import {
+  capOfferedImages,
+  isVisionCapable,
+  MENU_IMAGE_CAP,
+  type ImageMenuEntry
+} from "@tars-inc/eval-lib/multimodal"
 import { rankMediaForDocs } from "../kb/media_runtime"
 
 // ─── Helpers ───
@@ -247,9 +252,11 @@ export const evaluateAgentQuestion = internalAction({
       string,
       { imageId: string; alt: string; type?: string }
     >()
-    // Union of all imageIds offered across every retrieval tool call — used for
-    // image metric computation (menu vs ground truth).
-    const allOfferedImageIds = new Set<string>()
+    // Every image menu entry offered across every retrieval tool call this
+    // turn (with score, pre-cap). Merged+capped via capOfferedImages right
+    // before scoring, instead of a raw union, so a question that triggers
+    // several searches isn't scored against an ever-growing menu.
+    const offeredImageCandidates: ImageMenuEntry[] = []
 
     // 4. Build AI SDK tools — one per retriever
     const allToolCallResults: Array<{
@@ -320,7 +327,7 @@ export const evaluateAgentQuestion = internalAction({
           }))
           for (const img of images) {
             lastImageMenu.set(img.imageId, img)
-            allOfferedImageIds.add(img.imageId)
+            offeredImageCandidates.push(img)
           }
 
           allToolCallResults.push({
@@ -399,11 +406,17 @@ export const evaluateAgentQuestion = internalAction({
         question.relevantSpans
       )
 
-      // Image metrics: only when the question has image ground truth
+      // Image metrics: only when the question has image ground truth. Menu is
+      // merged+capped across every retrieval call, best-first, so precision@K
+      // scores against a stable-sized menu regardless of how many searches
+      // the agent made.
       const relevantImageIds = (question as any).relevantImageIds as
         | string[]
         | undefined
-      const offeredImageIds = [...allOfferedImageIds]
+      const offeredImageIds = capOfferedImages(
+        offeredImageCandidates,
+        MENU_IMAGE_CAP
+      ).map((img) => img.imageId)
       if (
         hasVision &&
         Array.isArray(relevantImageIds) &&

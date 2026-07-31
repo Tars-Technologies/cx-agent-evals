@@ -574,16 +574,38 @@ function ExperimentRow({ experiment: exp }: { experiment: any }) {
           {exp.totalQuestions ?? "?"})
         </div>
       )}
-      {!isAgent && scores && Object.keys(scores).length > 0 && (
-        <div className="flex gap-4 mt-2 text-sm">
-          {Object.entries(scores)
-            .slice(0, 4)
-            .map(([key, value]) => (
+      {scores && Object.keys(scores).length > 0 && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm">
+          {["recall", "precision", "iou", "f1"]
+            .filter((key) => typeof scores[key] === "number")
+            .map((key) => (
               <span key={key} className="text-text-muted">
                 {key === "iou" ? "IoU" : key}:{" "}
-                <span className="text-accent">{value.toFixed(3)}</span>
+                <span className="text-accent">{scores[key].toFixed(3)}</span>
               </span>
             ))}
+          {isAgent &&
+            typeof scores["image_coverage"] === "number" &&
+            scores["image_coverage"] > 0 && (
+              <>
+                {["image_recall", "image_precision", "image_f1"]
+                  .filter((key) => typeof scores[key] === "number")
+                  .map((key) => (
+                    <span key={key} className="text-text-muted">
+                      {key.replace("image_", "img ")}:{" "}
+                      <span className="text-purple-300">
+                        {scores[key].toFixed(3)}
+                      </span>
+                    </span>
+                  ))}
+                <span className="text-text-dim">
+                  img coverage:{" "}
+                  <span className="text-purple-300">
+                    {(scores["image_coverage"] * 100).toFixed(0)}%
+                  </span>
+                </span>
+              </>
+            )}
         </div>
       )}
       <div className="flex items-center gap-3 mt-2">

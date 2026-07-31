@@ -321,6 +321,7 @@ function AnnotateContent() {
           question={currentQuestion}
           annotation={currentAnnotation}
           allTags={allTags ?? []}
+          kbId={experiment.kbId}
         />
       </div>
     </div>

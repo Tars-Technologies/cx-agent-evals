@@ -94,6 +94,11 @@ export interface ImageMenuEntry {
   alt: string
   /** "image" | "video" | "doc_link" — tells the agent whether to fetch pixels, emit a link, or cite a doc. */
   type?: "image" | "video" | "doc_link"
+  /** Cosine similarity to the query, when scoreable. Undefined under the
+   *  doc-order fallback (no usable embedding) — see rankScoredImages. Carried
+   *  through so multi-call menus can be merged by relevance (capOfferedImages)
+   *  instead of just unioned. */
+  score?: number
 }
 
 // ─── Context-aware embedding input (D10) ───
@@ -347,9 +352,46 @@ export function rankScoredImages(
     if (used >= perDocCap) continue
     seen.add(c.imageId)
     perDocCount.set(c.docIdx, used + 1)
-    out.push({ imageId: c.imageId, alt: c.alt, type: c.type ?? "image" })
+    out.push({
+      imageId: c.imageId,
+      alt: c.alt,
+      type: c.type ?? "image",
+      score: c.score ?? undefined
+    })
   }
   return out
+}
+
+/**
+ * Merge image menus offered across multiple retrieval calls into one capped,
+ * best-first list. Without this, a question that triggers several searches
+ * gets scored against an ever-growing union of every call's menu, unfairly
+ * penalising image_precision the more the agent searches (agent behaviour,
+ * not ranking quality). Duplicate imageIds keep their highest-scored
+ * occurrence; entries without a usable score (doc-order fallback) sort after
+ * every scored entry, preserving their relative offering order.
+ */
+export function capOfferedImages(
+  entries: readonly ImageMenuEntry[],
+  cap: number
+): ImageMenuEntry[] {
+  const bestById = new Map<string, ImageMenuEntry>()
+  for (const e of entries) {
+    const prev = bestById.get(e.imageId)
+    if (!prev || (e.score ?? -Infinity) > (prev.score ?? -Infinity)) {
+      bestById.set(e.imageId, e)
+    }
+  }
+  return [...bestById.values()]
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => {
+      if (a.e.score === undefined && b.e.score === undefined) return a.i - b.i
+      if (a.e.score === undefined) return 1
+      if (b.e.score === undefined) return -1
+      return b.e.score - a.e.score || a.i - b.i
+    })
+    .map(({ e }) => e)
+    .slice(0, cap)
 }
 
 export function rankDocImagesForQuery(
