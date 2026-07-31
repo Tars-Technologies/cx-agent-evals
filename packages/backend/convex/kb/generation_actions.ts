@@ -39,8 +39,9 @@ import { internalAction } from "../_generated/server"
 import { tenantAction } from "../lib/auth/tenant"
 import { fetchImageAsBase64 } from "../lib/vision"
 import {
+  loadDocMediaForRanking,
   MEDIA_EMBEDDING_MODEL,
-  rankMediaForDocs
+  rankCachedDocMedia
 } from "./media_runtime"
 
 // Similarity threshold for GT labeling — lower than the live agent threshold
@@ -488,88 +489,113 @@ export const generateForDoc = internalAction({
     // relevantImageIds to [] so the question still inserts and contributes to
     // text metrics; it just won't appear in image metric averages.
     if (job && allValidated.length > 0) {
-      const kbId = job.kbId as Id<"knowledgeBases">
-      const orgId = job.orgId as string
+      try {
+        const kbId = job.kbId as Id<"knowledgeBases">
+        const orgId = job.orgId as string
 
-      // Check cheaply whether this doc has any media before embedding every query.
-      const docMediaMeta = await ctx.runQuery(
-        internal.kb.images.mediaMetaForDocs,
-        { kbId, documentIds: [args.docConvexId] }
-      )
+        // Load this doc's media metadata + Qdrant vectors once, reused for
+        // every question below instead of re-fetching per question.
+        const mediaCache = await loadDocMediaForRanking(ctx, {
+          kbId,
+          documentIds: [args.docConvexId]
+        })
 
-      if (docMediaMeta.length > 0) {
-        const mediaEmbedder = createEmbedder(MEDIA_EMBEDDING_MODEL)
-        const { default: OpenAI } = await import("openai")
-        const openai = new OpenAI() as unknown as OpenAIVisionClient
+        if (mediaCache.groups[0]?.length > 0) {
+          const mediaEmbedder = createEmbedder(MEDIA_EMBEDDING_MODEL)
+          const { default: OpenAI } = await import("openai")
+          const openai = new OpenAI() as unknown as OpenAIVisionClient
 
-        for (const question of allValidated) {
-          try {
-            const queryEmbedding = await mediaEmbedder.embedQuery(
-              question.queryText
-            )
-            const ranked = await rankMediaForDocs(ctx, {
-              kbId,
-              documentIds: [args.docConvexId],
-              queryEmbedding,
-              cap: GT_IMAGE_CANDIDATE_CAP,
-              minSimilarity: GT_IMAGE_SIMILARITY_THRESHOLD
-            })
+          // Resolve URLs for every candidate image in this doc once, reused
+          // across questions (the ranked candidates for any question are
+          // always a subset of this pool).
+          const candidateImageIds = [
+            ...new Set(mediaCache.groups[0].map((m) => m.imageId))
+          ]
+          const mediaWithUrls = await ctx.runQuery(
+            internal.kb.images.getImagesByIds,
+            { kbIds: [kbId], orgId, imageIds: candidateImageIds }
+          )
+          const urlMap = new Map(mediaWithUrls.map((m: any) => [m.imageId, m]))
 
-            if (ranked.length === 0) {
-              question.relevantImageIds = []
-              continue
-            }
+          // Cache fetched pixels by imageId so the same image isn't
+          // re-downloaded for every question that ranks it as a candidate.
+          const pixelCache = new Map<
+            string,
+            { base64: string; mimeType: string } | null
+          >()
+          async function getPixels(
+            imageId: string
+          ): Promise<{ base64: string; mimeType: string } | null> {
+            if (pixelCache.has(imageId)) return pixelCache.get(imageId) ?? null
+            const media = urlMap.get(imageId) as { url?: string } | undefined
+            const pixels = media?.url
+              ? await fetchImageAsBase64(media.url)
+              : null
+            const resolved = pixels
+              ? { base64: pixels.data, mimeType: pixels.mimeType }
+              : null
+            pixelCache.set(imageId, resolved)
+            return resolved
+          }
 
-            // Resolve imageIds → URLs (needed for pixel fetching)
-            const mediaWithUrls = await ctx.runQuery(
-              internal.kb.images.getImagesByIds,
-              {
-                kbIds: [kbId],
-                orgId,
-                imageIds: ranked.map((r) => r.imageId)
-              }
-            )
-            const urlMap = new Map(mediaWithUrls.map((m: any) => [m.imageId, m]))
-
-            // Fetch pixels; skip candidates where fetch fails
-            const pixelCandidates = (
-              await Promise.all(
-                ranked.map(async (entry) => {
-                  const media = urlMap.get(entry.imageId) as
-                    | { url?: string }
-                    | undefined
-                  if (!media?.url) return null
-                  const pixels = await fetchImageAsBase64(media.url)
-                  if (!pixels) return null
-                  return {
-                    imageId: entry.imageId,
-                    base64: pixels.data,
-                    mimeType: pixels.mimeType,
-                    alt: entry.alt
-                  }
-                })
+          for (const question of allValidated) {
+            try {
+              const queryEmbedding = await mediaEmbedder.embedQuery(
+                question.queryText
               )
-            ).filter((c): c is NonNullable<typeof c> => c !== null)
+              const ranked = rankCachedDocMedia(
+                mediaCache,
+                queryEmbedding,
+                GT_IMAGE_CANDIDATE_CAP,
+                GT_IMAGE_SIMILARITY_THRESHOLD
+              )
 
-            if (pixelCandidates.length === 0) {
+              if (ranked.length === 0) {
+                question.relevantImageIds = []
+                continue
+              }
+
+              // Fetch pixels (cached); skip candidates where fetch fails
+              const pixelCandidates = (
+                await Promise.all(
+                  ranked.map(async (entry) => {
+                    const pixels = await getPixels(entry.imageId)
+                    if (!pixels) return null
+                    return {
+                      imageId: entry.imageId,
+                      base64: pixels.base64,
+                      mimeType: pixels.mimeType,
+                      alt: entry.alt
+                    }
+                  })
+                )
+              ).filter((c): c is NonNullable<typeof c> => c !== null)
+
+              if (pixelCandidates.length === 0) {
+                question.relevantImageIds = []
+                continue
+              }
+
+              question.relevantImageIds = await judgeImageRelevance(
+                question.queryText,
+                pixelCandidates,
+                openai,
+                IMAGE_JUDGE_MODEL
+              )
+            } catch (err) {
+              console.warn(
+                `[imageGT] Failed for "${question.queryText.slice(0, 50)}":`,
+                err instanceof Error ? err.message : String(err)
+              )
               question.relevantImageIds = []
-              continue
             }
-
-            question.relevantImageIds = await judgeImageRelevance(
-              question.queryText,
-              pixelCandidates,
-              openai,
-              IMAGE_JUDGE_MODEL
-            )
-          } catch (err) {
-            console.warn(
-              `[imageGT] Failed for "${question.queryText.slice(0, 50)}":`,
-              err instanceof Error ? err.message : String(err)
-            )
-            question.relevantImageIds = []
           }
         }
+      } catch (err) {
+        console.warn(
+          `[imageGT] Pass 3 setup failed for doc ${args.docId}:`,
+          err instanceof Error ? err.message : String(err)
+        )
       }
     }
 

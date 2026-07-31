@@ -13,6 +13,7 @@ import {
   QdrantMediaStore
 } from "@tars-inc/eval-lib"
 import {
+  type DocImage,
   type ImageMenuEntry,
   rankDocImagesForQuery
 } from "@tars-inc/eval-lib/multimodal"
@@ -54,31 +55,34 @@ export function buildQdrantMediaStore(dimension: number): QdrantMediaStore {
   })
 }
 
+/** Per-document image candidates (with resolved Qdrant vectors), reusable
+ *  across many queries against the same `documentIds` set. */
+export interface DocMediaCache {
+  documentIds: Id<"documents">[]
+  groups: DocImage[][]
+}
+
 /**
- * Doc-gated image menu, ranked in the action: pull each retrieved doc's media
- * metadata from Convex, fetch those images' vectors from Qdrant, then rank by
- * cosine to `queryEmbedding` via the shared `rankDocImagesForQuery` — identical
- * output to the pre-Qdrant DB-side ranking. `documentIds` are in retrieved-chunk
- * rank order; menu is round-robined across docs, deduped, capped.
+ * Loads each doc's media metadata from Convex and their vectors from Qdrant
+ * once, for reuse across many queries against the same `documentIds` (e.g.
+ * ranking image ground truth for every question generated on one document).
+ * Neither metadata nor vectors depend on the query, so this is safe to cache
+ * for the lifetime of a single `documentIds` set.
  */
-export async function rankMediaForDocs(
+export async function loadDocMediaForRanking(
   ctx: ActionCtx,
-  args: {
-    kbId: Id<"knowledgeBases">
-    documentIds: Id<"documents">[]
-    queryEmbedding: number[]
-    cap: number
-    /** Cosine similarity floor. Defaults to MIN_IMAGE_SIMILARITY (0.2). Use a
-     *  lower value (e.g. 0.1) for offline ground-truth labeling to reduce the
-     *  risk of missing relevant images with poor alt text. */
-    minSimilarity?: number
-  }
-): Promise<ImageMenuEntry[]> {
+  args: { kbId: Id<"knowledgeBases">; documentIds: Id<"documents">[] }
+): Promise<DocMediaCache> {
   const meta = await ctx.runQuery(internal.kb.images.mediaMetaForDocs, {
     kbId: args.kbId,
     documentIds: args.documentIds
   })
-  if (meta.length === 0) return []
+  if (meta.length === 0) {
+    return {
+      documentIds: args.documentIds,
+      groups: args.documentIds.map(() => [])
+    }
+  }
 
   // Fetch vectors for every candidate image in one Qdrant round-trip. The
   // collection dimension is fixed (media embedder); a query of a different
@@ -101,5 +105,53 @@ export async function rankMediaForDocs(
         type: m.mediaType as "image" | "video"
       }))
   )
-  return rankDocImagesForQuery(args.queryEmbedding, groups, args.cap, args.minSimilarity)
+  return { documentIds: args.documentIds, groups }
+}
+
+/** Ranks a cached `DocMediaCache` against a single query embedding. */
+export function rankCachedDocMedia(
+  cache: DocMediaCache,
+  queryEmbedding: number[],
+  cap: number,
+  minSimilarity?: number
+): ImageMenuEntry[] {
+  return rankDocImagesForQuery(queryEmbedding, cache.groups, cap, minSimilarity)
+}
+
+/**
+ * Doc-gated image menu, ranked in the action: pull each retrieved doc's media
+ * metadata from Convex, fetch those images' vectors from Qdrant, then rank by
+ * cosine to `queryEmbedding` via the shared `rankDocImagesForQuery` — identical
+ * output to the pre-Qdrant DB-side ranking. `documentIds` are in retrieved-chunk
+ * rank order; menu is round-robined across docs, deduped, capped.
+ *
+ * Single-query convenience wrapper around `loadDocMediaForRanking` +
+ * `rankCachedDocMedia`. Callers ranking many queries against the same
+ * `documentIds` (e.g. one document's worth of generated questions) should call
+ * those two directly instead, to avoid re-fetching metadata and vectors per
+ * query.
+ */
+export async function rankMediaForDocs(
+  ctx: ActionCtx,
+  args: {
+    kbId: Id<"knowledgeBases">
+    documentIds: Id<"documents">[]
+    queryEmbedding: number[]
+    cap: number
+    /** Cosine similarity floor. Defaults to MIN_IMAGE_SIMILARITY (0.2). Use a
+     *  lower value (e.g. 0.1) for offline ground-truth labeling to reduce the
+     *  risk of missing relevant images with poor alt text. */
+    minSimilarity?: number
+  }
+): Promise<ImageMenuEntry[]> {
+  const cache = await loadDocMediaForRanking(ctx, {
+    kbId: args.kbId,
+    documentIds: args.documentIds
+  })
+  return rankCachedDocMedia(
+    cache,
+    args.queryEmbedding,
+    args.cap,
+    args.minSimilarity
+  )
 }
