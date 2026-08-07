@@ -17,5 +17,12 @@ embedding and the BM25 sparse vector are still built from the real chunk text.
 which the consumer must hydrate by `chunk.id`. Scoped deletes and `clear` filter
 on the same payload scope fields as before.
 
+Migration: switching an existing collection to `"slim"` changes future upserts
+only — points written in `"full"` mode keep their text in Qdrant until
+re-indexed or deleted. Reads honor the configured mode regardless (a slim store
+returns placeholders and allowlisted metadata even for legacy full points), but
+for data-residency guarantees you must re-index and verify no stored point
+still carries `content`.
+
 `"full"` remains the default and is byte-identical to previous releases, so
 existing consumers are unaffected.

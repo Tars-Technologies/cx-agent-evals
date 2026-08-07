@@ -193,6 +193,89 @@ describe("QdrantVectorStore payloadMode", () => {
       expect(hit.score).toBe(0.9)
     })
 
+    it("search(): returns placeholders even when a legacy point still carries the full payload", async () => {
+      fetchMock.mockResolvedValueOnce(
+        okJson({
+          status: "ok",
+          result: {
+            points: [
+              {
+                id: "x",
+                score: 0.9,
+                payload: {
+                  chunkId: "c1",
+                  content: "alpha bravo charlie",
+                  docId: "doc-1",
+                  start: 12,
+                  end: 31,
+                  metadata: {
+                    parentChunkId: "p1",
+                    level: "child",
+                    pageStart: 4,
+                    sourceUrl: "https://example.com/secret-path"
+                  },
+                  kbId: "kb1",
+                  indexConfigHash: "h1",
+                  documentId: "cvx1"
+                }
+              }
+            ]
+          }
+        })
+      )
+      const [hit] = await slimStore().search([1, 0, 0], {
+        k: 5,
+        filter: { kbId: "kb1" }
+      })
+
+      expect(hit.chunk.content).toBe("")
+      expect(hit.chunk.start).toBe(0)
+      expect(hit.chunk.end).toBe(0)
+      expect(hit.chunk.metadata).toEqual({
+        parentChunkId: "p1",
+        level: "child"
+      })
+    })
+
+    it("searchSparse(): returns placeholders for legacy full points too", async () => {
+      fetchMock.mockResolvedValueOnce(
+        okJson({
+          status: "ok",
+          result: {
+            points: [
+              {
+                id: "x",
+                score: 3.2,
+                payload: {
+                  chunkId: "c1",
+                  content: "alpha bravo charlie",
+                  docId: "doc-1",
+                  start: 12,
+                  end: 31,
+                  metadata: { level: "child", sourceUrl: "https://example.com/x" }
+                }
+              }
+            ]
+          }
+        })
+      )
+      const store = new QdrantVectorStore({
+        ...BASE,
+        sparse: true,
+        payloadMode: "slim",
+        payloadMetadataKeys: METADATA_KEYS
+      })
+      const [hit] = await store.searchSparse("alpha bravo", {
+        k: 5,
+        filter: { kbId: "kb1" }
+      })
+
+      expect(hit.chunk.content).toBe("")
+      expect(hit.chunk.start).toBe(0)
+      expect(hit.chunk.end).toBe(0)
+      expect(hit.chunk.metadata).toEqual({ level: "child" })
+    })
+
     it("searchSparse(): still hits and returns placeholder content", async () => {
       fetchMock.mockResolvedValueOnce(
         okJson({

@@ -81,6 +81,12 @@ export interface QdrantVectorStoreConfig {
    * `chunk.id` from its own store of record before reading text or offsets.
    * Indexing is unchanged either way: `add` still takes full chunks, and both
    * the dense embedding and the BM25 sparse vector are built from the real text.
+   *
+   * Switching an existing collection to `"slim"` changes future upserts only:
+   * points written in `"full"` mode keep their text in Qdrant until re-indexed
+   * or deleted. Reads honor the configured mode regardless (legacy points come
+   * back as placeholders), but for data-residency guarantees you must re-index
+   * and verify no stored point still carries `content`.
    */
   readonly payloadMode?: "full" | "slim"
   /**
@@ -545,9 +551,10 @@ export class QdrantVectorStore implements VectorStore {
 
   /**
    * Issue a points/query, tolerating an unprovisioned collection (404 → []).
-   * Points written in `"slim"` payload mode carry no text or offsets, so those
-   * results come back with `content: ""` and `start`/`end` of 0 — placeholders
-   * the consumer must replace by hydrating on `chunk.id`.
+   * Under `payloadMode: "slim"` every result carries `content: ""`, zero
+   * offsets, and allowlisted metadata only — even when a stored point still has
+   * the full payload (written before a mode switch). Placeholders are decided
+   * by the configured mode, never by what happens to be stored.
    */
   private async _queryPoints(
     body: Schemas["QueryRequest"]
@@ -570,14 +577,19 @@ export class QdrantVectorStore implements VectorStore {
       throw err
     }
     const points = response.result?.points ?? []
+    // A slim store never trusts stored text or metadata: points written before
+    // a full→slim switch still carry them, and returning them would make the
+    // result shape depend on migration state instead of the configured mode.
     return points.map((p) => ({
       chunk: {
         id: PositionAwareChunkId(p.payload.chunkId),
-        content: p.payload.content ?? "",
+        content: this._slim ? "" : (p.payload.content ?? ""),
         docId: DocumentId(p.payload.docId),
-        start: p.payload.start ?? 0,
-        end: p.payload.end ?? 0,
-        metadata: p.payload.metadata ?? {}
+        start: this._slim ? 0 : (p.payload.start ?? 0),
+        end: this._slim ? 0 : (p.payload.end ?? 0),
+        metadata: this._slim
+          ? pickMetadata(p.payload.metadata, this._payloadMetadataKeys)
+          : (p.payload.metadata ?? {})
       },
       score: p.score
     }))
