@@ -71,6 +71,30 @@ export interface QdrantVectorStoreConfig {
    * sparse vector and the in-memory MiniSearch fallback.
    */
   readonly bm25?: Bm25DocParams
+  /**
+   * What a stored point payload carries. `"full"` (default) keeps the chunk
+   * text, offsets and whole metadata blob in Qdrant, so search results are
+   * self-contained. `"slim"` stores only identity and scope
+   * (`chunkId`, `docId`, `kbId`, `indexConfigHash`, `documentId`) plus the
+   * `payloadMetadataKeys` allowlist; `search`/`searchSparse` then return chunks
+   * with `content: ""` and zero offsets, which the consumer MUST hydrate by
+   * `chunk.id` from its own store of record before reading text or offsets.
+   * Indexing is unchanged either way: `add` still takes full chunks, and both
+   * the dense embedding and the BM25 sparse vector are built from the real text.
+   *
+   * Switching an existing collection to `"slim"` changes future upserts only:
+   * points written in `"full"` mode keep their text in Qdrant until re-indexed
+   * or deleted. Reads honor the configured mode regardless (legacy points come
+   * back as placeholders), but for data-residency guarantees you must re-index
+   * and verify no stored point still carries `content`.
+   */
+  readonly payloadMode?: "full" | "slim"
+  /**
+   * Metadata keys kept in a slim payload; every other key is dropped at write
+   * time. Defaults to none, so a slim store leaks no metadata by accident.
+   * Ignored in `"full"` mode.
+   */
+  readonly payloadMetadataKeys?: readonly string[]
 }
 
 export interface QdrantPointScope {
@@ -100,14 +124,27 @@ export function qdrantPointId(
 
 interface QdrantPayload {
   chunkId: string
-  content: string
+  /** Absent on points written in `"slim"` payload mode. */
+  content?: string
   docId: string
-  start: number
-  end: number
+  start?: number
+  end?: number
   metadata: Record<string, unknown>
   kbId?: string
   indexConfigHash?: string
   documentId?: string
+}
+
+function pickMetadata(
+  metadata: Record<string, unknown> | undefined,
+  keys: readonly string[]
+): Record<string, unknown> {
+  if (!metadata) return {}
+  const picked: Record<string, unknown> = {}
+  for (const key of keys) {
+    if (metadata[key] !== undefined) picked[key] = metadata[key]
+  }
+  return picked
 }
 
 function buildQdrantFilter(
@@ -123,9 +160,11 @@ function buildQdrantFilter(
 }
 
 /**
- * Qdrant-backed VectorStore over the REST API. Payloads are self-contained
- * (chunk text + offsets) so search results need no further hydration.
- * Upserts are idempotent via deterministic point ids.
+ * Qdrant-backed VectorStore over the REST API. Under the default `"full"`
+ * payload mode, payloads are self-contained (chunk text + offsets) so search
+ * results need no further hydration; under `"slim"` they carry identity and
+ * scope only and the consumer hydrates by `chunk.id`. Upserts are idempotent
+ * via deterministic point ids.
  */
 export class QdrantVectorStore implements VectorStore {
   readonly name = "qdrant"
@@ -134,6 +173,8 @@ export class QdrantVectorStore implements VectorStore {
   private readonly _cfg: QdrantVectorStoreConfig
   private readonly _sparse: boolean
   private readonly _bm25: Bm25DocParams
+  private readonly _slim: boolean
+  private readonly _payloadMetadataKeys: readonly string[]
   private _collectionEnsured = false
 
   constructor(config: QdrantVectorStoreConfig) {
@@ -150,6 +191,8 @@ export class QdrantVectorStore implements VectorStore {
     this._sparse = config.sparse ?? false
     this.supportsSparse = this._sparse
     this._bm25 = config.bm25 ?? {}
+    this._slim = config.payloadMode === "slim"
+    this._payloadMetadataKeys = config.payloadMetadataKeys ?? []
   }
 
   private async _request<T>(
@@ -395,17 +438,26 @@ export class QdrantVectorStore implements VectorStore {
         indexConfigHash,
         documentId
       })
-      const payload = {
-        chunkId: String(chunk.id),
-        content: chunk.content,
-        docId: String(chunk.docId),
-        start: chunk.start,
-        end: chunk.end,
-        metadata: chunk.metadata ?? {},
-        kbId,
-        indexConfigHash,
-        documentId
-      } satisfies QdrantPayload
+      const payload: QdrantPayload = this._slim
+        ? {
+            chunkId: String(chunk.id),
+            docId: String(chunk.docId),
+            metadata: pickMetadata(chunk.metadata, this._payloadMetadataKeys),
+            kbId,
+            indexConfigHash,
+            documentId
+          }
+        : {
+            chunkId: String(chunk.id),
+            content: chunk.content,
+            docId: String(chunk.docId),
+            start: chunk.start,
+            end: chunk.end,
+            metadata: chunk.metadata ?? {},
+            kbId,
+            indexConfigHash,
+            documentId
+          }
       if (this._sparse) {
         // Named hybrid: dense + a BM25 sparse vector encoded from the chunk text
         // are upserted on the same point, so they can never drift apart.
@@ -428,6 +480,11 @@ export class QdrantVectorStore implements VectorStore {
     )
   }
 
+  /**
+   * Dense ANN search. Under `payloadMode: "slim"` the returned chunks carry
+   * `content: ""` and zero offsets; hydrate them by `chunk.id` before reading
+   * either.
+   */
   async search(
     queryEmbedding: readonly number[],
     opts: VectorSearchOptions
@@ -460,7 +517,9 @@ export class QdrantVectorStore implements VectorStore {
    * unnamed-dense store (no sparse vector exists). Encodes the query with the
    * same tokenizer/hash used at `add` time and runs Qdrant's sparse Query API
    * (`using: "bm25"`), with IDF applied server-side via the collection's
-   * `modifier: "idf"`.
+   * `modifier: "idf"`. Unaffected by `payloadMode` on the write side (documents
+   * are always encoded from real text), but under `"slim"` the returned chunks
+   * carry `content: ""` and zero offsets and must be hydrated by `chunk.id`.
    */
   async searchSparse(
     query: string,
@@ -490,7 +549,13 @@ export class QdrantVectorStore implements VectorStore {
     return this._queryPoints(body)
   }
 
-  /** Issue a points/query, tolerating an unprovisioned collection (404 → []). */
+  /**
+   * Issue a points/query, tolerating an unprovisioned collection (404 → []).
+   * Under `payloadMode: "slim"` every result carries `content: ""`, zero
+   * offsets, and allowlisted metadata only — even when a stored point still has
+   * the full payload (written before a mode switch). Placeholders are decided
+   * by the configured mode, never by what happens to be stored.
+   */
   private async _queryPoints(
     body: Schemas["QueryRequest"]
   ): Promise<VectorSearchResult[]> {
@@ -512,14 +577,19 @@ export class QdrantVectorStore implements VectorStore {
       throw err
     }
     const points = response.result?.points ?? []
+    // A slim store never trusts stored text or metadata: points written before
+    // a full→slim switch still carry them, and returning them would make the
+    // result shape depend on migration state instead of the configured mode.
     return points.map((p) => ({
       chunk: {
         id: PositionAwareChunkId(p.payload.chunkId),
-        content: p.payload.content,
+        content: this._slim ? "" : (p.payload.content ?? ""),
         docId: DocumentId(p.payload.docId),
-        start: p.payload.start,
-        end: p.payload.end,
-        metadata: p.payload.metadata ?? {}
+        start: this._slim ? 0 : (p.payload.start ?? 0),
+        end: this._slim ? 0 : (p.payload.end ?? 0),
+        metadata: this._slim
+          ? pickMetadata(p.payload.metadata, this._payloadMetadataKeys)
+          : (p.payload.metadata ?? {})
       },
       score: p.score
     }))
