@@ -114,6 +114,9 @@ importers:
       linkedom:
         specifier: ^0.18.12
         version: 0.18.12
+      mdast-util-from-markdown:
+        specifier: ^2.0.3
+        version: 2.0.3
       minisearch:
         specifier: ^7.2.0
         version: 7.2.0
@@ -127,6 +130,9 @@ importers:
         specifier: ^3.23
         version: 3.25.76
     devDependencies:
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
       '@types/node':
         specifier: ^25.1.0
         version: 25.2.0

@@ -5,9 +5,9 @@ import {
   isVisionCapable,
   MAX_IMAGES_PER_TURN,
   MENU_IMAGE_CAP,
+  mediaSystemPromptRules,
   rankDocImagesForQuery,
   rankScoredImages,
-  mediaSystemPromptRules,
   VISION_CAPABLE_MODELS,
   whitelistImageMarkdown
 } from "../../src/multimodal/index.js"
@@ -54,9 +54,9 @@ describe("buildImageEmbeddingInput", () => {
       "the CEO on stage at the 2024 launch keynote"
     )
     // manual context leads and is weighted (repeated), scraped signals follow
-    expect(r.input.startsWith("the CEO on stage at the 2024 launch keynote")).toBe(
-      true
-    )
+    expect(
+      r.input.startsWith("the CEO on stage at the 2024 launch keynote")
+    ).toBe(true)
     expect((r.input.match(/the CEO on stage/g) ?? []).length).toBeGreaterThan(1)
     expect(r.input).toContain("Comparison of pricing plans")
     expect(r.input).toContain("Pricing tiers")
@@ -75,7 +75,8 @@ describe("buildImageEmbeddingInput", () => {
     expect(r.usedSurrounding).toBe(false)
     // manual context is the majority of the input by volume
     const phrase = "buy our premium plan"
-    const manualChars = (r.input.match(/buy our premium plan/g) ?? []).length * phrase.length
+    const manualChars =
+      (r.input.match(/buy our premium plan/g) ?? []).length * phrase.length
     expect(manualChars).toBeGreaterThan(r.input.length / 2)
   })
 
@@ -141,9 +142,9 @@ describe("rankDocImagesForQuery", () => {
   it("dedups a shared imageId across docs (first occurrence wins)", () => {
     const docA = [{ imageId: "img_x", alt: "x", embedding: [1, 0] }]
     const docB = [{ imageId: "img_x", alt: "x", embedding: [1, 0] }]
-    expect(rankDocImagesForQuery(q, [docA, docB], 6).map((m) => m.imageId)).toEqual(
-      ["img_x"]
-    )
+    expect(
+      rankDocImagesForQuery(q, [docA, docB], 6).map((m) => m.imageId)
+    ).toEqual(["img_x"])
   })
 
   it("falls back to doc-order (cap, no threshold) when no embedding is usable", () => {
@@ -213,18 +214,26 @@ describe("isVisionCapable", () => {
 
 describe("mediaSystemPromptRules", () => {
   it("returns empty string if menuPresent is false", () => {
-    expect(mediaSystemPromptRules({ menuPresent: false, visionCapable: true })).toBe("")
+    expect(
+      mediaSystemPromptRules({ menuPresent: false, visionCapable: true })
+    ).toBe("")
   })
 
   it("includes rules when menuPresent is true", () => {
-    const rules = mediaSystemPromptRules({ menuPresent: true, visionCapable: false })
+    const rules = mediaSystemPromptRules({
+      menuPresent: true,
+      visionCapable: false
+    })
     expect(rules).toContain("## Media")
     expect(rules).toContain("Video items embed a real, playable video")
     expect(rules).not.toContain("get_images(imageIds)")
   })
 
   it("includes get_images rule if visionCapable is true", () => {
-    const rules = mediaSystemPromptRules({ menuPresent: true, visionCapable: true })
+    const rules = mediaSystemPromptRules({
+      menuPresent: true,
+      visionCapable: true
+    })
     expect(rules).toContain("get_images(imageIds)")
   })
 })
@@ -237,14 +246,15 @@ describe("rankScoredImages", () => {
       { imageId: "img_3", alt: "c", docIdx: 1, order: 2, score: 0.8 }
     ]
     const menu = rankScoredImages(cands, 6)
-    expect(menu.map(m => m.imageId)).toEqual(["img_3", "img_1"])
+    expect(menu.map((m) => m.imageId)).toEqual(["img_3", "img_1"])
   })
 })
 
 describe("whitelistImageMarkdown", () => {
-  const resolved = new Map<string, { url: string; alt: string; type?: "image" | "video" | "doc_link" }>([
-    ["img_a", { url: "https://x.com/a.png", alt: "a", type: "image" }]
-  ])
+  const resolved = new Map<
+    string,
+    { url: string; alt: string; type?: "image" | "video" | "doc_link" }
+  >([["img_a", { url: "https://x.com/a.png", alt: "a", type: "image" }]])
 
   it("rewrites known imageId markers to real urls", () => {
     expect(whitelistImageMarkdown("see ![a](img_a)", resolved)).toEqual({
@@ -253,7 +263,9 @@ describe("whitelistImageMarkdown", () => {
     })
   })
   it("drops unknown imageIds", () => {
-    expect(whitelistImageMarkdown("x ![h](img_hallucinated) y", resolved)).toEqual({
+    expect(
+      whitelistImageMarkdown("x ![h](img_hallucinated) y", resolved)
+    ).toEqual({
       text: "x  y",
       strippedIds: []
     })
@@ -267,9 +279,10 @@ describe("whitelistImageMarkdown", () => {
     })
   })
   it("resolves a known doc-id link but leaves real hyperlinks untouched", () => {
-    const map = new Map<string, { url: string; alt: string; type?: "image" | "video" | "doc_link" }>([
-      ["img_d", { url: "https://x.com/s.pdf", alt: "Spec", type: "image" }]
-    ])
+    const map = new Map<
+      string,
+      { url: string; alt: string; type?: "image" | "video" | "doc_link" }
+    >([["img_d", { url: "https://x.com/s.pdf", alt: "Spec", type: "image" }]])
     const text = "see [Spec](img_d) and [our blog](https://blog.com/post)"
     expect(whitelistImageMarkdown(text, map)).toEqual({
       text: "see [Spec](https://x.com/s.pdf) and [our blog](https://blog.com/post)",
@@ -277,18 +290,26 @@ describe("whitelistImageMarkdown", () => {
     })
   })
   it("strips video and doc_link markers and returns them in strippedIds when stripNonImages is set", () => {
-    const map = new Map<string, { url: string; alt: string; type?: "image" | "video" | "doc_link" }>([
+    const map = new Map<
+      string,
+      { url: string; alt: string; type?: "image" | "video" | "doc_link" }
+    >([
       ["vid_v", { url: "https://x.com/v.mp4", alt: "Video", type: "video" }],
       ["doc_d", { url: "https://x.com/d.pdf", alt: "Doc", type: "doc_link" }]
     ])
     const text = "watch ![v](vid_v) and read [d](doc_d)"
-    expect(whitelistImageMarkdown(text, map, { stripNonImages: true })).toEqual({
-      text: "watch  and read ",
-      strippedIds: ["vid_v", "doc_d"]
-    })
+    expect(whitelistImageMarkdown(text, map, { stripNonImages: true })).toEqual(
+      {
+        text: "watch  and read ",
+        strippedIds: ["vid_v", "doc_d"]
+      }
+    )
   })
   it("by default (no stripNonImages) rewrites video/doc markers to inline urls, strips nothing", () => {
-    const map = new Map<string, { url: string; alt: string; type?: "image" | "video" | "doc_link" }>([
+    const map = new Map<
+      string,
+      { url: string; alt: string; type?: "image" | "video" | "doc_link" }
+    >([
       ["vid_v", { url: "https://x.com/v.mp4", alt: "Video", type: "video" }],
       ["doc_d", { url: "https://x.com/d.pdf", alt: "Doc", type: "doc_link" }]
     ])
@@ -297,5 +318,77 @@ describe("whitelistImageMarkdown", () => {
       text: "watch ![v](https://x.com/v.mp4) and read [d](https://x.com/d.pdf)",
       strippedIds: []
     })
+  })
+
+  it("removes the tracking-pixel attack: unresolved full reference image + its definition", () => {
+    const text = "![tracking][pixel]\n\n[pixel]: https://attacker.example/track"
+    const result = whitelistImageMarkdown(text, resolved)
+    expect(result.text).not.toContain("attacker.example")
+    expect(result.text).not.toContain("![")
+    expect(result.strippedIds).toEqual([])
+  })
+
+  it("rewrites an approved full reference image and drops its now-unused definition", () => {
+    const text = "see ![alt text][a]\n\n[a]: img_a"
+    const result = whitelistImageMarkdown(text, resolved)
+    expect(result.text).toContain("![alt text](https://x.com/a.png)")
+    expect(result.text).not.toContain("[a]: img_a")
+  })
+
+  it("rewrites an approved collapsed reference image (![label][])", () => {
+    const text = "![a][]\n\n[a]: img_a"
+    const result = whitelistImageMarkdown(text, resolved)
+    expect(result.text).toContain("![a](https://x.com/a.png)")
+    expect(result.text).not.toContain("[a]: img_a")
+  })
+
+  it("rewrites an approved shortcut reference image (![label])", () => {
+    const text = "![a]\n\n[a]: img_a"
+    const result = whitelistImageMarkdown(text, resolved)
+    expect(result.text).toContain("![a](https://x.com/a.png)")
+    expect(result.text).not.toContain("[a]: img_a")
+  })
+
+  it("matches reference labels case-insensitively", () => {
+    const text = "![Alt][Img_A]\n\n[img_a]: img_a"
+    const result = whitelistImageMarkdown(text, resolved)
+    expect(result.text).toContain("![Alt](https://x.com/a.png)")
+  })
+
+  it("removes an unknown/external reference image target", () => {
+    const text = "![x][r]\n\n[r]: https://cdn.other.com/x.png"
+    const result = whitelistImageMarkdown(text, resolved)
+    expect(result.text).not.toContain("cdn.other.com")
+    expect(result.text).not.toContain("![")
+  })
+
+  it("removes a raw HTML <img> pointing at an unapproved url", () => {
+    const text = 'before <img src="https://attacker.example/track"> after'
+    const result = whitelistImageMarkdown(text, resolved)
+    expect(result.text).not.toContain("attacker.example")
+    expect(result.text).not.toContain("<img")
+    expect(result.text).toContain("before")
+    expect(result.text).toContain("after")
+  })
+
+  it("rewrites a raw HTML <img> whose src is an approved registry id", () => {
+    const text = '<img src="img_a">'
+    const result = whitelistImageMarkdown(text, resolved)
+    expect(result.text).toContain("https://x.com/a.png")
+    expect(result.text).not.toContain("img_a")
+  })
+
+  it("leaves an ordinary reference-style link untouched", () => {
+    const text = "see [our blog][s] for more\n\n[s]: https://blog.com/post"
+    const result = whitelistImageMarkdown(text, resolved)
+    expect(result.text).toBe(text)
+  })
+
+  it("keeps a definition alive for a surviving link reference even after stripping a sibling image reference to it", () => {
+    const text = "![img][x] and [text][x]\n\n[x]: https://cdn.other.com/a.png"
+    const result = whitelistImageMarkdown(text, resolved)
+    expect(result.text).not.toContain("![")
+    expect(result.text).toContain("[text][x]")
+    expect(result.text).toContain("[x]: https://cdn.other.com/a.png")
   })
 })

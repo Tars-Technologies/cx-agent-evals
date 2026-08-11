@@ -5,10 +5,18 @@
  * in the consuming backend, not here.
  */
 
-import {
-  rewriteMarkdownImages,
-  type MarkdownImage
-} from "../file-processing/markdown-images.js"
+import type {
+  Definition,
+  Html,
+  Image,
+  ImageReference,
+  Link,
+  LinkReference,
+  Nodes,
+  Root
+} from "mdast"
+import { fromMarkdown } from "mdast-util-from-markdown"
+import type { MarkdownImage } from "../file-processing/markdown-images.js"
 
 export const MAX_IMAGES_PER_TURN = 4
 export const MENU_IMAGE_CAP = 6
@@ -208,7 +216,9 @@ function surrounding(content: string, img: MarkdownImage): string {
     afterStart,
     Math.min(sectionEnd, afterStart + SURROUNDING_CHARS)
   )
-  return stripImageMarkdownInline(`${before} ${after}`).replace(/\s+/g, " ").trim()
+  return stripImageMarkdownInline(`${before} ${after}`)
+    .replace(/\s+/g, " ")
+    .trim()
 }
 
 /**
@@ -240,9 +250,11 @@ export function buildImageEmbeddingInput(
   // Gate alt/heading through their denylist checks so generic tokens ("image",
   // "Overview", …) never leak into the embedding support signal (D10) — only
   // strong signals contribute; the surrounding-text fallback covers the rest.
-  const parts = [captionText, altOk ? alt : "", headingOk ? heading : ""].filter(
-    Boolean
-  )
+  const parts = [
+    captionText,
+    altOk ? alt : "",
+    headingOk ? heading : ""
+  ].filter(Boolean)
 
   let scraped: string
   let usedSurrounding: boolean
@@ -410,14 +422,236 @@ export function parseRenderedMediaIds(text: string): string[] {
   return ids
 }
 
-// Matches a markdown link `[text](target)` that is NOT an image (`![...]`).
-const LINK_MARKER_RE = /(?<!!)\[([^\]]*)\]\(([^)\s]+)\)/g
+type ResolvedMedia = {
+  url: string
+  alt: string
+  type?: "image" | "video" | "doc_link"
+}
+
+interface SpanReplacement {
+  start: number
+  end: number
+  value: string
+}
+
+// Scoped to the raw value of an already-AST-identified `html` node (never run
+// against the full document), so it only ever sees genuine HTML, not markdown.
+const HTML_IMG_TAG_RE = /<img\b[^>]*>/gi
+const HTML_IMG_SRC_RE = /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i
+// Replaces just the trailing `(dest "title"?)` of an already-AST-identified
+// `link` node's own source slice, preserving the link text (and any nested
+// markdown inside it) verbatim.
+const LINK_DEST_TAIL_RE = /\(([^)\s]+)(?:\s+"[^"]*")?\)\s*$/
+
+function htmlImgSrc(tag: string): string | null {
+  const m = HTML_IMG_SRC_RE.exec(tag)
+  if (!m) return null
+  return m[1] ?? m[2] ?? m[3] ?? null
+}
+
+/** Depth-first walk of every node in an mdast tree, container or leaf. */
+function walkMdast(node: Nodes, visit: (node: Nodes) => void): void {
+  visit(node)
+  if ("children" in node && Array.isArray(node.children)) {
+    for (const child of node.children as Nodes[]) walkMdast(child, visit)
+  }
+}
+
+function nodeSpan(node: {
+  position?: { start: { offset?: number }; end: { offset?: number } }
+}): { start: number; end: number } | null {
+  const start = node.position?.start.offset
+  const end = node.position?.end.offset
+  return start !== undefined && end !== undefined ? { start, end } : null
+}
+
+function spansOverlap(
+  a: { start: number; end: number },
+  b: { start: number; end: number }
+): boolean {
+  return a.start < b.end && b.start < a.end
+}
+
+/**
+ * AST-based sanitization core for whitelistImageMarkdown (V4/V9 finalize guard).
+ * Parses `text` once with mdast-util-from-markdown so every markdown image form
+ * — inline `![alt](target)`, full/collapsed/shortcut reference images
+ * (`![alt][label]` / `![label][]` / `![label]`, matched case-insensitively per
+ * CommonMark's identifier normalization), their `[label]: url` definitions, and
+ * raw HTML `<img>` — share one allowlist policy instead of one regex per syntax
+ * form. Untouched text is preserved byte-for-byte by splicing replacements into
+ * the ORIGINAL string at the AST's own offsets, rather than re-serializing the
+ * whole tree (which would risk reformatting unrelated markdown).
+ */
+function sanitizeImagesAst(
+  text: string,
+  resolved: Map<string, ResolvedMedia>,
+  stripNonImages: boolean,
+  stripped: Set<string>
+): string {
+  const isNonImage = (type?: string) => type === "video" || type === "doc_link"
+  const tree = fromMarkdown(text) as Root
+
+  const imageNodes: Image[] = []
+  const imageRefNodes: ImageReference[] = []
+  const linkNodes: Link[] = []
+  const htmlNodes: Html[] = []
+  const definitions = new Map<string, Definition>()
+  const usedByImage = new Set<string>()
+  const usedByLink = new Set<string>()
+
+  // Pass 1: a reference image's definition may appear anywhere in the document
+  // (before or after the reference — the tracking-pixel attack relies on this),
+  // so collect everything before resolving anything.
+  walkMdast(tree, (node) => {
+    switch (node.type) {
+      case "image":
+        imageNodes.push(node as Image)
+        break
+      case "imageReference": {
+        const ref = node as ImageReference
+        imageRefNodes.push(ref)
+        usedByImage.add(ref.identifier)
+        break
+      }
+      case "linkReference":
+        usedByLink.add((node as LinkReference).identifier)
+        break
+      case "link":
+        linkNodes.push(node as Link)
+        break
+      case "html":
+        htmlNodes.push(node as Html)
+        break
+      case "definition":
+        definitions.set((node as Definition).identifier, node as Definition)
+        break
+      default:
+        break
+    }
+  })
+
+  // Pass 2: resolve each image-like node against the allowlist.
+  const priority: SpanReplacement[] = []
+
+  for (const img of imageNodes) {
+    const span = nodeSpan(img)
+    if (!span) continue
+    const hit = resolved.get(img.url)
+    const alt = img.alt ?? ""
+    if (!hit) {
+      priority.push({ ...span, value: "" }) // unknown/hallucinated target
+    } else if (stripNonImages && isNonImage(hit.type)) {
+      stripped.add(img.url)
+      priority.push({ ...span, value: "" })
+    } else {
+      priority.push({
+        ...span,
+        value: img.title
+          ? `![${alt}](${hit.url} "${img.title}")`
+          : `![${alt}](${hit.url})`
+      })
+    }
+  }
+
+  for (const ref of imageRefNodes) {
+    const span = nodeSpan(ref)
+    if (!span) continue
+    const def = definitions.get(ref.identifier)
+    const hit = def ? resolved.get(def.url) : undefined
+    const alt = ref.alt ?? ""
+    if (!def || !hit) {
+      priority.push({ ...span, value: "" }) // no definition, or unresolved target
+    } else if (stripNonImages && isNonImage(hit.type)) {
+      stripped.add(def.url)
+      priority.push({ ...span, value: "" })
+    } else {
+      priority.push({ ...span, value: `![${alt}](${hit.url})` })
+    }
+  }
+
+  for (const html of htmlNodes) {
+    const span = nodeSpan(html)
+    if (!span) continue
+    let changed = false
+    const value = html.value.replace(HTML_IMG_TAG_RE, (tag) => {
+      const src = htmlImgSrc(tag)
+      const hit = src ? resolved.get(src) : undefined
+      if (!hit) {
+        changed = true
+        return ""
+      }
+      if (stripNonImages && isNonImage(hit.type)) {
+        stripped.add(src as string)
+        changed = true
+        return ""
+      }
+      changed = true
+      return tag.replace(HTML_IMG_SRC_RE, `src="${hit.url}"`)
+    })
+    if (changed) priority.push({ ...span, value })
+  }
+
+  // Only a definition that a stripped/rewritten image used EXCLUSIVELY (no
+  // surviving ordinary link reference also needs it) is removed — this is what
+  // stops the tracking-pixel definition from lingering as dead-but-reusable
+  // syntax, while unrelated or link-backing definitions are left untouched.
+  for (const identifier of usedByImage) {
+    if (usedByLink.has(identifier)) continue
+    const def = definitions.get(identifier)
+    if (!def) continue
+    const span = nodeSpan(def)
+    if (span) priority.push({ ...span, value: "" })
+  }
+
+  // Resolve-known-only rewrite for plain links `[text](knownMediaId)`, unrelated
+  // to the image-safety policy above — preserved from the pre-AST behavior.
+  const linkCandidates: SpanReplacement[] = []
+  for (const link of linkNodes) {
+    const span = nodeSpan(link)
+    if (!span) continue
+    const hit = resolved.get(link.url)
+    if (!hit) continue // leave other links untouched
+    if (stripNonImages && isNonImage(hit.type)) {
+      stripped.add(link.url)
+      linkCandidates.push({ ...span, value: "" })
+      continue
+    }
+    const slice = text.slice(span.start, span.end)
+    linkCandidates.push({
+      ...span,
+      value: slice.replace(LINK_DEST_TAIL_RE, `(${hit.url})`)
+    })
+  }
+  // A link wrapping an image (`[![alt](id)](href)`) nests the image node's span
+  // inside the link node's span. The image — the actual render/fetch risk —
+  // always wins; the outer link's own rewrite is skipped rather than risk
+  // splicing two overlapping replacements into the same bytes.
+  const safeLinkCandidates = linkCandidates.filter(
+    (link) => !priority.some((p) => spansOverlap(link, p))
+  )
+
+  const replacements = [...priority, ...safeLinkCandidates].sort(
+    (a, b) => a.start - b.start
+  )
+
+  let out = ""
+  let cursor = 0
+  for (const r of replacements) {
+    if (r.start < cursor) continue // defensive: never apply an overlapping splice
+    out += text.slice(cursor, r.start) + r.value
+    cursor = r.end
+  }
+  out += text.slice(cursor)
+  return out
+}
 
 /**
  * Finalize guard (V4/V9): keep only images whose target is a resolved imageId,
  * rewriting them to the real URL; everything else (hallucinated ids, raw external
- * urls) is removed. THEN, additively, rewrite plain link markers `[text](id)`
- * whose target is a known media id (doc pointers) to the real URL.
+ * urls, unresolved reference images, raw HTML `<img>`) is removed. THEN,
+ * additively, rewrite plain link markers `[text](id)` whose target is a known
+ * media id (doc pointers) to the real URL.
  *
  * Video/doc handling is consumer-dependent, so it is opt-in via
  * `opts.stripNonImages` (default `false`) — the lib does not hardcode one
@@ -434,41 +668,17 @@ const LINK_MARKER_RE = /(?<!!)\[([^\]]*)\]\(([^)\s]+)\)/g
  */
 export function whitelistImageMarkdown(
   text: string,
-  resolved: Map<string, { url: string; alt: string; type?: "image" | "video" | "doc_link" }>,
+  resolved: Map<string, ResolvedMedia>,
   opts: { stripNonImages?: boolean } = {}
 ): { text: string; strippedIds: string[] } {
   const stripNonImages = opts.stripNonImages ?? false
   const stripped = new Set<string>()
-  const isNonImage = (type?: string) => type === "video" || type === "doc_link"
-
-  const imagesRewritten = rewriteMarkdownImages(text, ({ url }) => {
-    // `url` here is whatever the model wrote in (...) — an imageId or a real url.
-    const hit = resolved.get(url)
-    if (hit) {
-      if (stripNonImages && isNonImage(hit.type)) {
-        stripped.add(url)
-        return null // strips the image marker; caller renders it as a part
-      }
-      return hit.url
-    }
-    return null // strips unknown/hallucinated targets
-  })
-
-  const textRewritten = imagesRewritten.replace(
-    LINK_MARKER_RE,
-    (raw, linkText: string, target: string) => {
-      const hit = resolved.get(target)
-      if (hit) {
-        if (stripNonImages && isNonImage(hit.type)) {
-          stripped.add(target)
-          return "" // strips the link marker; caller renders it as a part
-        }
-        return `[${linkText}](${hit.url})` // resolve-known-only
-      }
-      return raw // leave other links untouched
-    }
+  const textRewritten = sanitizeImagesAst(
+    text,
+    resolved,
+    stripNonImages,
+    stripped
   )
-
   return {
     text: textRewritten,
     strippedIds: Array.from(stripped)
