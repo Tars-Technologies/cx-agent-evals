@@ -1,5 +1,8 @@
 # RAG & Agent Evals
 
+> [!WARNING]
+> **This project is a playground and is not actively maintained.**
+
 A TypeScript framework for evaluating RAG retrieval pipelines, with a Convex backend and Next.js frontend.
 
 ## Repository structure
