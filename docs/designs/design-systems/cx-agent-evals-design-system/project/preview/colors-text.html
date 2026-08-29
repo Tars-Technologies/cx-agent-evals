@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="preview.css">
+<style>
+  .text-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border: 1px solid var(--cds-border);
+    border-radius: 8px;
+    background: var(--cds-bg-elevated);
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+  }
+  .sample {
+    font-size: 15px;
+    line-height: 1.45;
+    letter-spacing: -0.005em;
+  }
+  .sample .weight-note {
+    opacity: 0.7;
+    margin-left: 8px;
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .token {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    color: #8888a0;
+    white-space: nowrap;
+    padding-left: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="col" style="gap:8px">
+    <div class="text-row">
+      <span class="sample" style="color:#e8e8ed;font-weight:500">
+        The primary text color on any surface.
+      </span>
+      <span class="token">text · #E8E8ED</span>
+    </div>
+    <div class="text-row">
+      <span class="sample" style="color:#8888a0">
+        Secondary — labels, descriptions, nav items.
+      </span>
+      <span class="token">text-muted · #8888A0</span>
+    </div>
+    <div class="text-row">
+      <span class="sample" style="color:#55556a">
+        Tertiary — meta, timestamps, hints.
+      </span>
+      <span class="token">text-dim · #55556A</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

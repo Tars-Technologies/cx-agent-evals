@@ -1,0 +1,77 @@
+/* Base layout for every design-system preview card.
+   Cards render at ~700×<n>px inside the Design System tab.
+   No card title — the asset name is rendered OUTSIDE the card.
+*/
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--cds-bg);
+  color: var(--cds-text);
+  font-family: var(--cds-font-mono);
+  font-size: var(--cds-fs-13);
+  line-height: var(--cds-lh-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+.card {
+  box-sizing: border-box;
+  width: 700px;
+  padding: 24px;
+  background: var(--cds-bg);
+}
+
+.row   { display: flex; gap: 16px; align-items: center; }
+.col   { display: flex; flex-direction: column; gap: 16px; }
+.wrap  { display: flex; flex-wrap: wrap; gap: 12px; }
+.grid  { display: grid; gap: 12px; }
+.mono  { font-family: var(--cds-font-mono); }
+.muted { color: var(--cds-text-muted); }
+.dim   { color: var(--cds-text-dim); }
+.mint  { color: var(--cds-accent); }
+
+/* Swatch primitives */
+.swatch {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--cds-border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.swatch .fill {
+  height: 48px;
+}
+.swatch .meta {
+  padding: 8px 10px;
+  background: var(--cds-bg-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.swatch .name  { color: var(--cds-text); font-weight: 500; font-size: 11px; }
+.swatch .hex   { color: var(--cds-text-dim); font-size: 9px; letter-spacing: 0.04em; }
+
+/* Type specimen */
+.specimen {
+  display: grid;
+  grid-template-columns: 80px 1fr auto;
+  align-items: baseline;
+  gap: 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--cds-border);
+}
+.specimen:first-child { border-top: 0; }
+.specimen .label { color: var(--cds-text-dim); font-size: 10px; }
+.specimen .sample { color: var(--cds-text); }
+.specimen .spec  { color: var(--cds-text-dim); font-size: 10px; text-align: right; }
+
+/* Helper: eyebrow */
+.eyebrow {
+  font-size: 10px;
+  color: var(--cds-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 8px;
+}

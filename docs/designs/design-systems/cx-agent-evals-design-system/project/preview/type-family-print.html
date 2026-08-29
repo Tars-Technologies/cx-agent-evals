@@ -1,0 +1,153 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Type Family — Print</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="preview.css">
+<style>
+  html, body {
+    background: #0c0c0f;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .card {
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 40px 48px;
+    box-sizing: border-box;
+    break-inside: avoid;
+  }
+  .tf-wrap {
+    padding: 24px 4px;
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+  }
+  .tf-eyebrow {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #55556a;
+    margin-bottom: 16px;
+  }
+  .tf-eyebrow b { color: #6ee7b7; font-weight: 500; }
+  .tf-display {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 64px;
+    font-weight: 600;
+    color: #e8e8ed;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+  }
+  .tf-display .accent {
+    font-weight: 400;
+    color: #8888a0;
+    letter-spacing: -0.02em;
+  }
+  .tf-divider {
+    height: 1px; background: #22222d;
+    margin: 32px 0 24px;
+  }
+  .tf-split { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .tf-card-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #55556a;
+    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .tf-role {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: rgba(110,231,183,.1);
+    color: #6ee7b7;
+    border: 1px solid rgba(110,231,183,.25);
+    font-weight: 500;
+  }
+  .tf-specimen-inter {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 26px;
+    font-weight: 500;
+    color: #e8e8ed;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+  }
+  .tf-specimen-mono {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 20px;
+    font-weight: 500;
+    color: #e8e8ed;
+    letter-spacing: 0;
+    line-height: 1.4;
+  }
+  .tf-desc {
+    font-family: "Inter", sans-serif;
+    font-size: 13px;
+    color: #8888a0;
+    line-height: 1.55;
+    margin-top: 10px;
+  }
+  .tf-glyphs {
+    margin-top: 12px;
+    font-size: 12px;
+    color: #55556a;
+  }
+  .tf-glyphs.mono { font-family: "JetBrains Mono", monospace; }
+
+  @page {
+    size: landscape;
+    margin: 0.5cm;
+  }
+  @media print {
+    html, body { background: #0c0c0f !important; }
+    .card { break-inside: avoid; padding: 24px 32px; }
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="tf-wrap">
+    <div class="tf-eyebrow">Type system · <b>Inter</b> + JetBrains Mono</div>
+
+    <div class="tf-display">
+      Build and evaluate<br>
+      <span class="accent">CX AI agents.</span>
+    </div>
+
+    <div class="tf-divider"></div>
+
+    <div class="tf-split">
+      <div>
+        <div class="tf-card-label">Inter <span class="tf-role">UI · body · headings</span></div>
+        <div class="tf-specimen-inter">Aa Bb Cc Dd 0123456789</div>
+        <div class="tf-desc">
+          Geometric sans with excellent hinting at small sizes. Used for labels, navigation, body copy, titles — anything the user reads rather than copies.
+        </div>
+        <div class="tf-glyphs">Weights 400 · 500 · 600 · 700 — tight tracking on headlines, neutral on body.</div>
+      </div>
+
+      <div>
+        <div class="tf-card-label">JetBrains Mono <span class="tf-role" style="background:rgba(136,136,160,.1);color:#a5a5bd;border-color:#2a2a36">data · code · tokens</span></div>
+        <div class="tf-specimen-mono">Aa Bb Cc 0123 → ▸ ▾ · —</div>
+        <div class="tf-desc">
+          Reserved for things that read <i>as</i> code: hex values, metrics, token names, file paths, tool-call JSON, terminal output.
+        </div>
+        <div class="tf-glyphs mono">chunk_id · #6EE7B7 · /agents/a1 · recall: 0.92</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (async () => {
+    try { await document.fonts.ready; } catch (e) {}
+    setTimeout(() => window.print(), 500);
+  })();
+</script>
+</body>
+</html>
