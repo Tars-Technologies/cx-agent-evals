@@ -138,6 +138,10 @@ export const agentTables = {
       })
     ),
     scores: v.optional(v.record(v.string(), v.number())),
+    // Union of all imageIds offered to the agent across every retrieval tool
+    // call for this question. Used for image metric computation (menu vs ground
+    // truth). Only present on vision-capable experiments.
+    offeredImageIds: v.optional(v.array(v.string())),
     // Images the model actually rendered this turn (post-whitelist), recorded for
     // multimodal evaluators. Matches the messages.shownImages shape ({..alt}).
     shownImages: v.optional(

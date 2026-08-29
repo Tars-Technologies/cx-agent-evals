@@ -188,14 +188,44 @@ export const onAgentQuestionComplete = internalMutation({
 
       const metricNames = ["recall", "precision", "iou", "f1"]
       const avgScores: Record<string, number> = {}
+      const completeResults = results.filter(
+        (r) => r.status === "complete" && r.scores != null
+      )
       for (const name of metricNames) {
-        const values = results
-          .filter((r) => r.status === "complete" && r.scores != null)
+        const values = completeResults
           .map((r) => (r.scores as Record<string, number>)[name])
           .filter((v): v is number => typeof v === "number")
         avgScores[name] =
           values.length > 0
             ? values.reduce((a, b) => a + b, 0) / values.length
+            : 0
+      }
+
+      // Image metrics — averaged only over questions that have image ground
+      // truth (relevantImageIds present on the question). Questions without it
+      // are excluded so they don't dilute the image score. When no question in
+      // the experiment has image ground truth, omit the image_* keys entirely
+      // rather than writing 0s, which would read as evaluated scores.
+      const imageMetricNames = ["image_recall", "image_precision", "image_f1"]
+      const resultsWithImageScores = completeResults.filter((r) => {
+        const s = r.scores as Record<string, number> | undefined
+        return s != null && typeof s["image_f1"] === "number"
+      })
+      if (resultsWithImageScores.length > 0) {
+        for (const name of imageMetricNames) {
+          const values = resultsWithImageScores
+            .map((r) => (r.scores as Record<string, number>)[name])
+            .filter((v): v is number => typeof v === "number")
+          avgScores[name] =
+            values.length > 0
+              ? values.reduce((a, b) => a + b, 0) / values.length
+              : 0
+        }
+        // image_coverage = fraction of questions that contributed to image metrics
+        const totalQuestions = experiment.totalQuestions ?? results.length
+        avgScores["image_coverage"] =
+          totalQuestions > 0
+            ? resultsWithImageScores.length / totalQuestions
             : 0
       }
 

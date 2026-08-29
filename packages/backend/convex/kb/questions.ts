@@ -67,6 +67,7 @@ export const insertBatch = internalMutation({
         queryText: v.string(),
         sourceDocId: v.string(),
         relevantSpans: v.array(spanValidator),
+        relevantImageIds: v.optional(v.array(v.string())),
         metadata: v.optional(v.any()),
         source: v.optional(v.string())
       })
@@ -91,6 +92,9 @@ export const insertBatch = internalMutation({
         queryText: q.queryText,
         sourceDocId: q.sourceDocId,
         relevantSpans: q.relevantSpans,
+        ...(q.relevantImageIds !== undefined && {
+          relevantImageIds: q.relevantImageIds
+        }),
         metadata: q.metadata ?? {},
         source: q.source
       })

@@ -2,6 +2,7 @@
 
 import {
   type CharacterSpan,
+  computeImageSetMetrics,
   DocumentId,
   f1,
   iou,
@@ -18,7 +19,12 @@ import { composeSystemPrompt } from "../agents/promptTemplate"
 import { finalizeMediaAnswer, resolveModel } from "../lib/agentLoop"
 import { vectorSearchWithFilter } from "../lib/vectorSearch"
 import { buildGetImagesTool } from "../lib/vision"
-import { isVisionCapable, MENU_IMAGE_CAP } from "@tars-inc/eval-lib/multimodal"
+import {
+  capOfferedImages,
+  isVisionCapable,
+  MENU_IMAGE_CAP,
+  type ImageMenuEntry
+} from "@tars-inc/eval-lib/multimodal"
 import { rankMediaForDocs } from "../kb/media_runtime"
 
 // ─── Helpers ───
@@ -246,6 +252,11 @@ export const evaluateAgentQuestion = internalAction({
       string,
       { imageId: string; alt: string; type?: string }
     >()
+    // Every image menu entry offered across every retrieval tool call this
+    // turn (with score, pre-cap). Merged+capped via capOfferedImages right
+    // before scoring, instead of a raw union, so a question that triggers
+    // several searches isn't scored against an ever-growing menu.
+    const offeredImageCandidates: ImageMenuEntry[] = []
 
     // 4. Build AI SDK tools — one per retriever
     const allToolCallResults: Array<{
@@ -314,7 +325,10 @@ export const evaluateAgentQuestion = internalAction({
             start: c.start,
             end: c.end
           }))
-          for (const img of images) lastImageMenu.set(img.imageId, img)
+          for (const img of images) {
+            lastImageMenu.set(img.imageId, img)
+            offeredImageCandidates.push(img)
+          }
 
           allToolCallResults.push({
             toolName,
@@ -392,6 +406,29 @@ export const evaluateAgentQuestion = internalAction({
         question.relevantSpans
       )
 
+      // Image metrics: only when the question has image ground truth. Menu is
+      // merged+capped across every retrieval call, best-first, so precision@K
+      // scores against a stable-sized menu regardless of how many searches
+      // the agent made.
+      const relevantImageIds = (question as any).relevantImageIds as
+        | string[]
+        | undefined
+      const offeredImageIds = capOfferedImages(
+        offeredImageCandidates,
+        MENU_IMAGE_CAP
+      ).map((img) => img.imageId)
+      if (
+        hasVision &&
+        Array.isArray(relevantImageIds) &&
+        relevantImageIds.length > 0
+      ) {
+        const imageMetrics = computeImageSetMetrics(
+          offeredImageIds,
+          relevantImageIds
+        )
+        Object.assign(scores, imageMetrics)
+      }
+
       // 9. Insert result
       await ctx.runMutation(internal.experiments.agentResults.insert, {
         experimentId: args.experimentId,
@@ -405,6 +442,9 @@ export const evaluateAgentQuestion = internalAction({
         })),
         retrievedChunks,
         scores,
+        offeredImageIds: hasVision && offeredImageIds.length > 0
+          ? offeredImageIds
+          : undefined,
         shownImages: shownImages.length > 0 ? shownImages : undefined,
         usage: result.usage
           ? {

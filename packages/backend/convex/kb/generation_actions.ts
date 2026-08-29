@@ -19,7 +19,13 @@ import {
   RealWorldGroundedStrategy,
   SimpleStrategy
 } from "@tars-inc/eval-lib"
-import { createLLMClient, getModel } from "@tars-inc/eval-lib/llm"
+import {
+  createEmbedder,
+  createLLMClient,
+  getModel,
+  judgeImageRelevance,
+  type OpenAIVisionClient
+} from "@tars-inc/eval-lib/llm"
 import { discoverDimensions as discoverDimensionsFn } from "@tars-inc/eval-lib/pipeline/internals"
 import {
   assertHostResolvesPublic,
@@ -31,6 +37,21 @@ import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { internalAction } from "../_generated/server"
 import { tenantAction } from "../lib/auth/tenant"
+import { fetchImageAsBase64 } from "../lib/vision"
+import {
+  loadDocMediaForRanking,
+  MEDIA_EMBEDDING_MODEL,
+  rankCachedDocMedia
+} from "./media_runtime"
+
+// Similarity threshold for GT labeling — lower than the live agent threshold
+// (MIN_IMAGE_SIMILARITY = 0.2) to reduce the risk of missing a relevant image
+// that has poor alt text. The vision LLM does the final relevance judgment.
+const GT_IMAGE_SIMILARITY_THRESHOLD = 0.1
+// Max candidates to send to the vision LLM per question.
+const GT_IMAGE_CANDIDATE_CAP = 10
+// Vision model used for image ground truth labeling. Fixed, not user-configurable.
+const IMAGE_JUDGE_MODEL = "gpt-4o-mini"
 
 async function loadCorpusFromKb(
   ctx: { runQuery: (ref: any, args: any) => Promise<any> },
@@ -356,6 +377,7 @@ export const generateForDoc = internalAction({
         end: number
         text: string
       }>
+      relevantImageIds?: string[]
       metadata: Record<string, unknown>
       source: string | undefined
     }> = []
@@ -459,6 +481,121 @@ export const generateForDoc = internalAction({
         }
       } catch {
         pass2Unchanged++
+      }
+    }
+
+    // Pass 3: Image ground truth assignment
+    // Runs for any KB with media on this doc. Non-fatal — a failure sets
+    // relevantImageIds to [] so the question still inserts and contributes to
+    // text metrics; it just won't appear in image metric averages.
+    if (job && allValidated.length > 0) {
+      try {
+        const kbId = job.kbId as Id<"knowledgeBases">
+        const orgId = job.orgId as string
+
+        // Load this doc's media metadata + Qdrant vectors once, reused for
+        // every question below instead of re-fetching per question.
+        const mediaCache = await loadDocMediaForRanking(ctx, {
+          kbId,
+          documentIds: [args.docConvexId]
+        })
+
+        if (mediaCache.groups[0]?.length > 0) {
+          const mediaEmbedder = createEmbedder(MEDIA_EMBEDDING_MODEL)
+          const { default: OpenAI } = await import("openai")
+          const openai = new OpenAI() as unknown as OpenAIVisionClient
+
+          // Resolve URLs for every candidate image in this doc once, reused
+          // across questions (the ranked candidates for any question are
+          // always a subset of this pool).
+          const candidateImageIds = [
+            ...new Set(mediaCache.groups[0].map((m) => m.imageId))
+          ]
+          const mediaWithUrls = await ctx.runQuery(
+            internal.kb.images.getImagesByIds,
+            { kbIds: [kbId], orgId, imageIds: candidateImageIds }
+          )
+          const urlMap = new Map(mediaWithUrls.map((m: any) => [m.imageId, m]))
+
+          // Cache fetched pixels by imageId so the same image isn't
+          // re-downloaded for every question that ranks it as a candidate.
+          const pixelCache = new Map<
+            string,
+            { base64: string; mimeType: string } | null
+          >()
+          async function getPixels(
+            imageId: string
+          ): Promise<{ base64: string; mimeType: string } | null> {
+            if (pixelCache.has(imageId)) return pixelCache.get(imageId) ?? null
+            const media = urlMap.get(imageId) as { url?: string } | undefined
+            const pixels = media?.url
+              ? await fetchImageAsBase64(media.url)
+              : null
+            const resolved = pixels
+              ? { base64: pixels.data, mimeType: pixels.mimeType }
+              : null
+            pixelCache.set(imageId, resolved)
+            return resolved
+          }
+
+          for (const question of allValidated) {
+            try {
+              const queryEmbedding = await mediaEmbedder.embedQuery(
+                question.queryText
+              )
+              const ranked = rankCachedDocMedia(
+                mediaCache,
+                queryEmbedding,
+                GT_IMAGE_CANDIDATE_CAP,
+                GT_IMAGE_SIMILARITY_THRESHOLD
+              )
+
+              if (ranked.length === 0) {
+                question.relevantImageIds = []
+                continue
+              }
+
+              // Fetch pixels (cached); skip candidates where fetch fails
+              const pixelCandidates = (
+                await Promise.all(
+                  ranked.map(async (entry) => {
+                    const pixels = await getPixels(entry.imageId)
+                    if (!pixels) return null
+                    return {
+                      imageId: entry.imageId,
+                      base64: pixels.base64,
+                      mimeType: pixels.mimeType,
+                      alt: entry.alt
+                    }
+                  })
+                )
+              ).filter((c): c is NonNullable<typeof c> => c !== null)
+
+              if (pixelCandidates.length === 0) {
+                question.relevantImageIds = []
+                continue
+              }
+
+              question.relevantImageIds = await judgeImageRelevance(
+                question.queryText,
+                pixelCandidates,
+                openai,
+                IMAGE_JUDGE_MODEL
+              )
+            } catch (err) {
+              console.warn(
+                `[imageGT] Failed for "${question.queryText.slice(0, 50)}":`,
+                err instanceof Error ? err.message : String(err)
+              )
+              question.relevantImageIds = []
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(
+          `[imageGT] Pass 3 setup failed for doc ${args.docId}:`,
+          err instanceof Error ? err.message : String(err)
+        )
       }
     }
 

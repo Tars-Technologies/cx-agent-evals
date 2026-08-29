@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { MarkdownImage } from "../../src/file-processing/markdown-images.js"
 import {
   buildImageEmbeddingInput,
+  capOfferedImages,
   isVisionCapable,
   MAX_IMAGES_PER_TURN,
   MENU_IMAGE_CAP,
@@ -238,6 +239,47 @@ describe("rankScoredImages", () => {
     ]
     const menu = rankScoredImages(cands, 6)
     expect(menu.map(m => m.imageId)).toEqual(["img_3", "img_1"])
+  })
+})
+
+describe("capOfferedImages", () => {
+  it("caps a multi-call union at the given size instead of growing unbounded", () => {
+    const call1 = [
+      { imageId: "img_1", alt: "a", score: 0.9 },
+      { imageId: "img_2", alt: "b", score: 0.5 }
+    ]
+    const call2 = [
+      { imageId: "img_3", alt: "c", score: 0.95 },
+      { imageId: "img_4", alt: "d", score: 0.4 }
+    ]
+    const call3 = [
+      { imageId: "img_5", alt: "e", score: 0.3 },
+      { imageId: "img_6", alt: "f", score: 0.2 }
+    ]
+    const merged = capOfferedImages([...call1, ...call2, ...call3], 3)
+    expect(merged.map((m) => m.imageId)).toEqual(["img_3", "img_1", "img_2"])
+  })
+
+  it("keeps the highest-scored occurrence of a duplicate imageId across calls", () => {
+    const merged = capOfferedImages(
+      [
+        { imageId: "img_1", alt: "a", score: 0.2 },
+        { imageId: "img_1", alt: "a", score: 0.9 }
+      ],
+      6
+    )
+    expect(merged).toEqual([{ imageId: "img_1", alt: "a", score: 0.9 }])
+  })
+
+  it("sorts unscored (fallback-ranked) entries after every scored entry", () => {
+    const merged = capOfferedImages(
+      [
+        { imageId: "img_unscored", alt: "u" },
+        { imageId: "img_scored", alt: "s", score: 0.1 }
+      ],
+      6
+    )
+    expect(merged.map((m) => m.imageId)).toEqual(["img_scored", "img_unscored"])
   })
 })
 

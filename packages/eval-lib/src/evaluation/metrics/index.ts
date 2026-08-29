@@ -1,5 +1,7 @@
 export type { Metric } from "./base.js"
 export { f1 } from "./f1.js"
+export type { ImageSetMetrics } from "./image.js"
+export { computeImageSetMetrics } from "./image.js"
 export { iou } from "./iou.js"
 export { precision } from "./precision.js"
 export { recall } from "./recall.js"

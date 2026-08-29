@@ -88,7 +88,14 @@ export {
 export type { ComputeMetricsOptions, Metric } from "./evaluation/index.js"
 export { computeMetrics } from "./evaluation/index.js"
 // Metrics
-export { f1, iou, precision, recall } from "./evaluation/metrics/index.js"
+export type { ImageSetMetrics } from "./evaluation/metrics/index.js"
+export {
+  computeImageSetMetrics,
+  f1,
+  iou,
+  precision,
+  recall
+} from "./evaluation/metrics/index.js"
 // Reranker
 export type { Reranker } from "./rerankers/index.js"
 

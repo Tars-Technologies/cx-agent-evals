@@ -90,6 +90,11 @@ export const questionValidator = v.object({
   queryText: v.string(),
   sourceDocId: v.string(),
   relevantSpans: v.array(spanValidator),
+  // Image ground truth: imageIds judged relevant by a vision LLM at generation
+  // time. Absent on questions generated before this feature was added, or when
+  // the KB has no media. Questions without this field are excluded from image
+  // metric averages.
+  relevantImageIds: v.optional(v.array(v.string())),
   langsmithExampleId: v.optional(v.string()),
   metadata: v.any(),
   source: v.optional(v.string())
