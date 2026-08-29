@@ -227,3 +227,13 @@ Key eval-lib types for experiment integration:
 - backend: 46 convex-test integration tests covering generation callbacks, experiment callbacks, indexing callbacks, retriever CRUD, shared index protection, and workpool helpers
 - Shared test helpers in `packages/backend/tests/helpers.ts` (setupTest, seedUser, seedKB, seedDataset, testIdentity)
 - Mock LLM clients for testing strategies (return canned JSON responses)
+
+## Superpowers visual companion
+
+Whenever the Superpowers plugin's brainstorming skill / visual companion is used in this project, **always start its server with a 24-hour idle timeout instead of the default 30 minutes.** The server (`scripts/server.cjs`) reads the timeout from the `BRAINSTORM_IDLE_TIMEOUT_MIN` env var (in minutes; default 30), so launch `start-server.sh` with it set to `1440` (24 × 60):
+
+```bash
+BRAINSTORM_IDLE_TIMEOUT_MIN=1440 <superpowers-plugin>/skills/brainstorming/scripts/start-server.sh --project-dir <repo root>
+```
+
+The server keeps running and only auto-exits after 24 hours of inactivity. Caveat: it still exits early if the owning Claude Code session terminates (it tracks the harness process PID and there is no flag to disable this), so "24 hours" means 24 hours of inactivity *while the session is alive* — it does not outlive the session.
